@@ -1756,23 +1756,34 @@ const server = http.createServer(async (req, res) => {
             });
         }
         if (req.method === 'POST' && p === '/api/stt/transcribe') {
+            const chunks = [];
+            let totalBytes = 0;
+            const MAX_STT_BYTES = 25 * 1024 * 1024;
+            for await (const chunk of req) {
+                totalBytes += chunk.length;
+                if (totalBytes > MAX_STT_BYTES) {
+                    return sendJson(res, 413, { ok: false, error: 'Audio payload too large' });
+                }
+                chunks.push(chunk);
+            }
+            const audioBuf = Buffer.concat(chunks);
+            const lang = encodeURIComponent((url.searchParams.get('lang') || 'th').trim());
             return new Promise((resolve) => {
-                const lang = encodeURIComponent((u.searchParams.get('lang') || 'th').trim());
                 const proxyReq = http.request(
                     `http://127.0.0.1:8096/transcribe?lang=${lang}`,
                     {
                         method: 'POST',
                         headers: {
                             'Content-Type': req.headers['content-type'] || 'audio/webm',
-                            ...(req.headers['content-length'] ? { 'Content-Length': req.headers['content-length'] } : {})
+                            'Content-Length': String(audioBuf.length)
                         },
                         timeout: 60000
                     },
                     (pRes) => {
-                        const chunks = [];
-                        pRes.on('data', (c) => chunks.push(c));
+                        const resChunks = [];
+                        pRes.on('data', (c) => resChunks.push(c));
                         pRes.on('end', () => {
-                            const raw = Buffer.concat(chunks).toString('utf8');
+                            const raw = Buffer.concat(resChunks).toString('utf8');
                             try {
                                 sendJson(res, pRes.statusCode || 200, JSON.parse(raw));
                             } catch {
@@ -1786,7 +1797,10 @@ const server = http.createServer(async (req, res) => {
                     sendJson(res, 503, { ok: false, error: `STT service unavailable: ${err.message}` });
                     resolve();
                 });
-                req.pipe(proxyReq);
+                proxyReq.on('timeout', () => {
+                    proxyReq.destroy(new Error('STT request timeout'));
+                });
+                proxyReq.end(audioBuf);
             });
         }
         if (p === '/api/gemini/quota') {

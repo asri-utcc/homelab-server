@@ -2887,9 +2887,13 @@ body::before {
         def, el,
         angle: def.angle,
         ox: 0, oy: 0, vx: 0, vy: 0,
+        radius: Math.max(7, def.size * 0.62),
+        mass: def.size * def.size,
         grabbed: false,
         dragDist: 0,
-        lastX: 0, lastY: 0
+        lastX: 0, lastY: 0,
+        lastMoveTs: 0,
+        lastHitTs: 0
       };
 
       el.addEventListener('pointerdown', (e) => {
@@ -2898,6 +2902,7 @@ body::before {
         st.dragDist = 0;
         st.lastX = e.clientX;
         st.lastY = e.clientY;
+        st.lastMoveTs = performance.now();
         st.vx = 0;
         st.vy = 0;
         el.classList.add('is-grabbed');
@@ -2910,11 +2915,12 @@ body::before {
         const dy = e.clientY - st.lastY;
         st.lastX = e.clientX;
         st.lastY = e.clientY;
+        st.lastMoveTs = performance.now();
         st.dragDist += Math.hypot(dx, dy);
         st.ox += dx;
         st.oy += dy;
-        st.vx = dx * 0.9;
-        st.vy = dy * 0.9;
+        st.vx = Math.max(-45, Math.min(45, st.vx * 0.3 + dx * 0.85));
+        st.vy = Math.max(-45, Math.min(45, st.vy * 0.3 + dy * 0.85));
       });
 
       const onDrop = (e) => {
@@ -2971,20 +2977,170 @@ body::before {
       });
     }
 
+    function playPlanetCollisionSound(impact) {
+      if (!isSoundEnabled() || impact < 1.2) return;
+      try {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        if (ac.state === 'suspended') ac.resume();
+        const now = ac.currentTime;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        const norm = Math.min(1, impact / 22);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(420 + norm * 380, now);
+        osc.frequency.exponentialRampToValueAtTime(180 + norm * 120, now + 0.09);
+        gain.gain.setValueAtTime(0.03 + norm * 0.09, now);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.1);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.11);
+      } catch (_) {}
+    }
+
+    function flashPlanetHit(st, impact) {
+      const now = performance.now();
+      if (now - st.lastHitTs < 90) return;
+      st.lastHitTs = now;
+      const glowScale = Math.min(3.2, 1.5 + impact * 0.1);
+      st.el.style.boxShadow = `0 0 ${st.def.size * glowScale}px #ffffff, 0 0 ${st.def.size * glowScale * 1.4}px ${st.def.color}`;
+      setTimeout(() => {
+        st.el.style.boxShadow = `0 0 ${st.def.size}px ${st.def.color}, 0 0 ${st.def.size * 1.8}px rgba(255,255,255,0.22)`;
+      }, 140);
+    }
+
+    function resolvePlanetCollisions() {
+      const now = performance.now();
+      for (let i = 0; i < planetStates.length; i++) {
+        const a = planetStates[i];
+        const aActive = a.grabbed || Math.hypot(a.ox, a.oy) > 0.4 || Math.hypot(a.vx, a.vy) > 0.4;
+
+        for (let j = i + 1; j < planetStates.length; j++) {
+          const b = planetStates[j];
+          const bActive = b.grabbed || Math.hypot(b.ox, b.oy) > 0.4 || Math.hypot(b.vx, b.vy) > 0.4;
+          if (!aActive && !bActive) continue;
+
+          const ax = Math.cos(a.angle) * a.def.ring + a.ox;
+          const ay = Math.sin(a.angle) * a.def.ring + a.oy;
+          const bx = Math.cos(b.angle) * b.def.ring + b.ox;
+          const by = Math.sin(b.angle) * b.def.ring + b.oy;
+
+          let dx = bx - ax;
+          let dy = by - ay;
+          let dist = Math.hypot(dx, dy);
+          const minDist = a.radius + b.radius;
+          if (dist >= minDist) continue;
+
+          let nx, ny;
+          if (dist < 0.001) {
+            nx = 1; ny = 0; dist = 0.001;
+          } else {
+            nx = dx / dist; ny = dy / dist;
+          }
+          const overlap = minDist - dist;
+
+          if (a.grabbed && !b.grabbed) {
+            // Grabbed planet acts as high-inertia driver; hit planet separates & bounces along normal
+            b.ox += nx * (overlap + 0.5);
+            b.oy += ny * (overlap + 0.5);
+            const rvx = b.vx - a.vx;
+            const rvy = b.vy - a.vy;
+            const velAlongNormal = rvx * nx + rvy * ny;
+            if (velAlongNormal < 0) {
+              const e = 0.92;
+              const impulse = -(1 + e) * velAlongNormal;
+              b.vx += impulse * nx;
+              b.vy += impulse * ny;
+              const impact = Math.abs(velAlongNormal);
+              flashPlanetHit(b, impact);
+              if (now - Math.max(a.lastHitTs, b.lastHitTs) > 70) {
+                a.lastHitTs = now;
+                playPlanetCollisionSound(impact);
+              }
+            } else {
+              // Gentle push when dragging slowly
+              b.vx += nx * 2.4;
+              b.vy += ny * 2.4;
+            }
+          } else if (b.grabbed && !a.grabbed) {
+            a.ox -= nx * (overlap + 0.5);
+            a.oy -= ny * (overlap + 0.5);
+            // Normal from b to a is (-nx, -ny)
+            const rvxBA = a.vx - b.vx;
+            const rvyBA = a.vy - b.vy;
+            const approach = rvxBA * (-nx) + rvyBA * (-ny);
+            if (approach < 0) {
+              const e = 0.92;
+              const impulse = -(1 + e) * approach;
+              a.vx += impulse * (-nx);
+              a.vy += impulse * (-ny);
+              const impact = Math.abs(approach);
+              flashPlanetHit(a, impact);
+              if (now - Math.max(a.lastHitTs, b.lastHitTs) > 70) {
+                b.lastHitTs = now;
+                playPlanetCollisionSound(impact);
+              }
+            } else {
+              a.vx -= nx * 2.4;
+              a.vy -= ny * 2.4;
+            }
+          } else {
+            // Both free: true 2D elastic collision weighted by mass (size^2)
+            const invMassA = 1 / a.mass;
+            const invMassB = 1 / b.mass;
+            const totalInvMass = invMassA + invMassB;
+
+            a.ox -= nx * overlap * (invMassA / totalInvMass);
+            a.oy -= ny * overlap * (invMassA / totalInvMass);
+            b.ox += nx * overlap * (invMassB / totalInvMass);
+            b.oy += ny * overlap * (invMassB / totalInvMass);
+
+            const rvx = b.vx - a.vx;
+            const rvy = b.vy - a.vy;
+            const velAlongNormal = rvx * nx + rvy * ny;
+            if (velAlongNormal < 0) {
+              const e = 0.88;
+              const jImp = -(1 + e) * velAlongNormal / totalInvMass;
+              a.vx -= jImp * invMassA * nx;
+              a.vy -= jImp * invMassA * ny;
+              b.vx += jImp * invMassB * nx;
+              b.vy += jImp * invMassB * ny;
+              const impact = Math.abs(velAlongNormal);
+              if (impact > 1.0) {
+                flashPlanetHit(a, impact);
+                flashPlanetHit(b, impact);
+                playPlanetCollisionSound(impact);
+              }
+            }
+          }
+        }
+      }
+    }
+
     function animatePlanets() {
       const thinking = hud.classList.contains('is-thinking');
       const speedMult = thinking ? 3.2 : 1;
+      const now = performance.now();
       for (const st of planetStates) {
         if (!st.grabbed) {
           st.angle += st.def.speed * speedMult + spinVel * 0.0025;
-          // Spring back to own orbital position
-          st.vx = (st.vx - st.ox * 0.09) * 0.86;
-          st.vy = (st.vy - st.oy * 0.09) * 0.86;
+          // Spring back to own orbital position with lively bounce damping
+          st.vx = (st.vx - st.ox * 0.055) * 0.92;
+          st.vy = (st.vy - st.oy * 0.055) * 0.92;
           st.ox += st.vx;
           st.oy += st.vy;
           if (Math.abs(st.ox) < 0.05 && Math.abs(st.vx) < 0.05) { st.ox = 0; st.vx = 0; }
           if (Math.abs(st.oy) < 0.05 && Math.abs(st.vy) < 0.05) { st.oy = 0; st.vy = 0; }
+        } else if (now - st.lastMoveTs > 45) {
+          st.vx *= 0.7;
+          st.vy *= 0.7;
         }
+      }
+
+      resolvePlanetCollisions();
+
+      for (const st of planetStates) {
         const bx = Math.cos(st.angle) * st.def.ring;
         const by = Math.sin(st.angle) * st.def.ring;
         st.el.style.transform = `translate(calc(-50% + ${(bx + st.ox).toFixed(1)}px), calc(-50% + ${(by + st.oy).toFixed(1)}px))`;

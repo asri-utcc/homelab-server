@@ -1648,6 +1648,9 @@ body::before {
           <div class="core-strip-left">
             <button type="button" id="btn-sound" class="btn" title="เปิด/ปิดเสียงเอฟเฟกต์ (Sound FX)">🔊 เสียง</button>
             <button type="button" id="btn-tts-auto" class="btn" title="อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Speaker TTS)">🗣️ อ่านอัตโนมัติ</button>
+            <select id="sel-tts-voice" class="btn" style="max-width:195px; padding:4px 8px; font-size:11.5px;" title="เลือกเสียงคนพูด (ฟรี เสียงธรรมชาติ Neural TTS)">
+              <option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>
+            </select>
           </div>
 
           <div class="mode-toggle">
@@ -3675,7 +3678,7 @@ body::before {
     const timeSpan = document.createElement('span');
     timeSpan.textContent = new Date().toLocaleTimeString();
     metaRight.appendChild(timeSpan);
-    if (role !== 'user' && 'speechSynthesis' in window) {
+    if (role !== 'user') {
       const speakBtn = document.createElement('button');
       speakBtn.type = 'button';
       speakBtn.className = 'btn-msg-speak';
@@ -4218,18 +4221,19 @@ body::before {
     }
   }
 
-  // ── Speaker / Text-to-Speech (Web Speech Synthesis) ───────────────────────
+  // ── Speaker / Text-to-Speech (Edge Neural TTS + Browser Fallback) ─────────
   const btnTtsAuto = document.getElementById('btn-tts-auto');
+  const selTtsVoice = document.getElementById('sel-tts-voice');
   let autoTtsEnabled = localStorage.getItem('core_auto_tts') === '1';
+  let selectedTtsVoice = localStorage.getItem('core_tts_voice') || 'th-TH-PremwadeeNeural';
+  let neuralTtsAvailable = true;
   let activeSpeakBtn = null;
+  let activeAudio = null;
+  let activeAudioUrl = null;
   let ttsQueueToken = 0;
 
   function syncAutoTtsBtn() {
     if (!btnTtsAuto) return;
-    if (!('speechSynthesis' in window)) {
-      btnTtsAuto.style.display = 'none';
-      return;
-    }
     btnTtsAuto.classList.toggle('is-active', autoTtsEnabled);
     btnTtsAuto.textContent = autoTtsEnabled ? '🗣️ อ่านอัตโนมัติ: เปิด' : '🗣️ อ่านอัตโนมัติ';
   }
@@ -4244,9 +4248,56 @@ body::before {
     });
   }
 
-  function pickThaiVoice() {
+  function populateVoiceSelect(neuralVoices) {
+    if (!selTtsVoice) return;
+    const opts = [];
+    if (Array.isArray(neuralVoices) && neuralVoices.length > 0) {
+      neuralVoices.forEach(v => {
+        opts.push(`<option value="${v.id}">${v.name}</option>`);
+      });
+    } else {
+      opts.push('<option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>');
+    }
+    if ('speechSynthesis' in window) {
+      const bVoices = (window.speechSynthesis.getVoices() || []).filter(v => v.lang && (v.lang.toLowerCase().startsWith('th') || v.lang.toLowerCase().startsWith('en')));
+      bVoices.slice(0, 6).forEach((v, idx) => {
+        opts.push(`<option value="browser:${encodeURIComponent(v.name)}">🌐 ${v.name} (${v.lang})</option>`);
+      });
+    }
+    selTtsVoice.innerHTML = opts.join('');
+    if ([...selTtsVoice.options].some(o => o.value === selectedTtsVoice)) {
+      selTtsVoice.value = selectedTtsVoice;
+    } else if (selTtsVoice.options.length > 0) {
+      selectedTtsVoice = selTtsVoice.options[0].value;
+      selTtsVoice.value = selectedTtsVoice;
+    }
+  }
+
+  fetch('/api/tts/voices')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      neuralTtsAvailable = !!(d && d.ok && Array.isArray(d.voices));
+      populateVoiceSelect(d && d.voices);
+    })
+    .catch(() => {
+      neuralTtsAvailable = false;
+      populateVoiceSelect([]);
+    });
+
+  if (selTtsVoice) {
+    selTtsVoice.addEventListener('change', () => {
+      selectedTtsVoice = selTtsVoice.value;
+      localStorage.setItem('core_tts_voice', selectedTtsVoice);
+    });
+  }
+
+  function pickThaiVoice(preferredName) {
     if (!('speechSynthesis' in window)) return null;
     const voices = window.speechSynthesis.getVoices() || [];
+    if (preferredName) {
+      const exact = voices.find(v => v.name === preferredName);
+      if (exact) return exact;
+    }
     return (
       voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th') && /natural|google|microsoft|premwadee|niwat/i.test(v.name)) ||
       voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th')) ||
@@ -4254,7 +4305,9 @@ body::before {
     );
   }
   if ('speechSynthesis' in window && window.speechSynthesis.onvoiceschanged !== undefined) {
-    window.speechSynthesis.onvoiceschanged = () => pickThaiVoice();
+    window.speechSynthesis.onvoiceschanged = () => {
+      if (selTtsVoice && selTtsVoice.options.length <= 1) populateVoiceSelect([]);
+    };
   }
 
   function cleanTextForSpeech(rawText) {
@@ -4294,6 +4347,14 @@ body::before {
 
   function stopSpeaking() {
     ttsQueueToken++;
+    if (activeAudio) {
+      try { activeAudio.pause(); activeAudio.src = ''; } catch (_) {}
+      activeAudio = null;
+    }
+    if (activeAudioUrl) {
+      try { URL.revokeObjectURL(activeAudioUrl); } catch (_) {}
+      activeAudioUrl = null;
+    }
     if ('speechSynthesis' in window) {
       try { window.speechSynthesis.cancel(); } catch (_) {}
     }
@@ -4304,26 +4365,17 @@ body::before {
     }
   }
 
-  function speakMessage(msgEl, btnEl) {
-    if (!('speechSynthesis' in window) || !msgEl) return;
-    const bodyEl = msgEl.querySelector('.msg__body');
-    const raw = (bodyEl && (bodyEl.innerText || bodyEl.textContent)) || '';
-    const cleaned = cleanTextForSpeech(raw);
-    if (!cleaned) return;
-
-    stopSpeaking();
-    const token = ++ttsQueueToken;
-    const chunks = splitSpeechChunks(cleaned);
-    if (!chunks.length) return;
-
-    const btn = btnEl || msgEl.querySelector('.btn-msg-speak');
-    if (btn) {
-      activeSpeakBtn = btn;
-      btn.classList.add('is-speaking');
-      btn.textContent = '⏹️ หยุด';
+  function speakWithBrowser(cleaned, token, preferredName) {
+    if (!('speechSynthesis' in window)) {
+      if (token === ttsQueueToken) stopSpeaking();
+      return;
     }
-
-    const voice = pickThaiVoice();
+    const chunks = splitSpeechChunks(cleaned);
+    if (!chunks.length) {
+      if (token === ttsQueueToken) stopSpeaking();
+      return;
+    }
+    const voice = pickThaiVoice(preferredName);
     let idx = 0;
     function speakNext() {
       if (token !== ttsQueueToken || idx >= chunks.length) {
@@ -4340,6 +4392,58 @@ body::before {
       window.speechSynthesis.speak(u);
     }
     speakNext();
+  }
+
+  async function speakMessage(msgEl, btnEl) {
+    if (!msgEl) return;
+    const bodyEl = msgEl.querySelector('.msg__body');
+    const raw = (bodyEl && (bodyEl.innerText || bodyEl.textContent)) || '';
+    const cleaned = cleanTextForSpeech(raw);
+    if (!cleaned) return;
+
+    stopSpeaking();
+    const token = ++ttsQueueToken;
+    const btn = btnEl || msgEl.querySelector('.btn-msg-speak');
+    if (btn) {
+      activeSpeakBtn = btn;
+      btn.classList.add('is-speaking');
+      btn.textContent = '⏳ กำลังโหลด...';
+    }
+
+    const chosen = selectedTtsVoice || 'th-TH-PremwadeeNeural';
+    if (chosen.startsWith('browser:') || !neuralTtsAvailable) {
+      if (btn) btn.textContent = '⏹️ หยุด';
+      const pref = chosen.startsWith('browser:') ? decodeURIComponent(chosen.slice(8)) : '';
+      speakWithBrowser(cleaned, token, pref);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleaned, voice: chosen, rate: '+0%', pitch: '+0Hz' })
+      });
+      if (token !== ttsQueueToken) return;
+      if (!res.ok) throw new Error('TTS HTTP ' + res.status);
+      const blob = await res.blob();
+      if (token !== ttsQueueToken) return;
+
+      activeAudioUrl = URL.createObjectURL(blob);
+      activeAudio = new Audio(activeAudioUrl);
+      if (btn) btn.textContent = '⏹️ หยุด';
+      activeAudio.onended = () => {
+        if (token === ttsQueueToken) stopSpeaking();
+      };
+      activeAudio.onerror = () => {
+        if (token === ttsQueueToken) stopSpeaking();
+      };
+      await activeAudio.play();
+    } catch (_) {
+      if (token !== ttsQueueToken) return;
+      if (btn) btn.textContent = '⏹️ หยุด';
+      speakWithBrowser(cleaned, token, '');
+    }
   }
 
   function finishRun() {

@@ -1803,6 +1803,68 @@ const server = http.createServer(async (req, res) => {
                 proxyReq.end(audioBuf);
             });
         }
+        if (req.method === 'GET' && p === '/api/tts/voices') {
+            return new Promise((resolve) => {
+                const proxyReq = http.get('http://127.0.0.1:8096/tts/voices', { timeout: 5000 }, (pRes) => {
+                    const chunks = [];
+                    pRes.on('data', (c) => chunks.push(c));
+                    pRes.on('end', () => {
+                        try {
+                            sendJson(res, pRes.statusCode || 200, JSON.parse(Buffer.concat(chunks).toString('utf8')));
+                        } catch {
+                            sendJson(res, 502, { ok: false, error: 'Invalid TTS voices response' });
+                        }
+                        resolve();
+                    });
+                });
+                proxyReq.on('error', (err) => {
+                    sendJson(res, 503, { ok: false, error: err.message });
+                    resolve();
+                });
+            });
+        }
+        if (req.method === 'POST' && p === '/api/tts') {
+            const body = await readJsonBody(req);
+            const payload = JSON.stringify(body || {});
+            return new Promise((resolve) => {
+                const proxyReq = http.request(
+                    'http://127.0.0.1:8096/tts',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Content-Length': String(Buffer.byteLength(payload))
+                        },
+                        timeout: 30000
+                    },
+                    (pRes) => {
+                        if (pRes.statusCode !== 200) {
+                            const chunks = [];
+                            pRes.on('data', (c) => chunks.push(c));
+                            pRes.on('end', () => {
+                                sendJson(res, pRes.statusCode || 502, { ok: false, error: Buffer.concat(chunks).toString('utf8') });
+                                resolve();
+                            });
+                            return;
+                        }
+                        res.writeHead(200, {
+                            'Content-Type': pRes.headers['content-type'] || 'audio/mpeg',
+                            'Cache-Control': 'no-store'
+                        });
+                        pRes.pipe(res);
+                        pRes.on('end', resolve);
+                    }
+                );
+                proxyReq.on('error', (err) => {
+                    sendJson(res, 503, { ok: false, error: `TTS service unavailable: ${err.message}` });
+                    resolve();
+                });
+                proxyReq.on('timeout', () => {
+                    proxyReq.destroy(new Error('TTS request timeout'));
+                });
+                proxyReq.end(payload);
+            });
+        }
         if (p === '/api/gemini/quota') {
             return sendJson(res, 200, await geminiManager.getQuotaSummary());
         }

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>⚙️ System & AI Settings — Homelab</title>
+<style>
+  :root {
+    --bg: #040d14;
+    --panel: rgba(8, 22, 34, 0.92);
+    --panel-2: rgba(12, 32, 48, 0.85);
+    --border: rgba(0, 229, 255, 0.22);
+    --cyan: #00e5ff;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --ink: #e6f4f8;
+    --ink-muted: #7aa3b8;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Thai', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top center, #082032 0%, var(--bg) 65%);
+    color: var(--ink);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    padding: 14px 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 18px;
+  }
+  .topbar h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 10px; color: var(--cyan); }
+  .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    padding: 7px 13px; border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--ink);
+    cursor: pointer; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: all 0.15s ease;
+  }
+  .btn:hover { border-color: var(--cyan); background: rgba(0, 229, 255, 0.14); }
+  .btn--primary { background: rgba(0, 229, 255, 0.18); border-color: var(--cyan); color: #fff; }
+  .btn--green { background: rgba(52, 211, 153, 0.16); border-color: var(--green); color: var(--green); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .card h2 {
+    margin: 0 0 14px 0; font-size: 15px; color: var(--cyan);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border-bottom: 1px solid rgba(0, 229, 255, 0.12); padding-bottom: 10px;
+  }
+  .field { margin-bottom: 13px; }
+  .field label { display: block; font-size: 12.5px; color: var(--ink-muted); margin-bottom: 5px; font-weight: 600; }
+  .input, select, textarea {
+    width: 100%; padding: 9px 11px; border-radius: 8px;
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    background: rgba(3, 12, 20, 0.85); color: var(--ink);
+    font-family: var(--sans); font-size: 13.5px; outline: none;
+  }
+  .input:focus, select:focus, textarea:focus { border-color: var(--cyan); }
+  textarea { font-family: var(--mono); font-size: 12.5px; min-height: 155px; resize: vertical; line-height: 1.5; }
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 12px; border-radius: 8px;
+    background: rgba(3, 12, 20, 0.55); border: 1px solid rgba(0, 229, 255, 0.12);
+    margin-bottom: 10px;
+  }
+  .toggle-row .title { font-size: 13.5px; font-weight: 600; }
+  .toggle-row .sub { font-size: 11.5px; color: var(--ink-muted); margin-top: 2px; }
+  .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0; cursor: pointer; border-radius: 24px;
+    background: rgba(122, 163, 184, 0.25); border: 1px solid var(--border); transition: 0.2s;
+  }
+  .slider:before {
+    content: ""; position: absolute; height: 18px; width: 18px; left: 2px; bottom: 2px;
+    background: #fff; border-radius: 50%; transition: 0.2s;
+  }
+  input:checked + .slider { background: rgba(0, 229, 255, 0.35); border-color: var(--cyan); }
+  input:checked + .slider:before { transform: translateX(20px); background: var(--cyan); }
+  .badge {
+    font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: rgba(0, 229, 255, 0.1); color: var(--cyan);
+  }
+  .badge--ok { border-color: rgba(52,211,153,0.45); background: rgba(52,211,153,0.12); color: var(--green); }
+  .badge--warn { border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.12); color: var(--amber); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .toast {
+    position: fixed; bottom: 22px; right: 22px; z-index: 999;
+    padding: 10px 16px; border-radius: 8px;
+    background: rgba(8, 30, 44, 0.96); border: 1px solid var(--cyan);
+    color: #fff; font-size: 13px; box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+    display: none;
+  }
+  .toast.is-open { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <h1>⚙️ ตั้งค่าระบบทั่วไป (System &amp; AI Settings)</h1>
+    <div class="topbar-actions">
+      <a href="/gemini.html" class="btn btn--primary">🤖 กลับหน้า AI Chat</a>
+      <a href="/" class="btn">🛡️ Dashboard หลัก</a>
+      <a href="/cron.html" class="btn">⏰ Cron</a>
+      <a href="/quota.html" class="btn">📊 โควตา</a>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- AI & Workspace -->
+    <section class="card">
+      <h2>
+        <span>🤖 AI &amp; Workspace</span>
+        <span id="auth-badge" class="badge badge--warn">CHECKING...</span>
+      </h2>
+      <div class="field">
+        <label for="set-model">โมเดล AI เริ่มต้น (Default Model)</label>
+        <select id="set-model">
+          <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
+          <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
+          <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
+          <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
+          <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="set-cwd">โฟลเดอร์ทำงานเริ่มต้น (Working Directory)</label>
+        <select id="set-cwd">
+          <option value="/home/dev/projects">/home/dev/projects</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="set-apikey">Gemini API Key (เว้นว่างหากใช้บัญชี Google Antigravity)</label>
+        <div class="row">
+          <input type="password" id="set-apikey" class="input" style="flex:1" placeholder="AIzaSy... (ไม่บังคับ)" />
+          <button type="button" id="btn-save-apikey" class="btn btn--primary">🔑 บันทึก Key</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Voice & Audio -->
+    <section class="card">
+      <h2><span>🎙️ เสียงพูด &amp; การแสดงผล (Voice &amp; UI)</span></h2>
+      <div class="field">
+        <label for="set-stt">ระบบแปลงเสียงเป็นข้อความ (Speech-to-Text)</label>
+        <select id="set-stt">
+          <option value="whisper">🧠 Whisper (Local Self-Hosted — แม่นยำ)</option>
+          <option value="webspeech">🌐 Web Speech API (เบราว์เซอร์เรียลไทม์)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="set-tts-voice">เสียงคนพูด AI (Speaker TTS ฟรี)</label>
+        <div class="row">
+          <select id="set-tts-voice" style="flex:1">
+            <option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>
+          </select>
+          <button type="button" id="btn-test-voice" class="btn btn--green">🔊 ทดสอบ</button>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="title">🗣️ อ่านคำตอบ AI ออกเสียงอัตโนมัติ</div>
+          <div class="sub">เปิดให้อ่านออกเสียงทันทีเมื่อ AI ตอบจบ</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="chk-auto-tts"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="title">🔊 เสียงเอฟเฟกต์ (Sound FX)</div>
+          <div class="sub">เสียงคลิก ลูกแก้ว 3D และเสียงแจ้งเตือน</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="chk-sound-fx"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row" style="margin-bottom:0">
+        <div>
+          <div class="title">👁️ แสดงลูกแก้ว 3D Reactor HUD</div>
+          <div class="sub">แสดงวงโคจรและสถานะเซิร์ฟเวอร์ด้านซ้ายหน้า AI</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="chk-hud-visible"><span class="slider"></span></label>
+      </div>
+    </section>
+  </div>
+
+  <!-- Long-Term Memory -->
+  <section class="card" style="margin-bottom: 16px;">
+    <h2>
+      <span>🧠 ความจำระยะยาวของ AI (MEMORY.md)</span>
+      <button type="button" id="btn-save-memory" class="btn btn--primary">💾 บันทึกความจำ</button>
+    </h2>
+    <textarea id="set-memory" placeholder="กำลังโหลดความจำระยะยาว..."></textarea>
+  </section>
+
+  <!-- Telegram & Tools -->
+  <section class="card">
+    <h2><span>📬 การแจ้งเตือน Telegram &amp; เครื่องมือระบบ</span></h2>
+    <div class="row">
+      <button type="button" id="btn-test-telegram" class="btn btn--green">✈️ ทดสอบส่งข้อความเข้า Telegram</button>
+      <a href="/cron.html" class="btn">⏰ จัดการ Cron อัตโนมัติ</a>
+      <a href="/quota.html" class="btn">📊 ดูโควตา AI</a>
+      <a href="/#ports" class="btn">🛡️ พอร์ต, ไฟร์วอลล์ &amp; WireGuard</a>
+    </div>
+  </section>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+(function () {
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('is-open');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('is-open'), 2600);
+  }
+
+  const selModel = document.getElementById('set-model');
+  const selCwd = document.getElementById('set-cwd');
+  const authBadge = document.getElementById('auth-badge');
+  const inpApiKey = document.getElementById('set-apikey');
+  const selStt = document.getElementById('set-stt');
+  const selVoice = document.getElementById('set-tts-voice');
+  const chkAutoTts = document.getElementById('chk-auto-tts');
+  const chkSoundFx = document.getElementById('chk-sound-fx');
+  const chkHud = document.getElementById('chk-hud-visible');
+  const txtMemory = document.getElementById('set-memory');
+
+  // Load localStorage preferences
+  selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-medium';
+  selStt.value = localStorage.getItem('stt_engine') || 'whisper';
+  chkAutoTts.checked = localStorage.getItem('core_auto_tts') === '1';
+  chkSoundFx.checked = localStorage.getItem('gemini_sound_enabled') !== '0';
+  chkHud.checked = localStorage.getItem('core_hud_hidden') !== '1';
+
+  selModel.addEventListener('change', () => {
+    localStorage.setItem('core_default_model', selModel.value);
+    showToast('✅ บันทึกโมเดลเริ่มต้นแล้ว');
+  });
+  selCwd.addEventListener('change', () => {
+    localStorage.setItem('core_default_cwd', selCwd.value);
+    showToast('✅ บันทึกโฟลเดอร์ทำงานแล้ว');
+  });
+  selStt.addEventListener('change', () => {
+    localStorage.setItem('stt_engine', selStt.value);
+    showToast('✅ บันทึกโหมดแปลงเสียงแล้ว');
+  });
+  chkAutoTts.addEventListener('change', () => {
+    localStorage.setItem('core_auto_tts', chkAutoTts.checked ? '1' : '0');
+    showToast(chkAutoTts.checked ? '🗣️ เปิดอ่านออกเสียงอัตโนมัติ' : '🔇 ปิดอ่านออกเสียงอัตโนมัติ');
+  });
+  chkSoundFx.addEventListener('change', () => {
+    localStorage.setItem('gemini_sound_enabled', chkSoundFx.checked ? '1' : '0');
+    showToast(chkSoundFx.checked ? '🔊 เปิดเสียงเอฟเฟกต์แล้ว' : '🔇 ปิดเสียงเอฟเฟกต์แล้ว');
+  });
+  chkHud.addEventListener('change', () => {
+    localStorage.setItem('core_hud_hidden', chkHud.checked ? '0' : '1');
+    showToast(chkHud.checked ? '👁️ แสดงลูกแก้ว 3D HUD' : '🙈 ซ่อนลูกแก้ว 3D HUD');
+  });
+
+  // Load Gemini status & dirs
+  fetch('/api/gemini/status').then(r => r.json()).then(d => {
+    if (d.hasApiKey || d.loggedIn) {
+      authBadge.textContent = d.loggedIn ? 'AUTH: ANTIGRAVITY OK' : 'AUTH: API KEY OK';
+      authBadge.className = 'badge badge--ok';
+    } else {
+      authBadge.textContent = 'AUTH: NOT CONFIGURED';
+      authBadge.className = 'badge badge--warn';
+    }
+    if (Array.isArray(d.availableDirs) && d.availableDirs.length) {
+      selCwd.innerHTML = d.availableDirs.map(dir => `<option value="${dir}">${dir}</option>`).join('');
+      const savedCwd = localStorage.getItem('core_default_cwd') || d.defaultCwd || d.availableDirs[0];
+      if ([...selCwd.options].some(o => o.value === savedCwd)) selCwd.value = savedCwd;
+    }
+  }).catch(() => {});
+
+  // Save API Key
+  document.getElementById('btn-save-apikey').addEventListener('click', async () => {
+    const key = inpApiKey.value.trim();
+    const res = await fetch('/api/gemini/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: key })
+    });
+    const d = await res.json();
+    showToast(d.ok ? '🔑 บันทึก API Key เรียบร้อย' : '❌ บันทึกไม่สำเร็จ');
+  });
+
+  // Load Voices
+  const savedVoice = localStorage.getItem('core_tts_voice') || 'th-TH-PremwadeeNeural';
+  fetch('/api/tts/voices').then(r => r.json()).then(d => {
+    if (d && d.ok && Array.isArray(d.voices)) {
+      selVoice.innerHTML = d.voices.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+      if ([...selVoice.options].some(o => o.value === savedVoice)) selVoice.value = savedVoice;
+    }
+  }).catch(() => {});
+  selVoice.addEventListener('change', () => {
+    localStorage.setItem('core_tts_voice', selVoice.value);
+    showToast('✅ บันทึกเสียงพูด AI แล้ว');
+  });
+
+  // Test Voice
+  let testAudio = null;
+  document.getElementById('btn-test-voice').addEventListener('click', async () => {
+    if (testAudio) { try { testAudio.pause(); } catch (_) {} }
+    showToast('🔊 กำลังสร้างเสียงทดสอบ...');
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'สวัสดีค่ะ ระบบเสียงธรรมชาติพร้อมใช้งานแล้วค่ะ', voice: selVoice.value })
+      });
+      if (!res.ok) throw new Error('TTS failed');
+      const blob = await res.blob();
+      testAudio = new Audio(URL.createObjectURL(blob));
+      await testAudio.play();
+    } catch (e) {
+      showToast('❌ ทดสอบเสียงไม่สำเร็จ: ' + e.message);
+    }
+  });
+
+  // Load & Save Memory
+  fetch('/api/gemini/memory').then(r => r.json()).then(d => {
+    txtMemory.value = d.memory || '';
+  }).catch(() => {});
+  document.getElementById('btn-save-memory').addEventListener('click', async () => {
+    const res = await fetch('/api/gemini/memory', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memory: txtMemory.value })
+    });
+    const d = await res.json();
+    showToast(d.ok ? '🧠 บันทึกความจำระยะยาวเรียบร้อย' : '❌ บันทึกไม่สำเร็จ');
+  });
+
+  // Test Telegram
+  document.getElementById('btn-test-telegram').addEventListener('click', async () => {
+    showToast('✈️ กำลังส่งข้อความทดสอบเข้า Telegram...');
+    try {
+      const res = await fetch('/api/settings/telegram-test', { method: 'POST' });
+      const d = await res.json();
+      showToast(d.ok ? '✅ ส่งข้อความเข้า Telegram สำเร็จ!' : '❌ ' + (d.error || 'ส่งไม่สำเร็จ'));
+    } catch (e) {
+      showToast('❌ ' + e.message);
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1466,7 +1466,7 @@ body::before {
   </div>
 
   <div class="controls">
-    <div id="badge-key" class="badge badge--warn desktop-only">AUTH: CHECKING...</div>
+    <div id="badge-key" class="badge badge--warn" style="display:none;">AUTH: CHECKING...</div>
 
     <select id="sel-model" class="select-box desktop-only" title="เลือก Model AI">
       <option value="gemini-4-hydrogen-medium" selected>Gemini 4 Hydrogen (Medium)</option>
@@ -1476,21 +1476,20 @@ body::before {
       <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
     </select>
 
-    <select id="sel-cwd" class="select-box desktop-only" title="เลือก Working Directory บนเซิร์ฟเวอร์">
+    <select id="sel-cwd" class="select-box" style="display:none;" title="เลือก Working Directory บนเซิร์ฟเวอร์">
       <option value="/home/dev/projects">📁 /home/dev/projects (Root)</option>
     </select>
 
-    <button type="button" id="btn-memory" class="btn desktop-only" title="ดูและจัดการความจำระยะยาวของ AI">🧠 ความจำ</button>
-    <a href="/quota.html" target="_blank" rel="noopener noreferrer" class="btn desktop-only" title="ดูโควตา AI และ Burn-Rate แบบหน้าแยก">📊 โควตา</a>
-    <a href="/cron.html" target="_blank" rel="noopener noreferrer" class="btn desktop-only" title="จัดการตั้งเวลา Linux Crontab อัตโนมัติ">⏰ Cron</a>
-    <button type="button" id="btn-config" class="btn desktop-only" title="ตั้งค่าหรือล็อกอิน Gemini">🔑 คีย์</button>
+    <button type="button" id="btn-memory" class="btn" style="display:none;">🧠 ความจำ</button>
+    <button type="button" id="btn-config" class="btn" style="display:none;">🔑 คีย์</button>
     <button type="button" id="btn-clear" class="btn btn--danger desktop-only" title="ล้างประวัติการคุยและเริ่มแชทใหม่">🧹 แชทใหม่</button>
-    <button type="button" id="btn-open-settings-desktop" class="btn btn--primary desktop-only" onclick="document.getElementById('btn-open-settings')?.click()">⚙️ เพิ่มเติม</button>
+    <a href="/settings.html" target="_blank" rel="noopener noreferrer" class="btn btn--primary desktop-only" title="ตั้งค่าทั้งหมด (Model, เสียงพูด, ความจำ, Cron, โควตา, Telegram)">⚙️ ตั้งค่า</a>
 
     <!-- Mobile-Only Action Controls -->
     <div class="mobile-controls">
       <button type="button" id="mobile-mode-pill" class="mode-pill-btn" data-mode="exec" title="แตะเพื่อเลือกโหมดหรือตั้งค่า">⚡ YOLO</button>
-      <button type="button" id="btn-open-settings" class="btn btn--settings" title="เมนูตั้งค่าและตัวเลือกเพิ่มเติม">⚙️ เพิ่มเติม</button>
+      <button type="button" id="btn-open-settings" class="btn btn--settings" style="display:none;">⚙️ เพิ่มเติม</button>
+      <a href="/settings.html" target="_blank" rel="noopener noreferrer" class="btn btn--settings" style="text-decoration:none;" title="ตั้งค่าทั้งหมด">⚙️ ตั้งค่า</a>
     </div>
   </div>
 </header>
@@ -1646,9 +1645,9 @@ body::before {
 
         <div class="core-control-strip">
           <div class="core-strip-left">
-            <button type="button" id="btn-sound" class="btn" title="เปิด/ปิดเสียงเอฟเฟกต์ (Sound FX)">🔊 เสียง</button>
-            <button type="button" id="btn-tts-auto" class="btn" title="อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Speaker TTS)">🗣️ อ่านอัตโนมัติ</button>
-            <select id="sel-tts-voice" class="btn" style="max-width:195px; padding:4px 8px; font-size:11.5px;" title="เลือกเสียงคนพูด (ฟรี เสียงธรรมชาติ Neural TTS)">
+            <button type="button" id="btn-sound" class="btn" style="display:none;">🔊 เสียง</button>
+            <button type="button" id="btn-tts-auto" class="btn" title="อ่านคำตอบ AI ออกเสียงอัตโนมัติ (ตั้งค่าเสียงได้ที่หน้า ⚙️ ตั้งค่า)">🗣️ อ่านอัตโนมัติ</button>
+            <select id="sel-tts-voice" class="btn" style="display:none;">
               <option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>
             </select>
           </div>
@@ -4239,11 +4238,71 @@ body::before {
   }
   syncAutoTtsBtn();
 
+  // Sync settings updated from /settings.html in real time
+  (function applyStoredDefaults() {
+    const defModel = localStorage.getItem('core_default_model');
+    if (defModel && selModel && [...selModel.options].some(o => o.value === defModel)) {
+      selModel.value = defModel;
+    }
+    const defCwd = localStorage.getItem('core_default_cwd');
+    if (defCwd && selCwd && [...selCwd.options].some(o => o.value === defCwd)) {
+      selCwd.value = defCwd;
+    }
+  })();
+
+  window.addEventListener('storage', (ev) => {
+    if (ev.key === 'core_tts_voice' && ev.newValue) {
+      selectedTtsVoice = ev.newValue;
+      if (selTtsVoice && [...selTtsVoice.options].some(o => o.value === ev.newValue)) selTtsVoice.value = ev.newValue;
+    } else if (ev.key === 'core_auto_tts') {
+      autoTtsEnabled = ev.newValue === '1';
+      syncAutoTtsBtn();
+      if (!autoTtsEnabled) stopSpeaking();
+    } else if (ev.key === 'stt_engine' && ev.newValue) {
+      sttEngine = ev.newValue;
+      if (typeof syncSttModeUi === 'function') syncSttModeUi();
+    } else if (ev.key === 'core_default_model' && ev.newValue && selModel) {
+      if ([...selModel.options].some(o => o.value === ev.newValue)) selModel.value = ev.newValue;
+    } else if (ev.key === 'core_default_cwd' && ev.newValue && selCwd) {
+      if ([...selCwd.options].some(o => o.value === ev.newValue)) selCwd.value = ev.newValue;
+    }
+  });
+
   if (btnTtsAuto) {
     btnTtsAuto.addEventListener('click', () => {
       autoTtsEnabled = !autoTtsEnabled;
       localStorage.setItem('core_auto_tts', autoTtsEnabled ? '1' : '0');
       syncAutoTtsBtn();
+
+  // Sync settings updated from /settings.html in real time
+  (function applyStoredDefaults() {
+    const defModel = localStorage.getItem('core_default_model');
+    if (defModel && selModel && [...selModel.options].some(o => o.value === defModel)) {
+      selModel.value = defModel;
+    }
+    const defCwd = localStorage.getItem('core_default_cwd');
+    if (defCwd && selCwd && [...selCwd.options].some(o => o.value === defCwd)) {
+      selCwd.value = defCwd;
+    }
+  })();
+
+  window.addEventListener('storage', (ev) => {
+    if (ev.key === 'core_tts_voice' && ev.newValue) {
+      selectedTtsVoice = ev.newValue;
+      if (selTtsVoice && [...selTtsVoice.options].some(o => o.value === ev.newValue)) selTtsVoice.value = ev.newValue;
+    } else if (ev.key === 'core_auto_tts') {
+      autoTtsEnabled = ev.newValue === '1';
+      syncAutoTtsBtn();
+      if (!autoTtsEnabled) stopSpeaking();
+    } else if (ev.key === 'stt_engine' && ev.newValue) {
+      sttEngine = ev.newValue;
+      if (typeof syncSttModeUi === 'function') syncSttModeUi();
+    } else if (ev.key === 'core_default_model' && ev.newValue && selModel) {
+      if ([...selModel.options].some(o => o.value === ev.newValue)) selModel.value = ev.newValue;
+    } else if (ev.key === 'core_default_cwd' && ev.newValue && selCwd) {
+      if ([...selCwd.options].some(o => o.value === ev.newValue)) selCwd.value = ev.newValue;
+    }
+  });
       if (!autoTtsEnabled) stopSpeaking();
     });
   }

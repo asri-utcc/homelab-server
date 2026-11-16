@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>Home-lab Control Panel</title>
-<link rel="stylesheet" href="/styles.css?v=20261109-v12">
+<link rel="stylesheet" href="/styles.css?v=20261109-v13">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -92,18 +92,18 @@
         </button>
         <button type="button" class="sidebar__item" data-view="ports" data-magnetic="true">
           <svg class="ico"><use href="#i-shield"/></svg>
-          <span class="sidebar__item-label">พอร์ต &amp; ไฟร์วอลล์</span>
+          <span class="sidebar__item-label">พอร์ต, ไฟร์วอลล์ &amp; VPN</span>
           <span class="tab-badge" id="badge-sidebar-ports">UFW</span>
-        </button>
-        <button type="button" class="sidebar__item" data-view="vpn" data-magnetic="true">
-          <svg class="ico"><use href="#i-globe"/></svg>
-          <span class="sidebar__item-label">WireGuard &amp; MQTT</span>
         </button>
         <button type="button" class="sidebar__item" data-view="terminal" data-magnetic="true">
           <svg class="ico"><use href="#i-terminal"/></svg>
           <span class="sidebar__item-label">เทอร์มินัล &amp; AI</span>
           <span class="tab-badge" id="badge-sidebar-terminal" style="background:rgba(0,210,240,0.15); color:#00d2f0; border-color:#00d2f0;">CLI+AI</span>
         </button>
+        <a href="/settings.html" class="sidebar__item" data-magnetic="true" style="text-decoration:none;">
+          <span style="font-size:15px; width:18px; text-align:center;">⚙️</span>
+          <span class="sidebar__item-label">ตั้งค่าระบบ (Settings)</span>
+        </a>
       </nav>
     </div>
 
@@ -445,6 +445,9 @@
       <button type="button" class="sec-subtab" data-ports-tab="tailscale">
         <span>🌐 Tailscale Funnel &amp; Serve</span>
       </button>
+      <button type="button" class="sec-subtab" data-ports-tab="vpn">
+        <span>🛡️ WireGuard &amp; MQTT</span>
+      </button>
     </div>
 
 <section class="section" id="sec-ports" aria-labelledby="h-ports">
@@ -667,12 +670,9 @@
       </div>
     </div>
   </section>
-  </div>
 
-
-  <!-- ════════ VIEW 4: WIREGUARD VPN & EMQX MQTT ════════ -->
-  <div class="lab-view" id="view-vpn" data-view-id="vpn" style="display:none">
-    <section class="section" id="sec-vpn-mqtt" aria-labelledby="h-vpn-mqtt">
+  <!-- WireGuard VPN & EMQX MQTT Section (now a subtab inside Ports & Firewall) -->
+  <section class="section" id="sec-vpn-mqtt" aria-labelledby="h-vpn-mqtt">
       <div class="section__head">
         <h2 id="h-vpn-mqtt">WireGuard VPN &amp; EMQX MQTT — Network &amp; Messaging Hub</h2>
         <span class="section__hint" id="vpn-mqtt-hint">Live tunnel, clients policy firewall &amp; broker telemetry</span>
@@ -927,7 +927,7 @@
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/app.js?v=20261109-v12"></script>
+<script src="/app.js?v=20261109-v13"></script>
 
 <!-- ── mobile bottom navigation bar ──────────────────────────────────────── -->
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">
@@ -943,10 +943,10 @@
     <svg class="ico"><use href="#i-shield"/></svg>
     <span>พอร์ต</span>
   </button>
-  <button type="button" class="mobile-nav-btn" data-view="vpn" aria-label="VPN และ IoT">
-    <svg class="ico"><use href="#i-globe"/></svg>
-    <span>VPN/IoT</span>
-  </button>
+  <a href="/settings.html" class="mobile-nav-btn" style="text-decoration:none;" aria-label="ตั้งค่าระบบ">
+    <span style="font-size:17px; line-height:1;">⚙️</span>
+    <span>ตั้งค่า</span>
+  </a>
   <button type="button" class="mobile-nav-btn" data-view="terminal" aria-label="เทอร์มินัล และ AI">
     <svg class="ico"><use href="#i-terminal"/></svg>
     <span>เทอร์มินัล/AI</span>

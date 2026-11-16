@@ -11,6 +11,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && location
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const setText = (el, val) => { const node = (typeof el === 'string') ? $(el) : el; if (node) node.textContent = (val != null ? val : ''); };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ico = (name, cls = 'ico') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -512,6 +513,11 @@ function initMagneticPhysics() {
     document.addEventListener('mousemove', (e) => {
         const target = e.target.closest('[data-magnetic="true"], .link');
         if (!target) return;
+        // Never apply magnetic pull on sidebar items when sidebar is collapsed (keeps active capsule rock solid)
+        if (target.closest('.sidebar:not(:hover):not(.is-pinned)')) {
+            target.style.transform = '';
+            return;
+        }
         const rect = target.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
@@ -715,7 +721,7 @@ function renderEnergy(s) {
 const SVC_ICON = {
     caddy: 'globe', cockpit: 'server', portainer: 'box', homepage: 'activity',
     'mongo-express': 'db', mongodb: 'db', 'uptime-kuma': 'activity', 'pm2-ui': 'activity', filebrowser: 'box', samba: 'server', onepercentbot: 'activity',
-    wireguard: 'shield', emqx: 'activity', 'emqx-mqtt': 'activity',
+    wireguard: 'shield', emqx: 'activity', 'emqx-mqtt': 'activity', 'iot-dashboard': 'cpu', homeassistant: 'home', zigbee2mqtt: 'box',
 };
 
 function renderServices(s) {
@@ -757,8 +763,8 @@ function renderLinks(links) {
             href = '#terminal';
             extra = ' data-view="terminal" data-view-jump="1"';
         } else if (l.url === '#vpn') {
-            href = '#vpn';
-            extra = ' data-view="vpn" data-view-jump="1"';
+            href = '#ports';
+            extra = ' data-view="ports" data-view-jump="1" data-ports-jump="vpn"';
         } else if (l.url === '#services') {
             href = '#services';
             extra = ' data-view="services" data-view-jump="1"';
@@ -2893,7 +2899,7 @@ document.querySelectorAll('.svc-subtab').forEach((btn) => {
     });
 });
 
-// ── Ports & Firewall Subtabs (UFW / Tailscale / All) ──────────────────────
+// ── Ports & Firewall Subtabs (UFW / Tailscale / WireGuard & MQTT / All) ───
 document.querySelectorAll('.sec-subtab').forEach((btn) => {
     btn.addEventListener('click', () => {
         playNavSound();
@@ -2902,16 +2908,24 @@ document.querySelectorAll('.sec-subtab').forEach((btn) => {
         const tab = btn.dataset.portsTab;
         const secPorts = document.getElementById('sec-ports');
         const secTailscale = document.getElementById('sec-tailscale');
+        const secVpnMqtt = document.getElementById('sec-vpn-mqtt');
 
         if (tab === 'all') {
             if (secPorts) secPorts.style.display = 'block';
             if (secTailscale) secTailscale.style.display = 'block';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'block';
         } else if (tab === 'ufw') {
             if (secPorts) secPorts.style.display = 'block';
             if (secTailscale) secTailscale.style.display = 'none';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'none';
         } else if (tab === 'tailscale') {
             if (secPorts) secPorts.style.display = 'none';
             if (secTailscale) secTailscale.style.display = 'block';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'none';
+        } else if (tab === 'vpn') {
+            if (secPorts) secPorts.style.display = 'none';
+            if (secTailscale) secTailscale.style.display = 'none';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'block';
         }
     });
 });

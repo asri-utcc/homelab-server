@@ -1698,6 +1698,21 @@ const server = http.createServer(async (req, res) => {
         if (p === '/cron' || p === '/cron/') {
             return await serveStatic(req, res, '/cron.html');
         }
+        if (p === '/settings' || p === '/settings/') {
+            return await serveStatic(req, res, '/settings.html');
+        }
+        if (req.method === 'POST' && p === '/api/settings/telegram-test') {
+            return new Promise((resolve) => {
+                execFile('/usr/bin/python3', ['/home/dev/projects/notify-telegram.py', '🔔 ทดสอบการแจ้งเตือนจากหน้า Settings — Homelab Server พร้อมใช้งาน!'], { timeout: 15000 }, (err, stdout, stderr) => {
+                    if (err) {
+                        sendJson(res, 500, { ok: false, error: (stderr || err.message || '').trim() });
+                    } else {
+                        sendJson(res, 200, { ok: true, output: (stdout || '').trim() });
+                    }
+                    resolve();
+                });
+            });
+        }
         if (p === '/api/cron') {
             if (req.method === 'GET') {
                 return sendJson(res, 200, { ok: true, jobs: await cronManager.listJobs() });

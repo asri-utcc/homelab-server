@@ -763,8 +763,8 @@ function renderLinks(links) {
             href = '#terminal';
             extra = ' data-view="terminal" data-view-jump="1"';
         } else if (l.url === '#vpn') {
-            href = '#vpn';
-            extra = ' data-view="vpn" data-view-jump="1"';
+            href = '#ports';
+            extra = ' data-view="ports" data-view-jump="1" data-ports-jump="vpn"';
         } else if (l.url === '#services') {
             href = '#services';
             extra = ' data-view="services" data-view-jump="1"';
@@ -2899,7 +2899,7 @@ document.querySelectorAll('.svc-subtab').forEach((btn) => {
     });
 });
 
-// ── Ports & Firewall Subtabs (UFW / Tailscale / All) ──────────────────────
+// ── Ports & Firewall Subtabs (UFW / Tailscale / WireGuard & MQTT / All) ───
 document.querySelectorAll('.sec-subtab').forEach((btn) => {
     btn.addEventListener('click', () => {
         playNavSound();
@@ -2908,16 +2908,24 @@ document.querySelectorAll('.sec-subtab').forEach((btn) => {
         const tab = btn.dataset.portsTab;
         const secPorts = document.getElementById('sec-ports');
         const secTailscale = document.getElementById('sec-tailscale');
+        const secVpnMqtt = document.getElementById('sec-vpn-mqtt');
 
         if (tab === 'all') {
             if (secPorts) secPorts.style.display = 'block';
             if (secTailscale) secTailscale.style.display = 'block';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'block';
         } else if (tab === 'ufw') {
             if (secPorts) secPorts.style.display = 'block';
             if (secTailscale) secTailscale.style.display = 'none';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'none';
         } else if (tab === 'tailscale') {
             if (secPorts) secPorts.style.display = 'none';
             if (secTailscale) secTailscale.style.display = 'block';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'none';
+        } else if (tab === 'vpn') {
+            if (secPorts) secPorts.style.display = 'none';
+            if (secTailscale) secTailscale.style.display = 'none';
+            if (secVpnMqtt) secVpnMqtt.style.display = 'block';
         }
     });
 });

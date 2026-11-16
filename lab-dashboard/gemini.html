@@ -2481,10 +2481,20 @@ body::before {
         msgList.innerHTML = '';
         history.forEach((m) => appendMessage(m.role, m.content, false, m.images || []));
         scrollToBottom();
+        requestAnimationFrame(scrollToBottom);
+        setTimeout(scrollToBottom, 150);
+        setTimeout(scrollToBottom, 500);
+        msgList.querySelectorAll('img').forEach((img) => {
+          if (!img.complete) img.addEventListener('load', scrollToBottom, { once: true });
+        });
       }
     } catch (_) {}
   }
   loadHistory();
+  window.addEventListener('load', () => {
+    scrollToBottom();
+    setTimeout(scrollToBottom, 200);
+  });
 
   function scrollToBottom() {
     msgList.scrollTop = msgList.scrollHeight;

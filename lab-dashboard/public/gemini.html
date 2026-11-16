@@ -3125,9 +3125,9 @@ body::before {
       for (const st of planetStates) {
         if (!st.grabbed) {
           st.angle += st.def.speed * speedMult + spinVel * 0.0025;
-          // Spring back to own orbital position with lively bounce damping
-          st.vx = (st.vx - st.ox * 0.055) * 0.92;
-          st.vy = (st.vy - st.oy * 0.055) * 0.92;
+          // Spring back to own orbital position with softer, floatier damping
+          st.vx = (st.vx - st.ox * 0.025) * 0.94;
+          st.vy = (st.vy - st.oy * 0.025) * 0.94;
           st.ox += st.vx;
           st.oy += st.vy;
           if (Math.abs(st.ox) < 0.05 && Math.abs(st.vx) < 0.05) { st.ox = 0; st.vx = 0; }

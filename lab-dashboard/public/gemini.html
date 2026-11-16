@@ -4358,7 +4358,8 @@ body::before {
       if (exact) return exact;
     }
     return (
-      voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th') && /natural|google|microsoft|premwadee|niwat/i.test(v.name)) ||
+      voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th') && /premwadee|google|female|achara|kanya/i.test(v.name)) ||
+      voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th') && !/niwat|pattara|male/i.test(v.name)) ||
       voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th')) ||
       null
     );
@@ -4453,6 +4454,21 @@ body::before {
     speakNext();
   }
 
+  const sharedTtsAudio = new Audio();
+  let ttsAudioUnlocked = false;
+  function unlockTtsAudio() {
+    if (ttsAudioUnlocked) return;
+    ttsAudioUnlocked = true;
+    try {
+      sharedTtsAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      sharedTtsAudio.volume = 0.01;
+      const p = sharedTtsAudio.play();
+      if (p && p.then) p.then(() => { sharedTtsAudio.pause(); sharedTtsAudio.volume = 1; }).catch(() => { ttsAudioUnlocked = false; });
+    } catch (_) { ttsAudioUnlocked = false; }
+  }
+  document.addEventListener('pointerdown', unlockTtsAudio, { passive: true });
+  document.addEventListener('keydown', unlockTtsAudio, { passive: true });
+
   async function speakMessage(msgEl, btnEl) {
     if (!msgEl) return;
     const bodyEl = msgEl.querySelector('.msg__body');
@@ -4469,14 +4485,16 @@ body::before {
       btn.textContent = '⏳ กำลังโหลด...';
     }
 
-    const chosen = selectedTtsVoice || 'th-TH-PremwadeeNeural';
+    const chosen = localStorage.getItem('core_tts_voice') || selectedTtsVoice || 'th-TH-PremwadeeNeural';
+    selectedTtsVoice = chosen;
     if (chosen.startsWith('browser:') || !neuralTtsAvailable) {
-      if (btn) btn.textContent = '⏹️ หยุด';
+      if (btn) btn.textContent = '⏹️ หยุด (Browser)';
       const pref = chosen.startsWith('browser:') ? decodeURIComponent(chosen.slice(8)) : '';
       speakWithBrowser(cleaned, token, pref);
       return;
     }
 
+    let blob = null;
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
@@ -4485,23 +4503,33 @@ body::before {
       });
       if (token !== ttsQueueToken) return;
       if (!res.ok) throw new Error('TTS HTTP ' + res.status);
-      const blob = await res.blob();
+      blob = await res.blob();
       if (token !== ttsQueueToken) return;
-
-      activeAudioUrl = URL.createObjectURL(blob);
-      activeAudio = new Audio(activeAudioUrl);
-      if (btn) btn.textContent = '⏹️ หยุด';
-      activeAudio.onended = () => {
-        if (token === ttsQueueToken) stopSpeaking();
-      };
-      activeAudio.onerror = () => {
-        if (token === ttsQueueToken) stopSpeaking();
-      };
-      await activeAudio.play();
-    } catch (_) {
+    } catch (err) {
+      console.warn('Edge Neural TTS fetch failed, falling back to browser voice:', err);
       if (token !== ttsQueueToken) return;
-      if (btn) btn.textContent = '⏹️ หยุด';
+      if (btn) btn.textContent = '⏹️ หยุด (Browser)';
       speakWithBrowser(cleaned, token, '');
+      return;
+    }
+
+    try {
+      activeAudioUrl = URL.createObjectURL(blob);
+      sharedTtsAudio.volume = 1;
+      sharedTtsAudio.src = activeAudioUrl;
+      activeAudio = sharedTtsAudio;
+      const shortName = chosen.replace(/^th-TH-|^en-US-|^en-GB-|^ja-JP-/, '').replace(/MultilingualNeural$|Neural$/, '');
+      if (btn) btn.textContent = `⏹️ หยุด (${shortName})`;
+      sharedTtsAudio.onended = () => {
+        if (token === ttsQueueToken) stopSpeaking();
+      };
+      sharedTtsAudio.onerror = () => {
+        if (token === ttsQueueToken) stopSpeaking();
+      };
+      await sharedTtsAudio.play();
+    } catch (playErr) {
+      console.warn('Audio play blocked/failed:', playErr);
+      if (token === ttsQueueToken) stopSpeaking();
     }
   }
 

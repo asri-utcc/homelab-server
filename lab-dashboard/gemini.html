@@ -2499,6 +2499,7 @@ body::before {
   let pollTimer = null;
   let currentTurnJobId = null;
   let currentTurnResponseBody = null;
+  let isSseActive = false;
 
   function createTurnUI(jobId, promptText, images = []) {
     // 1. Clean up any existing thinking card from previous turns
@@ -2575,26 +2576,28 @@ body::before {
         }
 
         if (job.status === 'running') {
-          // Detect transition to a new job from the queue
-          if (job.id && job.id !== currentTurnJobId) {
-            const existingEl = document.querySelector(`.msg[data-job-id="${job.id}"] .msg__body`);
-            if (existingEl) {
-              currentTurnJobId = job.id;
-              currentTurnResponseBody = existingEl;
-            } else {
-              currentTurnResponseBody = createTurnUI(job.id, job.prompt, job.images || []);
+          if (!isSseActive) {
+            // Detect transition to a new job from the queue (only when SSE is not driving this turn)
+            if (job.id && job.id !== currentTurnJobId) {
+              const existingEl = document.querySelector(`.msg[data-job-id="${job.id}"] .msg__body`);
+              if (existingEl) {
+                currentTurnJobId = job.id;
+                currentTurnResponseBody = existingEl;
+              } else {
+                currentTurnResponseBody = createTurnUI(job.id, job.prompt, job.images || []);
+              }
             }
-          }
 
-          // Stream output if present
-          if (currentTurnResponseBody && job.output) {
-            const activeBar = document.getElementById('active-thinking-bar');
-            if (activeBar && job.output.trim().length > 0) {
-              activeBar.remove();
-            }
-            if ((currentTurnResponseBody.dataset.raw || '') !== job.output) {
-              setBodyContent(currentTurnResponseBody, job.output, false);
-              scrollToBottom();
+            // Stream output if present
+            if (currentTurnResponseBody && job.output) {
+              const activeBar = document.getElementById('active-thinking-bar');
+              if (activeBar && job.output.trim().length > 0) {
+                activeBar.remove();
+              }
+              if ((currentTurnResponseBody.dataset.raw || '') !== job.output) {
+                setBodyContent(currentTurnResponseBody, job.output, false);
+                scrollToBottom();
+              }
             }
           }
 
@@ -2613,7 +2616,7 @@ body::before {
               labelText.textContent = '⚡ ' + job.liveThought.currentAction.slice(0, 50);
             }
           }
-        } else {
+        } else if (!isSseActive) {
           // Current job is finished (completed, error, aborted, or idle)
           if (currentTurnResponseBody && job.output && (!(currentTurnResponseBody.dataset.raw) || currentTurnResponseBody.dataset.raw.length < job.output.length)) {
             setBodyContent(currentTurnResponseBody, job.output, false);
@@ -2642,6 +2645,7 @@ body::before {
   }
 
   async function checkActiveJobOnResume() {
+    if (isSseActive) return;
     try {
       const res = await fetch('/api/gemini/job');
       if (!res.ok) return;
@@ -2659,14 +2663,23 @@ body::before {
           if (el) body = el;
         }
 
-        // Avoid duplicate message bubble if the user prompt is already rendered as the last message
-        const lastMsg = msgList.lastElementChild;
-        const lastText = lastMsg ? (lastMsg.querySelector('.msg__body')?.dataset.raw || lastMsg.querySelector('.msg__body')?.textContent || '').trim() : '';
-        const isAlreadyShowingThisPrompt = lastMsg && lastMsg.classList.contains('msg--user') && lastText === (job.prompt || '').trim();
+        // Fallback deduplication: if the last user message already matches this job's prompt, reuse its assistant bubble
+        if (!body) {
+          const allMsgs = msgList.querySelectorAll('.msg');
+          const lastMsg = allMsgs[allMsgs.length - 1];
+          const prevMsg = allMsgs[allMsgs.length - 2];
+          if (lastMsg && lastMsg.classList.contains('msg--assistant') && prevMsg && prevMsg.classList.contains('msg--user')) {
+            const prevText = (prevMsg.querySelector('.msg__body')?.dataset.raw || prevMsg.querySelector('.msg__body')?.textContent || '').trim();
+            if (prevText === (job.prompt || '').trim()) {
+              body = lastMsg.querySelector('.msg__body');
+              if (job.id) lastMsg.setAttribute('data-job-id', job.id);
+            }
+          }
+        }
 
-        if (!body && !isAlreadyShowingThisPrompt) {
+        if (!body) {
           body = createTurnUI(job.id, job.prompt, job.images || []);
-        } else if (body) {
+        } else {
           currentTurnJobId = job.id;
           currentTurnResponseBody = body;
         }
@@ -2858,8 +2871,9 @@ body::before {
     }
 
     promptInput.value = '';
-    const directJobId = 'job_direct_' + Date.now();
+    const directJobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     const responseBody = createTurnUI(directJobId, prompt, attachedImages);
+    isSseActive = true;
 
     // Start background thoughts polling so live thinking tray updates immediately even during SSE
     startBackgroundJobPolling();
@@ -2872,7 +2886,7 @@ body::before {
       const res = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, images: attachedImages, mode: currentMode, cwd, model, resetSession: needNewSession })
+        body: JSON.stringify({ jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, resetSession: needNewSession })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -2935,7 +2949,7 @@ body::before {
         const qRes = await fetch('/api/gemini/queue').then(r => r.json()).catch(() => ({ queue: [] }));
         if (qRes.queue && qRes.queue.length > 0) {
           renderQueue(qRes.queue);
-          // Switch cleanly to background job polling for queued items!
+          isSseActive = false;
           startBackgroundJobPolling();
           return;
         }
@@ -2944,13 +2958,20 @@ body::before {
       finishRun();
     } catch (e) {
       console.warn('SSE stream interrupted (screen off, background, or network switch):', e);
-      // AI is continuing to run on the server! Seamlessly switch to background job polling.
+      isSseActive = false;
       startBackgroundJobPolling();
     }
   }
 
   function finishRun() {
+    isSseActive = false;
     isRunning = false;
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    currentTurnJobId = null;
+    currentTurnResponseBody = null;
     setAiThinkingState(false);
     btnSend.style.display = 'inline-flex';
     btnAbort.style.display = 'none';

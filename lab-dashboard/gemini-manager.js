@@ -218,7 +218,15 @@ let activeJob = {
     model: ''
 };
 
-function getLiveThinkingState() {
+function formatToolSummary(tc) {
+    if (!tc) return '';
+    const args = tc.args || tc.arguments || {};
+    const detail = args.toolSummary || args.Path || args.Description || args.CommandLine || args.query || args.Prompt || '';
+    const clean = String(detail).replace(/\s+/g, ' ').trim();
+    return clean ? `${tc.name}: ${clean}`.slice(0, 140) : tc.name;
+}
+
+function getLiveThinkingState(sinceMs = 0) {
     try {
         const brainDir = path.join(HOME_DIR, '.gemini/antigravity-cli/brain');
         if (!fs.existsSync(brainDir)) return null;
@@ -231,34 +239,61 @@ function getLiveThinkingState() {
         subdirs.sort((a, b) => {
             try { return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs; } catch (_) { return 0; }
         });
-        const tFile = path.join(subdirs[0], '.system_generated/logs/transcript.jsonl');
+
+        const logsDir = path.join(subdirs[0], '.system_generated/logs');
+        const fullFile = path.join(logsDir, 'transcript_full.jsonl');
+        const compactFile = path.join(logsDir, 'transcript.jsonl');
+        const tFile = fs.existsSync(fullFile) ? fullFile : compactFile;
         if (!fs.existsSync(tFile)) return null;
 
-        const content = fs.readFileSync(tFile, 'utf8');
-        const lines = content.trim().split('\n');
-        let latestThinking = '';
-        let lastTool = '';
-        let lastStepTime = '';
+        // Read only last 48KB for fast, low-overhead polling
+        const stat = fs.statSync(tFile);
+        const readSize = Math.min(stat.size, 48 * 1024);
+        const buf = Buffer.alloc(readSize);
+        const fd = fs.openSync(tFile, 'r');
+        try {
+            fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
+        } finally {
+            fs.closeSync(fd);
+        }
 
-        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 35); i--) {
+        const lines = buf.toString('utf8').split('\n');
+        if (stat.size > readSize && lines.length > 0) lines.shift(); // drop partial first line
+
+        const cutoffMs = sinceMs ? (sinceMs - 3000) : 0;
+        let latestThinking = '';
+        let currentAction = '';
+        let lastStepTime = '';
+        const steps = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const raw = lines[i].trim();
+            if (!raw) continue;
             try {
-                const obj = JSON.parse(lines[i]);
-                if (!lastStepTime && obj.created_at) lastStepTime = obj.created_at;
-                if (!lastTool && obj.tool_calls && obj.tool_calls.length) {
-                    const tc = obj.tool_calls[0];
-                    const summary = tc.toolSummary || tc.args?.toolSummary || tc.args?.CommandLine || '';
-                    lastTool = `${tc.name}: ${summary}`.slice(0, 140);
-                }
-                if (!latestThinking && obj.thinking) {
+                const obj = JSON.parse(raw);
+                const ts = obj.created_at ? new Date(obj.created_at).getTime() : 0;
+                if (cutoffMs && ts && ts < cutoffMs) continue;
+
+                if (obj.created_at) lastStepTime = obj.created_at;
+                if (obj.thinking && String(obj.thinking).trim()) {
                     latestThinking = String(obj.thinking).trim();
                 }
-                if (latestThinking && lastTool) break;
+                if (Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0) {
+                    for (const tc of obj.tool_calls) {
+                        const summary = formatToolSummary(tc);
+                        if (summary) {
+                            currentAction = summary;
+                            steps.push(summary);
+                        }
+                    }
+                }
             } catch (_) {}
         }
 
         return {
-            thinking: latestThinking,
-            currentAction: lastTool || 'กำลังคิดวิเคราะห์คำสั่ง...',
+            thinking: latestThinking || (steps.length ? 'ขั้นตอนที่ทำในรอบนี้:\n' + steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : ''),
+            currentAction: currentAction || 'กำลังคิดวิเคราะห์คำสั่ง...',
+            stepsCount: steps.length,
             lastStepTime
         };
     } catch (_) {
@@ -271,7 +306,7 @@ function getActiveJob() {
         ...activeJob,
         activeRunning: activeChild !== null,
         queue: getQueue(),
-        liveThought: getLiveThinkingState()
+        liveThought: activeJob.status === 'running' ? getLiveThinkingState(activeJob.startedAt || 0) : null
     };
 }
 
@@ -474,7 +509,7 @@ async function setApiKey(key) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium', resetSession = false }, onChunk, onDone) {
+function executePrompt({ jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium', resetSession = false }, onChunk, onDone) {
     if (activeChild) {
         throw new Error('Another AI command is currently running. Please wait or stop it.');
     }
@@ -497,9 +532,9 @@ function executePrompt({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE
     }
 
     // Initialize background job tracker
-    const jobId = 'job_' + Date.now();
+    const finalJobId = jobId || ('job_' + Date.now());
     activeJob = {
-        id: jobId,
+        id: finalJobId,
         status: 'running',
         prompt,
         images: cleanImages,

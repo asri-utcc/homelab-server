@@ -1871,6 +1871,7 @@ const server = http.createServer(async (req, res) => {
             try {
                 geminiManager.executePrompt(
                     {
+                        jobId: body.jobId,
                         prompt,
                         images,
                         mode: body.mode || 'chat',

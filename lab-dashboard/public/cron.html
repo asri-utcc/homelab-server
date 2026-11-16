@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Linux Cron Scheduler — Homelab Control</title>
+  <style>
+    :root {
+      --bg: #070b12;
+      --card: rgba(13, 21, 34, 0.9);
+      --border: rgba(56, 189, 248, 0.2);
+      --ink: #e2e8f0;
+      --muted: #94a3b8;
+      --cyan: #38bdf8;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.08), transparent 45%),
+                  radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.07), transparent 45%),
+                  var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 1080px; margin: 0 auto; }
+    header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    }
+    h1 { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+    .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .actions { display: flex; gap: 10px; }
+    .btn {
+      font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 8px 14px;
+      border-radius: 8px; border: 1px solid var(--border); background: rgba(15, 23, 42, 0.85);
+      color: var(--ink); text-decoration: none; cursor: pointer; transition: all 0.15s ease;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+    .btn-primary { background: rgba(56, 189, 248, 0.16); border-color: rgba(56, 189, 248, 0.55); color: var(--cyan); }
+    .btn-danger { border-color: rgba(248, 113, 113, 0.45); color: var(--red); }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1.4fr; gap: 18px; align-items: start; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 18px; backdrop-filter: blur(10px);
+    }
+    .card-title { font-size: 15px; font-weight: 700; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; margin-top: 12px; }
+    label:first-of-type { margin-top: 0; }
+    input, select, textarea {
+      width: 100%; background: rgba(7, 11, 18, 0.9); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; padding: 9px 12px; color: var(--ink); font-size: 13px; outline: none;
+      font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--cyan); }
+    textarea { font-family: var(--mono); font-size: 12px; min-height: 76px; resize: vertical; }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .tpl-chip {
+      font-size: 11px; padding: 5px 10px; border-radius: 999px;
+      background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--cyan); cursor: pointer;
+    }
+    .tpl-chip:hover { background: rgba(56, 189, 248, 0.22); }
+
+    .cron-preview {
+      margin-top: 10px; padding: 9px 12px; border-radius: 8px;
+      background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.28);
+      font-family: var(--mono); font-size: 12px; color: var(--green);
+    }
+
+    .job-list { display: flex; flex-direction: column; gap: 10px; }
+    .job-item {
+      background: rgba(7, 11, 18, 0.75); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px; padding: 12px 14px;
+    }
+    .job-item.is-disabled { opacity: 0.55; }
+    .job-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .job-name { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+    .job-cron { font-family: var(--mono); font-size: 11.5px; color: var(--cyan); background: rgba(56, 189, 248, 0.12); padding: 2px 8px; border-radius: 6px; }
+    .job-cmd { font-family: var(--mono); font-size: 11.5px; color: var(--muted); word-break: break-all; margin-bottom: 10px; background: rgba(0,0,0,0.35); padding: 6px 8px; border-radius: 6px; }
+    .job-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+    .job-log {
+      margin-top: 8px; padding: 8px; border-radius: 6px; background: #04070c;
+      border: 1px solid rgba(255,255,255,0.08); font-family: var(--mono); font-size: 11px;
+      color: #cbd5e1; white-space: pre-wrap; max-height: 150px; overflow-y: auto; display: none;
+    }
+    .job-log.open { display: block; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>⏰ Linux Cron Scheduler</h1>
+        <div class="sub">จัดการตั้งเวลาทำงานอัตโนมัติบนเซิร์ฟเวอร์ (Crontab ของระบบจริง)</div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="btn-refresh">↻ รีเฟรช</button>
+        <a href="/gemini.html" class="btn">← กลับหน้า AI</a>
+      </div>
+    </header>
+
+    <div class="grid-2">
+      <!-- Left: Add / Edit Cron Form -->
+      <div class="card">
+        <div class="card-title">
+          <span id="form-title">➕ เพิ่มงานตั้งเวลาใหม่</span>
+          <button type="button" class="btn btn-sm" id="btn-reset-form" style="display:none;">ยกเลิกแก้ไข</button>
+        </div>
+
+        <div style="font-size:11.5px; color:var(--muted); margin-bottom:8px;">เทมเพลตแนะนำ (คลิกเพื่อกรอกอัตโนมัติ):</div>
+        <div class="tpl-chips">
+          <button type="button" class="tpl-chip" data-tpl="energy-tg">⚡ ส่งค่าไฟเข้า Telegram</button>
+          <button type="button" class="tpl-chip" data-tpl="mail-tg">📬 เช็คเมล์เข้า Telegram</button>
+          <button type="button" class="tpl-chip" data-tpl="zigbee-chk">📡 กู้คืน Zigbee2MQTT</button>
+          <button type="button" class="tpl-chip" data-tpl="bot-log">🧹 ล้าง Log บอทเทรด</button>
+        </div>
+
+        <input type="hidden" id="edit-id" value="" />
+        <label>ชื่องาน (Job Name)</label>
+        <input type="text" id="job-name" placeholder="เช่น ส่งสรุปค่าไฟประจำวัน" />
+
+        <label>รูปแบบความถี่ (Schedule Type)</label>
+        <select id="freq-type">
+          <option value="daily">รายวัน (Daily — ทุกวันตามเวลา)</option>
+          <option value="interval_min">ทุกๆ กี่นาที (Every N Minutes)</option>
+          <option value="interval_hr">ทุกๆ กี่ชั่วโมง (Every N Hours)</option>
+          <option value="weekly">รายสัปดาห์ (Weekly — เลือกวัน)</option>
+          <option value="monthly">รายเดือน (Monthly — วันที่ 17 / อื่นๆ)</option>
+          <option value="custom">กำหนด Cron 5 ช่องเอง (Custom)</option>
+        </select>
+
+        <div id="freq-inputs" class="row-2" style="margin-top:10px;">
+          <div id="wrap-time">
+            <label style="margin-top:0;">เวลา (ชั่วโมง:นาที)</label>
+            <input type="time" id="inp-time" value="22:00" />
+          </div>
+          <div id="wrap-interval" style="display:none;">
+            <label style="margin-top:0;" id="lbl-interval">ทุกๆ (นาที/ชั่วโมง)</label>
+            <input type="number" id="inp-interval" min="1" max="59" value="15" />
+          </div>
+          <div id="wrap-dow" style="display:none;">
+            <label style="margin-top:0;">วันในสัปดาห์</label>
+            <select id="inp-dow">
+              <option value="1">วันจันทร์</option>
+              <option value="2">วันอังคาร</option>
+              <option value="3">วันพุธ</option>
+              <option value="4">วันพฤหัสบดี</option>
+              <option value="5">วันศุกร์</option>
+              <option value="6">วันเสาร์</option>
+              <option value="0">วันอาทิตย์</option>
+            </select>
+          </div>
+          <div id="wrap-dom" style="display:none;">
+            <label style="margin-top:0;">วันที่ของเดือน (1-31)</label>
+            <input type="number" id="inp-dom" min="1" max="31" value="17" />
+          </div>
+        </div>
+
+        <label>Cron Expression (5 ช่อง)</label>
+        <input type="text" id="cron-expr" value="0 22 * * *" style="font-family:var(--mono);" />
+        <div class="cron-preview" id="cron-preview">⏱️ ทำงานทุกวัน เวลา 22:00 น.</div>
+
+        <label>คำสั่ง Linux Command</label>
+        <textarea id="job-cmd" placeholder="เช่น python3 /home/dev/projects/get-energy.py"></textarea>
+
+        <button type="button" class="btn btn-primary" id="btn-save-job" style="width:100%; justify-content:center; margin-top:14px; padding:11px;">💾 บันทึกลง Linux Crontab</button>
+      </div>
+
+      <!-- Right: Active Crontab List -->
+      <div class="card">
+        <div class="card-title">
+          <span>📋 รายการงานใน Crontab (<span id="jobs-count">0</span>)</span>
+        </div>
+        <div class="job-list" id="job-list">
+          <div class="sub">กำลังโหลดรายการ Crontab...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const freqType = document.getElementById('freq-type');
+    const inpTime = document.getElementById('inp-time');
+    const inpInterval = document.getElementById('inp-interval');
+    const inpDow = document.getElementById('inp-dow');
+    const inpDom = document.getElementById('inp-dom');
+    const cronExpr = document.getElementById('cron-expr');
+    const cronPreview = document.getElementById('cron-preview');
+
+    function updateScheduleBuilder() {
+      const mode = freqType.value;
+      document.getElementById('wrap-time').style.display = (mode === 'daily' || mode === 'weekly' || mode === 'monthly') ? 'block' : 'none';
+      document.getElementById('wrap-interval').style.display = (mode === 'interval_min' || mode === 'interval_hr') ? 'block' : 'none';
+      document.getElementById('wrap-dow').style.display = (mode === 'weekly') ? 'block' : 'none';
+      document.getElementById('wrap-dom').style.display = (mode === 'monthly') ? 'block' : 'none';
+
+      const [hh, mm] = (inpTime.value || '22:00').split(':').map(n => parseInt(n, 10) || 0);
+      const iv = Math.max(1, parseInt(inpInterval.value, 10) || 1);
+
+      if (mode === 'daily') {
+        cronExpr.value = `${mm} ${hh} * * *`;
+        cronPreview.textContent = `⏱️ ทำงานทุกวัน เวลา ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} น.`;
+      } else if (mode === 'interval_min') {
+        cronExpr.value = `*/${Math.min(59, iv)} * * * *`;
+        cronPreview.textContent = `⏱️ ทำงานทุกๆ ${Math.min(59, iv)} นาที`;
+      } else if (mode === 'interval_hr') {
+        cronExpr.value = `0 */${Math.min(23, iv)} * * *`;
+        cronPreview.textContent = `⏱️ ทำงานทุกๆ ${Math.min(23, iv)} ชั่วโมง`;
+      } else if (mode === 'weekly') {
+        cronExpr.value = `${mm} ${hh} * * ${inpDow.value}`;
+        const dayNames = {'0':'อาทิตย์','1':'จันทร์','2':'อังคาร','3':'พุธ','4':'พฤหัสบดี','5':'ศุกร์','6':'เสาร์'};
+        cronPreview.textContent = `⏱️ ทำงานทุกวัน${dayNames[inpDow.value]} เวลา ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} น.`;
+      } else if (mode === 'monthly') {
+        const d = Math.min(31, Math.max(1, parseInt(inpDom.value, 10) || 17));
+        cronExpr.value = `${mm} ${hh} ${d} * *`;
+        cronPreview.textContent = `⏱️ ทำงานทุกวันที่ ${d} ของเดือน เวลา ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} น.`;
+      } else {
+        cronPreview.textContent = `⏱️ กำหนดเอง: ${cronExpr.value}`;
+      }
+    }
+
+    [freqType, inpTime, inpInterval, inpDow, inpDom].forEach(el => el.addEventListener('input', updateScheduleBuilder));
+    cronExpr.addEventListener('input', () => {
+      freqType.value = 'custom';
+      updateScheduleBuilder();
+    });
+
+    const TEMPLATES = {
+      'energy-tg': {
+        name: 'ส่งสรุปค่าไฟ PZEM เข้า Telegram',
+        mode: 'daily', time: '22:00',
+        cmd: `python3 /home/dev/projects/notify-telegram.py "$(python3 /home/dev/projects/get-energy.py)"`
+      },
+      'mail-tg': {
+        name: 'เช็คเมล์วันนี้ส่งเข้า Telegram',
+        mode: 'daily', time: '08:00',
+        cmd: `python3 /home/dev/projects/notify-telegram.py "$(python3 /home/dev/projects/check-mail.py 5)"`
+      },
+      'zigbee-chk': {
+        name: 'ตรวจสอบและสตาร์ท Zigbee2MQTT อัตโนมัติ',
+        mode: 'interval_min', interval: 15,
+        cmd: `docker ps -q -f name=lab-zigbee2mqtt | grep -q . || docker start lab-zigbee2mqtt`
+      },
+      'bot-log': {
+        name: 'ตัดแต่ง Log บอทเทรดไม่ให้เกิน 5,000 บรรทัด',
+        mode: 'weekly', time: '03:00',
+        cmd: `tail -n 5000 /home/dev/projects/OnePercentBotTrade/logs/pm2-out.log > /tmp/bot.tmp && cat /tmp/bot.tmp > /home/dev/projects/OnePercentBotTrade/logs/pm2-out.log && rm -f /tmp/bot.tmp`
+      }
+    };
+
+    document.querySelectorAll('.tpl-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = TEMPLATES[btn.dataset.tpl];
+        if (!t) return;
+        document.getElementById('job-name').value = t.name;
+        document.getElementById('job-cmd').value = t.cmd;
+        freqType.value = t.mode;
+        if (t.time) inpTime.value = t.time;
+        if (t.interval) inpInterval.value = t.interval;
+        updateScheduleBuilder();
+      });
+    });
+
+    function resetForm() {
+      document.getElementById('edit-id').value = '';
+      document.getElementById('job-name').value = '';
+      document.getElementById('job-cmd').value = '';
+      document.getElementById('form-title').textContent = '➕ เพิ่มงานตั้งเวลาใหม่';
+      document.getElementById('btn-reset-form').style.display = 'none';
+    }
+    document.getElementById('btn-reset-form').addEventListener('click', resetForm);
+
+    async function loadJobs() {
+      const listEl = document.getElementById('job-list');
+      try {
+        const res = await fetch('/api/cron');
+        const data = await res.json();
+        const jobs = data.jobs || [];
+        document.getElementById('jobs-count').textContent = jobs.length;
+        listEl.innerHTML = '';
+
+        if (jobs.length === 0) {
+          listEl.innerHTML = '<div class="sub">ยังไม่มีงานตั้งเวลาใน Crontab</div>';
+          return;
+        }
+
+        jobs.forEach(j => {
+          const item = document.createElement('div');
+          item.className = `job-item ${j.enabled ? '' : 'is-disabled'}`;
+          const lastRunTxt = j.lastRunAt ? `รันล่าสุด: ${new Date(j.lastRunAt).toLocaleString('th-TH')}` : 'ยังไม่เคยรันผ่านระบบ';
+          item.innerHTML = `
+            <div class="job-top">
+              <div class="job-name">
+                <span>${j.enabled ? '🟢' : '⏸️'} ${j.name}</span>
+              </div>
+              <span class="job-cron">${j.schedule}</span>
+            </div>
+            <div class="job-cmd">${j.command}</div>
+            <div class="job-actions">
+              <span class="sub">${lastRunTxt}</span>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="btn btn-sm" data-act="run">▶ ทดสอบรัน</button>
+                <button type="button" class="btn btn-sm" data-act="log">📄 Log</button>
+                <button type="button" class="btn btn-sm" data-act="toggle">${j.enabled ? '⏸ พักงาน' : '▶ เปิดใช้'}</button>
+                ${j.managed ? '<button type="button" class="btn btn-sm btn-danger" data-act="delete">✕ ลบ</button>' : ''}
+              </div>
+            </div>
+            <div class="job-log">${j.lastLog || '(ยังไม่มี log)'}</div>
+          `;
+
+          item.querySelector('[data-act="log"]').addEventListener('click', () => {
+            item.querySelector('.job-log').classList.toggle('open');
+          });
+          item.querySelector('[data-act="run"]').addEventListener('click', async (e) => {
+            e.target.textContent = '⏳ กำลังรัน...';
+            const r = await fetch('/api/cron/run', {
+              method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: j.id })
+            }).then(x => x.json());
+            alert((r.ok ? '✅ สำเร็จ\n\n' : '❌ ผิดพลาด\n\n') + (r.output || ''));
+            loadJobs();
+          });
+          item.querySelector('[data-act="toggle"]').addEventListener('click', async () => {
+            await fetch('/api/cron/toggle', {
+              method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: j.id })
+            });
+            loadJobs();
+          });
+          const delBtn = item.querySelector('[data-act="delete"]');
+          if (delBtn) {
+            delBtn.addEventListener('click', async () => {
+              if (!confirm(`ต้องการลบงาน "${j.name}" ออกจาก Crontab ใช่หรือไม่?`)) return;
+              await fetch('/api/cron/delete', {
+                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: j.id })
+              });
+              loadJobs();
+            });
+          }
+          listEl.appendChild(item);
+        });
+      } catch (err) {
+        listEl.innerHTML = `<div class="sub" style="color:var(--red);">โหลดไม่สำเร็จ: ${err.message}</div>`;
+      }
+    }
+
+    document.getElementById('btn-save-job').addEventListener('click', async () => {
+      const payload = {
+        id: document.getElementById('edit-id').value || undefined,
+        name: document.getElementById('job-name').value.trim(),
+        schedule: cronExpr.value.trim(),
+        command: document.getElementById('job-cmd').value.trim(),
+        enabled: true
+      };
+      const res = await fetch('/api/cron', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert('❌ ' + (data.error || 'บันทึกไม่สำเร็จ'));
+        return;
+      }
+      resetForm();
+      loadJobs();
+    });
+
+    document.getElementById('btn-refresh').addEventListener('click', loadJobs);
+    updateScheduleBuilder();
+    loadJobs();
+  </script>
+</body>
+</html>

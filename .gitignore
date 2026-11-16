@@ -9,3 +9,4 @@ pzem-history.json
 ha_token.txt
 __pycache__/
 .telegram.env
+cron-logs/

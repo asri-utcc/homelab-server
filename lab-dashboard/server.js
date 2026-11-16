@@ -23,6 +23,7 @@ const https = require('https');
 const net = require('net');
 const fs = require('fs');
 const fsp = require('fs/promises');
+const cronManager = require('./cron-manager');
 const path = require('path');
 const os = require('os');
 const { execFile } = require('child_process');
@@ -1693,6 +1694,46 @@ const server = http.createServer(async (req, res) => {
         }
         if (p === '/quota' || p === '/quota/') {
             return await serveStatic(req, res, '/quota.html');
+        }
+        if (p === '/cron' || p === '/cron/') {
+            return await serveStatic(req, res, '/cron.html');
+        }
+        if (p === '/api/cron') {
+            if (req.method === 'GET') {
+                return sendJson(res, 200, { ok: true, jobs: await cronManager.listJobs() });
+            }
+            if (req.method === 'POST') {
+                const body = await readJsonBody(req);
+                try {
+                    return sendJson(res, 200, await cronManager.addOrUpdateJob(body));
+                } catch (err) {
+                    return sendJson(res, 400, { ok: false, error: err.message });
+                }
+            }
+        }
+        if (req.method === 'POST' && p === '/api/cron/toggle') {
+            const body = await readJsonBody(req);
+            try {
+                return sendJson(res, 200, await cronManager.toggleJob(body.id));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/cron/delete') {
+            const body = await readJsonBody(req);
+            try {
+                return sendJson(res, 200, await cronManager.deleteJob(body.id));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/cron/run') {
+            const body = await readJsonBody(req);
+            try {
+                return sendJson(res, 200, await cronManager.runJobNow(body.id));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
         }
         if (p === '/api/gemini/quota') {
             return sendJson(res, 200, await geminiManager.getQuotaSummary());

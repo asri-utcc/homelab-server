@@ -407,6 +407,19 @@ body::before {
   transform-origin: 150px 150px;
   animation: spin-ccw 24s linear infinite;
 }
+.ring-quota-5h {
+  transform-origin: 150px 150px;
+  animation: spin-cw 52s linear infinite;
+}
+.ring-quota-weekly {
+  transform-origin: 150px 150px;
+  animation: spin-ccw 68s linear infinite;
+}
+.core-reactor-pane.is-thinking .ring-quota-5h { animation-duration: 10s; }
+.core-reactor-pane.is-thinking .ring-quota-weekly { animation-duration: 14s; }
+#quota-ring-5h, #quota-ring-weekly {
+  transition: stroke-dasharray 0.7s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.5s ease;
+}
 
 @keyframes spin-cw {
   from { transform: rotate(0deg); }
@@ -1529,6 +1542,16 @@ body::before {
           <g class="ring-octa">
             <polygon points="150,96 188,112 204,150 188,188 150,204 112,188 96,150 112,112" fill="none" stroke="rgba(0, 229, 255, 0.55)" stroke-width="1.3" />
           </g>
+
+          <!-- Dynamic AI Quota Rings (5H Limit r=152, Weekly Limit r=160) -->
+          <g class="ring-quota-5h" id="quota-group-5h">
+            <circle cx="150" cy="150" r="152" fill="none" stroke="rgba(255, 255, 255, 0.07)" stroke-width="1" stroke-dasharray="2 6" />
+            <circle id="quota-ring-5h" cx="150" cy="150" r="152" fill="none" stroke="#00e5ff" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="955.04 955.04" opacity="0.88" />
+          </g>
+          <g class="ring-quota-weekly" id="quota-group-weekly">
+            <circle cx="150" cy="150" r="160" fill="none" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1" stroke-dasharray="3 8" />
+            <circle id="quota-ring-weekly" cx="150" cy="150" r="160" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1005.31 1005.31" opacity="0.85" />
+          </g>
         </svg>
         <div class="reactor-core-orb"></div>
         <div class="orbit-planets-layer" id="orbit-planets-layer"></div>
@@ -1545,6 +1568,7 @@ body::before {
             <span class="ai-hud-model" id="ai-hud-model-tag">Gemini 4 Hydrogen (Medium)</span>
             <span class="ai-hud-session" id="ai-hud-session-tag" title="ระบบจำบริบทการสนทนาต่อเนื่องอัตโนมัติ">🧠 SESSION: ACTIVE</span>
           </div>
+          <div id="ai-hud-quota-pill" style="font-family:var(--mono); font-size:10.5px; color:var(--ink-2); margin-top:4px; opacity:0.9;">กำลังโหลดโควตา...</div>
           <div class="ai-hud-desc" id="ai-hud-desc">ระบบพร้อมทำงาน · รอรับคำสั่งจากผู้ใช้งาน</div>
         </div>
       </div>
@@ -2529,17 +2553,92 @@ body::before {
 
     let liveSummary = null;
     let liveEnergy = null;
+    let liveQuota = null;
     let activePopoverDef = null;
+
+    function thermalColor(pct) {
+      if (pct >= 75) return '#00e5ff'; // Cool Cyan
+      if (pct >= 50) return '#34d399'; // Cool Emerald
+      if (pct >= 25) return '#fbbf24'; // Warm Amber
+      if (pct >= 10) return '#fb923c'; // Hot Orange
+      return '#ef4444';                // Critical Red
+    }
+
+    function updateQuotaRings() {
+      const g5h = document.getElementById('quota-group-5h');
+      const r5h = document.getElementById('quota-ring-5h');
+      const gWk = document.getElementById('quota-group-weekly');
+      const rWk = document.getElementById('quota-ring-weekly');
+      const pill = document.getElementById('ai-hud-quota-pill');
+      if (!g5h || !r5h || !gWk || !rWk) return;
+
+      const modelId = (selModel ? selModel.value : 'gemini-4-hydrogen-medium').toLowerCase();
+      const pools = liveQuota?.pools || [];
+      const geminiPool = pools.find(p => p.id === 'gemini');
+      const claudePool = pools.find(p => p.id === 'claude');
+      const argonPool = pools.find(p => p.id === 'argon');
+
+      const C5 = 2 * Math.PI * 152; // 955.04
+      const CW = 2 * Math.PI * 160; // 1005.31
+
+      if (modelId.includes('argon')) {
+        // Argon has ONLY 1 ring: Weekly Limit
+        g5h.style.display = 'none';
+        gWk.style.display = '';
+        const pctWk = argonPool ? argonPool.remainingPct : 0;
+        const colWk = thermalColor(pctWk);
+        const visWk = pctWk <= 0 ? 0.035 : (pctWk / 100); // keep thin red arc visible at 0%
+        rWk.setAttribute('stroke', colWk);
+        rWk.setAttribute('stroke-dasharray', `${(CW * visWk).toFixed(2)} ${CW.toFixed(2)}`);
+        rWk.style.filter = `drop-shadow(0 0 6px ${colWk})`;
+        if (pill) {
+          pill.innerHTML = `<span style="color:${colWk}">Argon Weekly: ${pctWk}%</span>`;
+        }
+      } else {
+        // Hydrogen / Flash / Claude / GPT: 2 rings (5-Hour Limit + Weekly Limit)
+        g5h.style.display = '';
+        gWk.style.display = '';
+        const isClaude = modelId.includes('claude') || modelId.includes('gpt');
+        const pool = isClaude ? claudePool : geminiPool;
+        const pct5h = pool ? pool.remainingPct : 100;
+        const pctWk = pool ? pool.remainingPct : 100;
+
+        const col5h = thermalColor(pct5h);
+        const colWk = thermalColor(pctWk);
+        const vis5h = pct5h <= 0 ? 0.035 : (pct5h / 100);
+        const visWk = pctWk <= 0 ? 0.035 : (pctWk / 100);
+
+        r5h.setAttribute('stroke', col5h);
+        r5h.setAttribute('stroke-dasharray', `${(C5 * vis5h).toFixed(2)} ${C5.toFixed(2)}`);
+        r5h.style.filter = `drop-shadow(0 0 5px ${col5h})`;
+
+        rWk.setAttribute('stroke', colWk);
+        rWk.setAttribute('stroke-dasharray', `${(CW * visWk).toFixed(2)} ${CW.toFixed(2)}`);
+        rWk.style.filter = `drop-shadow(0 0 5px ${colWk})`;
+
+        if (pill) {
+          pill.innerHTML = `<span style="color:${col5h}">5H: ${pct5h}%</span> · <span style="color:${colWk}">Weekly: ${pctWk}%</span>`;
+        }
+      }
+    }
+
+    if (selModel) selModel.addEventListener('change', updateQuotaRings);
+    if (modalSelModel) modalSelModel.addEventListener('change', updateQuotaRings);
 
     async function refreshTelemetry() {
       try {
-        const [sRes, eRes] = await Promise.all([
+        const [sRes, eRes, qRes] = await Promise.all([
           fetch('/api/summary').then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch('/api/energy').then(r => r.ok ? r.json() : null).catch(() => null)
+          fetch('/api/energy').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/gemini/quota').then(r => r.ok ? r.json() : null).catch(() => null)
         ]);
         if (sRes) liveSummary = sRes;
         if (eRes) liveEnergy = eRes;
         else if (sRes?.energy) liveEnergy = sRes.energy;
+        if (qRes && qRes.ok) {
+          liveQuota = qRes;
+          updateQuotaRings();
+        }
         if (activePopoverDef && popoverEl.classList.contains('is-open')) {
           openPlanetPopover(activePopoverDef);
         }

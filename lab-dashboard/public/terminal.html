@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="tactical">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tactical Web Terminal · Home-lab Control Panel</title>
+<style>
+  :root {
+    --bg-0: #030d12;
+    --bg-1: #041821;
+    --surface-1: #06212c;
+    --surface-2: #092c3a;
+    --ink-1: #e6fbff;
+    --ink-2: #8ec8d8;
+    --ink-muted: #4b8294;
+    --cyan: #00d2f0;
+    --cyan-dim: rgba(0, 210, 240, 0.35);
+    --orange: #f2541b;
+    --good: #00e5a3;
+    --warn: #ffb020;
+    --crit: #ff3b5c;
+    --mono: "JetBrains Mono", "Cascadia Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Rajdhani", "Space Grotesk", "Inter", system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg-0);
+    color: var(--ink-1);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(920px 480px at 15% -10%, rgba(0, 210, 240, 0.14), transparent 65%),
+      radial-gradient(760px 420px at 88% 5%, rgba(242, 84, 27, 0.09), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(0, 210, 240, 0.035) 0 1px, transparent 1px 36px),
+      repeating-linear-gradient(90deg, rgba(0, 210, 240, 0.035) 0 1px, transparent 1px 36px);
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 18px;
+    background: linear-gradient(180deg, rgba(4, 15, 22, 0.96), rgba(4, 27, 36, 0.92));
+    border-bottom: 1.5px solid var(--cyan);
+    box-shadow: 0 6px 24px -12px rgba(0, 210, 240, 0.35);
+  }
+  .topbar::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: -4px;
+    width: 72px;
+    height: 4px;
+    background: var(--orange);
+    clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 100%, 0 100%);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(0, 210, 240, 0.1);
+    border: 1px solid var(--cyan);
+    color: var(--ink-1);
+    text-decoration: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    transition: all 0.15s;
+  }
+  .back-btn:hover {
+    background: rgba(0, 210, 240, 0.24);
+    box-shadow: 0 0 14px -4px var(--cyan);
+  }
+
+  .title-block {
+    display: flex;
+    flex-direction: column;
+  }
+  .title-block h1 {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .title-block h1::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: var(--orange);
+    box-shadow: 0 0 8px var(--orange);
+  }
+  .title-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+
+  /* ── Mode Switcher & Actions ── */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mode-tabs {
+    display: inline-flex;
+    background: #021118;
+    border: 1px solid var(--cyan-dim);
+    padding: 2px;
+    gap: 2px;
+  }
+  .mode-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--ink-2);
+    padding: 5px 11px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .mode-tab:hover {
+    color: var(--ink-1);
+  }
+  .mode-tab.is-active {
+    background: rgba(0, 210, 240, 0.2);
+    border-color: var(--cyan);
+    color: #fff;
+    box-shadow: inset 0 0 10px rgba(0, 210, 240, 0.25);
+  }
+
+  .tbtn {
+    background: rgba(6, 33, 44, 0.85);
+    border: 1px solid var(--cyan-dim);
+    color: var(--ink-1);
+    padding: 5px 10px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s;
+  }
+  .tbtn:hover {
+    border-color: var(--cyan);
+    background: rgba(0, 210, 240, 0.18);
+  }
+  .tbtn--orange {
+    border-color: rgba(242, 84, 27, 0.65);
+    background: rgba(242, 84, 27, 0.16);
+    color: #ffd6c9;
+  }
+  .tbtn--orange:hover {
+    background: var(--orange);
+    border-color: var(--orange);
+    color: #fff;
+  }
+
+  /* ── Workspace Layout ── */
+  .workspace {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px 16px 14px;
+    min-height: 0;
+  }
+  .workspace[data-mode="split"] {
+    grid-template-columns: 1.15fr 0.85fr;
+  }
+  .workspace[data-mode="cockpit"] .pane--console { display: none; }
+  .workspace[data-mode="console"] .pane--cockpit { display: none; }
+
+  @media (max-width: 960px) {
+    .workspace[data-mode="split"] {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+  }
+
+  .pane {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(165deg, rgba(6, 38, 50, 0.92), rgba(3, 18, 25, 0.96));
+    border: 1px solid var(--cyan);
+    min-height: 0;
+    overflow: hidden;
+    box-shadow: inset 0 0 24px rgba(0, 210, 240, 0.08);
+  }
+  .pane::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 28px; height: 3px;
+    background: var(--orange);
+    z-index: 5;
+  }
+  .pane::after {
+    content: "";
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 24px; height: 3px;
+    background: var(--orange);
+    z-index: 5;
+  }
+
+  .pane__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    background: rgba(2, 14, 20, 0.85);
+    border-bottom: 1px solid rgba(0, 210, 240, 0.28);
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .pane__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+  .pane__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 8px var(--good);
+  }
+  .pane__tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Cockpit Iframe Container ── */
+  .cockpit-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 12px;
+    background: rgba(0, 210, 240, 0.06);
+    border-bottom: 1px solid rgba(0, 210, 240, 0.18);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .cockpit-frame-wrap {
+    flex: 1;
+    position: relative;
+    background: #000;
+    min-height: 0;
+  }
+  .cockpit-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #050b0e;
+  }
+
+  /* ── Tactical Instant Console ── */
+  .macros-bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    background: rgba(3, 19, 27, 0.9);
+    border-bottom: 1px solid rgba(0, 210, 240, 0.2);
+  }
+  .macro-chip {
+    background: rgba(0, 210, 240, 0.08);
+    border: 1px solid rgba(0, 210, 240, 0.35);
+    color: var(--ink-1);
+    padding: 3px 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.14s;
+  }
+  .macro-chip:hover {
+    background: rgba(0, 210, 240, 0.22);
+    border-color: var(--cyan);
+    color: #fff;
+  }
+
+  .term-output {
+    flex: 1;
+    padding: 12px 14px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.5;
+    background: #020b0f;
+    color: #d6f8ff;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .term-entry {
+    margin-bottom: 14px;
+    border-left: 2px solid rgba(0, 210, 240, 0.4);
+    padding-left: 10px;
+  }
+  .term-entry[data-err="1"] {
+    border-left-color: var(--crit);
+  }
+  .term-cmd-line {
+    color: var(--cyan);
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .term-meta {
+    font-size: 10.5px;
+    color: var(--ink-muted);
+    font-weight: 400;
+  }
+  .term-stdout { color: #dffbff; }
+  .term-stderr { color: #ff8096; margin-top: 4px; }
+
+  .term-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    background: #04161f;
+    border-top: 1px solid rgba(0, 210, 240, 0.32);
+  }
+  .term-prompt {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--orange);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .term-input {
+    flex: 1;
+    background: #020d13;
+    border: 1px solid rgba(0, 210, 240, 0.45);
+    color: #fff;
+    padding: 7px 10px;
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+  }
+  .term-input:focus {
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 2px rgba(0, 210, 240, 0.2);
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <a href="/" class="back-btn">← Dashboard</a>
+    <div class="title-block">
+      <h1>Tactical Terminal &amp; Cockpit Shell</h1>
+      <span class="title-sub" id="host-sub">homelab · Cockpit PTY (/os/system/terminal) + Instant Tactical Exec</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="mode-tabs" role="tablist" aria-label="Terminal view mode">
+      <button type="button" class="mode-tab is-active" data-set-mode="console">⚡ Direct Tactical Shell (Zero-Login)</button>
+      <button type="button" class="mode-tab" data-set-mode="split">🔀 Split View</button>
+      <button type="button" class="mode-tab" data-set-mode="cockpit">🖥️ Cockpit PTY (Requires Login)</button>
+    </div>
+    <a href="/os/system/terminal" target="_blank" rel="noopener" class="tbtn">↗ Open Cockpit Terminal Tab</a>
+  </div>
+</header>
+
+<main class="workspace" id="workspace" data-mode="console">
+  <!-- Left/Primary Pane: Cockpit Live PTY Terminal -->
+  <section class="pane pane--cockpit" aria-label="Cockpit Interactive PTY Terminal">
+    <div class="pane__head">
+      <span class="pane__title"><i class="pane__dot"></i> Cockpit Interactive Linux PTY (/os/)</span>
+      <div class="pane__tools">
+        <button type="button" class="tbtn" data-cockpit-src="/os/cockpit/@localhost/system/terminal.html">Pure Terminal Frame</button>
+        <button type="button" class="tbtn" data-cockpit-src="/os/system/terminal">Cockpit Shell + Terminal</button>
+        <button type="button" class="tbtn" data-cockpit-src="/os/">Cockpit Full OS</button>
+        <button type="button" class="tbtn" id="btn-reload-cockpit">↻ Reload</button>
+      </div>
+    </div>
+    <div class="cockpit-bar">
+      <span>💡 Uses Linux PAM authentication (user: <strong>dev</strong>). Once signed in to Cockpit, full interactive PTY (`htop`, `nano`, `bash`) runs directly inside this frame.</span>
+      <span id="cockpit-url-label">/os/system/terminal</span>
+    </div>
+    <div class="cockpit-frame-wrap">
+      <iframe id="cockpit-iframe" class="cockpit-frame" src="/os/system/terminal" title="Cockpit Interactive Terminal"></iframe>
+    </div>
+  </section>
+
+  <!-- Right/Secondary Pane: Tactical Instant Command Console -->
+  <section class="pane pane--console" aria-label="Tactical Instant Command Console">
+    <div class="pane__head">
+      <span class="pane__title"><i class="pane__dot"></i> Tactical Instant Command Console (dev@homelab)</span>
+      <div class="pane__tools">
+        <button type="button" class="tbtn" id="btn-copy-out">📋 Copy Output</button>
+        <button type="button" class="tbtn" id="btn-clear-out">⌫ Clear</button>
+      </div>
+    </div>
+
+    <div class="macros-bar" id="macros-bar">
+      <button type="button" class="macro-chip" data-macro="wg-status">🛡️ WireGuard Status</button>
+      <button type="button" class="macro-chip" data-macro="emqx-status">📡 EMQX Broker</button>
+      <button type="button" class="macro-chip" data-macro="ufw-status">🧱 UFW Firewall</button>
+      <button type="button" class="macro-chip" data-macro="ss-ports">🔌 Listening Ports</button>
+      <button type="button" class="macro-chip" data-macro="docker-ps">🐳 Docker PS</button>
+      <button type="button" class="macro-chip" data-macro="ts-status">🌐 Tailscale</button>
+      <button type="button" class="macro-chip" data-macro="pm2-list">⚙️ PM2 List</button>
+      <button type="button" class="macro-chip" data-macro="net-addr">🖧 IP &amp; Routes</button>
+      <button type="button" class="macro-chip" data-macro="sys-res">💾 RAM &amp; Disk</button>
+      <button type="button" class="macro-chip" data-macro="sys-failed">⚠️ Systemd Failed</button>
+    </div>
+
+    <div class="term-output" id="term-output" aria-live="polite"></div>
+
+    <form class="term-input-bar" id="term-form" autocomplete="off">
+      <span class="term-prompt">dev@homelab:~$</span>
+      <input type="text" id="term-input" class="term-input" placeholder="Type any bash command (e.g. docker ps, wg show, sudo ufw status) and press Enter…" autofocus />
+      <button type="submit" class="tbtn tbtn--orange" id="term-run-btn">▶ Execute</button>
+    </form>
+  </section>
+</main>
+
+<script>
+(() => {
+  const ws = document.getElementById('workspace');
+  const iframe = document.getElementById('cockpit-iframe');
+  const urlLabel = document.getElementById('cockpit-url-label');
+  const out = document.getElementById('term-output');
+  const form = document.getElementById('term-form');
+  const input = document.getElementById('term-input');
+  const runBtn = document.getElementById('term-run-btn');
+  const history = [];
+  let histIdx = -1;
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // Mode switching
+  document.querySelectorAll('[data-set-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-set-mode]').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      ws.dataset.mode = btn.dataset.setMode;
+    });
+  });
+
+  // Cockpit source buttons
+  document.querySelectorAll('[data-cockpit-src]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const src = btn.dataset.cockpitSrc;
+      iframe.src = src;
+      urlLabel.textContent = src;
+    });
+  });
+
+  document.getElementById('btn-reload-cockpit').addEventListener('click', () => {
+    iframe.src = iframe.src;
+  });
+
+  function appendEntry({ command, stdout, stderr, code, durationMs }) {
+    const div = document.createElement('div');
+    div.className = 'term-entry';
+    if (code !== 0) div.dataset.err = '1';
+    div.innerHTML =
+      `<div class="term-cmd-line"><span>$ ${esc(command)}</span><span class="term-meta">exit ${code} · ${durationMs}ms</span></div>` +
+      (stdout ? `<div class="term-stdout">${esc(stdout.trimEnd())}</div>` : '') +
+      (stderr ? `<div class="term-stderr">${esc(stderr.trimEnd())}</div>` : '') +
+      (!stdout && !stderr ? `<div class="term-meta">(no output)</div>` : '');
+    out.appendChild(div);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  async function execCommand(payload) {
+    try {
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running…';
+      const r = await fetch('/api/terminal/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+      appendEntry(j);
+    } catch (e) {
+      appendEntry({ command: payload.command || payload.macro, stdout: '', stderr: e.message, code: 1, durationMs: 0 });
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = '▶ Execute';
+    }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    if (cmd === 'clear') {
+      out.innerHTML = '';
+      input.value = '';
+      return;
+    }
+    history.unshift(cmd);
+    histIdx = -1;
+    input.value = '';
+    await execCommand({ command: cmd });
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp') {
+      if (histIdx + 1 < history.length) {
+        histIdx++;
+        input.value = history[histIdx];
+        e.preventDefault();
+      }
+    } else if (e.key === 'ArrowDown') {
+      if (histIdx > 0) {
+        histIdx--;
+        input.value = history[histIdx];
+        e.preventDefault();
+      } else if (histIdx === 0) {
+        histIdx = -1;
+        input.value = '';
+        e.preventDefault();
+      }
+    }
+  });
+
+  document.getElementById('macros-bar').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-macro]');
+    if (!chip) return;
+    execCommand({ macro: chip.dataset.macro });
+  });
+
+  document.getElementById('btn-clear-out').addEventListener('click', () => {
+    out.innerHTML = '';
+  });
+
+  document.getElementById('btn-copy-out').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(out.innerText || '');
+    } catch (_) {}
+  });
+
+  // Run initial status check on load
+  execCommand({ command: 'uname -a && uptime && echo "---" && docker ps --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"' });
+})();
+</script>
+</body>
+</html>

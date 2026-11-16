@@ -1,0 +1,293 @@
+name: lab
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-limits: &limits
+  resources:
+    limits:
+      memory: 384M
+
+services:
+  caddy:
+    image: caddy:2.11.7-alpine
+    container_name: lab-caddy
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "127.0.0.1:8080:80"
+      - "0.0.0.0:80:80"
+      - "192.168.1.123:443:443"
+      # PM2 Web UI (ต้องมี basic auth) — ผูกกับ loopback เท่านั้น
+      - "127.0.0.1:8083:8083"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # ข้อมูล basic auth (ผู้ใช้ + bcrypt hash) — แยกไฟล์เพื่อเปลี่ยนรหัสผ่านง่าย
+      - ./caddy-auth.caddy:/etc/caddy/auth.caddy:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge, lab]
+    deploy: *limits
+    logging: *logging
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.5.8
+    container_name: lab-uptime-kuma
+    restart: unless-stopped
+    environment:
+      # ข้ามหน้า /setup-database (เลือกฐานข้อมูล) — ใช้ SQLite ไฟล์ใน volume
+      UPTIME_KUMA_DB_TYPE: sqlite
+    volumes:
+      - uptime_data:/app/data
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks: [lab]
+    deploy: *limits
+    logging: *logging
+
+  portainer:
+    image: portainer/portainer-ce:2.40.0-alpine
+    container_name: lab-portainer
+    restart: unless-stopped
+    # หมายเหตุ: Portainer CE ไม่มี flag สำหรับ sub-path
+    #   (--base-url มีผลแค่กับ Kubernetes service ไม่เกี่ยวกับ HTTP routing)
+    #   แต่ SPA ของมันอ่าน window.location.pathname แล้วตั้ง <base href>
+    #   เอง → Caddy จึงใช้ handle_path (ตัด /portainer ออก) ได้
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+    networks: [edge]
+    deploy: *limits
+    logging: *logging
+
+  mongodb:
+    image: mongo:8.0
+    container_name: lab-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?set MONGO_ROOT_USER in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS:?set MONGO_ROOT_PASS in .env}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "127.0.0.1:27017:27017"
+    networks: [lab]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging: *logging
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: lab-mongo-express
+    restart: unless-stopped
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASS}@mongodb:27017/
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_SITE_BASEURL: /mongo/
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USER:?set MONGO_EXPRESS_USER in .env}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASS:?set MONGO_EXPRESS_PASS in .env}
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      - mongodb
+    networks: [lab]
+    deploy: *limits
+    logging: *logging
+
+  dockerproxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
+    container_name: lab-dockerproxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      INFO: 1
+      NETWORKS: 1
+      SERVICES: 1
+      STATS: 1
+      TASKS: 1
+      EVENTS: 1
+      PING: 1
+      VERSION: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [lab]
+    deploy: *limits
+    logging: *logging
+
+  # ── Homepage (Legacy) — ปิดการทำงานแล้วเพราะเปลี่ยนมาใช้ lab-dashboard แทน ──
+  # homepage:
+  #   image: ghcr.io/gethomepage/homepage:latest
+  #   container_name: lab-homepage
+  #   restart: unless-stopped
+  #   pid: host
+  #   environment:
+  #     HOMEPAGE_ALLOWED_HOSTS: homelab.tail285279.ts.net,homelab.tail285279.ts.net:3000,asri-minipc.thaiddns.com,asri-minipc.thaiddns.com:3000,localhost,localhost:3000
+  #     HOMEPAGE_EXTERNAL_URL: https://homelab.tail285279.ts.net
+  #     HOMEPAGE_AUTH_ENABLED: "true"
+  #     HOMEPAGE_AUTH_SECRET: ${HOMEPAGE_AUTH_SECRET:?set HOMEPAGE_AUTH_SECRET in .env}
+  #     HOMEPAGE_AUTH_PASSWORD: ${HOMEPAGE_AUTH_PASSWORD:?set HOMEPAGE_AUTH_PASSWORD in .env}
+  #     DOCKER_HOST: tcp://dockerproxy:2375
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   volumes:
+  #     - ./homepage:/app/config
+  #     - /sys:/sys:ro
+  #     - /:/host:ro,rslave
+  #   ports:
+  #     - "127.0.0.1:3000:3000"
+  #   depends_on:
+  #     - dockerproxy
+  #   networks: [lab]
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 512M
+  #   logging: *logging
+
+  wireguard:
+    image: ghcr.io/wg-easy/wg-easy:14
+    container_name: lab-wireguard
+    restart: unless-stopped
+    environment:
+      LANG: en
+      WG_HOST: ${WG_HOST:-asri-minipc.thaiddns.com}
+      PASSWORD_HASH: ${PASSWORD_HASH:?set PASSWORD_HASH in .env}
+      PORT: "51821"
+      WG_PORT: "51820"
+      WG_DEFAULT_ADDRESS: 10.10.10.x
+      WG_DEFAULT_DNS: 1.1.1.1, 8.8.8.8
+      WG_ALLOWED_IPS: 0.0.0.0/0, ::/0
+      WG_PERSISTENT_KEEPALIVE: "25"
+      WG_POST_UP: "iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -j MASQUERADE; iptables -t nat -A PREROUTING -d 10.10.10.1 -p tcp --dport 8123 -j DNAT --to-destination 192.168.1.123:8123; iptables -t nat -A OUTPUT -d 10.10.10.1 -p tcp --dport 8123 -j DNAT --to-destination 192.168.1.123:8123;"
+    volumes:
+      - wireguard_data:/etc/wireguard
+    ports:
+      - "0.0.0.0:51820:51820/udp"
+      - "127.0.0.1:51821:51821/tcp"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks: [lab]
+    deploy: *limits
+    logging: *logging
+
+  emqx:
+    image: emqx/emqx:5.8.4
+    container_name: lab-emqx
+    restart: unless-stopped
+    environment:
+      EMQX_NODE__NAME: emqx@127.0.0.1
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${DASH_AUTH_USER:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${DASH_AUTH_PASS:?set DASH_AUTH_PASS in .env}
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
+    ports:
+      - "0.0.0.0:1883:1883/tcp"
+      - "0.0.0.0:8883:8883/tcp"
+      - "0.0.0.0:8085:8083/tcp"
+      - "0.0.0.0:8084:8084/tcp"
+      - "127.0.0.1:18083:18083/tcp"
+    networks: [lab]
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    logging: *logging
+
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: lab-filebrowser
+    restart: unless-stopped
+    user: "1000:1000"
+    volumes:
+      - /home/dev/storage:/srv
+      - filebrowser_data:/database
+      - /home/dev/projects/lab-stack/filebrowser/settings.json:/config/settings.json
+    ports:
+      - "127.0.0.1:8088:80"
+    networks: [lab]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *logging
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: lab-homeassistant
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/dev/projects/lab-stack/homeassistant/config:/config
+      - /home/dev/projects/lab-stack/homeassistant/media:/media
+      - /home/dev/projects/lab-stack/homeassistant/share:/share
+      - /run/dbus:/run/dbus:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    logging: *logging
+
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:latest
+    container_name: lab-zigbee2mqtt
+    restart: unless-stopped
+    volumes:
+      - /home/dev/projects/lab-stack/zigbee2mqtt/data:/app/data
+      - /run/udev:/run/udev:ro
+    ports:
+      - "8099:8099"
+    environment:
+      - TZ=Asia/Bangkok
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    group_add:
+      - "20"
+    networks:
+      - lab
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *logging
+
+networks:
+  edge:
+    driver: bridge
+  lab:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  uptime_data:
+  portainer_data:
+  mongo_data:
+  wireguard_data:
+  emqx_data:
+  emqx_log:
+  filebrowser_data:

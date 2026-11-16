@@ -1,0 +1,2433 @@
+<!doctype html>
+<html lang="th" data-theme="tactical">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Gemini AI Assistant · Homelab</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#06090e">
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+:root {
+  --bg: #03080d;
+  --panel: rgba(5, 22, 32, 0.88);
+  --panel-2: rgba(8, 34, 48, 0.92);
+  --border: rgba(0, 229, 255, 0.25);
+  --border-bright: rgba(0, 229, 255, 0.65);
+  --cyan: #00e5ff;
+  --cyan-dim: rgba(0, 229, 255, 0.12);
+  --orange: #ff7b29;
+  --orange-dim: rgba(255, 123, 41, 0.16);
+  --green: #00e5a3;
+  --green-dim: rgba(0, 229, 163, 0.14);
+  --critical: #ff3b30;
+  --ink-1: #e8fcff;
+  --ink-2: #8ceeff;
+  --ink-muted: #4b94a8;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink-1);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Subtle futuristic background grid & atmospheric reactor glow */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 50%, rgba(0, 229, 255, 0.08) 0%, transparent 52%),
+    linear-gradient(rgba(0, 229, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.028) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Custom Cybernetic Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: rgba(0, 20, 30, 0.4); }
+::-webkit-scrollbar-thumb { background: rgba(0, 229, 255, 0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
+
+/* ── Top HUD Bar ─────────────────────────────────────────────────────────── */
+.topbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: rgba(3, 12, 18, 0.92);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.22);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.core-logo-ring {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2px solid var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.65), inset 0 0 8px rgba(0, 229, 255, 0.4);
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  animation: logo-breathe 3s infinite ease-in-out;
+}
+.core-logo-ring::after {
+  content: "";
+  width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, var(--cyan) 70%, transparent 100%);
+  box-shadow: 0 0 10px var(--cyan);
+}
+@keyframes logo-breathe {
+  0%, 100% { box-shadow: 0 0 10px rgba(0, 229, 255, 0.55), inset 0 0 6px rgba(0, 229, 255, 0.3); }
+  50% { box-shadow: 0 0 18px rgba(0, 229, 255, 0.95), inset 0 0 12px rgba(0, 229, 255, 0.65); }
+}
+
+.brand__title {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #e6fbff;
+  text-shadow: 0 0 12px rgba(0, 229, 255, 0.45);
+}
+.brand__sub {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+
+.controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; padding: 5px 12px;
+  border-radius: 2px; border: 1px solid var(--border); background: rgba(4, 24, 34, 0.85);
+  letter-spacing: 0.08em;
+}
+.badge--ok {
+  border-color: var(--green); color: var(--green); background: var(--green-dim);
+  font-weight: 700; box-shadow: 0 0 12px rgba(0, 229, 163, 0.2);
+}
+.badge--warn { border-color: var(--orange); color: var(--orange); background: var(--orange-dim); }
+
+.select-box, .btn {
+  font-family: var(--mono); font-size: 11.5px; padding: 6px 12px;
+  background: rgba(5, 25, 36, 0.85); border: 1px solid var(--border);
+  color: var(--ink-1); border-radius: 3px; cursor: pointer; outline: none;
+  text-decoration: none; transition: all 0.2s ease;
+}
+.select-box:focus, .btn:focus-visible { border-color: var(--cyan); }
+.btn:hover {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+}
+.btn--primary {
+  background: rgba(0, 229, 255, 0.16);
+  color: var(--cyan);
+  border-color: var(--cyan);
+  font-weight: 700;
+}
+.btn--primary:hover {
+  background: var(--cyan);
+  color: #00141a;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.5);
+}
+.btn--danger { border-color: rgba(255, 59, 48, 0.5); color: #ff6b63; }
+.btn--danger:hover { background: rgba(255, 59, 48, 0.18); border-color: var(--critical); }
+
+/* ── Main Outer HUD Shell with Corner Brackets ───────────────────────────── */
+.core-shell {
+  position: relative;
+  z-index: 5;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 10px 14px 12px 14px;
+  border: 1px solid rgba(0, 229, 255, 0.16);
+  background: rgba(3, 10, 16, 0.65);
+  box-shadow: inset 0 0 40px rgba(0, 229, 255, 0.03);
+}
+.hud-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  z-index: 20;
+}
+.hud-corner--tl { top: -1px; left: -1px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+.hud-corner--tr { top: -1px; right: -1px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+.hud-corner--bl { bottom: -1px; left: -1px; border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+.hud-corner--br { bottom: -1px; right: -1px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+
+/* ── Split Workspace (Left Reactor + Right Chat Stream) ──────────────────── */
+.core-workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 370px 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left Panel: Holographic Core Reactor */
+.core-reactor-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  border-right: 1px solid rgba(0, 229, 255, 0.14);
+  background: radial-gradient(circle at 50% 45%, rgba(0, 229, 255, 0.07) 0%, transparent 70%);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.reactor-stage {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+}
+
+.reactor-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.35));
+  transition: filter 0.4s ease;
+}
+
+.ring-cw-slow {
+  transform-origin: 150px 150px;
+  animation: spin-cw 38s linear infinite;
+}
+.ring-ccw-med {
+  transform-origin: 150px 150px;
+  animation: spin-ccw 20s linear infinite;
+}
+.ring-cw-fast {
+  transform-origin: 150px 150px;
+  animation: spin-cw 14s linear infinite;
+}
+.ring-octa {
+  transform-origin: 150px 150px;
+  animation: spin-ccw 26s linear infinite;
+}
+
+@keyframes spin-cw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes spin-ccw {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+.reactor-core-orb {
+  position: absolute;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0%, #7ff6ff 32%, #00d9ff 65%, rgba(0, 229, 255, 0) 100%);
+  box-shadow: 0 0 35px rgba(0, 229, 255, 0.85), 0 0 75px rgba(0, 229, 255, 0.4);
+  animation: core-pulse-idle 3.4s ease-in-out infinite;
+  transition: all 0.4s ease;
+}
+
+@keyframes core-pulse-idle {
+  0%, 100% { transform: scale(0.95); opacity: 0.9; box-shadow: 0 0 30px rgba(0, 229, 255, 0.7), 0 0 65px rgba(0, 229, 255, 0.3); }
+  50% { transform: scale(1.06); opacity: 1; box-shadow: 0 0 45px rgba(0, 229, 255, 0.95), 0 0 95px rgba(0, 229, 255, 0.55); }
+}
+
+.reactor-pulse-wave {
+  position: absolute;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 229, 255, 0.55);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Thinking / Processing State for Reactor */
+.core-reactor-pane.is-thinking {
+  background: radial-gradient(circle at 50% 45%, rgba(255, 123, 41, 0.12) 0%, rgba(0, 229, 255, 0.06) 45%, transparent 72%);
+}
+.core-reactor-pane.is-thinking .reactor-svg {
+  filter: drop-shadow(0 0 16px rgba(0, 229, 255, 0.65)) drop-shadow(0 0 28px rgba(255, 123, 41, 0.4));
+}
+.core-reactor-pane.is-thinking .ring-cw-slow { animation-duration: 7s; }
+.core-reactor-pane.is-thinking .ring-ccw-med { animation-duration: 3.5s; }
+.core-reactor-pane.is-thinking .ring-cw-fast { animation-duration: 2.2s; }
+.core-reactor-pane.is-thinking .ring-octa { animation-duration: 4.5s; }
+.core-reactor-pane.is-thinking .reactor-core-orb {
+  background: radial-gradient(circle, #ffffff 0%, #ffd099 28%, #ff7b29 60%, rgba(0, 229, 255, 0) 100%);
+  box-shadow: 0 0 42px rgba(255, 123, 41, 0.95), 0 0 90px rgba(0, 229, 255, 0.6);
+  animation: core-pulse-active 0.9s ease-in-out infinite;
+}
+@keyframes core-pulse-active {
+  0%, 100% { transform: scale(0.92); }
+  50% { transform: scale(1.16); }
+}
+.core-reactor-pane.is-thinking .reactor-pulse-wave {
+  border-color: rgba(255, 123, 41, 0.75);
+  animation: shockwave-ping 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.core-reactor-pane.is-thinking .reactor-pulse-wave--delay {
+  border-color: rgba(0, 229, 255, 0.7);
+  animation: shockwave-ping 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite 0.8s;
+}
+@keyframes shockwave-ping {
+  0% { transform: scale(0.7); opacity: 0.9; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+.reactor-status-text {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-1);
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.45);
+  margin-bottom: 12px;
+  text-align: center;
+}
+.core-reactor-pane.is-thinking .reactor-status-text {
+  color: #ffb07a;
+  text-shadow: 0 0 16px rgba(255, 123, 41, 0.7);
+  animation: text-glow-pulse 1.2s infinite ease-in-out;
+}
+@keyframes text-glow-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+.ai-hud-meta-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 300px;
+}
+.ai-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ai-hud-badge {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 2px;
+  border: 1px solid var(--cyan);
+  background: var(--cyan-dim);
+  color: var(--cyan);
+  letter-spacing: 0.06em;
+}
+.ai-hud-badge--thinking {
+  border-color: var(--orange) !important;
+  background: var(--orange-dim) !important;
+  color: #ff9a5c !important;
+}
+.ai-hud-model {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-2);
+  background: rgba(0, 229, 255, 0.06);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+.ai-hud-session {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--green);
+  background: var(--green-dim);
+  border: 1px solid rgba(0, 229, 163, 0.35);
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+.ai-hud-session--new {
+  color: var(--orange);
+  background: var(--orange-dim);
+  border-color: rgba(255, 123, 41, 0.4);
+}
+.ai-hud-desc {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ── Right Panel: Chat Stream & Bottom Dock ──────────────────────────────── */
+.core-chat-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: rgba(2, 8, 13, 0.45);
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  scroll-behavior: smooth;
+}
+
+.msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+  animation: msg-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+@keyframes msg-slide-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg--user {
+  align-self: flex-end;
+  background: linear-gradient(135deg, rgba(0, 56, 48, 0.65), rgba(0, 32, 30, 0.78));
+  border: 1px solid rgba(0, 229, 163, 0.42);
+  padding: 12px 18px;
+  color: #ebfff9;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  box-shadow: 0 4px 20px rgba(0, 229, 163, 0.08);
+}
+
+.msg--assistant {
+  align-self: flex-start;
+  background: linear-gradient(160deg, rgba(6, 26, 38, 0.88), rgba(3, 14, 22, 0.94));
+  border: 1px solid rgba(0, 229, 255, 0.32);
+  padding: 15px 20px;
+  width: 100%;
+  max-width: 96%;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(0, 229, 255, 0.18);
+}
+
+.msg__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  margin-bottom: 7px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.12);
+  letter-spacing: 0.05em;
+}
+.msg__author { font-weight: 700; color: var(--cyan); }
+.msg--user .msg__author { color: var(--green); }
+
+.msg__body { font-size: 14px; line-height: 1.65; word-break: break-word; white-space: pre-wrap; }
+.msg__body code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: rgba(0, 229, 255, 0.09);
+  border: 1px solid rgba(0, 229, 255, 0.24);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--cyan);
+}
+
+/* ── Tactical AI Processing Status Bar in Message ────────────────────── */
+.msg__thinking-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 10px 0;
+  padding: 10px 14px;
+  background: rgba(20, 10, 5, 0.82);
+  border: 1px solid rgba(255, 123, 41, 0.55);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  box-shadow: 0 4px 20px rgba(255, 123, 41, 0.2);
+  animation: msg-slide-in 0.25s ease-out;
+  max-width: 460px;
+  width: 100%;
+}
+.msg__thinking-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.msg__thinking-label {
+  color: #ff9a5c;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 8px var(--orange);
+  animation: pulse-dot 1.1s infinite ease-in-out;
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.35); opacity: 1; box-shadow: 0 0 14px #ff9a5c; }
+}
+.msg__thinking-sub {
+  color: var(--ink-2);
+  font-size: 10px;
+  background: rgba(0, 229, 255, 0.1);
+  padding: 2px 7px;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+}
+.msg__thinking-shimmer-track {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+.msg__thinking-shimmer-bar {
+  position: absolute;
+  top: 0; left: 0; height: 100%; width: 42%;
+  background: linear-gradient(90deg, transparent, var(--orange), var(--cyan), transparent);
+  animation: shimmer-line 1.4s infinite ease-in-out;
+}
+@keyframes shimmer-line {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+/* ── Bottom Control Dock & Input Area ────────────────────────────────────── */
+.core-dock {
+  background: rgba(4, 15, 22, 0.94);
+  border-top: 1px solid rgba(0, 229, 255, 0.2);
+  padding: 8px 18px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.chips {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 11px;
+  background: rgba(6, 28, 40, 0.85);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-radius: 2px;
+}
+.chip:hover {
+  background: rgba(0, 229, 255, 0.16);
+  border-color: var(--cyan);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+}
+
+.core-control-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.core-strip-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  background: rgba(2, 10, 16, 0.95);
+  border: 1px solid rgba(0, 229, 255, 0.26);
+  padding: 2px;
+  border-radius: 3px;
+}
+.mode-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.18s;
+}
+.mode-btn:hover { color: var(--ink-1); }
+.mode-btn.is-active {
+  background: rgba(0, 229, 255, 0.2);
+  color: var(--cyan);
+  font-weight: 700;
+  box-shadow: inset 0 0 8px rgba(0, 229, 255, 0.2);
+}
+.mode-btn.is-active[data-mode="exec"] {
+  background: rgba(255, 123, 41, 0.22);
+  color: #ff9f61;
+  box-shadow: inset 0 0 8px rgba(255, 123, 41, 0.25);
+}
+.mode-btn.is-active[data-mode="plan"] {
+  background: rgba(168, 85, 247, 0.22);
+  color: #d3a6ff;
+}
+
+.input-box {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.btn-mic {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: rgba(5, 28, 38, 0.9);
+  border: 1.5px solid rgba(0, 229, 255, 0.55);
+  color: var(--cyan);
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(0, 229, 255, 0.2);
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.btn-mic:hover {
+  background: rgba(0, 229, 255, 0.18);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+  transform: scale(1.04);
+}
+.btn-mic.is-listening {
+  background: rgba(255, 59, 48, 0.25) !important;
+  border-color: #ff3b30 !important;
+  color: #ff5f56 !important;
+  animation: pulse-mic 1.2s infinite ease-in-out;
+}
+@keyframes pulse-mic {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.45); transform: scale(1); }
+  50% { box-shadow: 0 0 16px 4px rgba(255, 59, 48, 0.7); transform: scale(1.05); }
+}
+
+.prompt-input-wrap {
+  flex: 1;
+  background: rgba(2, 11, 17, 0.95);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s ease;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+.prompt-input-wrap:focus-within {
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.25);
+}
+.prompt-input {
+  width: 100%;
+  background: none;
+  border: 0;
+  color: var(--ink-1);
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  height: 36px;
+  max-height: 150px;
+  outline: none;
+  line-height: 1.5;
+  padding-top: 6px;
+}
+.prompt-input::placeholder { color: var(--ink-muted); }
+
+.action-btns { display: flex; gap: 8px; align-items: center; }
+.btn-send {
+  height: 44px;
+  padding: 0 22px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: rgba(0, 229, 255, 0.16);
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.btn-send:hover {
+  background: var(--cyan);
+  color: #00141a;
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.55);
+}
+.btn-abort {
+  display: none;
+  height: 44px;
+  padding: 0 14px;
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff6b63;
+  border: 1px solid var(--critical);
+}
+.btn-abort:hover { background: var(--critical); color: #fff; }
+
+.btn--queue {
+  background: rgba(255, 123, 41, 0.25) !important;
+  border-color: var(--orange) !important;
+  color: #ffb07a !important;
+}
+.btn--queue:hover {
+  background: var(--orange) !important;
+  color: #000 !important;
+}
+
+/* ── Modals & Settings ───────────────────────────────────────────────────── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0, 5, 10, 0.8); backdrop-filter: blur(8px); z-index: 100; place-items: center; padding: 16px; }
+.modal-overlay.is-open { display: grid; }
+.modal-card {
+  width: 100%; max-width: 540px; background: #041924; border: 1px solid var(--cyan);
+  padding: 22px; box-shadow: 0 10px 40px rgba(0, 229, 255, 0.18); max-height: 90vh; overflow-y: auto;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+}
+.modal-title { font-family: var(--mono); font-size: 15px; color: var(--cyan); margin-bottom: 14px; font-weight: 700; }
+.auth-box { background: rgba(2, 10, 16, 0.88); border: 1px solid var(--border); padding: 14px; margin-bottom: 14px; }
+.auth-box__title { font-size: 13px; font-weight: 700; color: var(--ink-1); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.auth-box__desc { font-size: 12px; color: var(--ink-muted); line-height: 1.5; margin-bottom: 10px; }
+.field-input {
+  width: 100%; padding: 8px 12px; background: #020b11; border: 1px solid var(--border);
+  color: #fff; font-family: var(--mono); font-size: 12.5px; outline: none; margin-bottom: 8px;
+}
+.field-input:focus { border-color: var(--cyan); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+.desktop-only { display: inline-flex; }
+.mobile-controls { display: none; }
+
+.settings-section { margin-bottom: 14px; }
+.settings-label {
+  font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--cyan);
+  margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;
+}
+.mode-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.mode-card-btn {
+  text-align: left; padding: 9px 12px; background: rgba(2, 12, 18, 0.85);
+  border: 1px solid var(--border); color: var(--ink-1); cursor: pointer; transition: all 0.15s ease;
+}
+.mode-card-btn:hover { background: var(--panel-2); border-color: var(--cyan); }
+.mode-card-btn.is-active { background: rgba(0, 229, 255, 0.15); border-color: var(--cyan); box-shadow: 0 0 10px rgba(0, 229, 255, 0.25); }
+.mode-card-btn.is-active[data-mode-sel="exec"] { background: rgba(255, 123, 41, 0.18); border-color: var(--orange); }
+.mode-card-btn.is-active[data-mode-sel="plan"] { background: rgba(168, 85, 247, 0.18); border-color: #a855f7; }
+.mode-card-title { font-family: var(--mono); font-size: 12px; font-weight: 700; margin-bottom: 2px; color: #fff; }
+.mode-card-desc { font-size: 11px; color: var(--ink-muted); }
+.settings-tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.settings-tool-btn { width: 100%; padding: 8px 10px; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-align: center; }
+
+/* ── Autonomous Task Queue Tray ────────────────────────────────────────── */
+.queue-tray {
+  margin: 0 18px 6px 18px;
+  background: rgba(3, 16, 24, 0.94);
+  border: 1px solid rgba(0, 229, 255, 0.38);
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+.queue-tray__header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 12px; background: rgba(0, 229, 255, 0.08);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.2); user-select: none;
+}
+.queue-tray__title { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--cyan); }
+.queue-badge { background: var(--orange); color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 2px; font-weight: 800; }
+.queue-subhint { font-size: 10.5px; color: var(--ink-muted); font-weight: 400; }
+.queue-tray__actions { display: flex; align-items: center; gap: 6px; }
+.btn-queue-tool { font-family: var(--mono); font-size: 10.5px; padding: 3px 8px; background: var(--panel); border: 1px solid var(--border); color: var(--ink-1); cursor: pointer; }
+.btn-queue-tool:hover { border-color: var(--cyan); }
+.btn-queue-tool--danger:hover { border-color: var(--critical); color: var(--critical); }
+.queue-tray__list { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; max-height: 170px; overflow-y: auto; }
+.queue-tray.is-collapsed .queue-tray__list { display: none; }
+.queue-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(2, 10, 16, 0.85); border: 1px solid rgba(0, 229, 255, 0.2); font-size: 12px; }
+.queue-item__order { font-family: var(--mono); font-weight: 800; color: var(--orange); font-size: 11px; min-width: 22px; }
+.queue-item__mode { font-family: var(--mono); font-size: 9.5px; font-weight: 700; padding: 2px 6px; background: rgba(255, 123, 41, 0.2); border: 1px solid var(--orange); color: #ff9f61; white-space: nowrap; }
+.queue-item__mode--chat { background: var(--cyan-dim); border-color: var(--cyan); color: var(--cyan); }
+.queue-item__mode--plan { background: rgba(168, 85, 247, 0.2); border-color: #a855f7; color: #d3a6ff; }
+.queue-item__text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-1); font-size: 12.5px; }
+.queue-item__actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.btn-q-act { font-family: var(--mono); font-size: 10.5px; padding: 3px 7px; background: var(--panel); border: 1px solid var(--border); color: var(--ink-2); cursor: pointer; }
+.btn-q-act:hover { border-color: var(--cyan); color: #fff; }
+.btn-q-act--danger:hover { border-color: var(--critical); color: var(--critical); }
+
+/* ── Tablet & Mobile Responsive ──────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .core-workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .core-reactor-pane {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 229, 255, 0.16);
+    gap: 12px;
+  }
+  .reactor-stage {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+  .reactor-core-orb {
+    width: 18px;
+    height: 18px;
+  }
+  .reactor-status-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+  .reactor-status-text {
+    font-size: 13px;
+    margin-bottom: 0;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .ai-hud-meta-stack {
+    width: auto;
+    align-items: flex-end;
+  }
+  .ai-hud-desc { display: none; }
+}
+
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+  .mobile-controls { display: flex; align-items: center; gap: 6px; }
+  .core-shell { margin: 4px; }
+  .topbar { padding: 8px 10px; }
+  .brand__title { font-size: 12px; letter-spacing: 0.1em; }
+  .brand__sub { display: none; }
+  .messages { padding: 10px 10px; gap: 12px; }
+  .msg { max-width: 94%; }
+  .msg--assistant { max-width: 100%; padding: 10px 12px; }
+  .core-dock { padding: 6px 10px 10px 10px; gap: 6px; }
+  .core-control-strip { display: none; }
+  .btn-mic { width: 38px; height: 38px; min-width: 38px; font-size: 15px; }
+  .btn-send { height: 38px; padding: 0 14px; font-size: 12px; }
+  .btn-abort { height: 38px; padding: 0 10px; font-size: 11px; }
+  .prompt-input { height: 32px; font-size: 13px; padding-top: 4px; }
+  .mode-pill-btn {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 4px 8px;
+    border-radius: 3px; background: rgba(255, 123, 41, 0.2); border: 1px solid var(--orange);
+    color: #ff9f61; cursor: pointer; white-space: nowrap;
+  }
+  .mode-pill-btn[data-mode="chat"] { background: var(--cyan-dim); border-color: var(--cyan); color: var(--cyan); }
+  .mode-pill-btn[data-mode="plan"] { background: rgba(168, 85, 247, 0.2); border-color: #a855f7; color: #d3a6ff; }
+  .btn--settings { padding: 4px 8px; font-size: 11px; font-weight: 600; border-color: var(--cyan); color: var(--cyan); }
+  .queue-tray { margin: 0 8px 4px 8px; }
+  .queue-subhint { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="core-logo-ring" id="ai-brand-orb" title="สถานะ AI Core"></div>
+    <div>
+      <div class="brand__title" id="brand-title">ANTIGRAVITY CORE</div>
+      <div class="brand__sub" id="brand-sub">Google DeepMind Agentic Engine (agy 1.5.3)</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div id="badge-key" class="badge badge--warn desktop-only">AUTH: CHECKING...</div>
+
+    <select id="sel-model" class="select-box desktop-only" title="เลือก Model AI">
+      <option value="gemini-3.8-flash-medium" selected>Gemini 3.8 Flash (Medium)</option>
+      <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
+      <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
+      <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
+    </select>
+
+    <select id="sel-cwd" class="select-box desktop-only" title="เลือก Working Directory บนเซิร์ฟเวอร์">
+      <option value="/home/dev/projects">📁 /home/dev/projects (Root)</option>
+    </select>
+
+    <button type="button" id="btn-memory" class="btn desktop-only" title="ดูและจัดการความจำระยะยาวของ AI">🧠 ความจำ</button>
+    <button type="button" id="btn-config" class="btn desktop-only" title="ตั้งค่าหรือล็อกอิน Gemini">🔑 คีย์</button>
+    <button type="button" id="btn-clear" class="btn btn--danger desktop-only" title="ล้างประวัติการคุยและเริ่มแชทใหม่">🧹 แชทใหม่</button>
+    <button type="button" id="btn-open-settings-desktop" class="btn btn--primary desktop-only" onclick="document.getElementById('btn-open-settings')?.click()">⚙️ เพิ่มเติม</button>
+
+    <!-- Mobile-Only Action Controls -->
+    <div class="mobile-controls">
+      <button type="button" id="mobile-mode-pill" class="mode-pill-btn" data-mode="exec" title="แตะเพื่อเลือกโหมดหรือตั้งค่า">⚡ YOLO</button>
+      <button type="button" id="btn-open-settings" class="btn btn--settings" title="เมนูตั้งค่าและตัวเลือกเพิ่มเติม">⚙️ เพิ่มเติม</button>
+    </div>
+  </div>
+</header>
+
+<div class="core-shell">
+  <span class="hud-corner hud-corner--tl"></span>
+  <span class="hud-corner hud-corner--tr"></span>
+  <span class="hud-corner hud-corner--bl"></span>
+  <span class="hud-corner hud-corner--br"></span>
+
+  <main class="core-workspace">
+    <!-- Left Column: Holographic Core Reactor -->
+    <section class="core-reactor-pane" id="ai-status-hud">
+      <div class="reactor-stage">
+        <div class="reactor-pulse-wave"></div>
+        <div class="reactor-pulse-wave reactor-pulse-wave--delay"></div>
+        <svg class="reactor-svg" viewBox="0 0 300 300" aria-hidden="true">
+          <defs>
+            <radialGradient id="coreGlowGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.32" />
+              <stop offset="65%" stop-color="#00e5ff" stop-opacity="0.06" />
+              <stop offset="100%" stop-color="#00e5ff" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <circle cx="150" cy="150" r="138" fill="url(#coreGlowGrad)" />
+
+          <!-- Outer Fine Degree Ring -->
+          <g class="ring-cw-slow">
+            <circle cx="150" cy="150" r="136" fill="none" stroke="rgba(0, 229, 255, 0.25)" stroke-width="1" stroke-dasharray="2 8" />
+            <circle cx="150" cy="150" r="126" fill="none" stroke="rgba(0, 229, 255, 0.45)" stroke-width="1.5" stroke-dasharray="28 14 6 14" />
+          </g>
+
+          <!-- Middle Segmented Cyber Arcs -->
+          <g class="ring-ccw-med">
+            <circle cx="150" cy="150" r="108" fill="none" stroke="#00e5ff" stroke-width="3.5" stroke-dasharray="55 24 18 24 70 28" stroke-linecap="round" opacity="0.82" />
+            <circle cx="150" cy="150" r="98" fill="none" stroke="rgba(0, 229, 255, 0.35)" stroke-width="1" stroke-dasharray="4 6" />
+          </g>
+
+          <!-- Inner Precision Arcs -->
+          <g class="ring-cw-fast">
+            <circle cx="150" cy="150" r="84" fill="none" stroke="#00e5ff" stroke-width="2" stroke-dasharray="36 18 10 18" opacity="0.9" />
+            <circle cx="150" cy="150" r="74" fill="none" stroke="rgba(0, 229, 255, 0.45)" stroke-width="1.2" stroke-dasharray="12 10" />
+          </g>
+
+          <!-- Inner Octagon Shield -->
+          <g class="ring-octa">
+            <polygon points="150,89 193,107 211,150 193,193 150,211 107,193 89,150 107,107" fill="none" stroke="rgba(0, 229, 255, 0.65)" stroke-width="1.5" />
+          </g>
+        </svg>
+        <div class="reactor-core-orb"></div>
+      </div>
+
+      <div class="reactor-status-wrap">
+        <div class="reactor-status-text" id="reactor-status-text">พร้อมรับคำสั่ง</div>
+        <div class="ai-hud-meta-stack">
+          <div class="ai-hud-header">
+            <span class="ai-hud-badge" id="ai-hud-status-badge">⚡ AI READY</span>
+            <span class="ai-hud-model" id="ai-hud-model-tag">Gemini 3.8 Flash</span>
+            <span class="ai-hud-session" id="ai-hud-session-tag" title="ระบบจำบริบทการสนทนาต่อเนื่องอัตโนมัติ">🧠 SESSION: ACTIVE</span>
+          </div>
+          <div class="ai-hud-desc" id="ai-hud-desc">ระบบพร้อมทำงาน · รอรับคำสั่งจากผู้ใช้งาน</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Chat Stream & Bottom Control Dock -->
+    <section class="core-chat-pane">
+      <div class="messages" id="messages-list">
+        <div class="msg msg--assistant">
+          <div class="msg__meta">
+            <span class="msg__author">⚡ ANTIGRAVITY CORE</span>
+            <span>READY</span>
+          </div>
+          <div class="msg__body">พร้อมทำงานครับ! คุณสามารถสั่งการเซิร์ฟเวอร์ Linux, ตรวจสอบสถานะ Service, วิเคราะห์โค้ด หรือให้สร้างโปรเจกต์ใหม่ผ่านหน้านี้ได้โดยตรง
+
+• ⚡ <b>ปล่อยหมด (YOLO):</b> สั่งให้ AI รันคำสั่งจริง, เขียนไฟล์, สร้างโปรเจกต์ใหม่ลงบน Server ทันที
+• 📋 <b>วางแผน (Plan):</b> วิเคราะห์โครงสร้างและสรุปแผนงานก่อนเริ่มทำจริง
+• 💬 <b>ถามตอบ (Chat):</b> โหมดถาม-ตอบ ให้คำปรึกษา แนะนำการตั้งค่า (ปลอดภัย)</div>
+        </div>
+      </div>
+
+      <!-- Persistent Autonomous Task Queue Tray -->
+      <div class="queue-tray" id="queue-tray" style="display:none;">
+        <div class="queue-tray__header" id="queue-tray-header">
+          <div class="queue-tray__title">
+            <span class="queue-badge" id="queue-badge">0 IN QUEUE</span>
+            <span>📋 คิวคำสั่งรอทำงานอัตโนมัติ</span>
+            <span class="queue-subhint">• รันต่อเนื่องทีละงานแม้ออกจากเว็บ</span>
+          </div>
+          <div class="queue-tray__actions">
+            <button type="button" id="btn-queue-toggle" class="btn-queue-tool" title="ย่อ/ขยายรายการคิว">▼ ย่อ</button>
+            <button type="button" id="btn-queue-clear" class="btn-queue-tool btn-queue-tool--danger" title="ล้างคิวทั้งหมด">🧹 ล้างคิว</button>
+          </div>
+        </div>
+        <div class="queue-tray__list" id="queue-tray-list"></div>
+      </div>
+
+      <div class="core-dock">
+        <div class="chips" id="quick-chips">
+          <button class="chip" data-prompt="ดึงข้อมูลการใช้ไฟฟ้าจาก Home Assistant ในอุปกรณ์ PZEM เพื่อตรวจสอบค่าไฟวันนี้ และคำนวณค่าไฟของทั้งเดือนนี้ สรุปยอดหน่วย kWh และค่าไฟเป็นเงินบาท">⚡ ค่าไฟ PZEM</button>
+          <button class="chip" data-prompt="คุณจำอะไรเกี่ยวกับฉันและการตั้งค่าเซิร์ฟเวอร์นี้ได้บ้าง สรุปข้อมูลทั้งหมดที่คุณจำได้ให้ดูหน่อย">🧠 ความจำ AI</button>
+          <button class="chip" data-prompt="ตรวจสอบสถานะ Docker Containers และ Resource การทำงานของ Host ทั้งหมด">🔍 Containers &amp; Host</button>
+          <button class="chip" data-prompt="ตรวจสอบไฟร์วอลล์ UFW, พอร์ตที่กำลังเปิดใช้งาน และความปลอดภัยของระบบ">🛡️ Firewall &amp; Ports</button>
+          <button class="chip" data-prompt="สร้างโปรเจกต์ทดสอบ Node.js Express ง่ายๆ ไว้ในโฟลเดอร์ projects">📁 สร้างโปรเจกต์</button>
+          <button class="chip" data-prompt="วิเคราะห์สถานะ OnePercentBotTrade และตรวจสอบไฟล์ log ล่าสุด">📈 OnePercentBot</button>
+        </div>
+
+        <div class="core-control-strip">
+          <div class="core-strip-left">
+            <button type="button" id="btn-sound" class="btn" title="เปิด/ปิดเสียงเอฟเฟกต์ (Sound FX)">🔊 เสียง</button>
+          </div>
+
+          <div class="mode-toggle">
+            <button type="button" class="mode-btn is-active" data-mode="exec" title="โหมดสร้างและสั่งการทำงานอัตโนมัติ (YOLO / Full Agent)">⚡ ปล่อยหมด</button>
+            <button type="button" class="mode-btn" data-mode="plan" title="โหมดวางแผนงานสถาปัตยกรรม">📋 วางแผน</button>
+            <button type="button" class="mode-btn" data-mode="chat" title="โหมดสนทนา & ให้คำแนะนำ (ปลอดภัย / Read-only)">💬 ถามตอบ</button>
+          </div>
+        </div>
+
+        <div id="voice-active-indicator" style="display:none; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; color:#ff5f56; background:rgba(255,59,48,0.12); border:1px solid rgba(255,59,48,0.3); padding:5px 12px;">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ff3b30; box-shadow:0 0 8px #ff3b30;"></span>
+          <span>กำลังฟังเสียงภาษาไทย... พูดคำสั่งได้เลย (คลิกปุ่ม 🔴 อีกครั้งเมื่อพูดเสร็จ)</span>
+        </div>
+
+        <div class="input-box">
+          <button type="button" id="btn-mic" class="btn-mic" title="สั่งการด้วยเสียง (คลิกเพื่อพูด)" aria-label="สั่งการด้วยเสียง">🎙️</button>
+          <div class="prompt-input-wrap">
+            <textarea id="prompt-input" class="prompt-input" placeholder="พิมพ์คำสั่ง... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"></textarea>
+          </div>
+          <div class="action-btns">
+            <button type="button" id="btn-abort" class="btn btn-abort">⏹ หยุด</button>
+            <button type="button" id="btn-send" class="btn btn--primary btn-send">ส่ง ↵</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal-queue-edit" class="modal-overlay">
+  <div class="modal-card" style="max-width: 520px;">
+    <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <span>✏️ แก้ไขคำสั่งในคิว</span>
+      <button type="button" id="btn-modal-qedit-x" style="background:none; border:none; color:var(--ink-muted); font-size:18px; cursor:pointer; padding:2px 8px;" title="ปิดหน้าต่าง">✕</button>
+    </div>
+    <input type="hidden" id="qedit-id" value="">
+    <div style="margin-bottom:12px;">
+      <label style="font-family:var(--mono); font-size:11px; color:var(--cyan); font-weight:700; margin-bottom:6px; display:block;">ข้อความคำสั่ง (PROMPT):</label>
+      <textarea id="qedit-prompt" class="field-input" style="height:120px; font-family:inherit; font-size:13px; line-height:1.5; padding:10px; resize:vertical;"></textarea>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="font-family:var(--mono); font-size:11px; color:var(--cyan); font-weight:700; margin-bottom:6px; display:block;">โหมดการทำงาน:</label>
+      <select id="qedit-mode" class="field-input" style="cursor:pointer; margin-bottom:0;">
+        <option value="exec">⚡ YOLO Exec Mode (สั่งรันคำสั่งจริง)</option>
+        <option value="chat">💬 Chat Mode (สนทนา/ถามตอบ ปลอดภัย)</option>
+        <option value="plan">📋 Plan Mode (วางแผนงาน)</option>
+      </select>
+    </div>
+    <div class="modal-actions" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" id="btn-modal-qedit-cancel" class="btn">ยกเลิก</button>
+      <button type="button" id="btn-modal-qedit-save" class="btn btn--primary">💾 บันทึกการแก้ไข</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-settings" class="modal-overlay">
+  <div class="modal-card" style="max-width: 520px;">
+    <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <span>⚙️ ควบคุม &amp; ตั้งค่า AI CORE</span>
+      <button type="button" id="btn-modal-settings-x" style="background:none; border:none; color:var(--ink-muted); font-size:18px; cursor:pointer; padding:2px 8px;" title="ปิดหน้าต่าง">✕</button>
+    </div>
+
+    <!-- Section: Execution Mode -->
+    <div class="settings-section">
+      <div class="settings-label">🕹️ โหมดการทำงาน (Execution Mode)</div>
+      <div class="mode-grid">
+        <button type="button" class="mode-card-btn" data-mode-sel="chat">
+          <div class="mode-card-title">💬 Chat Mode</div>
+          <div class="mode-card-desc">โหมดสนทนา ถาม-ตอบ ให้คำปรึกษา แนะนำการตั้งค่า (ปลอดภัย Read-only)</div>
+        </button>
+        <button type="button" class="mode-card-btn is-active" data-mode-sel="exec">
+          <div class="mode-card-title">⚡ YOLO Exec Mode</div>
+          <div class="mode-card-desc">โหมดสร้างและสั่งการทำงานอัตโนมัติ รันคำสั่งจริง เขียนไฟล์บน Server</div>
+        </button>
+        <button type="button" class="mode-card-btn" data-mode-sel="plan">
+          <div class="mode-card-title">📋 Plan Mode</div>
+          <div class="mode-card-desc">โหมดวิเคราะห์โครงสร้าง ออกแบบ และสรุปแผนงานสถาปัตยกรรมก่อนเริ่มทำจริง</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Section: Model Selection -->
+    <div class="settings-section">
+      <div class="settings-label">🤖 เลือกโมเดล AI (Model)</div>
+      <select id="modal-sel-model" class="field-input" style="cursor:pointer; margin-bottom:0;">
+        <option value="gemini-3.8-flash-medium" selected>Gemini 3.8 Flash (Medium)</option>
+        <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
+        <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
+        <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
+      </select>
+    </div>
+
+    <!-- Section: Working Directory -->
+    <div class="settings-section">
+      <div class="settings-label">📁 โฟลเดอร์ทำงานบน Server (Directory)</div>
+      <select id="modal-sel-cwd" class="field-input" style="cursor:pointer; margin-bottom:0;">
+        <option value="/home/dev/projects">📁 /home/dev/projects (Root)</option>
+      </select>
+    </div>
+
+    <!-- Section: Additional Tools -->
+    <div class="settings-section">
+      <div class="settings-label">🛠️ ตัวเลือก &amp; เครื่องมือเพิ่มเติม</div>
+      <div class="settings-tools-grid">
+        <button type="button" id="modal-btn-sound" class="btn settings-tool-btn">🔊 เสียงเอฟเฟกต์ (Sound FX)</button>
+        <button type="button" id="modal-btn-memory" class="btn settings-tool-btn">🧠 ความจำระยะยาว (Memory)</button>
+        <button type="button" id="modal-btn-config" class="btn btn--primary settings-tool-btn">🔑 บัญชี Google / Key</button>
+        <button type="button" id="modal-btn-toggle-hud" class="btn settings-tool-btn">👁️ ลูกแก้ว 3D Visualizer</button>
+        <button type="button" id="modal-btn-clear" class="btn btn--danger settings-tool-btn" style="grid-column: span 2;">🧹 ล้างประวัติการคุย (Clear History)</button>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px;">
+      <button type="button" id="btn-modal-settings-close" class="btn btn--primary" style="width:100%; padding:10px;">ตกลง / ปิดหน้าต่าง</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-voice-help" class="modal-overlay">
+  <div class="modal-card" style="max-width: 600px;">
+    <div class="modal-title" style="display:flex; align-items:center; gap:8px;">
+      <span>🎙️ การตั้งค่าสิทธิ์ไมโครโฟน & คำสั่งเสียงบน PC และ มือถือ</span>
+    </div>
+    <div class="auth-box" style="border-left: 3px solid var(--orange);">
+      <div class="auth-box__title" style="color:var(--orange);">
+        <span>⚠️ ทำไมบน PC ถึงใช้คำสั่งเสียงไม่ได้ แต่บนมือถือใช้ได้?</span>
+      </div>
+      <div class="auth-box__desc">
+        1. <b>HTTP vs HTTPS:</b> บนมือถือเปิดผ่าน <code>https://homelab.tail285279.ts.net</code> (มีกุญแจเขียว SSL จาก Let's Encrypt / Tailscale) เบราว์เซอร์จึงอนุญาตให้ใช้ไมค์ได้ แต่บน PC หากเข้าผ่าน HTTP ธรรมดา (เช่น <code>http://...</code> หรือ Port 8090) เบราว์เซอร์จะ<b>บล็อกไมโครโฟนเด็ดขาด</b>ตามมาตรฐานความปลอดภัย<br>
+        2. <b>สิทธิ์ระดับ Windows OS:</b> บน Windows 10/11 หากปิดตัวเลือก <i>"Let desktop apps access your microphone"</i> เบราว์เซอร์จะไม่สามารถรับเสียงได้
+      </div>
+    </div>
+
+    <div class="auth-box">
+      <div class="auth-box__title" style="color:var(--cyan);">
+        <span>💡 วิธีแก้ไขที่ 1: เข้าใช้งานผ่าน Tailscale HTTPS (แนะนำที่สุด สำเร็จ 100%)</span>
+      </div>
+      <div class="auth-box__desc">
+        ใช้ลิงก์โดเมน Tailscale แบบ <b>HTTPS</b> ซึ่งมี SSL Certificate ถูกต้อง ปลอดภัย และปลดล็อก Web Speech API ทันที:
+      </div>
+      <a id="link-https-switch" href="https://homelab.tail285279.ts.net/" target="_top" class="btn btn--primary" style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; text-decoration:none;">
+        🔐 เปิดผ่าน HTTPS (https://homelab.tail285279.ts.net/)
+      </a>
+    </div>
+
+    <div class="auth-box">
+      <div class="auth-box__title" style="color:var(--purple);">
+        <span>💻 ตรวจสอบสิทธิ์ไมค์บน Windows PC (หากเปิด HTTPS แล้วยังไม่ได้ยิน)</span>
+      </div>
+      <div class="auth-box__desc">
+        1. <b>ไอคอนแม่กุญแจหน้า URL:</b> คลิกไอคอนรูปตัวปรับแต่งหรือแม่กุญแจหน้า URL บนเบราว์เซอร์ แล้วเลือก <b>Microphone &rarr; Allow (อนุญาต)</b><br>
+        2. <b>Windows Privacy:</b> เปิด Settings &rarr; Privacy & security &rarr; <b>Microphone</b> ตรวจสอบว่าเปิด <b>"Microphone access"</b> และ <b>"Let apps access your microphone"</b> เป็น On<br>
+        3. <b>หากใช้ Brave Browser:</b> เข้า <code>brave://settings/extensions</code> แล้วเปิด <b>"Use Google services for speech recognition"</b>
+      </div>
+    </div>
+
+    <div class="auth-box">
+      <div class="auth-box__title" style="color:var(--green);">
+        <span>💡 วิธีแก้ไขที่ 3: ปลดล็อก HTTP สำหรับ IP นี้ใน Chrome / Edge</span>
+      </div>
+      <div class="auth-box__desc">
+        หากต้องการสั่งงานด้วยเสียงบน HTTP (พอร์ต 8090) โดยตรง:<br>
+        1. เปิดแท็บใหม่ใน Chrome พิมพ์: <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code><br>
+        2. ตรงช่องว่าง ให้ใส่: <code id="code-insecure-origin">http://192.168.1.123:8090</code><br>
+        3. เลือกเมนูเป็น <b>Enabled</b> แล้วกดปุ่ม <b>Relaunch</b>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" id="btn-modal-voice-close" class="btn btn--primary">เข้าใจแล้ว / ปิดหน้าต่าง</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-key" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-title">🔐 วิธียืนยันตัวตน GEMINI (เลือกวิธีใดวิธีหนึ่ง)</div>
+
+    <div class="auth-box">
+      <div class="auth-box__title">
+        <span>🌐 วิธีที่ 1: สมาชิก Gemini Pro / Advanced บนเว็บ (Google Account)</span>
+      </div>
+      <div class="auth-box__desc">
+        หากคุณสมัครสมาชิกรายเดือนบนเว็บไว้แล้ว (ไม่ต้องเสียเงินซื้อ API):<br>
+        1. เปิด <b>เว็บเทอร์มินัล</b> บนเซิร์ฟเวอร์<br>
+        2. พิมพ์คำสั่ง: <code>gemini</code> แล้วกด Enter<br>
+        3. เลือกลูกศรข้อ <b>[1] Login with Google</b><br>
+        4. ก๊อปปี้ลิงก์ที่ระบบแสดงไปเปิดในเบราว์เซอร์ เพื่อกดยืนยันด้วยบัญชี Google ที่สมัครไว้ ระบบจะบันทึกการล็อกอินถาวรทันทีครับ!
+      </div>
+      <a href="/terminal" target="_blank" class="btn btn--primary" style="display:inline-flex; align-items:center; gap:6px;">
+        💻 เปิดเว็บเทอร์มินัลเพื่อล็อกอิน
+      </a>
+    </div>
+
+    <div class="auth-box">
+      <div class="auth-box__title">
+        <span>⚡ วิธีที่ 2: ใช้ Gemini API Key ฟรี (จาก Google AI Studio)</span>
+      </div>
+      <div class="auth-box__desc">
+        รับ API Key ฟรี (ฟรี 15 ครั้ง/นาที ไม่ต้องผูกบัตรเครดิต) ได้ทันทีที่ 
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--cyan); text-decoration: underline;">Google AI Studio</a>
+      </div>
+      <input type="password" id="input-api-key" class="field-input" placeholder="วาง API Key ที่นี่ (AIzaSy...)">
+      <button type="button" id="btn-modal-save" class="btn btn--primary">บันทึก API Key</button>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" id="btn-modal-cancel" class="btn">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-memory" class="modal-overlay">
+  <div class="modal-card" style="max-width: 680px;">
+    <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between;">
+      <span>🧠 ความจำระยะยาวของ AI (Long-Term Memory)</span>
+      <span class="badge badge--ok" id="memory-status-badge">PERSISTENT</span>
+    </div>
+    <p style="font-size:12px; color:var(--ink-muted); margin-bottom:12px; line-height:1.5;">
+      ข้อมูลในนี้คือสิ่งที่ AI จดจำได้อย่างถาวรข้าม Session แม้จะปิดเว็บหรือรีเซ็ตแชท AI จะนำข้อมูลนี้มาใช้ประกอบการตอบเสมอ (บันทึกไว้ใน <code>~/.gemini/MEMORY.md</code>)
+    </p>
+
+    <div style="margin-bottom:12px;">
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <input type="text" id="input-quick-memory" class="field-input" style="margin-bottom:0;" placeholder="พิมพ์ข้อมูลที่อยากให้ AI จำเพิ่ม (เช่น 'อย่าลืมว่าฉันชอบให้ตอบสั้นๆ')...">
+        <button type="button" id="btn-quick-memory-add" class="btn btn--primary" style="white-space:nowrap;">➕ เพิ่มความจำ</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <div style="font-size:11px; font-family:var(--mono); color:var(--cyan); margin-bottom:4px; font-weight:600;">
+        📝 เอกสารความจำ (MEMORY.md) — สามารถแก้ไขข้อความได้โดยตรง:
+      </div>
+      <textarea id="memory-editor" class="field-input" style="height:260px; font-family:var(--mono); font-size:12px; line-height:1.45; resize:vertical; padding:10px;" placeholder="กำลังโหลดความจำ..."></textarea>
+    </div>
+
+    <div class="modal-actions" style="justify-content:space-between; align-items:center;">
+      <span id="memory-save-status" style="font-size:11.5px; font-family:var(--mono); color:var(--green);"></span>
+      <div style="display:flex; gap:8px;">
+        <button type="button" id="btn-modal-memory-close" class="btn">ปิดหน้าต่าง</button>
+        <button type="button" id="btn-modal-memory-save" class="btn btn--primary">💾 บันทึกความจำทั้งหมด</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const msgList = document.getElementById('messages-list');
+  const promptInput = document.getElementById('prompt-input');
+  const btnSend = document.getElementById('btn-send');
+  const btnSound = document.getElementById('btn-sound');
+  const btnAbort = document.getElementById('btn-abort');
+  const btnConfig = document.getElementById('btn-config');
+  const btnClear = document.getElementById('btn-clear');
+  const badgeKey = document.getElementById('badge-key');
+  const selCwd = document.getElementById('sel-cwd');
+  const selModel = document.getElementById('sel-model');
+  const modeBtns = document.querySelectorAll('.mode-btn');
+  const modalKey = document.getElementById('modal-key');
+  const inputApiKey = document.getElementById('input-api-key');
+  const btnModalSave = document.getElementById('btn-modal-save');
+  const btnModalCancel = document.getElementById('btn-modal-cancel');
+
+  // ── Settings Modal & Mobile Elements ──────────────────────────────────────
+  const modalSettings = document.getElementById('modal-settings');
+  const btnOpenSettings = document.getElementById('btn-open-settings');
+  const mobileModePill = document.getElementById('mobile-mode-pill');
+  const btnModalSettingsClose = document.getElementById('btn-modal-settings-close');
+  const btnModalSettingsX = document.getElementById('btn-modal-settings-x');
+  const modalSelModel = document.getElementById('modal-sel-model');
+  const modalSelCwd = document.getElementById('modal-sel-cwd');
+  const modeCardBtns = document.querySelectorAll('.mode-card-btn');
+  const modalBtnSound = document.getElementById('modal-btn-sound');
+  const modalBtnMemory = document.getElementById('modal-btn-memory');
+  const modalBtnConfig = document.getElementById('modal-btn-config');
+  const modalBtnToggleHud = document.getElementById('modal-btn-toggle-hud');
+  const modalBtnClear = document.getElementById('modal-btn-clear');
+
+  // ── Queue Management Elements ─────────────────────────────────────────────
+  const queueTray = document.getElementById('queue-tray');
+  const queueBadge = document.getElementById('queue-badge');
+  const queueTrayList = document.getElementById('queue-tray-list');
+  const btnQueueToggle = document.getElementById('btn-queue-toggle');
+  const btnQueueClear = document.getElementById('btn-queue-clear');
+  const modalQueueEdit = document.getElementById('modal-queue-edit');
+  const qeditId = document.getElementById('qedit-id');
+  const qeditPrompt = document.getElementById('qedit-prompt');
+  const qeditMode = document.getElementById('qedit-mode');
+  const btnModalQeditCancel = document.getElementById('btn-modal-qedit-cancel');
+  const btnModalQeditSave = document.getElementById('btn-modal-qedit-save');
+  const btnModalQeditX = document.getElementById('btn-modal-qedit-x');
+
+  let currentQueue = [];
+
+  function escapeHtml(str) {
+    return (str || '').replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[m]);
+  }
+
+  function renderQueue(queueItems) {
+    currentQueue = Array.isArray(queueItems) ? queueItems : [];
+    if (!queueTray || !queueBadge || !queueTrayList) return;
+
+    if (currentQueue.length === 0) {
+      queueTray.style.display = 'none';
+      return;
+    }
+
+    queueTray.style.display = 'block';
+    queueBadge.textContent = currentQueue.length + ' IN QUEUE';
+
+    queueTrayList.innerHTML = '';
+    currentQueue.forEach((item, idx) => {
+      const el = document.createElement('div');
+      el.className = 'queue-item';
+      el.dataset.taskId = item.id;
+      el.innerHTML = `
+        <div class="queue-item__order">#${idx + 1}</div>
+        <div class="queue-item__mode queue-item__mode--${item.mode || 'exec'}">${(item.mode || 'EXEC').toUpperCase()}</div>
+        <div class="queue-item__text" title="${escapeHtml(item.prompt)}">${escapeHtml(item.prompt)}</div>
+        <div class="queue-item__actions">
+          <button type="button" class="btn-q-act" data-action="up" data-id="${item.id}" title="เลื่อนลำดับขึ้น" ${idx === 0 ? 'disabled style="opacity:0.3;cursor:default;"' : ''}>▲</button>
+          <button type="button" class="btn-q-act" data-action="down" data-id="${item.id}" title="เลื่อนลำดับลง" ${idx === currentQueue.length - 1 ? 'disabled style="opacity:0.3;cursor:default;"' : ''}>▼</button>
+          <button type="button" class="btn-q-act" data-action="edit" data-id="${item.id}" title="แก้ไขคำสั่งนี้">✏️ แก้ไข</button>
+          <button type="button" class="btn-q-act btn-q-act--danger" data-action="delete" data-id="${item.id}" title="ลบออกจากคิว">✕ ลบ</button>
+        </div>
+      `;
+      queueTrayList.appendChild(el);
+    });
+  }
+
+  if (queueTrayList) {
+    queueTrayList.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (!id) return;
+
+      if (action === 'delete') {
+        try {
+          const res = await fetch('/api/gemini/queue/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+          });
+          const data = await res.json();
+          if (data.ok && data.queue) renderQueue(data.queue);
+        } catch (err) {
+          alert('ลบคำสั่งไม่สำเร็จ: ' + err.message);
+        }
+      } else if (action === 'edit') {
+        const item = currentQueue.find(t => t.id === id);
+        if (item && modalQueueEdit) {
+          qeditId.value = item.id;
+          qeditPrompt.value = item.prompt;
+          qeditMode.value = item.mode || 'exec';
+          modalQueueEdit.classList.add('is-open');
+        }
+      } else if (action === 'up' || action === 'down') {
+        try {
+          const res = await fetch('/api/gemini/queue/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, direction: action })
+          });
+          const data = await res.json();
+          if (data.ok && data.queue) renderQueue(data.queue);
+        } catch (_) {}
+      }
+    });
+  }
+
+  if (btnQueueToggle && queueTray) {
+    btnQueueToggle.addEventListener('click', () => {
+      const isCol = queueTray.classList.toggle('is-collapsed');
+      btnQueueToggle.textContent = isCol ? '▲ ขยาย' : '▼ ย่อ';
+    });
+  }
+
+  if (btnQueueClear) {
+    btnQueueClear.addEventListener('click', async () => {
+      if (!confirm('ต้องการล้างคำสั่งที่รออยู่ในคิวทั้งหมดใช่หรือไม่?')) return;
+      try {
+        const res = await fetch('/api/gemini/queue/clear', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) renderQueue([]);
+      } catch (err) {
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+      }
+    });
+  }
+
+  // Edit Modal actions
+  if (btnModalQeditCancel && modalQueueEdit) {
+    btnModalQeditCancel.addEventListener('click', () => modalQueueEdit.classList.remove('is-open'));
+  }
+  if (btnModalQeditX && modalQueueEdit) {
+    btnModalQeditX.addEventListener('click', () => modalQueueEdit.classList.remove('is-open'));
+  }
+  if (btnModalQeditSave && modalQueueEdit) {
+    btnModalQeditSave.addEventListener('click', async () => {
+      const id = qeditId.value;
+      const prompt = qeditPrompt.value.trim();
+      const mode = qeditMode.value;
+      if (!prompt) return alert('ข้อความคำสั่งต้องไม่ว่างเปล่า');
+
+      try {
+        const res = await fetch('/api/gemini/queue/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, prompt, mode })
+        });
+        const data = await res.json();
+        if (data.ok && data.queue) {
+          renderQueue(data.queue);
+          modalQueueEdit.classList.remove('is-open');
+        } else {
+          alert('แก้ไขไม่สำเร็จ: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+      }
+    });
+  }
+
+  async function fetchQueue() {
+    try {
+      const res = await fetch('/api/gemini/queue');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.queue) renderQueue(data.queue);
+      }
+    } catch (_) {}
+  }
+
+  let currentMode = 'exec';
+  let isRunning = false;
+  let needNewSession = false;
+  let wasThinking = false;
+
+  function setMode(mode) {
+    currentMode = mode;
+    modeBtns.forEach((x) => x.classList.toggle('is-active', x.dataset.mode === mode));
+    modeCardBtns.forEach((x) => x.classList.toggle('is-active', x.dataset.modeSel === mode));
+    if (mobileModePill) {
+      mobileModePill.dataset.mode = mode;
+      mobileModePill.textContent = (mode === 'exec') ? '⚡ YOLO' : (mode === 'chat' ? '💬 CHAT' : '📋 PLAN');
+    }
+  }
+
+  // ── Web Audio Sound Effects ─────────────────────────────────────────────
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    return audioCtx;
+  }
+
+  function isSoundEnabled() {
+    return localStorage.getItem('homelab_sound_fx') !== '0';
+  }
+
+  function updateSoundBtn() {
+    const enabled = isSoundEnabled();
+    const text = enabled ? '🔊 Sound' : '🔇 Muted';
+    const title = enabled ? 'เสียงเอฟเฟกต์ AI: เปิด (คลิกเพื่อปิด)' : 'เสียงเอฟเฟกต์ AI: ปิด (คลิกเพื่อเปิด)';
+    if (btnSound) {
+      btnSound.textContent = text;
+      btnSound.title = title;
+      btnSound.style.opacity = enabled ? '1' : '0.6';
+    }
+    if (modalBtnSound) {
+      modalBtnSound.textContent = (enabled ? '🔊 เสียงเปิดอยู่' : '🔇 เสียงปิดอยู่') + ' (คลิกสลับ)';
+      modalBtnSound.style.opacity = enabled ? '1' : '0.7';
+    }
+  }
+
+  function toggleSound() {
+    const next = !isSoundEnabled();
+    localStorage.setItem('homelab_sound_fx', next ? '1' : '0');
+    updateSoundBtn();
+    if (next) playAiDoneSound();
+    try {
+      window.parent?.postMessage({ type: 'homelab_sound_fx', enabled: next }, '*');
+    } catch (_) {}
+  }
+
+  if (btnSound) {
+    btnSound.addEventListener('click', toggleSound);
+  }
+  if (modalBtnSound) {
+    modalBtnSound.addEventListener('click', toggleSound);
+  }
+  updateSoundBtn();
+
+  // ── Settings Modal Handlers & Sync ────────────────────────────────────────
+  function openSettingsModal() {
+    if (modalSettings) modalSettings.classList.add('is-open');
+  }
+  function closeSettingsModal() {
+    if (modalSettings) modalSettings.classList.remove('is-open');
+  }
+
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', openSettingsModal);
+  if (mobileModePill) mobileModePill.addEventListener('click', openSettingsModal);
+  if (btnModalSettingsClose) btnModalSettingsClose.addEventListener('click', closeSettingsModal);
+  if (btnModalSettingsX) btnModalSettingsX.addEventListener('click', closeSettingsModal);
+
+  // Mode Selection in Modal & Topbar
+  modeBtns.forEach((b) => {
+    b.addEventListener('click', () => setMode(b.dataset.mode));
+  });
+  modeCardBtns.forEach((b) => {
+    b.addEventListener('click', () => setMode(b.dataset.modeSel));
+  });
+
+  // Model Selection Sync
+  if (selModel && modalSelModel) {
+    selModel.addEventListener('change', () => {
+      modalSelModel.value = selModel.value;
+      const modelTag = document.getElementById('ai-hud-model-tag');
+      if (modelTag && selModel.selectedIndex >= 0) {
+        modelTag.textContent = selModel.options[selModel.selectedIndex].text;
+      }
+    });
+    modalSelModel.addEventListener('change', () => {
+      selModel.value = modalSelModel.value;
+      const modelTag = document.getElementById('ai-hud-model-tag');
+      if (modelTag && modalSelModel.selectedIndex >= 0) {
+        modelTag.textContent = modalSelModel.options[modalSelModel.selectedIndex].text;
+      }
+    });
+  }
+
+  // CWD Directory Selection Sync
+  if (selCwd && modalSelCwd) {
+    selCwd.addEventListener('change', () => {
+      modalSelCwd.value = selCwd.value;
+    });
+    modalSelCwd.addEventListener('change', () => {
+      selCwd.value = modalSelCwd.value;
+    });
+  }
+
+  // Modal Action Buttons
+  if (modalBtnMemory) {
+    modalBtnMemory.addEventListener('click', () => {
+      closeSettingsModal();
+      openMemoryModal();
+    });
+  }
+  if (modalBtnConfig) {
+    modalBtnConfig.addEventListener('click', () => {
+      closeSettingsModal();
+      modalKey.classList.add('is-open');
+    });
+  }
+  if (modalBtnClear) {
+    modalBtnClear.addEventListener('click', () => {
+      closeSettingsModal();
+      btnClear.click();
+    });
+  }
+  if (modalBtnToggleHud) {
+    modalBtnToggleHud.addEventListener('click', () => {
+      const hud = document.getElementById('ai-status-hud');
+      if (hud) {
+        const isShown = hud.classList.toggle('show-visual');
+        modalBtnToggleHud.textContent = isShown ? '👁️ ซ่อนลูกแก้ว Visualizer' : '👁️ แสดงลูกแก้ว 3D Visualizer';
+      }
+    });
+  }
+
+  window.addEventListener('message', (ev) => {
+    if (ev.data && ev.data.type === 'homelab_sound_fx') {
+      updateSoundBtn();
+    }
+  });
+  window.addEventListener('storage', (ev) => {
+    if (ev.key === 'homelab_sound_fx') updateSoundBtn();
+  });
+
+  function playAiThinkingSound() {
+    if (!isSoundEnabled()) return;
+    try {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      const t = ctx.currentTime;
+      [523.25, 659.25].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.15, t + 0.16);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(idx === 0 ? 0.05 : 0.035, t + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.24);
+      });
+    } catch (_) {}
+  }
+
+  function playAiDoneSound() {
+    if (!isSoundEnabled()) return;
+    try {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      const t = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(659.25, t);
+      gain1.gain.setValueAtTime(0.05, t);
+      gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(t);
+      osc1.stop(t + 0.13);
+
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(880, t + 0.09);
+      gain2.gain.setValueAtTime(0.065, t + 0.09);
+      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(t + 0.09);
+      osc2.stop(t + 0.36);
+    } catch (_) {}
+  }
+
+  function setAiThinkingState(thinking) {
+    const hud = document.getElementById('ai-status-hud');
+    const reactorStatus = document.getElementById('reactor-status-text');
+    const badge = document.getElementById('ai-hud-status-badge');
+    const desc = document.getElementById('ai-hud-desc');
+    const modelTag = document.getElementById('ai-hud-model-tag');
+
+    const curModel = selModel && selModel.selectedIndex >= 0
+      ? selModel.options[selModel.selectedIndex].text
+      : 'Gemini 3.8 Flash';
+    if (modelTag) modelTag.textContent = curModel;
+
+    if (thinking) {
+      wasThinking = true;
+      playAiThinkingSound();
+      if (hud) hud.classList.add('is-thinking');
+      if (reactorStatus) reactorStatus.textContent = 'กำลังประมวลผล...';
+      if (badge) {
+        badge.textContent = '🔥 THINKING';
+        badge.className = 'ai-hud-badge ai-hud-badge--thinking';
+      }
+      if (desc) desc.textContent = 'กำลังคิดวิเคราะห์คำสั่ง ประมวลผล และสั่งการเซิร์ฟเวอร์...';
+      if (btnSend) {
+        btnSend.innerHTML = '➕ คิว ↵';
+        btnSend.className = 'btn btn--queue btn-send';
+        btnSend.title = 'AI กำลังทำงานอยู่ — พิมพ์คำสั่งแล้วกดปุ่มนี้เพื่อเพิ่มเข้าคิวทำงานต่ออัตโนมัติ';
+        btnSend.style.display = 'inline-flex';
+      }
+      if (btnAbort) btnAbort.style.display = 'inline-flex';
+    } else {
+      if (wasThinking) {
+        wasThinking = false;
+        playAiDoneSound();
+      }
+      if (hud) hud.classList.remove('is-thinking');
+      if (reactorStatus) reactorStatus.textContent = 'พร้อมรับคำสั่ง';
+      if (badge) {
+        badge.textContent = '⚡ AI READY';
+        badge.className = 'ai-hud-badge';
+      }
+      if (desc) desc.textContent = 'ระบบพร้อมทำงาน · รอรับคำสั่งจากผู้ใช้งาน';
+      if (btnSend) {
+        btnSend.innerHTML = 'ส่ง ↵';
+        btnSend.className = 'btn btn--primary btn-send';
+        btnSend.title = 'ส่งคำสั่งให้ AI ประมวลผลทันที';
+        btnSend.style.display = 'inline-flex';
+      }
+      if (btnAbort) btnAbort.style.display = 'none';
+    }
+  }
+
+  if (selModel) {
+    selModel.addEventListener('change', () => {
+      const modelTag = document.getElementById('ai-hud-model-tag');
+      if (modelTag && selModel.selectedIndex >= 0) {
+        modelTag.textContent = selModel.options[selModel.selectedIndex].text;
+      }
+    });
+  }
+
+  modeBtns.forEach((b) => {
+    b.addEventListener('click', () => {
+      modeBtns.forEach((x) => x.classList.remove('is-active'));
+      b.classList.add('is-active');
+      currentMode = b.dataset.mode;
+    });
+  });
+
+  async function loadStatus() {
+    try {
+      const res = await fetch('/api/gemini/status');
+      const data = await res.json();
+      if (data.engine === 'antigravity' || data.authType === 'antigravity-oauth') {
+        badgeKey.className = 'badge badge--ok';
+        badgeKey.textContent = 'ONLINE';
+        const subEl = document.getElementById('brand-sub');
+        if (subEl) subEl.textContent = 'Antigravity Core ' + (data.version || '') + ' · ' + (data.oauthEmail || 'Ready');
+      } else if (data.authType === 'google-oauth') {
+        badgeKey.className = 'badge badge--ok';
+        badgeKey.textContent = 'ACCOUNT: ' + (data.oauthEmail || 'GEMINI PRO');
+      } else if (data.hasKey) {
+        badgeKey.className = 'badge badge--ok';
+        badgeKey.textContent = 'API KEY ACTIVE';
+      } else {
+        badgeKey.className = 'badge badge--warn';
+        badgeKey.textContent = 'AUTH: NOT CONFIGURED';
+      }
+
+      if (data.models && data.models.length) {
+        [selModel, modalSelModel].forEach((sel) => {
+          if (!sel) return;
+          const cur = sel.value;
+          sel.innerHTML = '';
+          data.models.forEach((m) => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name;
+            if (m.id === cur || (!cur && m.id === 'gemini-3.8-flash-medium')) opt.selected = true;
+            sel.appendChild(opt);
+          });
+        });
+        const modelTag = document.getElementById('ai-hud-model-tag');
+        if (modelTag && selModel && selModel.selectedIndex >= 0) {
+          modelTag.textContent = selModel.options[selModel.selectedIndex].text;
+        }
+      }
+
+      if (data.projects && data.projects.length) {
+        [selCwd, modalSelCwd].forEach((sel) => {
+          if (!sel) return;
+          sel.innerHTML = '<option value="/home/dev/projects">📁 /home/dev/projects (Root)</option>';
+          data.projects.forEach((p) => {
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = '📂 ' + p;
+            sel.appendChild(opt);
+          });
+        });
+      }
+    } catch (_) {
+      badgeKey.className = 'badge badge--warn';
+      badgeKey.textContent = 'DISCONNECTED';
+    }
+  }
+  loadStatus();
+  fetchQueue();
+
+  // Auto-upgrade Tailscale connection to HTTPS so Web Speech API works seamlessly on PC & Mobile
+  if (location.protocol === 'http:' && location.hostname.endsWith('.ts.net')) {
+    location.replace('https://' + location.host + location.pathname + location.search);
+  }
+
+  async function loadHistory() {
+    if (isRunning || document.getElementById('active-thinking-bar')) return;
+    try {
+      const res = await fetch('/api/gemini/history');
+      const history = await res.json();
+      if (Array.isArray(history) && history.length) {
+        // If current UI already has messages and is actively running, never clear!
+        if (msgList.children.length > 0 && isRunning) return;
+        msgList.innerHTML = '';
+        history.forEach((m) => appendMessage(m.role, m.content, false));
+        scrollToBottom();
+      }
+    } catch (_) {}
+  }
+  loadHistory();
+
+  function scrollToBottom() {
+    msgList.scrollTop = msgList.scrollHeight;
+  }
+
+  function appendMessage(role, content, save = true) {
+    const el = document.createElement('div');
+    el.className = 'msg ' + (role === 'user' ? 'msg--user' : 'msg--assistant');
+
+    const meta = document.createElement('div');
+    meta.className = 'msg__meta';
+    const authorName = (role === 'user') ? 'คุณ' : 'CORE';
+    meta.innerHTML = '<span class="msg__author">' + authorName + '</span><span>' + new Date().toLocaleTimeString() + '</span>';
+
+    const body = document.createElement('div');
+    body.className = 'msg__body';
+    body.textContent = content;
+
+    el.appendChild(meta);
+    el.appendChild(body);
+    msgList.appendChild(el);
+    scrollToBottom();
+
+    if (save) {
+      persistHistory();
+    }
+    return body;
+  }
+
+  function persistHistory() {
+    const items = [];
+    document.querySelectorAll('.msg').forEach((m) => {
+      const isUser = m.classList.contains('msg--user');
+      const text = m.querySelector('.msg__body')?.textContent || '';
+      if (!isUser && !text.trim()) return;
+      items.push({ role: isUser ? 'user' : 'assistant', content: text });
+    });
+    fetch('/api/gemini/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: items.slice(-30) })
+    }).catch(function(){});
+  }
+
+  // ── Unified Turn Management & Background Job Engine ──────────────────────────
+  let pollTimer = null;
+  let currentTurnJobId = null;
+  let currentTurnResponseBody = null;
+
+  function createTurnUI(jobId, promptText) {
+    // 1. Clean up any existing thinking card from previous turns
+    const oldBar = document.getElementById('active-thinking-bar');
+    if (oldBar) oldBar.remove();
+
+    // 2. Append User message bubble (with same look & feel as normal prompts)
+    appendMessage('user', promptText, false);
+
+    // 3. Append Assistant message bubble
+    const body = appendMessage('assistant', '', false);
+    if (jobId && body.parentElement) {
+      body.parentElement.setAttribute('data-job-id', jobId);
+    }
+
+    // 4. Create and insert Thinking Card with shimmer animation
+    const thinkingCard = document.createElement('div');
+    thinkingCard.className = 'msg__thinking-card';
+    thinkingCard.id = 'active-thinking-bar';
+    thinkingCard.innerHTML = `
+      <div class="msg__thinking-meta">
+        <span class="msg__thinking-label">
+          <span class="ai-pulse-dot"></span>
+          ⚡ AI กำลังคิดวิเคราะห์และประมวลผลคำสั่ง...
+        </span>
+        <span class="msg__thinking-sub">ANTIGRAVITY CORE</span>
+      </div>
+      <div class="msg__thinking-shimmer-track">
+        <div class="msg__thinking-shimmer-bar"></div>
+      </div>
+    `;
+    if (body && body.parentElement) {
+      body.parentElement.insertBefore(thinkingCard, body);
+    }
+
+    currentTurnJobId = jobId;
+    currentTurnResponseBody = body;
+    isRunning = true;
+    setAiThinkingState(true);
+    scrollToBottom();
+
+    return body;
+  }
+
+  function startBackgroundJobPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    isRunning = true;
+    setAiThinkingState(true);
+
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch('/api/gemini/job');
+        if (!res.ok) return;
+        const job = await res.json();
+
+        if (job.queue) {
+          renderQueue(job.queue);
+        }
+
+        if (job.status === 'running') {
+          // Detect transition to a new job from the queue
+          if (job.id && job.id !== currentTurnJobId) {
+            const existingEl = document.querySelector(`.msg[data-job-id="${job.id}"] .msg__body`);
+            if (existingEl) {
+              currentTurnJobId = job.id;
+              currentTurnResponseBody = existingEl;
+            } else {
+              currentTurnResponseBody = createTurnUI(job.id, job.prompt);
+            }
+          }
+
+          // Stream output if present
+          if (currentTurnResponseBody && job.output) {
+            const activeBar = document.getElementById('active-thinking-bar');
+            if (activeBar && job.output.trim().length > 0) {
+              activeBar.remove();
+            }
+            currentTurnResponseBody.textContent = job.output;
+            scrollToBottom();
+          }
+        } else {
+          // Current job is finished (completed, error, aborted, or idle)
+          if (currentTurnResponseBody && job.output && (!currentTurnResponseBody.textContent || currentTurnResponseBody.textContent.length < job.output.length)) {
+            currentTurnResponseBody.textContent = job.output;
+          }
+          const activeBar = document.getElementById('active-thinking-bar');
+          if (activeBar) activeBar.remove();
+
+          // If there are still tasks waiting in the queue on server, KEEP POLLING!
+          if (job.queue && job.queue.length > 0) {
+            setAiThinkingState(true);
+            return;
+          }
+
+          // When queue is empty AND no job is running: finish run and persist history
+          clearInterval(pollTimer);
+          pollTimer = null;
+          currentTurnJobId = null;
+          currentTurnResponseBody = null;
+          finishRun();
+          persistHistory();
+        }
+      } catch (err) {
+        console.warn('Poll job error:', err);
+      }
+    }, 750);
+  }
+
+  async function checkActiveJobOnResume() {
+    try {
+      const res = await fetch('/api/gemini/job');
+      if (!res.ok) return;
+      const job = await res.json();
+      if (job.queue) renderQueue(job.queue);
+
+      if (job.status === 'running') {
+        if (msgList.children.length === 0) {
+          await loadHistory();
+        }
+
+        let body = null;
+        if (job.id) {
+          const el = document.querySelector(`.msg[data-job-id="${job.id}"] .msg__body`);
+          if (el) body = el;
+        }
+
+        if (!body) {
+          body = createTurnUI(job.id, job.prompt);
+        } else {
+          currentTurnJobId = job.id;
+          currentTurnResponseBody = body;
+        }
+
+        if (job.output && job.output.trim().length > 0) {
+          const activeBar = document.getElementById('active-thinking-bar');
+          if (activeBar) activeBar.remove();
+          body.textContent = job.output;
+        }
+
+        startBackgroundJobPolling();
+      } else if (!isRunning && msgList.children.length === 0) {
+        loadHistory();
+      }
+    } catch (_) {}
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkActiveJobOnResume();
+    }
+  });
+  window.addEventListener('focus', checkActiveJobOnResume);
+  setTimeout(checkActiveJobOnResume, 600);
+
+  let isVoiceListening = false;
+  let stopVoiceListening = null;
+
+  async function sendPrompt(text) {
+    if (typeof stopVoiceListening === 'function') {
+      stopVoiceListening(true);
+    }
+
+    const prompt = (text || promptInput.value || '').trim();
+    if (!prompt) return;
+
+    if (isRunning) {
+      // ── Enqueue task if AI is currently busy ──
+      promptInput.value = '';
+      try {
+        const res = await fetch('/api/gemini/queue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            mode: currentMode,
+            cwd: selCwd.value,
+            model: selModel ? selModel.value : undefined
+          })
+        });
+        const data = await res.json();
+        if (data.ok && data.queue) {
+          renderQueue(data.queue);
+          playAiDoneSound();
+        } else {
+          alert('ไม่สามารถเพิ่มเข้าคิวได้: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('เกิดข้อผิดพลาดในการเชื่อมต่อคิว: ' + err.message);
+      }
+      return;
+    }
+
+    promptInput.value = '';
+    const directJobId = 'job_direct_' + Date.now();
+    const responseBody = createTurnUI(directJobId, prompt);
+
+    let fullOutput = '';
+
+    try {
+      const cwd = selCwd.value;
+      const model = selModel ? selModel.value : undefined;
+      const res = await fetch('/api/gemini/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, mode: currentMode, cwd, model, resetSession: needNewSession })
+      });
+      needNewSession = false;
+      const sessionTag = document.getElementById('ai-hud-session-tag');
+      if (sessionTag) {
+        sessionTag.textContent = '🧠 SESSION: ACTIVE';
+        sessionTag.className = 'ai-hud-session';
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        responseBody.textContent = '❌ Error: ' + (err.error || 'Request failed with status ' + res.status);
+        if (err.error && (err.error.includes('KEY') || err.error.includes('ยืนยันตัวตน'))) {
+          modalKey.classList.add('is-open');
+        }
+        finishRun();
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith(':')) {
+            // Heartbeat / keepalive comment from server - keep connection open
+            continue;
+          }
+          if (line.startsWith('data: ')) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.type === 'stdout' || payload.type === 'stderr') {
+                const activeBar = document.getElementById('active-thinking-bar');
+                if (activeBar) activeBar.remove();
+                fullOutput += payload.text;
+                responseBody.textContent = fullOutput;
+                scrollToBottom();
+              } else if (payload.exitCode !== undefined) {
+                if (payload.error) fullOutput += '\n\n[Process exited: ' + payload.error + ']';
+                responseBody.textContent = fullOutput;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      const activeBar = document.getElementById('active-thinking-bar');
+      if (activeBar) activeBar.remove();
+      persistHistory();
+
+      // Check if queue has more items waiting on server:
+      try {
+        const qRes = await fetch('/api/gemini/queue').then(r => r.json()).catch(() => ({ queue: [] }));
+        if (qRes.queue && qRes.queue.length > 0) {
+          renderQueue(qRes.queue);
+          // Switch cleanly to background job polling for queued items!
+          startBackgroundJobPolling();
+          return;
+        }
+      } catch (_) {}
+
+      finishRun();
+    } catch (e) {
+      console.warn('SSE stream interrupted (screen off, background, or network switch):', e);
+      // AI is continuing to run on the server! Seamlessly switch to background job polling.
+      startBackgroundJobPolling();
+    }
+  }
+
+  function finishRun() {
+    isRunning = false;
+    setAiThinkingState(false);
+    btnSend.style.display = 'inline-flex';
+    btnAbort.style.display = 'none';
+    const activeBar = document.getElementById('active-thinking-bar');
+    if (activeBar) activeBar.remove();
+  }
+
+  btnAbort.addEventListener('click', async () => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    try {
+      await fetch('/api/gemini/abort', { method: 'POST' });
+    } catch (_) {}
+    finishRun();
+  });
+
+  // ── Voice Command Input (Web Speech API) ──────────────────────────────────
+  const btnMic = document.getElementById('btn-mic');
+  const modalVoiceHelp = document.getElementById('modal-voice-help');
+  const btnModalVoiceClose = document.getElementById('btn-modal-voice-close');
+  const linkHttpsSwitch = document.getElementById('link-https-switch');
+  const codeInsecureOrigin = document.getElementById('code-insecure-origin');
+  const voiceActiveIndicator = document.getElementById('voice-active-indicator');
+
+  if (linkHttpsSwitch) {
+    linkHttpsSwitch.href = 'https://' + location.hostname + '/';
+  }
+  if (codeInsecureOrigin) {
+    codeInsecureOrigin.textContent = location.origin;
+  }
+  if (btnModalVoiceClose && modalVoiceHelp) {
+    btnModalVoiceClose.addEventListener('click', () => modalVoiceHelp.classList.remove('is-open'));
+  }
+
+  function showVoiceHelpModal() {
+    if (modalVoiceHelp) {
+      modalVoiceHelp.classList.add('is-open');
+    }
+  }
+
+  let recognition = null;
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (SpeechRec) {
+    let baseText = '';
+
+    try {
+      recognition = new SpeechRec();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'th-TH';
+
+      recognition.onstart = () => {
+        isVoiceListening = true;
+        btnMic.classList.add('is-listening');
+        btnMic.innerHTML = '🔴';
+        btnMic.title = 'กำลังฟังเสียง... (คลิกเพื่อหยุด)';
+        if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'flex';
+      };
+
+      recognition.onresult = (event) => {
+        if (!isVoiceListening || isRunning) return;
+        let finalTranscript = '';
+        let interimTranscript = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalTranscript += res[0].transcript;
+          } else {
+            interimTranscript += res[0].transcript;
+          }
+        }
+        const speech = (finalTranscript + interimTranscript).trim();
+        if (speech && isVoiceListening && !isRunning) {
+          promptInput.value = baseText ? (baseText + ' ' + speech) : speech;
+          promptInput.scrollTop = promptInput.scrollHeight;
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn('Voice recognition error:', event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          showVoiceHelpModal();
+        } else if (event.error === 'audio-capture') {
+          alert('⚠️ ไม่พบไมโครโฟน: คอมพิวเตอร์ไม่ได้ต่อไมค์ หรือไมค์ถูกปิดการใช้งานใน Windows Settings');
+        } else if (event.error === 'network') {
+          alert('⚠️ ติดต่อระบบแปลงเสียง Google Speech Service ไม่ได้ (ตรวจสอบเน็ตหรือการบล็อกบนเบราว์เซอร์)');
+        }
+        stopListening(true);
+      };
+
+      recognition.onend = () => {
+        stopListening(false);
+      };
+    } catch (e) {
+      console.warn('SpeechRecognition initialization error:', e);
+    }
+
+    function startListening() {
+      // 1. Check secure context (Chrome blocks speech recognition on insecure HTTP origins)
+      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if (!window.isSecureContext && !isLocal) {
+        if (location.hostname.endsWith('.ts.net')) {
+          if (confirm('🎙️ คำสั่งเสียงต้องใช้ HTTPS ที่ปลอดภัย\nคลิก OK เพื่อสลับไปใช้งานผ่าน HTTPS ทันที')) {
+            location.href = 'https://' + location.host + location.pathname + location.search;
+            return;
+          }
+        }
+        showVoiceHelpModal();
+        return;
+      }
+
+      try {
+        baseText = promptInput.value ? promptInput.value.trim() : '';
+        recognition.start();
+      } catch (e) {
+        console.warn('SpeechRecognition start failed:', e);
+        if (e.name === 'InvalidStateError') {
+          return;
+        }
+        showVoiceHelpModal();
+      }
+    }
+
+    function stopListening(abort = false) {
+      isVoiceListening = false;
+      baseText = '';
+      btnMic.classList.remove('is-listening');
+      btnMic.innerHTML = '🎙️';
+      btnMic.title = 'สั่งการด้วยเสียง (คลิกเพื่อพูด)';
+      if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'none';
+      try {
+        if (recognition) {
+          if (abort) {
+            recognition.abort();
+          } else {
+            recognition.stop();
+          }
+        }
+      } catch (_) {}
+    }
+    stopVoiceListening = stopListening;
+
+    btnMic.addEventListener('click', () => {
+      if (isVoiceListening) {
+        stopListening(false);
+      } else {
+        startListening();
+      }
+    });
+  } else {
+    if (btnMic) {
+      btnMic.title = 'เบราว์เซอร์นี้ไม่รองรับ Web Speech API (แนะนำให้ใช้ Chrome หรือ Edge)';
+      btnMic.style.opacity = '0.7';
+      btnMic.addEventListener('click', () => {
+        showVoiceHelpModal();
+      });
+    }
+  }
+
+  btnSend.addEventListener('click', () => sendPrompt());
+
+  promptInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendPrompt();
+    }
+  });
+
+  document.querySelectorAll('.chip').forEach((c) => {
+    c.addEventListener('click', () => {
+      sendPrompt(c.dataset.prompt);
+    });
+  });
+
+  btnClear.addEventListener('click', async () => {
+    if (!confirm('ต้องการล้างประวัติการคุยทั้งหมดและเริ่ม Session ใหม่ใช่หรือไม่?')) return;
+    needNewSession = true;
+    await fetch('/api/gemini/clear-history', { method: 'POST' }).catch(function(){});
+    msgList.innerHTML = '';
+    appendMessage('assistant', 'ประวัติการคุยถูกล้างเรียบร้อย พร้อมเริ่ม Session ใหม่ครับ', false);
+    const sessionTag = document.getElementById('ai-hud-session-tag');
+    if (sessionTag) {
+      sessionTag.textContent = '🔄 SESSION: NEW';
+      sessionTag.className = 'ai-hud-session ai-hud-session--new';
+    }
+  });
+
+  btnConfig.addEventListener('click', () => modalKey.classList.add('is-open'));
+  btnModalCancel.addEventListener('click', () => modalKey.classList.remove('is-open'));
+
+  btnModalSave.addEventListener('click', async () => {
+    const val = inputApiKey.value.trim();
+    if (!val) return alert('กรุณากรอก API Key');
+
+    try {
+      const res = await fetch('/api/gemini/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: val })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        modalKey.classList.remove('is-open');
+        inputApiKey.value = '';
+        loadStatus();
+        alert('บันทึก API Key เรียบร้อยแล้ว!');
+      } else {
+        alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown'));
+      }
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message);
+    }
+  });
+
+  // ── Long-Term Memory Manager (Modal & API) ──────────────────────────────
+  const btnMemory = document.getElementById('btn-memory');
+  const modalMemory = document.getElementById('modal-memory');
+  const memoryEditor = document.getElementById('memory-editor');
+  const btnModalMemoryClose = document.getElementById('btn-modal-memory-close');
+  const btnModalMemorySave = document.getElementById('btn-modal-memory-save');
+  const inputQuickMemory = document.getElementById('input-quick-memory');
+  const btnQuickMemoryAdd = document.getElementById('btn-quick-memory-add');
+  const memorySaveStatus = document.getElementById('memory-save-status');
+
+  async function openMemoryModal() {
+    if (!modalMemory) return;
+    modalMemory.classList.add('is-open');
+    if (memoryEditor) memoryEditor.value = 'กำลังโหลดความจำจากเซิร์ฟเวอร์...';
+    if (memorySaveStatus) memorySaveStatus.textContent = '';
+    try {
+      const res = await fetch('/api/gemini/memory');
+      const data = await res.json();
+      if (memoryEditor) {
+        memoryEditor.value = data.memory || '# Antigravity Long-Term Memory\n\n## 👤 User Profile\n\n## 🧠 Learned Facts\n';
+      }
+    } catch (e) {
+      if (memoryEditor) memoryEditor.value = '# Error loading memory: ' + e.message;
+    }
+  }
+
+  if (btnMemory) btnMemory.addEventListener('click', openMemoryModal);
+  if (btnModalMemoryClose) btnModalMemoryClose.addEventListener('click', () => modalMemory.classList.remove('is-open'));
+
+  if (btnModalMemorySave) {
+    btnModalMemorySave.addEventListener('click', async () => {
+      if (memorySaveStatus) memorySaveStatus.textContent = 'กำลังบันทึก...';
+      try {
+        const res = await fetch('/api/gemini/memory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memory: memoryEditor.value })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          if (memorySaveStatus) memorySaveStatus.textContent = '✅ บันทึกความจำเรียบร้อยแล้ว!';
+          setTimeout(() => { if (memorySaveStatus) memorySaveStatus.textContent = ''; }, 3000);
+        } else {
+          if (memorySaveStatus) memorySaveStatus.textContent = '❌ ' + (data.error || 'บันทึกไม่สำเร็จ');
+        }
+      } catch (err) {
+        if (memorySaveStatus) memorySaveStatus.textContent = '❌ เกิดข้อผิดพลาด: ' + err.message;
+      }
+    });
+  }
+
+  if (btnQuickMemoryAdd) {
+    btnQuickMemoryAdd.addEventListener('click', async () => {
+      const fact = (inputQuickMemory.value || '').trim();
+      if (!fact) return;
+      btnQuickMemoryAdd.disabled = true;
+      try {
+        await fetch('/api/gemini/memory/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fact })
+        });
+        inputQuickMemory.value = '';
+        await openMemoryModal();
+        if (memorySaveStatus) memorySaveStatus.textContent = '✅ เพิ่มข้อความจำใหม่เรียบร้อย!';
+        setTimeout(() => { if (memorySaveStatus) memorySaveStatus.textContent = ''; }, 3000);
+      } catch (err) {
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+      } finally {
+        btnQuickMemoryAdd.disabled = false;
+      }
+    });
+  }
+
+})();
+</script>
+</body>
+</html>

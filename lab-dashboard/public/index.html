@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="tactical">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Home-lab Control Panel</title>
+<link rel="stylesheet" href="/styles.css?v=20261109-v13">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#06090e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Homelab">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+</head>
+<body>
+
+<!-- ── icon sprite ────────────────────────────────────────────────────────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+  <symbol id="i-unknown" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16h.01"/><path d="M12 8a2.5 2.5 0 1 1 3.4 2.33c-.6.28-.9.83-.9 1.42V13"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></symbol>
+  <symbol id="i-mem" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 11v2M10 11v2M14 11v2M18 11v2"/></symbol>
+  <symbol id="i-disk" viewBox="0 0 24 24"><path d="M22 12H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M6 16h.01M10 16h.01"/></symbol>
+  <symbol id="i-temp" viewBox="0 0 24 24"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.27 6.96 8.73 5.05 8.73-5.05M12 22.08V12"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 3v18l14-9z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></symbol>
+  <symbol id="i-restart" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 1 0 2.13-9.36L1 10"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-future" viewBox="0 0 24 24"><path d="M12 2.6 20.1 7.3v9.4L12 21.4 3.9 16.7V7.3z"/><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6v3M20.1 7.3l-2.6 1.5M20.1 16.7l-2.6-1.5M3.9 16.7l2.6-1.5M3.9 7.3l2.6 1.5"/></symbol>
+  <symbol id="i-tactical" viewBox="0 0 24 24"><path d="M6 3h12l3 3v12l-3 3H6l-3-3V6z"/><path d="M3 9h5l2-2h4l2 2h5"/><path d="M7 16h2M11 16h2M15 16h2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 4.5A2.5 2.5 0 0 1 4.5 2H11v18H4.5A2.5 2.5 0 0 0 2 22z"/><path d="M22 4.5A2.5 2.5 0 0 0 19.5 2H13v18h6.5A2.5 2.5 0 0 1 22 22z"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="i-pwa" viewBox="0 0 24 24"><path d="M12 3v11M12 14l3.5-3.5M12 14l-3.5-3.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-volume-on" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-volume-off" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="23" y1="9" x2="17" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="17" y1="9" x2="23" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+</svg>
+
+<!-- ── header ─────────────────────────────────────────────────────────────── -->
+
+<!-- ── app layout wrapper (Sidebar + Workspace) ────────────────────────── -->
+<div class="app-layout" id="app-layout">
+
+  <!-- ── Desktop Sidebar Navigation (PC View) ─────────────────────────── -->
+  <aside class="sidebar" id="sidebar" aria-label="Desktop Navigation">
+    <div class="sidebar__brand">
+      <span class="brand__mark" aria-hidden="true"></span>
+      <div class="brand__info">
+        <strong>Home-lab</strong>
+        <span class="brand__host" id="sidebar-hostname">homelab</span>
+      </div>
+      <button type="button" class="sidebar-pin-btn" id="btn-sidebar-pin" title="Pin / Unpin Sidebar" aria-label="Pin sidebar">
+        <svg class="ico ico--sm"><use href="#i-dot"/></svg>
+      </button>
+      <span class="livedot" id="sidebar-livedot" title="Telemetry live pulse"><i></i></span>
+    </div>
+
+    <div class="sidebar__nav-group">
+      <div class="sidebar__group-label">NAVIGATION</div>
+      <nav class="sidebar__nav" id="sidebar-nav">
+        <!-- Floating magnetic active indicator -->
+        <div class="sidebar__indicator" id="sidebar-indicator" aria-hidden="true"></div>
+
+        <button type="button" class="sidebar__item is-active" data-view="overview" data-magnetic="true">
+          <svg class="ico"><use href="#i-activity"/></svg>
+          <span class="sidebar__item-label">แดชบอร์ดภาพรวม</span>
+        </button>
+        <button type="button" class="sidebar__item" data-view="services" data-magnetic="true">
+          <svg class="ico"><use href="#i-box"/></svg>
+          <span class="sidebar__item-label">บริการ &amp; คอนเทนเนอร์</span>
+          <span class="tab-badge" id="badge-sidebar-containers">…</span>
+        </button>
+        <button type="button" class="sidebar__item" data-view="ports" data-magnetic="true">
+          <svg class="ico"><use href="#i-shield"/></svg>
+          <span class="sidebar__item-label">พอร์ต &amp; ไฟร์วอลล์</span>
+          <span class="tab-badge" id="badge-sidebar-ports">UFW</span>
+        </button>
+        <button type="button" class="sidebar__item" data-view="vpn" data-magnetic="true">
+          <svg class="ico"><use href="#i-globe"/></svg>
+          <span class="sidebar__item-label">WireGuard &amp; MQTT</span>
+        </button>
+        <button type="button" class="sidebar__item" data-view="terminal" data-magnetic="true">
+          <svg class="ico"><use href="#i-terminal"/></svg>
+          <span class="sidebar__item-label">เทอร์มินัล &amp; AI</span>
+          <span class="tab-badge" id="badge-sidebar-terminal" style="background:rgba(0,210,240,0.15); color:#00d2f0; border-color:#00d2f0;">CLI+AI</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Live Telemetry Mini Vitals Widget -->
+    <div class="sidebar__vitals" id="sidebar-vitals">
+      <div class="sidebar__group-label">LIVE TELEMETRY</div>
+      <div class="sidebar__vital-row">
+        <span>CPU</span>
+        <div class="sidebar__vital-track">
+          <div class="sidebar__vital-fill" id="sb-cpu-fill" style="width: 0%"></div>
+        </div>
+        <span class="sidebar__vital-val" id="sb-cpu-val">0%</span>
+      </div>
+      <div class="sidebar__vital-row">
+        <span>RAM</span>
+        <div class="sidebar__vital-track">
+          <div class="sidebar__vital-fill" id="sb-mem-fill" style="width: 0%"></div>
+        </div>
+        <span class="sidebar__vital-val" id="sb-mem-val">0%</span>
+      </div>
+    </div>
+
+    <!-- Sidebar Bottom Control Rack -->
+    <div class="sidebar__footer">
+      <button class="iconbtn" id="btn-pause-sb" title="Pause / Resume auto-refresh" aria-label="Pause or resume auto-refresh">
+        <svg class="ico"><use href="#i-pause"/></svg>
+      </button>
+      <button class="iconbtn" id="btn-refresh-sb" title="Refresh now" aria-label="Refresh now">
+        <svg class="ico"><use href="#i-refresh"/></svg>
+      </button>
+      <button class="iconbtn" id="btn-sound-sb" title="เปิด/ปิดเสียงเอฟเฟกต์ (Sound FX)" aria-label="เปิดหรือปิดเสียงเอฟเฟกต์">
+        <svg class="ico" id="sound-ico-sb"><use href="#i-volume-on"/></svg>
+      </button>
+      <button class="iconbtn" id="btn-theme-sb" title="Switch theme" aria-label="Switch theme">
+        <svg class="ico" id="theme-ico-sb"><use href="#i-tactical"/></svg>
+      </button>
+      <button class="iconbtn" id="btn-logout-sb" title="Sign out" aria-label="Sign out">
+        <svg class="ico"><use href="#i-logout"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main Workspace Area ───────────────────────────────────────────── -->
+  <div class="app-main">
+
+    <header class="topbar">
+      <div class="topbar__lead">
+        <div class="brand mobile-only">
+          <span class="brand__mark" aria-hidden="true"></span>
+          <span class="brand__text">
+            <strong>Home-lab</strong>
+            <span class="brand__host" id="hostname">homelab</span>
+          </span>
+        </div>
+        <div class="desktop-view-title desktop-only" id="desktop-view-title">
+          <span class="view-title__badge" id="view-title-icon">📊</span>
+          <h1 class="view-title__text" id="view-title-text">แดชบอร์ดภาพรวม</h1>
+        </div>
+      </div>
+      <div class="topbar__actions">
+        <button type="button" class="pwa-install-btn" id="btn-pwa-install" title="ติดตั้ง Homelab เป็นแอป (PWA) ลงในเครื่อง" aria-label="ติดตั้ง PWA">
+          <svg class="ico ico--sm"><use href="#i-pwa"/></svg>
+          <span>ติดตั้ง PWA</span>
+        </button>
+        <div class="desktop-status-pill desktop-only">
+          <span class="livedot" id="live-dot-desktop"><i></i><span id="live-text-desktop">Live Telemetry</span></span>
+        </div>
+        <button class="iconbtn" id="btn-sound" title="เปิด/ปิดเสียงเอฟเฟกต์ (Sound FX)" aria-label="เปิดหรือปิดเสียงเอฟเฟกต์">
+          <svg class="ico" id="sound-ico"><use href="#i-volume-on"/></svg>
+        </button>
+        <button class="iconbtn mobile-only" id="btn-pause" title="Pause / Resume auto-refresh" aria-label="Pause or resume auto-refresh">
+          <svg class="ico"><use href="#i-pause"/></svg>
+        </button>
+        <button class="iconbtn mobile-only" id="btn-refresh" title="Refresh now" aria-label="Refresh now">
+          <svg class="ico"><use href="#i-refresh"/></svg>
+        </button>
+        <button class="iconbtn mobile-only" id="btn-theme" title="Switch theme" aria-label="Switch theme">
+          <svg class="ico" id="theme-ico"><use href="#i-tactical"/></svg>
+        </button>
+        <button class="iconbtn mobile-only" id="btn-logout" title="Sign out" aria-label="Sign out">
+          <svg class="ico"><use href="#i-logout"/></svg>
+        </button>
+        <span class="livedot mobile-only" id="live-dot" title="Last updated"><i></i><span id="live-text">…</span></span>
+      </div>
+    </header>
+<!-- ── desktop navigation tabs ───────────────────────────────────────────── -->
+
+
+
+<main class="wrap">
+
+  <!-- ════════ VIEW 1: OVERVIEW & QUICK LAUNCH ════════ -->
+  <div class="lab-view is-active" id="view-overview" data-view-id="overview">
+    <!-- Hero System Vitals Tiles -->
+    <section class="section" aria-labelledby="h-overview">
+      <div class="section__head">
+        <h2 id="h-overview">System Overview</h2>
+        <span class="section__hint" id="overview-hint"></span>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <!-- Real-time AC Power & Electricity Cost (PZEM-01) -->
+    <section class="section" id="sec-energy" aria-labelledby="h-energy">
+      <div class="section__head">
+        <h2 id="h-energy" style="display:flex; align-items:center; gap:8px;">
+          <span>⚡ PZEM-01 Telemetry &amp; Electricity Cost</span>
+          <span class="badge badge--ok" style="font-size:10px;">HOME ASSISTANT DB</span>
+        </h2>
+        <span class="section__hint" id="energy-hint">Real-time AC grid sensor · Auto-calculated THB &amp; kWh</span>
+      </div>
+      <div class="card energy-card" data-hud="panel">
+        <div class="energy-grid">
+          <div class="energy-metric energy-metric--main">
+            <span class="energy-metric__label">🔌 โหลดไฟฟ้าขณะนี้ (Active Load)</span>
+            <div class="energy-metric__value">
+              <span id="energy-val-watts">—</span> <small>W</small>
+            </div>
+            <div class="energy-metric__sub" id="energy-meta-ac">— V · — A · PF —</div>
+          </div>
+          <div class="energy-metric">
+            <span class="energy-metric__label">📅 ค่าไฟวันนี้ (Today)</span>
+            <div class="energy-metric__value" style="color:#ff794d;">
+              <span id="energy-val-today-thb">—</span> <small>THB</small>
+            </div>
+            <div class="energy-metric__sub" id="energy-meta-today-kwh">— kWh</div>
+          </div>
+          <div class="energy-metric">
+            <span class="energy-metric__label">📊 ค่าไฟสะสมเดือนนี้ (Month)</span>
+            <div class="energy-metric__value" style="color:#00d2f0;">
+              <span id="energy-val-month-thb">—</span> <small>THB</small>
+            </div>
+            <div class="energy-metric__sub" id="energy-meta-month-kwh">— kWh</div>
+          </div>
+          <div class="energy-metric">
+            <span class="energy-metric__label">📈 ประมาณการทั้งเดือน (Est.)</span>
+            <div class="energy-metric__value" style="color:#00e5a3;">
+              ~<span id="energy-val-proj-thb">—</span> <small>THB</small>
+            </div>
+            <div class="energy-metric__sub" id="energy-meta-proj-kwh">~— kWh</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Links & Launcher -->
+    <section class="section" aria-labelledby="h-links">
+      <div class="section__head">
+        <h2 id="h-links">Quick Links &amp; Services</h2>
+        <span class="section__hint">Opens in a new tab</span>
+      </div>
+      <nav class="links" id="quicklinks" aria-label="Service quick links"></nav>
+    </section>
+
+    <div id="services" style="display:none"></div>
+
+<section class="section" aria-labelledby="h-charts">
+    <div class="section__head">
+      <h2 id="h-charts">Resource Trends</h2>
+      <span class="section__hint" id="charts-hint">Live telemetry from active session · refreshes every 5s</span>
+    </div>
+    <div class="grid grid--2" id="trends-grid">
+      <figure class="card chart-card" data-hud="chart">
+        <figcaption class="card__head">
+          <span class="card__title">CPU Usage</span>
+          <span class="card__value" id="cpu-chart-now">—</span>
+        </figcaption>
+        <div class="chart" id="chart-cpu" role="img" aria-label="CPU usage trend chart"></div>
+        <div class="chart__axis"><span id="cpu-chart-min">—</span><span id="cpu-chart-max">—</span></div>
+      </figure>
+
+      <figure class="card chart-card" data-hud="chart">
+        <figcaption class="card__head">
+          <span class="card__title">Memory Usage</span>
+          <span class="card__value" id="mem-chart-now">—</span>
+        </figcaption>
+        <div class="chart" id="chart-mem" role="img" aria-label="Memory usage trend chart"></div>
+        <div class="chart__axis"><span id="mem-chart-used">—</span><span id="mem-chart-minmax">—</span></div>
+      </figure>
+
+      <figure class="card chart-card" data-hud="chart">
+        <figcaption class="card__head">
+          <span class="card__title" id="net-chart-title">Ethernet / Traffic</span>
+          <span class="legend" id="net-legend"></span>
+        </figcaption>
+        <div class="chart" id="chart-net" role="img" aria-label="Ethernet receive and transmit throughput chart"></div>
+        <div class="chart__axis"><span id="net-axis-from">—</span><span id="net-axis-to">—</span></div>
+      </figure>
+
+      <div id="disk-charts-slot" style="display:contents"></div>
+    </div>
+  </section>
+
+<section class="section" aria-labelledby="h-host">
+    <div class="section__head">
+      <h2 id="h-host">Host &amp; Database Details</h2>
+    </div>
+    <div class="grid grid--2">
+      <div class="card" data-hud="host-1">
+        <div class="card__head"><span class="card__title">Disks &amp; Partitions</span></div>
+        <div id="disks" class="stack"></div>
+      </div>
+      <div class="card" data-hud="host-2">
+        <div class="card__head"><span class="card__title">Thermal Sensors</span></div>
+        <div id="temps" class="stack"></div>
+      </div>
+      <div class="card" data-hud="host-3">
+        <div class="card__head"><span class="card__title">Network Interfaces</span></div>
+        <div id="net" class="stack"></div>
+      </div>
+      <div class="card" data-hud="host-4">
+        <div class="card__head"><span class="card__title">MongoDB</span></div>
+        <div id="mongo" class="stack"></div>
+      </div>
+      <div class="card" data-hud="host-1">
+        <div class="card__head"><span class="card__title">CPU Cores</span></div>
+        <div id="cores" class="stack"></div>
+      </div>
+      <div class="card" data-hud="host-2">
+        <div class="card__head"><span class="card__title">Operating System</span></div>
+        <div id="osinfo" class="stack"></div>
+      </div>
+    </div>
+  </section>
+  </div>
+
+
+  <!-- ════════ VIEW 2: CONTAINERS & PM2 APPS ════════ -->
+  <div class="lab-view" id="view-services" data-view-id="services" style="display:none">
+    <!-- Subtab Navigation for Easy Touch & Filtering -->
+    <div class="services-subtabs" id="services-subtabs">
+      <button type="button" class="svc-subtab is-active" data-svc-tab="all">
+        <span>📋 ทั้งหมด (All)</span>
+      </button>
+      <button type="button" class="svc-subtab" data-svc-tab="docker">
+        <span>🐳 Docker (<span id="count-docker">0</span>)</span>
+      </button>
+      <button type="button" class="svc-subtab" data-svc-tab="pm2">
+        <span>⚡ PM2 Apps (<span id="count-pm2">0</span>)</span>
+      </button>
+      <button type="button" class="svc-subtab" data-svc-tab="kuma">
+        <span>🩺 Uptime Kuma (<span id="count-kuma">0</span>)</span>
+      </button>
+    </div>
+
+    <!-- Docker Containers Section -->
+    <section class="section svc-section" id="sec-docker" aria-labelledby="h-containers">
+    <div class="section__head">
+      <h2 id="h-containers">Docker Containers</h2>
+      <span class="section__hint" id="containers-hint"></span>
+    </div>
+    <div class="card card--table" data-hud="table">
+      <div class="tablewrap">
+        <table class="table" id="tbl-containers">
+          <caption class="sr-only">Docker containers list and controls</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Image</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="num">CPU</th>
+              <th scope="col" class="num">Memory</th>
+              <th scope="col">Ports</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- PM2 Processes Section -->
+  <section class="section svc-section" id="sec-pm2" aria-labelledby="h-pm2">
+    <div class="section__head">
+      <h2 id="h-pm2">PM2 Processes</h2>
+      <span class="section__hint" id="pm2-hint"></span>
+    </div>
+    <div class="card card--table" data-hud="table">
+      <div class="tablewrap">
+        <table class="table" id="tbl-pm2">
+          <caption class="sr-only">PM2 processes list and controls</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="num">PID</th>
+              <th scope="col" class="num">CPU</th>
+              <th scope="col" class="num">Memory</th>
+              <th scope="col" class="num">Restarts</th>
+              <th scope="col">Uptime</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Uptime Kuma Section -->
+  <section class="section svc-section" id="sec-kuma" aria-labelledby="h-kuma">
+    <div class="section__head">
+      <h2 id="h-kuma">Uptime Kuma — Service Monitors</h2>
+      <span class="section__hint" id="kuma-hint"></span>
+    </div>
+    <div class="card card--table" data-hud="table">
+      <div class="tablewrap">
+        <table class="table" id="tbl-kuma">
+          <caption class="sr-only">Monitor list and availability</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="num">Uptime</th>
+              <th scope="col" class="num">Ping</th>
+              <th scope="col">Target</th>
+              <th scope="col">Last Check</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  </div>
+
+
+  <!-- ════════ VIEW 3: PORTS & FIREWALL MANAGEMENT ════════ -->
+  <div class="lab-view" id="view-ports" data-view-id="ports" style="display:none">
+    <!-- Subtabs for Easy Filtering -->
+    <div class="section-subtabs" id="ports-subtabs">
+      <button type="button" class="sec-subtab is-active" data-ports-tab="all">
+        <span>🛡️ ทั้งหมด (All)</span>
+      </button>
+      <button type="button" class="sec-subtab" data-ports-tab="ufw">
+        <span>🔒 UFW Firewall &amp; Ports</span>
+      </button>
+      <button type="button" class="sec-subtab" data-ports-tab="tailscale">
+        <span>🌐 Tailscale Funnel &amp; Serve</span>
+      </button>
+    </div>
+
+<section class="section" id="sec-ports" aria-labelledby="h-ports">
+    <div class="section__head">
+      <h2 id="h-ports">Port &amp; Firewall Management — Server Access Control</h2>
+      <div class="section__actions">
+        <span class="section__hint" id="pm-hint">Scanning listening ports &amp; UFW rules…</span>
+        <button type="button" class="btn btn--sm" id="btn-pm-lock" title="Protect system ports (SSH 22, Caddy 80/443, Tailscale) from accidental firewall changes">
+          🔒 System Ports Locked
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Presets for WireGuard & EMQX + Custom Rule Builder -->
+    <div class="card ts-panel" data-hud="panel">
+      <div class="ts-bar" id="pm-summary-bar"></div>
+
+      <!-- Quick Service Port Toggles -->
+      <div class="pm-presets-wrap">
+        <div class="pm-presets-head">
+          <span class="pm-sublabel">⚡ Quick Service Port Toggles (WireGuard &amp; EMQX)</span>
+          <div class="rowbtns" style="justify-content:flex-start">
+            <button type="button" class="btn btn--sm" data-pm-batch="allow-any">🌐 Open All EMQX Ports</button>
+            <button type="button" class="btn btn--sm" data-pm-batch="allow-lan">🏠 Restrict EMQX to LAN + VPN</button>
+            <button type="button" class="btn btn--sm btn--danger" data-pm-batch="close">🔒 Close External EMQX Ports</button>
+          </div>
+        </div>
+        <div class="pm-presets-grid" id="pm-presets-grid"></div>
+      </div>
+
+      <!-- Custom Port & Firewall Rule Controller -->
+      <form class="ts-form" id="pm-rule-form" autocomplete="off" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="ts-form__grid">
+          <div class="ts-field">
+            <label for="pm-port">
+              1. Port Number
+              <span class="ts-presets" id="pm-port-chips">
+                <button type="button" class="ts-chip" data-pm-chip="51820" data-proto="udp" data-comment="WireGuard VPN UDP">51820/udp (WG)</button>
+                <button type="button" class="ts-chip" data-pm-chip="1883" data-proto="tcp" data-comment="EMQX MQTT TCP">1883 (MQTT)</button>
+                <button type="button" class="ts-chip" data-pm-chip="8883" data-proto="tcp" data-comment="EMQX MQTT TLS">8883 (MQTTS)</button>
+                <button type="button" class="ts-chip" data-pm-chip="8085" data-proto="tcp" data-comment="EMQX WebSocket">8085 (WS)</button>
+                <button type="button" class="ts-chip" data-pm-chip="8084" data-proto="tcp" data-comment="EMQX WSS">8084 (WSS)</button>
+              </span>
+            </label>
+            <input type="number" id="pm-port" class="ts-input" value="1883" min="1" max="65535" required placeholder="e.g. 51820 or 1883" />
+          </div>
+
+          <div class="ts-field">
+            <label for="pm-proto">2. Protocol</label>
+            <select id="pm-proto" class="ts-input">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+
+          <div class="ts-field">
+            <label for="pm-mode">3. Firewall Policy / Scope</label>
+            <select id="pm-mode" class="ts-input">
+              <option value="allow-any">🟢 ALLOW — Open (All Interfaces)</option>
+              <option value="allow-lan">🏠 ALLOW — LAN (192.168.1.x) + WireGuard (10.10.10.x) Only</option>
+              <option value="limit">🛡️ LIMIT — Rate-Limit Connections</option>
+              <option value="close">🔒 CLOSE — Remove Allow Rule (Default Deny)</option>
+              <option value="deny">⛔ DENY — Explicit Block Rule</option>
+            </select>
+          </div>
+
+          <div class="ts-field ts-field--wide">
+            <label for="pm-comment">4. Service Label / Description &amp; Action</label>
+            <div class="ts-target-row">
+              <input type="text" id="pm-comment" class="ts-input" placeholder="e.g. Custom App / MQTT / WireGuard" value="Custom Port Rule" />
+              <button type="button" class="btn" id="btn-pm-test">⚡ Test Port</button>
+              <button type="submit" class="btn btn--primary" id="btn-pm-apply">🛡️ Apply Port Rule</button>
+            </div>
+          </div>
+        </div>
+        <div class="ts-feedback" id="pm-feedback" aria-live="polite"></div>
+      </form>
+    </div>
+
+    <!-- Filter bar & Listening Ports Table -->
+    <div class="card card--table" data-hud="table" style="margin-top:12px">
+      <div class="pm-table-bar">
+        <span class="card__title">Active Listening Ports on Server (TCP &amp; UDP)</span>
+        <div class="pm-filters" id="pm-filters">
+          <button type="button" class="ts-chip is-active" data-pm-filter="all">All Ports</button>
+          <button type="button" class="ts-chip" data-pm-filter="wg-emqx">WireGuard &amp; EMQX</button>
+          <button type="button" class="ts-chip" data-pm-filter="open">Open in Firewall</button>
+          <button type="button" class="ts-chip" data-pm-filter="local">Loopback / Internal</button>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table class="table" id="tbl-ports">
+          <caption class="sr-only">Active listening TCP and UDP ports and firewall controls</caption>
+          <thead>
+            <tr>
+              <th scope="col">Port / Proto</th>
+              <th scope="col">Service &amp; Owner Process</th>
+              <th scope="col">Bind Address &amp; Scope</th>
+              <th scope="col">UFW Firewall Status</th>
+              <th scope="col" class="num">Active Conns</th>
+              <th scope="col">Safety</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Active UFW Firewall Rules Table -->
+    <div class="card card--table" data-hud="table" style="margin-top:12px">
+      <div class="pm-table-bar">
+        <span class="card__title">UFW Firewall Rule Table (IPv4 &amp; IPv6 Synced)</span>
+        <span class="dim" style="font-size:11.5px">Default Policy: <strong>DENY INCOMING</strong> · <strong>ALLOW OUTGOING</strong></span>
+      </div>
+      <div class="tablewrap">
+        <table class="table" id="tbl-ufw">
+          <caption class="sr-only">Numbered UFW firewall rules</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="num">Rule #</th>
+              <th scope="col">Target Port / Interface</th>
+              <th scope="col">Policy Action</th>
+              <th scope="col">Allowed Source</th>
+              <th scope="col">Comment / Description</th>
+              <th scope="col">Safety</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+<section class="section" id="sec-tailscale" aria-labelledby="h-tailscale">
+    <div class="section__head">
+      <h2 id="h-tailscale">Tailscale Serve &amp; Funnel — Exposure Control Center</h2>
+      <div class="section__actions">
+        <span class="section__hint" id="ts-hint">Loading Tailscale status…</span>
+        <button type="button" class="btn btn--sm" id="btn-ts-lock" title="Protect system ports (443, 3001, 8082) from accidental changes">
+          🔒 System Ports Locked
+        </button>
+        <button type="button" class="btn btn--sm btn--danger" id="btn-ts-panic" style="display:none" title="Immediately disable all public Internet Funnels and revert them to private Tailnet Only">
+          🚨 Disable All Public Funnels
+        </button>
+      </div>
+    </div>
+
+    <!-- Node telemetry & Quick Deployer -->
+    <div class="card ts-panel" data-hud="panel">
+      <div class="ts-bar" id="ts-node-bar"></div>
+
+      <form class="ts-form" id="ts-deploy-form" autocomplete="off">
+        <div class="ts-form__grid">
+          <div class="ts-field">
+            <label for="ts-mode">1. Exposure Mode</label>
+            <select id="ts-mode" class="ts-input">
+              <option value="funnel">🌐 Public Funnel (Internet — Anyone with link)</option>
+              <option value="serve">🔒 Tailnet Only (Private — Your devices only)</option>
+            </select>
+          </div>
+
+          <div class="ts-field">
+            <label for="ts-port">
+              2. External HTTPS Port
+              <span class="ts-presets" id="ts-port-presets">
+                <button type="button" class="ts-chip" data-port="8443" data-mode="funnel">8443 (Funnel)</button>
+                <button type="button" class="ts-chip" data-port="10000" data-mode="funnel">10000 (Funnel)</button>
+                <button type="button" class="ts-chip" data-port="3000" data-mode="serve">3000</button>
+                <button type="button" class="ts-chip" data-port="4000" data-mode="serve">4000</button>
+                <button type="button" class="ts-chip" data-port="5000" data-mode="serve">5000</button>
+              </span>
+            </label>
+            <input type="number" id="ts-port" class="ts-input" value="8443" min="1" max="65535" required placeholder="8443 or 10000" />
+          </div>
+
+          <div class="ts-field">
+            <label for="ts-path">3. Mount Path</label>
+            <input type="text" id="ts-path" class="ts-input" value="/" required placeholder="/ or /api" />
+          </div>
+
+          <div class="ts-field ts-field--wide">
+            <label for="ts-target">
+              4. Local Backend Target (Port or URL)
+              <select id="ts-local-picker" class="ts-picker" title="Auto-detected listening ports on homelab">
+                <option value="">⚡ Pick active local port…</option>
+              </select>
+            </label>
+            <div class="ts-target-row">
+              <input type="text" id="ts-target" class="ts-input" placeholder="e.g. 4000 or http://127.0.0.1:4000" required />
+              <button type="button" class="btn" id="btn-ts-test">⚡ Test Target</button>
+              <button type="submit" class="btn btn--primary" id="btn-ts-deploy">🚀 Deploy Route</button>
+            </div>
+          </div>
+        </div>
+        <div class="ts-feedback" id="ts-test-result" aria-live="polite"></div>
+      </form>
+    </div>
+
+    <!-- Active Routes Table -->
+    <div class="card card--table" data-hud="table" style="margin-top:12px">
+      <div class="tablewrap">
+        <table class="table" id="tbl-tailscale">
+          <caption class="sr-only">Active Tailscale Serve and Funnel routes</caption>
+          <thead>
+            <tr>
+              <th scope="col">Exposure Mode</th>
+              <th scope="col">External URL</th>
+              <th scope="col" class="num">HTTPS Port</th>
+              <th scope="col">Mount Path</th>
+              <th scope="col">Local Backend Target</th>
+              <th scope="col">Target Health</th>
+              <th scope="col">Safety</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  </div>
+
+
+  <!-- ════════ VIEW 4: WIREGUARD VPN & EMQX MQTT ════════ -->
+  <div class="lab-view" id="view-vpn" data-view-id="vpn" style="display:none">
+    <section class="section" id="sec-vpn-mqtt" aria-labelledby="h-vpn-mqtt">
+      <div class="section__head">
+        <h2 id="h-vpn-mqtt">WireGuard VPN &amp; EMQX MQTT — Network &amp; Messaging Hub</h2>
+        <span class="section__hint" id="vpn-mqtt-hint">Live tunnel, clients policy firewall &amp; broker telemetry</span>
+      </div>
+      <div class="grid grid--2">
+        <!-- WireGuard Card -->
+        <div class="card" data-hud="panel">
+          <div class="card__head">
+            <span class="card__title">🛡️ WireGuard VPN Server (wg0)</span>
+            <span id="wg-status-pill"></span>
+          </div>
+          <div id="wg-panel" class="stack"></div>
+        </div>
+
+        <!-- EMQX Card -->
+        <div class="card" data-hud="panel">
+          <div class="card__head">
+            <span class="card__title">📡 EMQX MQTT Broker (v5.8.4)</span>
+            <span id="emqx-status-pill"></span>
+          </div>
+          <div id="emqx-panel" class="stack"></div>
+        </div>
+      </div>
+
+      <!-- WireGuard Clients & Granular Firewall Policies -->
+      <div class="card" data-hud="panel" style="margin-top:16px" id="card-wg-clients">
+        <div class="card__head" style="flex-wrap:wrap;gap:12px">
+          <div>
+            <span class="card__title" style="font-size:15px;display:flex;align-items:center;gap:8px">
+              👥 WireGuard Clients &amp; Granular Access Control
+              <span class="badge" id="badge-wg-client-count">0 clients</span>
+            </span>
+            <div class="section__hint" style="margin-top:3px">
+              ควบคุมสิทธิ์การเข้าถึงแบบอิสระรายเครื่อง (ออกเน็ต, วงแลนบ้าน, Homelab เท่านั้น, แยกเดี่ยว P2P) มีผลทันที
+            </div>
+          </div>
+          <div class="rowbtns">
+            <button type="button" class="btn btn--primary btn--sm" id="btn-wg-new-client">➕ New Client</button>
+            <button type="button" class="btn btn--sm" id="btn-wg-refresh">🔄 Refresh</button>
+          </div>
+        </div>
+
+        <!-- Filter / Quick Tip Bar -->
+        <div class="wg-info-banner">
+          <div class="wg-info-banner__item">
+            <span>🛡️ <strong>Endpoint ปัจจุบัน:</strong> <code>asri-minipc.thaiddns.com:51820</code> (DDNS + Port Forwarding)</span>
+          </div>
+          <div class="wg-info-banner__item">
+            <span>⚡ กฎ Firewall ทั้งหมดถูกบังคับใช้อย่างปลอดภัยด้วย iptables ภายใน Container แบบ Zero-Latency</span>
+          </div>
+        </div>
+
+        <!-- Client Cards Container -->
+        <div id="wg-clients-container" class="wg-clients-grid" style="margin-top:14px">
+          <div class="empty-state">Loading WireGuard clients...</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+
+  <!-- ════════ VIEW 5: TACTICAL WEB TERMINAL & GEMINI AI ════════ -->
+  <div class="lab-view" id="view-terminal" data-view-id="terminal" style="display:none">
+    <!-- Subtab Navigation -->
+    <div class="terminal-subtabs" id="terminal-subtabs">
+      <button type="button" class="term-subtab is-active" data-term-subtab="gemini">
+        <svg class="ico ico--sm"><use href="#i-bot"/></svg>
+        <span>Gemini AI Assistant</span>
+        <span class="tab-badge" style="background:rgba(0,210,240,0.15); color:#00d2f0; border-color:#00d2f0; font-size:10px; padding:1px 6px; margin-left:4px;">AI</span>
+      </button>
+      <button type="button" class="term-subtab" data-term-subtab="shell">
+        <svg class="ico ico--sm"><use href="#i-terminal"/></svg>
+        <span>Tactical Direct Shell</span>
+      </button>
+      <a href="/gemini.html" target="_blank" rel="noopener" class="term-subtab" style="margin-left:auto; text-decoration:none;" title="เปิด AI Assistant เต็มหน้าจอในแท็บใหม่ (รองรับสิทธิ์ไมโครโฟน 100%)">
+        <span>↗ เปิดเต็มจอ</span>
+      </a>
+    </div>
+
+    <!-- Subpanel: Gemini AI Assistant -->
+    <div class="term-subpanel is-active" id="term-subpanel-gemini" style="height:calc(100vh - 175px); min-height:600px; padding:0 0 16px 0;">
+      <iframe src="/gemini.html" allow="microphone *; speech-recognition *; clipboard-write *" style="width:100%; height:100%; border:1px solid rgba(0,210,240,0.28); border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,0.5);" title="Gemini AI Assistant"></iframe>
+    </div>
+
+    <!-- Subpanel: Tactical Shell -->
+    <div class="term-subpanel" id="term-subpanel-shell" style="display:none;">
+      <section class="section" id="sec-terminal" aria-labelledby="h-terminal">
+        <div class="section__head">
+          <div>
+            <h2 id="h-terminal">⚡ Tactical Direct Shell — dev@homelab</h2>
+            <span class="section__hint">Direct SSH session · Zero-login required · Authenticated via Control Panel</span>
+          </div>
+          <div class="section__actions">
+            <a href="/os/system/terminal" target="_blank" rel="noopener" class="btn btn--sm" title="Open Cockpit OS Console in new tab (Requires Linux PAM Login)">
+              🖥️ Open Cockpit GUI Tab ↗
+            </a>
+            <a href="/terminal" class="btn btn--sm btn--primary" title="Open Fullscreen Terminal Page">
+              ↗ Fullscreen Terminal
+            </a>
+          </div>
+        </div>
+
+        <div class="card term-window" data-hud="panel">
+          <!-- Terminal Window Header -->
+          <div class="term-win-head">
+            <div class="term-dots">
+              <span class="term-dot term-dot--red"></span>
+              <span class="term-dot term-dot--yellow"></span>
+              <span class="term-dot term-dot--green"></span>
+            </div>
+            <div class="term-win-title">
+              <span>dev@homelab: <span id="term-title-cwd">~</span> (bash 5.2)</span>
+            </div>
+            <div class="rowbtns">
+              <button type="button" class="btn btn--sm" id="btn-dterm-copy">📋 Copy</button>
+              <button type="button" class="btn btn--sm" id="btn-dterm-clear">⌫ Clear</button>
+            </div>
+          </div>
+
+          <!-- One-Click Quick Diagnostic Macros -->
+          <div class="term-macros-bar">
+            <span class="dim" style="font-size:11px;font-weight:600">QUICK MACROS:</span>
+            <div class="ts-presets" id="dash-term-macros" style="gap:6px">
+              <button type="button" class="ts-chip" data-dmacro="docker-ps">🐳 docker ps</button>
+              <button type="button" class="ts-chip" data-dmacro="wg-status">🛡️ wg show</button>
+              <button type="button" class="ts-chip" data-dmacro="ufw-status">🧱 ufw status</button>
+              <button type="button" class="ts-chip" data-dmacro="ss-ports">🔌 ports</button>
+              <button type="button" class="ts-chip" data-dmacro="sys-res">💾 memory &amp; disk</button>
+              <button type="button" class="ts-chip" data-dmacro="emqx-status">📡 emqx broker</button>
+              <button type="button" class="ts-chip" data-dmacro="pm2-list">⚙️ pm2 list</button>
+              <button type="button" class="ts-chip" data-dmacro="ts-status">🌐 tailscale</button>
+              <button type="button" class="ts-chip" data-dmacro="net-addr">🖧 ip addr</button>
+            </div>
+          </div>
+
+          <!-- Terminal Output Console -->
+          <div class="dterm-output" id="dterm-output" aria-live="polite"></div>
+
+          <!-- Interactive Command Input Line -->
+          <form class="term-cmd-row" id="dterm-form" autocomplete="off">
+            <span class="dterm-prompt" id="dterm-prompt">dev@homelab:<span id="dterm-cwd-display">~</span>$</span>
+            <input type="text" id="dterm-input" class="ts-input term-input" placeholder="Type bash command (e.g. ls -la, docker ps, free -h, cd ...) and press Enter" autofocus />
+            <button type="submit" class="btn btn--primary" id="btn-dterm-run">▶ Run</button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+
+
+  <footer class="foot">
+    <span id="foot-gen">—</span>
+    <span class="foot__lock"><svg class="ico ico--sm"><use href="#i-lock"/></svg> Protected by HTTP Basic Auth</span>
+  </footer>
+</main>
+  </div><!-- /.app-main -->
+</div><!-- /#app-layout -->
+
+
+<!-- ── WireGuard New Client Modal ────────────────────────────────────────── -->
+<dialog id="modal-wg-new-client" class="modal" style="max-width:440px">
+  <form id="form-wg-new-client" method="dialog">
+    <h3 style="display:flex;align-items:center;gap:8px">➕ เพิ่ม WireGuard Client ใหม่</h3>
+    <p style="margin-bottom:12px;color:var(--ink-muted);font-size:12.5px">
+      สร้างโปรไฟล์ VPN และ QR Code สำหรับสแกนเข้ามือถือ แท็บเล็ต หรือคอมพิวเตอร์
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px">
+      <div>
+        <label for="wg-new-name" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">ชื่ออุปกรณ์ / ชื่อผู้ใช้:</label>
+        <input type="text" id="wg-new-name" class="input" placeholder="เช่น iPhone-Asri, iPad-Pro, TV-LivingRoom" required style="width:100%" />
+      </div>
+
+      <div>
+        <label for="wg-new-preset" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">กำหนดสิทธิ์การเข้าถึงเริ่มต้น (Policy Preset):</label>
+        <select id="wg-new-preset" class="input" style="width:100%">
+          <option value="admin" selected>👑 Admin (Full Access: ออกเน็ตได้ + วงแลนบ้านได้ + P2P ได้)</option>
+          <option value="standard">👨‍👩‍👧 Standard (ออกเน็ตได้ + เข้า Homelab ได้ + ป้องกันอุปกรณ์อื่นในบ้าน)</option>
+          <option value="guest">☕ Guest (ออกเน็ตได้อย่างเดียว บล็อกวงแลนและห้ามแตะ Homelab)</option>
+          <option value="serveronly">🛡️ Homelab Only (เข้าได้เฉพาะเซิร์ฟเวอร์ Homelab ห้ามออกเน็ต)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal__actions">
+      <button type="button" class="btn btn--ghost" id="btn-wg-new-cancel">ยกเลิก</button>
+      <button type="submit" class="btn btn--primary" id="btn-wg-new-submit">สร้าง Client ทันที</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── WireGuard QR Code & Config Modal (Mobile-Optimized) ────────────────── -->
+<dialog id="modal-wg-qrcode" class="modal modal--qr" aria-labelledby="wg-qr-client-name">
+  <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:10px">
+    <h3 id="wg-qr-client-name" style="margin:0;font-size:14.5px;font-weight:700">📱 Scan WireGuard QR</h3>
+    <button type="button" class="iconbtn" id="btn-wg-qr-close" aria-label="Close" style="width:28px;height:28px">
+      <svg class="ico"><use href="#i-x"/></svg>
+    </button>
+  </div>
+
+  <p style="font-size:11.5px;color:var(--ink-muted);margin:0 0 10px;line-height:1.4">
+    เปิดแอป WireGuard แล้วแตะ <strong>[+]</strong> &gt; <strong>[Scan QR Code]</strong>
+  </p>
+
+  <div id="wg-qr-svg-box">
+    <!-- SVG rendered dynamically -->
+  </div>
+
+  <div class="kv" style="text-align:left;font-size:11px;margin:0 auto 10px;background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:6px;max-width:240px">
+    <div style="display:flex;justify-content:space-between"><span class="kv__k">IP:</span> <span class="kv__v"><code id="wg-qr-ip">—</code></span></div>
+    <div style="display:flex;justify-content:space-between"><span class="kv__k">Host:</span> <span class="kv__v"><code style="font-size:10px">asri-minipc.thaiddns.com:51820</code></span></div>
+  </div>
+
+  <div class="modal__actions">
+    <a href="#" class="btn btn--primary btn--sm" id="btn-wg-download-conf" download>⬇️ .conf</a>
+    <button type="button" class="btn btn--ghost btn--sm" id="btn-wg-qr-done">ปิด</button>
+  </div>
+</dialog>
+
+<!-- ── confirm dialog ────────────────────────────────────────────────────── -->
+<dialog id="confirm" class="modal">
+  <form method="dialog">
+    <h3 id="confirm-title">Confirm Action</h3>
+    <p id="confirm-body"></p>
+    <div class="modal__actions">
+      <button value="cancel" class="btn btn--ghost">Cancel</button>
+      <button value="ok" class="btn btn--danger" id="confirm-ok">Confirm</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── PWA Install Guide Modal ───────────────────────────────────────────── -->
+<dialog id="modal-pwa-install" class="modal modal--pwa">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+    <h3 style="margin:0; font-size:15px; font-weight:700; color:var(--series-1); display:flex; align-items:center; gap:8px;">
+      <svg class="ico ico--sm"><use href="#i-pwa"/></svg>
+      <span>ติดตั้ง Homelab เป็นแอป (PWA)</span>
+    </h3>
+    <button type="button" class="iconbtn" id="btn-pwa-modal-close" aria-label="Close" style="width:28px;height:28px">
+      <svg class="ico"><use href="#i-x"/></svg>
+    </button>
+  </div>
+
+  <div id="pwa-install-body" style="font-size:12.5px; line-height:1.55; color:var(--ink-2);">
+    <!-- Dynamically loaded based on platform -->
+  </div>
+
+  <div class="modal__actions" style="margin-top:16px; display:flex; justify-content:flex-end; gap:8px;">
+    <button type="button" class="btn btn--primary btn--sm" id="btn-pwa-modal-action">เข้าใจแล้ว</button>
+  </div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="/app.js?v=20261109-v13"></script>
+
+<!-- ── mobile bottom navigation bar ──────────────────────────────────────── -->
+<nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">
+  <button type="button" class="mobile-nav-btn is-active" data-view="overview" aria-label="หน้าหลัก">
+    <svg class="ico"><use href="#i-activity"/></svg>
+    <span>หน้าหลัก</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-view="services" aria-label="บริการ">
+    <svg class="ico"><use href="#i-box"/></svg>
+    <span>บริการ</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-view="ports" aria-label="พอร์ต">
+    <svg class="ico"><use href="#i-shield"/></svg>
+    <span>พอร์ต</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-view="vpn" aria-label="VPN และ IoT">
+    <svg class="ico"><use href="#i-globe"/></svg>
+    <span>VPN/IoT</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-view="terminal" aria-label="เทอร์มินัล และ AI">
+    <svg class="ico"><use href="#i-terminal"/></svg>
+    <span>เทอร์มินัล/AI</span>
+  </button>
+</nav>
+
+</body>
+</html>

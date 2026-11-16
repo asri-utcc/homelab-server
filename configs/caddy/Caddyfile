@@ -1,0 +1,109 @@
+{
+	email admin@example.com
+	default_sni 192.168.1.123
+	auto_https disable_redirects
+}
+
+# ── ชั้น auth กลาง (นำเข้าจากไฟล์แยก caddy-auth.caddy) ────────────────────────
+import /etc/caddy/auth.caddy
+
+(routes) {
+	encode gzip zstd
+
+	redir /os /os/
+	handle /os/* {
+		reverse_proxy https://host.docker.internal:9090 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	redir /portainer /portainer/
+	handle_path /portainer/* {
+		reverse_proxy portainer:9000 {
+			header_up Origin https:// http://
+			header_up Referer https:// http://
+		}
+	}
+
+	redir /files /files/
+	handle /files/* {
+		reverse_proxy filebrowser:80
+	}
+
+	redir /iot /iot/
+	handle_path /iot/* {
+		reverse_proxy host.docker.internal:8095
+	}
+
+	redir /mongo /mongo/
+	handle /mongo/* {
+		import auth
+		reverse_proxy mongo-express:8081 {
+			header_up Authorization "Basic YWRtaW46REFhc3JpZGExMjMh"
+		}
+	}
+
+	handle /login {
+		reverse_proxy host.docker.internal:8090
+	}
+	handle /api/login {
+		reverse_proxy host.docker.internal:8090
+	}
+	handle /api/logout {
+		reverse_proxy host.docker.internal:8090
+	}
+	handle /api/session {
+		reverse_proxy host.docker.internal:8090
+	}
+
+	handle {
+		import auth
+		reverse_proxy host.docker.internal:8090
+	}
+}
+
+http://homelab.tail285279.ts.net {
+	import routes
+}
+
+https://homelab.tail285279.ts.net {
+	tls /etc/caddy/certs/homelab.tail285279.ts.net.crt /etc/caddy/certs/homelab.tail285279.ts.net.key
+	import routes
+}
+
+https://192.168.1.123 {
+	tls internal
+	import routes
+}
+
+http://192.168.1.123 {
+	import routes
+}
+
+# ── PM2 Web UI ──────────────────────────────────────────────────────────────
+http://:8083 {
+	encode gzip zstd
+
+	handle /login {
+		reverse_proxy host.docker.internal:8090
+	}
+	handle /api/login {
+		reverse_proxy host.docker.internal:8090
+	}
+	handle /api/logout {
+		reverse_proxy host.docker.internal:8090
+	}
+	handle /api/session {
+		reverse_proxy host.docker.internal:8090
+	}
+
+	handle {
+		import auth
+		reverse_proxy host.docker.internal:8082
+	}
+}

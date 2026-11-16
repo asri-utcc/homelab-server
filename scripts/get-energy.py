@@ -62,7 +62,22 @@ def get_energy_data():
 
     now = datetime.datetime.now()
     start_of_day = datetime.datetime(now.year, now.month, now.day, 0, 0, 0).timestamp()
-    start_of_month = datetime.datetime(now.year, now.month, 1, 0, 0, 0).timestamp()
+
+    # Billing cycle cuts off on the 17th of every month (e.g., 17th of prev month -> 16th of current month)
+    if now.day >= 17:
+        cycle_start_dt = datetime.datetime(now.year, now.month, 17, 0, 0, 0)
+        if now.month == 12:
+            cycle_end_dt = datetime.datetime(now.year + 1, 1, 17, 0, 0, 0)
+        else:
+            cycle_end_dt = datetime.datetime(now.year, now.month + 1, 17, 0, 0, 0)
+    else:
+        if now.month == 1:
+            cycle_start_dt = datetime.datetime(now.year - 1, 12, 17, 0, 0, 0)
+        else:
+            cycle_start_dt = datetime.datetime(now.year, now.month - 1, 17, 0, 0, 0)
+        cycle_end_dt = datetime.datetime(now.year, now.month, 17, 0, 0, 0)
+
+    start_of_month = cycle_start_dt.timestamp()
 
     def get_delta(meta_id):
         if not meta_id:
@@ -110,11 +125,12 @@ def get_energy_data():
     if month_thb <= 0 and month_kwh > 0:
         month_thb = month_kwh * 4.42
 
-    days_passed = max(1, now.day)
-    import calendar
-    _, days_in_month = calendar.monthrange(now.year, now.month)
+    days_passed = max(1, (now.date() - cycle_start_dt.date()).days + 1)
+    days_in_month = max(1, (cycle_end_dt.date() - cycle_start_dt.date()).days)
     projected_month_kwh = (month_kwh / days_passed) * days_in_month if days_passed else month_kwh
     projected_month_thb = (month_thb / days_passed) * days_in_month if days_passed else month_thb
+    cycle_end_display = (cycle_end_dt - datetime.timedelta(days=1)).strftime("%d %b %Y")
+    cycle_label = f"{cycle_start_dt.strftime('%d %b %Y')} - {cycle_end_display}"
 
     con.close()
 
@@ -132,7 +148,7 @@ def get_energy_data():
             "cost_thb": round(today_thb, 2)
         },
         "this_month": {
-            "month_name": now.strftime("%B %Y"),
+            "month_name": f"รอบบิล {cycle_label}",
             "days_recorded": days_passed,
             "days_total": days_in_month,
             "energy_kwh": round(month_kwh, 3),

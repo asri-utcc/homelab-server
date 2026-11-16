@@ -2541,13 +2541,15 @@ html, body {
     .sidebar:not(:hover):not(.is-pinned) .sidebar__item {
         padding: 0 !important;
         width: 44px !important;
-        height: 42px !important;
+        height: 44px !important;
         margin: 0 auto !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         gap: 0 !important;
-        border-radius: var(--radius-sm) !important;
+        border-radius: 10px !important;
+        position: relative !important;
+        z-index: 2 !important;
     }
     .sidebar:not(:hover):not(.is-pinned) .sidebar__item .ico {
         margin: 0 !important;
@@ -2558,14 +2560,21 @@ html, body {
     }
     .sidebar:not(:hover):not(.is-pinned) .sidebar__indicator {
         width: 44px !important;
-        left: calc(50% - 22px) !important;
-        height: 42px !important;
-        border-radius: var(--radius-sm) !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        height: 44px !important;
+        border-radius: 10px !important;
+        z-index: 1 !important;
     }
 
     /* Expanded state: smoothly reveal text and left-align */
     .sidebar:hover .brand__info, .sidebar.is-pinned .brand__info,
     .sidebar:hover .sidebar__group-label, .sidebar.is-pinned .sidebar__group-label,
+    .sidebar:hover .sidebar__vitals, .sidebar.is-pinned .sidebar__vitals {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
     .sidebar:hover .sidebar__item-label, .sidebar.is-pinned .sidebar__item-label,
     .sidebar:hover .tab-badge, .sidebar.is-pinned .tab-badge,
     .sidebar:hover .sidebar__vitals, .sidebar.is-pinned .sidebar__vitals,
@@ -2574,6 +2583,11 @@ html, body {
         display: flex !important;
         opacity: 1 !important;
         pointer-events: auto !important;
+    }
+    .sidebar:hover .sidebar__vitals, .sidebar.is-pinned .sidebar__vitals {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
     }
     .sidebar:hover .sidebar__item-label,
     .sidebar.is-pinned .sidebar__item-label {
@@ -3136,6 +3150,30 @@ html, body {
         padding: 4px 8px;
         font-size: 11px;
         height: 28px;
+    }
+
+    .terminal-subtabs {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        padding: 2px;
+    }
+
+    .term-subtab {
+        padding: 5px 8px;
+        font-size: 11px;
+        gap: 4px;
+    }
+
+    #term-subpanel-gemini {
+        height: calc(100vh - 148px) !important;
+        min-height: 0 !important;
+        padding: 0 !important;
+    }
+
+    #term-subpanel-gemini iframe {
+        border-radius: 6px;
     }
 }
 

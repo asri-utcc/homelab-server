@@ -2570,6 +2570,11 @@ html, body {
     /* Expanded state: smoothly reveal text and left-align */
     .sidebar:hover .brand__info, .sidebar.is-pinned .brand__info,
     .sidebar:hover .sidebar__group-label, .sidebar.is-pinned .sidebar__group-label,
+    .sidebar:hover .sidebar__vitals, .sidebar.is-pinned .sidebar__vitals {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
     .sidebar:hover .sidebar__item-label, .sidebar.is-pinned .sidebar__item-label,
     .sidebar:hover .tab-badge, .sidebar.is-pinned .tab-badge,
     .sidebar:hover .sidebar__vitals, .sidebar.is-pinned .sidebar__vitals,
@@ -2578,6 +2583,11 @@ html, body {
         display: flex !important;
         opacity: 1 !important;
         pointer-events: auto !important;
+    }
+    .sidebar:hover .sidebar__vitals, .sidebar.is-pinned .sidebar__vitals {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
     }
     .sidebar:hover .sidebar__item-label,
     .sidebar.is-pinned .sidebar__item-label {

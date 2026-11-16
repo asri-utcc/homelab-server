@@ -1735,6 +1735,60 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, 400, { ok: false, error: err.message });
             }
         }
+        if (req.method === 'GET' && p === '/api/stt/health') {
+            return new Promise((resolve) => {
+                const proxyReq = http.get('http://127.0.0.1:8096/health', { timeout: 2500 }, (pRes) => {
+                    let data = '';
+                    pRes.on('data', (c) => { data += c; });
+                    pRes.on('end', () => {
+                        try {
+                            sendJson(res, pRes.statusCode || 200, JSON.parse(data));
+                        } catch {
+                            sendJson(res, 502, { ok: false, error: 'Invalid STT response' });
+                        }
+                        resolve();
+                    });
+                });
+                proxyReq.on('error', (err) => {
+                    sendJson(res, 503, { ok: false, error: err.message });
+                    resolve();
+                });
+            });
+        }
+        if (req.method === 'POST' && p === '/api/stt/transcribe') {
+            return new Promise((resolve) => {
+                const lang = encodeURIComponent((u.searchParams.get('lang') || 'th').trim());
+                const proxyReq = http.request(
+                    `http://127.0.0.1:8096/transcribe?lang=${lang}`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': req.headers['content-type'] || 'audio/webm',
+                            ...(req.headers['content-length'] ? { 'Content-Length': req.headers['content-length'] } : {})
+                        },
+                        timeout: 60000
+                    },
+                    (pRes) => {
+                        const chunks = [];
+                        pRes.on('data', (c) => chunks.push(c));
+                        pRes.on('end', () => {
+                            const raw = Buffer.concat(chunks).toString('utf8');
+                            try {
+                                sendJson(res, pRes.statusCode || 200, JSON.parse(raw));
+                            } catch {
+                                sendJson(res, 502, { ok: false, error: raw || 'Invalid STT response' });
+                            }
+                            resolve();
+                        });
+                    }
+                );
+                proxyReq.on('error', (err) => {
+                    sendJson(res, 503, { ok: false, error: `STT service unavailable: ${err.message}` });
+                    resolve();
+                });
+                req.pipe(proxyReq);
+            });
+        }
         if (p === '/api/gemini/quota') {
             return sendJson(res, 200, await geminiManager.getQuotaSummary());
         }

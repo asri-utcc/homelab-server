@@ -1636,7 +1636,8 @@ body::before {
 
         <div id="voice-active-indicator" style="display:none; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; color:#ff5f56; background:rgba(255,59,48,0.12); border:1px solid rgba(255,59,48,0.3); padding:5px 12px;">
           <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ff3b30; box-shadow:0 0 8px #ff3b30;"></span>
-          <span>กำลังฟังเสียงภาษาไทย... พูดคำสั่งได้เลย (คลิกปุ่ม 🔴 อีกครั้งเมื่อพูดเสร็จ)</span>
+          <span id="voice-status-text">กำลังฟังเสียง... พูดคำสั่งได้เลย (คลิกปุ่ม 🔴 อีกครั้งเมื่อพูดเสร็จ)</span>
+          <button type="button" id="btn-stt-mode" style="margin-left:auto; font-family:var(--mono); font-size:10.5px; padding:2px 8px; border-radius:4px; border:1px solid rgba(0,229,255,0.35); background:rgba(0,229,255,0.12); color:#00e5ff; cursor:pointer;" title="สลับโหมดแปลงเสียง (Whisper Local / Web Speech)">🧠 Whisper</button>
         </div>
 
         <div class="input-box">
@@ -4218,12 +4219,55 @@ body::before {
     }
   }
 
-  let recognition = null;
+  const voiceStatusText = document.getElementById('voice-status-text');
+  const btnSttMode = document.getElementById('btn-stt-mode');
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  if (SpeechRec) {
-    let baseText = '';
+  let recognition = null;
+  let whisperAvailable = false;
+  let sttEngine = localStorage.getItem('stt_engine') || 'whisper';
+  let mediaRecorder = null;
+  let mediaStream = null;
+  let audioChunks = [];
+  let isTranscribing = false;
+  let baseText = '';
 
+  function syncSttModeUi() {
+    const useWhisper = sttEngine === 'whisper' && whisperAvailable && !!window.MediaRecorder;
+    if (btnSttMode) {
+      btnSttMode.textContent = useWhisper ? '🧠 Whisper (Local)' : '🌐 Web Speech';
+      btnSttMode.style.display = (whisperAvailable && SpeechRec) ? 'inline-block' : 'none';
+    }
+    if (btnMic) {
+      btnMic.title = useWhisper
+        ? 'สั่งการด้วยเสียง (Whisper Local — กดเพื่ออัด, กดอีกครั้งเพื่อถอดความ)'
+        : 'สั่งการด้วยเสียง (Web Speech — คลิกเพื่อพูด)';
+    }
+  }
+
+  fetch('/api/stt/health')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      whisperAvailable = !!(d && d.ok);
+      if (!whisperAvailable && !localStorage.getItem('stt_engine')) sttEngine = 'webspeech';
+      syncSttModeUi();
+    })
+    .catch(() => {
+      whisperAvailable = false;
+      syncSttModeUi();
+    });
+
+  if (btnSttMode) {
+    btnSttMode.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (isVoiceListening) stopVoiceListening(true);
+      sttEngine = (sttEngine === 'whisper') ? 'webspeech' : 'whisper';
+      localStorage.setItem('stt_engine', sttEngine);
+      syncSttModeUi();
+    });
+  }
+
+  if (SpeechRec) {
     try {
       recognition = new SpeechRec();
       recognition.continuous = true;
@@ -4235,7 +4279,9 @@ body::before {
         btnMic.classList.add('is-listening');
         btnMic.innerHTML = '🔴';
         btnMic.title = 'กำลังฟังเสียง... (คลิกเพื่อหยุด)';
+        if (voiceStatusText) voiceStatusText.textContent = 'กำลังฟังเสียง (Web Speech)... พูดคำสั่งได้เลย (คลิก 🔴 เพื่อหยุด)';
         if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'flex';
+        syncSttModeUi();
       };
 
       recognition.onresult = (event) => {
@@ -4264,79 +4310,167 @@ body::before {
         } else if (event.error === 'audio-capture') {
           alert('⚠️ ไม่พบไมโครโฟน: คอมพิวเตอร์ไม่ได้ต่อไมค์ หรือไมค์ถูกปิดการใช้งานใน Windows Settings');
         } else if (event.error === 'network') {
-          alert('⚠️ ติดต่อระบบแปลงเสียง Google Speech Service ไม่ได้ (ตรวจสอบเน็ตหรือการบล็อกบนเบราว์เซอร์)');
+          alert('⚠️ ติดต่อระบบแปลงเสียง Google Speech Service ไม่ได้ (แนะนำสลับเป็น Whisper Local)');
         }
         stopListening(true);
       };
 
       recognition.onend = () => {
-        stopListening(false);
+        if (isVoiceListening) stopListening(false);
       };
     } catch (e) {
       console.warn('SpeechRecognition initialization error:', e);
     }
+  }
 
-    function startListening() {
-      // 1. Check secure context (Chrome blocks speech recognition on insecure HTTP origins)
-      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-      if (!window.isSecureContext && !isLocal) {
-        if (location.hostname.endsWith('.ts.net')) {
-          if (confirm('🎙️ คำสั่งเสียงต้องใช้ HTTPS ที่ปลอดภัย\nคลิก OK เพื่อสลับไปใช้งานผ่าน HTTPS ทันที')) {
-            location.href = 'https://' + location.host + location.pathname + location.search;
-            return;
-          }
-        }
-        showVoiceHelpModal();
-        return;
-      }
+  async function startWhisperRecording() {
+    baseText = promptInput.value ? promptInput.value.trim() : '';
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+        .find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+      mediaRecorder = mimeType ? new MediaRecorder(mediaStream, { mimeType }) : new MediaRecorder(mediaStream);
+      audioChunks = [];
 
-      try {
-        baseText = promptInput.value ? promptInput.value.trim() : '';
-        recognition.start();
-      } catch (e) {
-        console.warn('SpeechRecognition start failed:', e);
-        if (e.name === 'InvalidStateError') {
+      mediaRecorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) audioChunks.push(ev.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const tracks = mediaStream ? mediaStream.getTracks() : [];
+        tracks.forEach(t => t.stop());
+        mediaStream = null;
+
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+        audioChunks = [];
+        if (blob.size < 400) {
+          if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'none';
+          btnMic.innerHTML = '🎙️';
           return;
         }
-        showVoiceHelpModal();
-      }
-    }
 
-    function stopListening(abort = false) {
-      isVoiceListening = false;
-      baseText = '';
-      btnMic.classList.remove('is-listening');
-      btnMic.innerHTML = '🎙️';
-      btnMic.title = 'สั่งการด้วยเสียง (คลิกเพื่อพูด)';
-      if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'none';
-      try {
-        if (recognition) {
-          if (abort) {
-            recognition.abort();
+        isTranscribing = true;
+        btnMic.innerHTML = '⏳';
+        btnMic.title = 'กำลังถอดความด้วย Whisper...';
+        if (voiceStatusText) voiceStatusText.textContent = '⏳ กำลังถอดความด้วย faster-whisper...';
+        if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'flex';
+
+        try {
+          const res = await fetch('/api/stt/transcribe?lang=th', {
+            method: 'POST',
+            headers: { 'Content-Type': blob.type || 'audio/webm' },
+            body: blob
+          });
+          const data = await res.json();
+          if (data && data.ok) {
+            const text = (data.text || '').trim();
+            if (text) {
+              promptInput.value = baseText ? (baseText + ' ' + text) : text;
+              promptInput.scrollTop = promptInput.scrollHeight;
+              promptInput.focus();
+            }
           } else {
-            recognition.stop();
+            alert('⚠️ Whisper ถอดความไม่สำเร็จ: ' + (data?.error || 'Unknown error'));
           }
+        } catch (err) {
+          alert('⚠️ เชื่อมต่อ Whisper Service ไม่สำเร็จ: ' + err.message);
+        } finally {
+          isTranscribing = false;
+          baseText = '';
+          btnMic.innerHTML = '🎙️';
+          if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'none';
+          syncSttModeUi();
         }
-      } catch (_) {}
-    }
-    stopVoiceListening = stopListening;
+      };
 
+      mediaRecorder.start(250);
+      isVoiceListening = true;
+      btnMic.classList.add('is-listening');
+      btnMic.innerHTML = '🔴';
+      btnMic.title = 'กำลังอัดเสียง (คลิกเพื่อหยุดและถอดความ)';
+      if (voiceStatusText) voiceStatusText.textContent = 'กำลังอัดเสียง (Whisper Local)... พูดจบแล้วกด 🔴 เพื่อถอดความ';
+      if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'flex';
+      syncSttModeUi();
+    } catch (err) {
+      console.warn('Whisper mic error:', err);
+      showVoiceHelpModal();
+    }
+  }
+
+  function startListening() {
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (!window.isSecureContext && !isLocal) {
+      if (location.hostname.endsWith('.ts.net')) {
+        if (confirm('🎙️ คำสั่งเสียงต้องใช้ HTTPS ที่ปลอดภัย\nคลิก OK เพื่อสลับไปใช้งานผ่าน HTTPS ทันที')) {
+          location.href = 'https://' + location.host + location.pathname + location.search;
+          return;
+        }
+      }
+      showVoiceHelpModal();
+      return;
+    }
+
+    const useWhisper = sttEngine === 'whisper' && whisperAvailable && !!(navigator.mediaDevices && window.MediaRecorder);
+    if (useWhisper) {
+      startWhisperRecording();
+      return;
+    }
+
+    if (!recognition) {
+      showVoiceHelpModal();
+      return;
+    }
+    try {
+      baseText = promptInput.value ? promptInput.value.trim() : '';
+      recognition.start();
+    } catch (e) {
+      console.warn('SpeechRecognition start failed:', e);
+      if (e.name === 'InvalidStateError') return;
+      showVoiceHelpModal();
+    }
+  }
+
+  function stopListening(abort = false) {
+    isVoiceListening = false;
+    btnMic.classList.remove('is-listening');
+
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      if (abort) {
+        audioChunks = [];
+        try { mediaRecorder.onstop = null; mediaRecorder.stop(); } catch (_) {}
+        if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+        btnMic.innerHTML = '🎙️';
+        if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'none';
+      } else {
+        try { mediaRecorder.stop(); } catch (_) {}
+      }
+      return;
+    }
+
+    baseText = '';
+    btnMic.innerHTML = '🎙️';
+    syncSttModeUi();
+    if (voiceActiveIndicator) voiceActiveIndicator.style.display = 'none';
+    try {
+      if (recognition) {
+        if (abort) recognition.abort();
+        else recognition.stop();
+      }
+    } catch (_) {}
+  }
+  stopVoiceListening = stopListening;
+
+  if (btnMic) {
     btnMic.addEventListener('click', () => {
+      if (isTranscribing) return;
       if (isVoiceListening) {
         stopListening(false);
       } else {
         startListening();
       }
     });
-  } else {
-    if (btnMic) {
-      btnMic.title = 'เบราว์เซอร์นี้ไม่รองรับ Web Speech API (แนะนำให้ใช้ Chrome หรือ Edge)';
-      btnMic.style.opacity = '0.7';
-      btnMic.addEventListener('click', () => {
-        showVoiceHelpModal();
-      });
-    }
   }
+  syncSttModeUi();
 
   btnSend.addEventListener('click', () => sendPrompt());
 

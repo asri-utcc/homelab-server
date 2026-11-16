@@ -106,31 +106,109 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.72; }
     }
-    /* 7-Segment Weekly Rack (from ai-quota-extension) */
+    /* 7-Segment Daily Weekly Rack (Exact port from ai-quota-extension) */
     .weekly-rack {
-      margin-top: 10px;
-      background: #0b0f17;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      margin-top: 18px;
+      background: #111319;
+      border: 1px solid #242834;
       border-radius: 6px;
       padding: 4px;
+      position: relative;
+    }
+    .segment-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
-      gap: 3px;
+      gap: 4px;
     }
-    .rack-cell {
-      height: 16px;
-      border-radius: 3px;
-      background: rgba(255, 255, 255, 0.06);
-      font-family: var(--mono);
-      font-size: 9px;
+    .segment-cell {
+      position: relative;
+      height: 22px;
+      background: #181b24;
+      border: 1px solid #292d3b;
+      border-radius: 4px;
+      overflow: visible;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--muted);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
-    .rack-cell.is-filled { background: rgba(52, 211, 153, 0.35); color: #ecfdf5; }
-    .rack-cell.is-today { border: 1px solid var(--cyan); color: #fff; font-weight: 700; }
-    .rack-cell.is-dead { background: rgba(239, 68, 68, 0.35); color: #fecaca; }
+    .segment-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 0%;
+      background: linear-gradient(180deg, #eab308 0%, #ca8a04 100%);
+      opacity: 0.9;
+      border-radius: 3px;
+      transition: height 0.6s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s ease;
+    }
+    .day-tag {
+      position: relative;
+      z-index: 2;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: #727988;
+      user-select: none;
+      line-height: 1;
+    }
+    .segment-cell.has-usage .day-tag { color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+    .segment-cell.is-today {
+      border: 2px solid #facc15 !important;
+      background: rgba(250, 204, 21, 0.14) !important;
+      box-shadow: 0 0 10px rgba(250, 204, 21, 0.45);
+      z-index: 4;
+    }
+    .segment-cell.is-today .day-tag { color: #fef08a !important; font-weight: 800; }
+    .today-pointer {
+      position: absolute;
+      top: -17px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #facc15;
+      color: #000000;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 3px;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+      pointer-events: none;
+      z-index: 10;
+      line-height: 1.15;
+    }
+    .segment-cell.is-over-budget {
+      border-color: rgba(239, 68, 68, 0.75) !important;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.28);
+    }
+    .segment-cell.is-over-budget .segment-fill {
+      background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%) !important;
+      opacity: 0.95 !important;
+    }
+    .segment-cell.is-over-budget .day-tag { color: #fecaca !important; font-weight: 800; }
+
+    .pace-summary {
+      font-size: 11.5px;
+      color: #b3b8c4;
+      margin-top: 8px;
+      padding: 6px 9px;
+      background: #111319;
+      border-left: 3px solid #282c38;
+      border-radius: 4px;
+      line-height: 1.4;
+    }
+    .pace-summary.level-2-summary {
+      border-left-color: var(--amber);
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.08);
+    }
+    .pace-summary.level-3-summary {
+      border-left-color: var(--red);
+      color: #fca5a5;
+      background: rgba(239, 68, 68, 0.12);
+      font-weight: 600;
+    }
 
     /* Big Realtime Countdown Box (from ai-quota-extension) */
     .big-countdown-box {
@@ -333,6 +411,82 @@
       return { cls: 'pace-crit', text: '⚡ วิกฤติ (Critical)' };
     }
 
+    const SLOT_SIZE = 100 / 7;
+
+    function calculateWeeklyPace(usedPct, resetIso, now = Date.now()) {
+      const safePct = Math.min(100, Math.max(0, Math.round(usedPct || 0)));
+      const resetEpoch = resetIso ? new Date(resetIso).getTime() : 0;
+      let daysRemaining = 3.5;
+      let hasValidEpoch = false;
+
+      if (resetEpoch && resetEpoch > now) {
+        daysRemaining = (resetEpoch - now) / (86400 * 1000);
+        hasValidEpoch = true;
+      }
+
+      const cycleDays = 7;
+      const daysRemainingClamped = Math.min(cycleDays, Math.max(0, daysRemaining));
+      const daysElapsed = Math.min(cycleDays, Math.max(0, cycleDays - daysRemainingClamped));
+      const expectedPct = (daysElapsed / cycleDays) * 100;
+      const delta = safePct - expectedPct;
+      const remainingQuotaPct = Math.max(0, 100 - safePct);
+      const suggestedDailyBudget = daysRemainingClamped > 0.2
+        ? (remainingQuotaPct / daysRemainingClamped)
+        : remainingQuotaPct;
+
+      const currentDayIndex = Math.min(7, Math.max(1, Math.ceil(daysElapsed) || 1));
+      const daysAhead = delta > 0 ? (delta / (100 / cycleDays)).toFixed(1) : '0';
+
+      let level = 1;
+      let badgeCls = 'pace-ok';
+      let badgeLabel = '● ปกติ (On Pace)';
+      let summaryClass = '';
+      let summaryText = `อยู่ในเกณฑ์: เหลืออีก ${daysRemainingClamped.toFixed(1)} วัน | ใช้ได้เฉลี่ย ~${suggestedDailyBudget.toFixed(0)}%/วัน`;
+
+      if (delta > 20 || (safePct >= 90 && daysRemainingClamped >= 1.5) || safePct >= 98) {
+        level = 3;
+        badgeCls = 'pace-crit';
+        badgeLabel = '⚡ วิกฤติ (Critical)';
+        summaryClass = 'level-3-summary';
+        summaryText = `วิกฤติ! ใช้ล้นเกินจุดวันนี้ไป ~${daysAhead} วัน (+${Math.max(0, Math.round(delta))}%) | เหลือ ${daysRemainingClamped.toFixed(1)} วัน (ควรชะลอการใช้)`;
+      } else if (delta > 5 || (safePct >= 75 && daysRemainingClamped >= 2)) {
+        level = 2;
+        badgeCls = 'pace-warn';
+        badgeLabel = '▲ เร่งตัว (High Burn)';
+        summaryClass = 'level-2-summary';
+        summaryText = `เร่งตัว: ใช้ล้นเกินจุดวันนี้ไป ~${daysAhead} วัน (+${Math.round(delta)}%) | เหลือ ${daysRemainingClamped.toFixed(1)} วัน (แนะชะลอเหลือ ~${suggestedDailyBudget.toFixed(0)}%/วัน)`;
+      }
+
+      return { safePct, currentDayIndex, badgeCls, badgeLabel, summaryClass, summaryText, hasValidEpoch };
+    }
+
+    function build7SegmentRackHtml(usedPct, currentDayIndex) {
+      const safePct = Math.min(100, Math.max(0, Number(usedPct) || 0));
+      let cells = '';
+      for (let idx = 0; idx < 7; idx++) {
+        const dayNumber = idx + 1;
+        const lower = idx * SLOT_SIZE;
+        const upper = (idx + 1) * SLOT_SIZE;
+        let fillPct = 0;
+        if (safePct >= upper) fillPct = 100;
+        else if (safePct > lower) fillPct = Math.round(((safePct - lower) / SLOT_SIZE) * 100);
+
+        const isToday = dayNumber === currentDayIndex;
+        const isOver = (dayNumber > currentDayIndex) && (fillPct > 0);
+        const cls = [
+          'segment-cell',
+          fillPct > 0 ? 'has-usage' : '',
+          isToday ? 'is-today' : '',
+          isOver ? 'is-over-budget' : ''
+        ].filter(Boolean).join(' ');
+
+        const pointer = isToday ? '<span class="today-pointer">▼ วันนี้</span>' : '';
+        const title = `วันที่ ${dayNumber} ของรอบ${isToday ? ' (วันนี้)' : ''} - ใช้โควตาส่วนนี้ไป ${fillPct}%`;
+        cells += `<div class="${cls}" title="${title}"><div class="segment-fill" style="height:${fillPct}%"></div><span class="day-tag">D${dayNumber}</span>${pointer}</div>`;
+      }
+      return `<div class="weekly-rack"><div class="segment-grid">${cells}</div></div>`;
+    }
+
     let lastData = null;
 
     function renderQuota(data) {
@@ -352,23 +506,18 @@
       poolGrid.innerHTML = '';
       (data.pools || []).forEach(p => {
         const isExhausted = p.remainingPct <= 0;
-        const pace = isExhausted
-          ? { cls: 'pace-crit', text: '⚡ หมดโควตา (0%)' }
-          : paceForPct(p.remainingPct);
         const barColor = colorForPct(p.remainingPct);
-        const todayIdx = (new Date().getDay() + 6) % 7; // D1=Mon..D7=Sun
-        const rackHtml = Array.from({ length: 7 }, (_, i) => {
-          const cls = isExhausted ? 'is-dead' : (i <= todayIdx ? 'is-filled' : '');
-          const tod = i === todayIdx ? 'is-today' : '';
-          return `<div class="rack-cell ${cls} ${tod}">${i === todayIdx ? '▼D' : 'D'}${i + 1}</div>`;
-        }).join('');
+        const pace = calculateWeeklyPace(p.usedPct, p.resetTime);
+        const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : pace.badgeLabel;
+        const badgeCls = isExhausted ? 'pace-crit' : pace.badgeCls;
+        const rackHtml = build7SegmentRackHtml(p.usedPct, pace.currentDayIndex);
 
         const card = document.createElement('div');
         card.className = `pool-card ${isExhausted ? 'limit-hit' : ''}`;
         card.innerHTML = `
           <div class="pool-head">
             <div class="pool-name" style="color:${isExhausted ? '#fca5a5' : p.color}">${p.name}</div>
-            <span class="pace-badge ${pace.cls}">${pace.text}</span>
+            <span class="pace-badge ${badgeCls}">${badgeText}</span>
           </div>
           <div class="pool-pct" style="color:${barColor}">${p.remainingPct}% <span>คงเหลือ</span></div>
           <div class="bar-track"><div class="bar-fill" style="width:${p.remainingPct}%; background:${barColor};"></div></div>
@@ -376,7 +525,8 @@
             <span>ใช้ไป ${p.usedPct}% (${p.modelsCount} โมเดล)</span>
             <span class="cd" data-reset="${p.resetTime || ''}">${fmtCountdown(p.resetTime)}</span>
           </div>
-          <div class="weekly-rack">${rackHtml}</div>
+          ${rackHtml}
+          <div class="pace-summary ${pace.summaryClass}">${pace.summaryText}</div>
           <div class="big-countdown-box ${isExhausted ? 'active' : ''}">
             <div class="big-countdown-label">🔴 หมดโควตาแล้ว — รอรีเซ็ตในอีก</div>
             <div class="big-countdown-timer cd" data-reset="${p.resetTime || ''}">${fmtCountdown(p.resetTime)}</div>

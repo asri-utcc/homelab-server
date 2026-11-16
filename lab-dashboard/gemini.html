@@ -649,12 +649,12 @@ body::before {
   gap: 8px;
   margin: 6px 0 10px 0;
   padding: 10px 14px;
-  background: rgba(20, 10, 5, 0.82);
+  background: rgba(14, 10, 6, 0.92);
   border: 1px solid rgba(255, 123, 41, 0.55);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
   box-shadow: 0 4px 20px rgba(255, 123, 41, 0.2);
   animation: msg-slide-in 0.25s ease-out;
-  max-width: 460px;
+  max-width: 580px;
   width: 100%;
 }
 .msg__thinking-meta {
@@ -671,6 +671,27 @@ body::before {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.msg__thinking-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-thought-toggle {
+  background: rgba(255, 123, 41, 0.16);
+  border: 1px solid rgba(255, 123, 41, 0.45);
+  color: #ffb07a;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-thought-toggle:hover {
+  background: rgba(255, 123, 41, 0.3);
+  color: #fff;
+  border-color: var(--orange);
 }
 .ai-pulse-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -705,6 +726,37 @@ body::before {
 @keyframes shimmer-line {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(300%); }
+}
+
+/* Collapsible Live Thoughts Drawer */
+.thinking-drawer {
+  background: rgba(2, 6, 10, 0.94);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #a5f3fc;
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: none;
+  margin-top: 2px;
+}
+.thinking-drawer.is-open {
+  display: block;
+}
+.thinking-current-action {
+  color: #fdba74;
+  font-size: 11px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed rgba(255, 123, 41, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ── Bottom Control Dock & Input Area ────────────────────────────────────── */
@@ -1152,7 +1204,8 @@ body::before {
     <div id="badge-key" class="badge badge--warn desktop-only">AUTH: CHECKING...</div>
 
     <select id="sel-model" class="select-box desktop-only" title="เลือก Model AI">
-      <option value="gemini-3.8-flash-medium" selected>Gemini 3.8 Flash (Medium)</option>
+      <option value="gemini-4-hydrogen-medium" selected>Gemini 4 Hydrogen (Medium)</option>
+      <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
       <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
       <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
       <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
@@ -1370,7 +1423,8 @@ body::before {
     <div class="settings-section">
       <div class="settings-label">🤖 เลือกโมเดล AI (Model)</div>
       <select id="modal-sel-model" class="field-input" style="cursor:pointer; margin-bottom:0;">
-        <option value="gemini-3.8-flash-medium" selected>Gemini 3.8 Flash (Medium)</option>
+        <option value="gemini-4-hydrogen-medium" selected>Gemini 4 Hydrogen (Medium)</option>
+        <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
         <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
         <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
         <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
@@ -2028,7 +2082,7 @@ body::before {
             const opt = document.createElement('option');
             opt.value = m.id;
             opt.textContent = m.name;
-            if (m.id === cur || (!cur && m.id === 'gemini-3.8-flash-medium')) opt.selected = true;
+            if (m.id === cur || (!cur && m.id === 'gemini-4-hydrogen-medium')) opt.selected = true;
             sel.appendChild(opt);
           });
         });
@@ -2460,7 +2514,7 @@ body::before {
       body.parentElement.setAttribute('data-job-id', jobId);
     }
 
-    // 4. Create and insert Thinking Card with shimmer animation
+    // 4. Create and insert Thinking Card with shimmer animation and Live Thoughts Drawer
     const thinkingCard = document.createElement('div');
     thinkingCard.className = 'msg__thinking-card';
     thinkingCard.id = 'active-thinking-bar';
@@ -2468,16 +2522,32 @@ body::before {
       <div class="msg__thinking-meta">
         <span class="msg__thinking-label">
           <span class="ai-pulse-dot"></span>
-          ⚡ AI กำลังคิดวิเคราะห์และประมวลผลคำสั่ง...
+          <span id="active-thinking-label-text">⚡ AI กำลังคิดวิเคราะห์และประมวลผลคำสั่ง...</span>
         </span>
-        <span class="msg__thinking-sub">ANTIGRAVITY CORE</span>
+        <div class="msg__thinking-tools">
+          <button type="button" class="btn-thought-toggle" id="btn-thought-drawer-toggle" title="ดูสิ่งที่ AI กำลังคิด ณ ปัจจุบัน">🧠 ดูความคิด ▾</button>
+          <span class="msg__thinking-sub">ANTIGRAVITY CORE</span>
+        </div>
       </div>
       <div class="msg__thinking-shimmer-track">
         <div class="msg__thinking-shimmer-bar"></div>
       </div>
+      <div class="thinking-drawer" id="active-thinking-drawer">
+        <div class="thinking-current-action" id="thinking-action-line">⚡ กำลังเริ่มวิเคราะห์คำสั่ง...</div>
+        <div id="thinking-detail-text">กำลังเชื่อมต่อกระบวนการคิดของ Antigravity Core...</div>
+      </div>
     `;
     if (body && body.parentElement) {
       body.parentElement.insertBefore(thinkingCard, body);
+      const btnTog = thinkingCard.querySelector('#btn-thought-drawer-toggle');
+      const drawer = thinkingCard.querySelector('#active-thinking-drawer');
+      if (btnTog && drawer) {
+        btnTog.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const open = drawer.classList.toggle('is-open');
+          btnTog.textContent = open ? '🧠 ซ่อนความคิด ▴' : '🧠 ดูความคิด ▾';
+        });
+      }
     }
 
     currentTurnJobId = jobId;
@@ -2527,6 +2597,22 @@ body::before {
               scrollToBottom();
             }
           }
+
+          // Update live thought tray while running
+          if (job.liveThought) {
+            const actionLine = document.getElementById('thinking-action-line');
+            const detailText = document.getElementById('thinking-detail-text');
+            const labelText = document.getElementById('active-thinking-label-text');
+            if (actionLine && job.liveThought.currentAction) {
+              actionLine.textContent = '⚙️ กำลังทำ: ' + job.liveThought.currentAction;
+            }
+            if (detailText && job.liveThought.thinking) {
+              detailText.textContent = job.liveThought.thinking;
+            }
+            if (labelText && job.liveThought.currentAction) {
+              labelText.textContent = '⚡ ' + job.liveThought.currentAction.slice(0, 50);
+            }
+          }
         } else {
           // Current job is finished (completed, error, aborted, or idle)
           if (currentTurnResponseBody && job.output && (!(currentTurnResponseBody.dataset.raw) || currentTurnResponseBody.dataset.raw.length < job.output.length)) {
@@ -2573,9 +2659,14 @@ body::before {
           if (el) body = el;
         }
 
-        if (!body) {
+        // Avoid duplicate message bubble if the user prompt is already rendered as the last message
+        const lastMsg = msgList.lastElementChild;
+        const lastText = lastMsg ? (lastMsg.querySelector('.msg__body')?.dataset.raw || lastMsg.querySelector('.msg__body')?.textContent || '').trim() : '';
+        const isAlreadyShowingThisPrompt = lastMsg && lastMsg.classList.contains('msg--user') && lastText === (job.prompt || '').trim();
+
+        if (!body && !isAlreadyShowingThisPrompt) {
           body = createTurnUI(job.id, job.prompt, job.images || []);
-        } else {
+        } else if (body) {
           currentTurnJobId = job.id;
           currentTurnResponseBody = body;
         }
@@ -2769,6 +2860,9 @@ body::before {
     promptInput.value = '';
     const directJobId = 'job_direct_' + Date.now();
     const responseBody = createTurnUI(directJobId, prompt, attachedImages);
+
+    // Start background thoughts polling so live thinking tray updates immediately even during SSE
+    startBackgroundJobPolling();
 
     let fullOutput = '';
 

@@ -36,7 +36,8 @@ homelab-server/
 ---
 
 ## ✨ Lab Dashboard & AI Terminal Features
-* **AI Chat & Terminal:** คอนโซลสื่อสารกับ Antigravity / Gemini พร้อมเสียง Sound Effects เชิงมิติ Sci-Fi
+* **AI Chat & Terminal (Default: Gemini 4 Hydrogen Medium):** คอนโซลสื่อสารกับ Antigravity / Gemini พร้อมเสียง Sound Effects เชิงมิติ Sci-Fi
+* **Live Thinking Drawer & Deduplication:** ถาดตรวจสอบสถานะความคิดและการทำงานของ AI แบบ Real-time (กดย่อ/ขยายได้) พร้อมระบบป้องกันข้อความซ้ำซ้อนเมื่อ Reconnect
 * **Direct Image Attachment & Rendering:**
   * รองรับการแนบและอัปโหลดรูปภาพผ่านแชทโดยตรง (ลากวาง / เลือกไฟล์ / คัดลอก-วาง) สูงสุด 10 MB
   * แสดงผลรูปภาพแบบ Responsive Card Gallery พร้อมระบบคลิกดูภาพขยาย

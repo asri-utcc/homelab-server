@@ -93,7 +93,7 @@ async function saveUploadedImage(dataUrl, originalName = 'image.png') {
     };
 }
 
-async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-3.8-flash-medium' }) {
+async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium' }) {
     const cleanImages = Array.isArray(images) ? images : [];
     const cleanPrompt = (prompt || '').trim() || (cleanImages.length > 0 ? 'ช่วยดูและวิเคราะห์รูปภาพที่แนบมานี้หน่อย' : '');
     if (!cleanPrompt) throw new Error('ข้อความคำสั่งว่างเปล่า ไม่สามารถเพิ่มเข้าคิวได้');
@@ -104,7 +104,7 @@ async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_
         images: cleanImages,
         mode: mode || 'exec',
         cwd: cwd || PROJECTS_BASE,
-        model: model || 'gemini-3.8-flash-medium',
+        model: model || 'gemini-4-hydrogen-medium',
         createdAt: Date.now()
     };
 
@@ -218,11 +218,60 @@ let activeJob = {
     model: ''
 };
 
+function getLiveThinkingState() {
+    try {
+        const brainDir = path.join(HOME_DIR, '.gemini/antigravity-cli/brain');
+        if (!fs.existsSync(brainDir)) return null;
+        const subdirs = fs.readdirSync(brainDir)
+            .map(d => path.join(brainDir, d))
+            .filter(p => {
+                try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
+            });
+        if (!subdirs.length) return null;
+        subdirs.sort((a, b) => {
+            try { return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs; } catch (_) { return 0; }
+        });
+        const tFile = path.join(subdirs[0], '.system_generated/logs/transcript.jsonl');
+        if (!fs.existsSync(tFile)) return null;
+
+        const content = fs.readFileSync(tFile, 'utf8');
+        const lines = content.trim().split('\n');
+        let latestThinking = '';
+        let lastTool = '';
+        let lastStepTime = '';
+
+        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 35); i--) {
+            try {
+                const obj = JSON.parse(lines[i]);
+                if (!lastStepTime && obj.created_at) lastStepTime = obj.created_at;
+                if (!lastTool && obj.tool_calls && obj.tool_calls.length) {
+                    const tc = obj.tool_calls[0];
+                    const summary = tc.toolSummary || tc.args?.toolSummary || tc.args?.CommandLine || '';
+                    lastTool = `${tc.name}: ${summary}`.slice(0, 140);
+                }
+                if (!latestThinking && obj.thinking) {
+                    latestThinking = String(obj.thinking).trim();
+                }
+                if (latestThinking && lastTool) break;
+            } catch (_) {}
+        }
+
+        return {
+            thinking: latestThinking,
+            currentAction: lastTool || 'กำลังคิดวิเคราะห์คำสั่ง...',
+            lastStepTime
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
 function getActiveJob() {
     return {
         ...activeJob,
         activeRunning: activeChild !== null,
-        queue: getQueue()
+        queue: getQueue(),
+        liveThought: getLiveThinkingState()
     };
 }
 
@@ -425,7 +474,7 @@ async function setApiKey(key) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-3.8-flash-medium', resetSession = false }, onChunk, onDone) {
+function executePrompt({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium', resetSession = false }, onChunk, onDone) {
     if (activeChild) {
         throw new Error('Another AI command is currently running. Please wait or stop it.');
     }

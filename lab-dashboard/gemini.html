@@ -676,6 +676,31 @@ body::before {
 }
 .msg__author { font-weight: 700; color: var(--cyan); }
 .msg--user .msg__author { color: var(--green); }
+.msg__meta-right { display: inline-flex; align-items: center; gap: 8px; }
+.btn-msg-speak {
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-msg-speak:hover { background: rgba(0, 229, 255, 0.2); box-shadow: 0 0 8px rgba(0, 229, 255, 0.35); }
+.btn-msg-speak.is-speaking {
+  background: rgba(255, 179, 0, 0.22);
+  border-color: #fbbf24;
+  color: #fbbf24;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.35);
+}
+#btn-tts-auto.is-active {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: var(--cyan);
+  color: var(--cyan);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+}
 
 .msg__body { font-size: 14px; line-height: 1.65; word-break: break-word; white-space: pre-wrap; }
 .msg--assistant .msg__body { white-space: normal; }
@@ -1622,6 +1647,7 @@ body::before {
         <div class="core-control-strip">
           <div class="core-strip-left">
             <button type="button" id="btn-sound" class="btn" title="เปิด/ปิดเสียงเอฟเฟกต์ (Sound FX)">🔊 เสียง</button>
+            <button type="button" id="btn-tts-auto" class="btn" title="อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Speaker TTS)">🗣️ อ่านอัตโนมัติ</button>
           </div>
 
           <div class="mode-toggle">
@@ -3641,7 +3667,31 @@ body::before {
     const meta = document.createElement('div');
     meta.className = 'msg__meta';
     const authorName = (role === 'user') ? 'คุณ' : 'CORE';
-    meta.innerHTML = '<span class="msg__author">' + authorName + '</span><span>' + new Date().toLocaleTimeString() + '</span>';
+    const authorSpan = document.createElement('span');
+    authorSpan.className = 'msg__author';
+    authorSpan.textContent = authorName;
+    const metaRight = document.createElement('span');
+    metaRight.className = 'msg__meta-right';
+    const timeSpan = document.createElement('span');
+    timeSpan.textContent = new Date().toLocaleTimeString();
+    metaRight.appendChild(timeSpan);
+    if (role !== 'user' && 'speechSynthesis' in window) {
+      const speakBtn = document.createElement('button');
+      speakBtn.type = 'button';
+      speakBtn.className = 'btn-msg-speak';
+      speakBtn.title = 'อ่านข้อความนี้ออกเสียง';
+      speakBtn.textContent = '🔊 พูด';
+      speakBtn.addEventListener('click', () => {
+        if (speakBtn.classList.contains('is-speaking')) {
+          stopSpeaking();
+        } else {
+          speakMessage(el, speakBtn);
+        }
+      });
+      metaRight.appendChild(speakBtn);
+    }
+    meta.appendChild(authorSpan);
+    meta.appendChild(metaRight);
     el.appendChild(meta);
 
     if (cleanImgs.length > 0) {
@@ -4168,7 +4218,132 @@ body::before {
     }
   }
 
+  // ── Speaker / Text-to-Speech (Web Speech Synthesis) ───────────────────────
+  const btnTtsAuto = document.getElementById('btn-tts-auto');
+  let autoTtsEnabled = localStorage.getItem('core_auto_tts') === '1';
+  let activeSpeakBtn = null;
+  let ttsQueueToken = 0;
+
+  function syncAutoTtsBtn() {
+    if (!btnTtsAuto) return;
+    if (!('speechSynthesis' in window)) {
+      btnTtsAuto.style.display = 'none';
+      return;
+    }
+    btnTtsAuto.classList.toggle('is-active', autoTtsEnabled);
+    btnTtsAuto.textContent = autoTtsEnabled ? '🗣️ อ่านอัตโนมัติ: เปิด' : '🗣️ อ่านอัตโนมัติ';
+  }
+  syncAutoTtsBtn();
+
+  if (btnTtsAuto) {
+    btnTtsAuto.addEventListener('click', () => {
+      autoTtsEnabled = !autoTtsEnabled;
+      localStorage.setItem('core_auto_tts', autoTtsEnabled ? '1' : '0');
+      syncAutoTtsBtn();
+      if (!autoTtsEnabled) stopSpeaking();
+    });
+  }
+
+  function pickThaiVoice() {
+    if (!('speechSynthesis' in window)) return null;
+    const voices = window.speechSynthesis.getVoices() || [];
+    return (
+      voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th') && /natural|google|microsoft|premwadee|niwat/i.test(v.name)) ||
+      voices.find(v => v.lang && v.lang.toLowerCase().startsWith('th')) ||
+      null
+    );
+  }
+  if ('speechSynthesis' in window && window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = () => pickThaiVoice();
+  }
+
+  function cleanTextForSpeech(rawText) {
+    let t = String(rawText || '');
+    t = t.replace(/```[\s\S]*?```/g, ' โค้ด ');
+    t = t.replace(/https?:\/\/\S+/g, '');
+    t = t.replace(/file:\/\/\S+/g, '');
+    t = t.replace(/[*_~`#>|]/g, ' ');
+    t = t.replace(/\s+/g, ' ').trim();
+    return t;
+  }
+
+  function splitSpeechChunks(text, maxLen = 170) {
+    const parts = text.split(/(?<=[.!?\n])\s+|(?<=ครับ|ค่ะ|นะคะ)\s*/);
+    const chunks = [];
+    let buf = '';
+    for (const part of parts) {
+      const p = part.trim();
+      if (!p) continue;
+      if ((buf + ' ' + p).trim().length <= maxLen) {
+        buf = (buf + ' ' + p).trim();
+      } else {
+        if (buf) chunks.push(buf);
+        if (p.length <= maxLen) {
+          buf = p;
+        } else {
+          for (let i = 0; i < p.length; i += maxLen) {
+            chunks.push(p.slice(i, i + maxLen));
+          }
+          buf = '';
+        }
+      }
+    }
+    if (buf) chunks.push(buf);
+    return chunks;
+  }
+
+  function stopSpeaking() {
+    ttsQueueToken++;
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (_) {}
+    }
+    if (activeSpeakBtn) {
+      activeSpeakBtn.classList.remove('is-speaking');
+      activeSpeakBtn.textContent = '🔊 พูด';
+      activeSpeakBtn = null;
+    }
+  }
+
+  function speakMessage(msgEl, btnEl) {
+    if (!('speechSynthesis' in window) || !msgEl) return;
+    const bodyEl = msgEl.querySelector('.msg__body');
+    const raw = (bodyEl && (bodyEl.innerText || bodyEl.textContent)) || '';
+    const cleaned = cleanTextForSpeech(raw);
+    if (!cleaned) return;
+
+    stopSpeaking();
+    const token = ++ttsQueueToken;
+    const chunks = splitSpeechChunks(cleaned);
+    if (!chunks.length) return;
+
+    const btn = btnEl || msgEl.querySelector('.btn-msg-speak');
+    if (btn) {
+      activeSpeakBtn = btn;
+      btn.classList.add('is-speaking');
+      btn.textContent = '⏹️ หยุด';
+    }
+
+    const voice = pickThaiVoice();
+    let idx = 0;
+    function speakNext() {
+      if (token !== ttsQueueToken || idx >= chunks.length) {
+        if (token === ttsQueueToken) stopSpeaking();
+        return;
+      }
+      const u = new SpeechSynthesisUtterance(chunks[idx++]);
+      u.lang = voice ? voice.lang : 'th-TH';
+      if (voice) u.voice = voice;
+      u.rate = 1.02;
+      u.pitch = 1.0;
+      u.onend = () => speakNext();
+      u.onerror = () => stopSpeaking();
+      window.speechSynthesis.speak(u);
+    }
+    speakNext();
+  }
+
   function finishRun() {
+    const finishedBody = currentTurnResponseBody;
     isSseActive = false;
     isRunning = false;
     if (pollTimer) {
@@ -4182,6 +4357,10 @@ body::before {
     btnAbort.style.display = 'none';
     const activeBar = document.getElementById('active-thinking-bar');
     if (activeBar) activeBar.remove();
+    if (autoTtsEnabled && finishedBody && finishedBody.closest) {
+      const msgEl = finishedBody.closest('.msg--assistant');
+      if (msgEl) speakMessage(msgEl);
+    }
   }
 
   btnAbort.addEventListener('click', async () => {

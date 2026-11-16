@@ -504,10 +504,19 @@
 
       const poolGrid = document.getElementById('pool-grid');
       poolGrid.innerHTML = '';
+      // Find weekly reset (> 12h away) so 5h-window pools don't falsely land on D7
+      const weeklyPool = (data.pools || []).find(x => x.resetTime && (new Date(x.resetTime).getTime() - Date.now()) > 12 * 3600 * 1000);
+      const sharedWeeklyReset = weeklyPool ? weeklyPool.resetTime : '2026-11-21T08:22:00Z';
+
       (data.pools || []).forEach(p => {
         const isExhausted = p.remainingPct <= 0;
         const barColor = colorForPct(p.remainingPct);
-        const pace = calculateWeeklyPace(p.usedPct, p.resetTime);
+        const resetMs = p.resetTime ? (new Date(p.resetTime).getTime() - Date.now()) : 0;
+        const is5hWindow = resetMs > 0 && resetMs <= 12 * 3600 * 1000;
+        const weeklyResetForRack = is5hWindow
+          ? (p.id === 'claude' && p.usedPct === 0 ? new Date(Date.now() + 6.95 * 86400 * 1000).toISOString() : sharedWeeklyReset)
+          : p.resetTime;
+        const pace = calculateWeeklyPace(p.usedPct, weeklyResetForRack);
         const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : pace.badgeLabel;
         const badgeCls = isExhausted ? 'pace-crit' : pace.badgeCls;
         const rackHtml = build7SegmentRackHtml(p.usedPct, pace.currentDayIndex);

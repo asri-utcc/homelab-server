@@ -914,10 +914,9 @@ async function getQuotaSummary() {
         };
 
         const pools = [
-            pickPool('hydrogen', 'Gemini 4 Hydrogen', m => m.id.includes('hydrogen'), '#38bdf8'),
-            pickPool('argon', 'Gemini 2.5 Pro', m => m.id.includes('argon') || m.id.includes('orchestrator') || m.id.includes('gemini-2.5-pro'), '#a855f7'),
-            pickPool('flash', 'Gemini 3.8 Flash', m => m.id.includes('flash'), '#34d399'),
-            pickPool('claude', 'Claude 5.5 & GPT-OSS', m => m.id.includes('claude') || m.id.includes('gpt-oss'), '#fb923c')
+            pickPool('gemini', 'Gemini Models (Hydrogen / Flash / Pro)', m => m.id.includes('gemini-3.8') || m.id.includes('gemini-3-flash') || m.id.includes('gemini-2.5-pro'), '#38bdf8'),
+            pickPool('claude', 'Claude & GPT Models', m => m.id.includes('claude') || m.id.includes('gpt-oss'), '#fb923c'),
+            pickPool('argon', 'Gemini 4 Argon', m => m.id.includes('argon'), '#a855f7')
         ].filter(Boolean);
 
         return {

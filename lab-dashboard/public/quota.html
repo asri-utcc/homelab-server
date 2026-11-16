@@ -204,7 +204,11 @@
 
     <div class="pool-grid" id="pool-grid"></div>
 
-    <div class="table-card">
+    <div style="margin-bottom: 12px;">
+      <button type="button" class="btn" id="btn-toggle-models" style="font-size:11.5px; padding:6px 12px;">📋 ดูรายละเอียดรายโมเดล (20 โมเดล) ▾</button>
+    </div>
+
+    <div class="table-card" id="models-table-card" style="display:none;">
       <div class="table-title">
         <span>🤖 รายละเอียดโควตาแยกรายโมเดล (All Models)</span>
         <span class="sub" id="models-count"></span>
@@ -321,6 +325,12 @@
     }
 
     document.getElementById('btn-refresh').addEventListener('click', loadQuota);
+    document.getElementById('btn-toggle-models').addEventListener('click', (e) => {
+      const card = document.getElementById('models-table-card');
+      const open = card.style.display === 'none';
+      card.style.display = open ? 'block' : 'none';
+      e.target.textContent = open ? '📋 ซ่อนรายละเอียดรายโมเดล ▴' : '📋 ดูรายละเอียดรายโมเดล (20 โมเดล) ▾';
+    });
     loadQuota();
     setInterval(loadQuota, 60000);
     setInterval(() => {

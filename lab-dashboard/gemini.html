@@ -2528,6 +2528,7 @@ body::before {
 
     let liveSummary = null;
     let liveEnergy = null;
+    let activePopoverDef = null;
 
     async function refreshTelemetry() {
       try {
@@ -2537,17 +2538,21 @@ body::before {
         ]);
         if (sRes) liveSummary = sRes;
         if (eRes) liveEnergy = eRes;
+        else if (sRes?.energy) liveEnergy = sRes.energy;
+        if (activePopoverDef && popoverEl.classList.contains('is-open')) {
+          openPlanetPopover(activePopoverDef);
+        }
       } catch (_) {}
     }
     refreshTelemetry();
-    setInterval(refreshTelemetry, 12000);
+    setInterval(refreshTelemetry, 10000);
 
     function findPm2(name) {
-      const list = liveSummary?.pm2 || [];
+      const list = liveSummary?.pm2?.items || [];
       return list.find(p => (p.name || '').toLowerCase() === name.toLowerCase());
     }
     function findDocker(name) {
-      const list = liveSummary?.containers || [];
+      const list = liveSummary?.docker?.items || [];
       return list.find(c => (c.name || '').toLowerCase() === name.toLowerCase());
     }
 
@@ -2556,14 +2561,16 @@ body::before {
       {
         id: 'cpu', label: 'CPU', icon: '⚡', ring: 68, speed: 0.0085, angle: 0.2, size: 13, color: '#38bdf8',
         getInfo: () => {
-          const cpu = liveSummary?.system?.cpuPercent;
-          const load = liveSummary?.system?.load1;
+          const h = liveSummary?.host;
+          const cpu = h?.cpu?.pct;
+          const load = h?.load?.[0];
+          const cores = h?.cpu?.count;
           return {
             title: 'CPU & Load Average',
             status: cpu > 85 ? 'HIGH LOAD' : 'NORMAL',
             statusClass: cpu > 85 ? 'is-warn' : '',
             body: cpu !== undefined
-              ? `การใช้งาน CPU: <strong>${cpu.toFixed(1)}%</strong><br>Load Average (1m): <strong>${load ?? '-'}</strong><br>Host: <code>homelab (Debian 12)</code>`
+              ? `การใช้งาน CPU: <strong>${Number(cpu).toFixed(1)}%</strong> (${cores ?? 4} Cores)<br>Load Average (1m): <strong>${load ?? '-'}</strong><br>Host: <code>${h?.hostname || 'homelab'}</code>`
               : 'กำลังโหลดข้อมูล CPU ของเซิร์ฟเวอร์...',
             actions: [{ label: '🔍 ถาม AI เช็ค CPU', prompt: 'ตรวจสอบการใช้ CPU และโปรเซสที่ใช้ทรัพยากรสูงสุดตอนนี้' }]
           };
@@ -2572,14 +2579,14 @@ body::before {
       {
         id: 'ram', label: 'RAM', icon: '🧠', ring: 68, speed: 0.0085, angle: 1.77, size: 13, color: '#34d399',
         getInfo: () => {
-          const mem = liveSummary?.system?.mem;
-          const pct = mem ? ((mem.used / mem.total) * 100).toFixed(1) : null;
+          const mem = liveSummary?.host?.mem;
+          const gb = (b) => (b / (1024 ** 3)).toFixed(2);
           return {
             title: 'Memory (RAM)',
-            status: pct && pct > 85 ? 'HIGH' : 'HEALTHY',
-            statusClass: pct && pct > 85 ? 'is-warn' : '',
+            status: mem && mem.pct > 85 ? 'HIGH' : 'HEALTHY',
+            statusClass: mem && mem.pct > 85 ? 'is-warn' : '',
             body: mem
-              ? `ใช้งานไป: <strong>${(mem.used / 1024).toFixed(1)} GB</strong> / ${(mem.total / 1024).toFixed(1)} GB (${pct}%)<br>พร้อมใช้งาน: <strong>${(mem.available / 1024).toFixed(1)} GB</strong>`
+              ? `ใช้งานไป: <strong>${gb(mem.used)} GB</strong> / ${gb(mem.total)} GB (<strong>${mem.pct}%</strong>)<br>พร้อมใช้งาน: <strong>${gb(mem.avail)} GB</strong>`
               : 'กำลังโหลดข้อมูลหน่วยความจำ...',
             actions: [{ label: '📊 เช็ค RAM ทั้งระบบ', prompt: 'ตรวจสอบการใช้ RAM และ Swap ของเซิร์ฟเวอร์ตอนนี้' }]
           };
@@ -2588,16 +2595,17 @@ body::before {
       {
         id: 'disk', label: 'DISK', icon: '💾', ring: 68, speed: 0.0085, angle: 3.34, size: 12, color: '#c084fc',
         getInfo: () => {
-          const disks = liveSummary?.disks || [];
+          const disks = liveSummary?.host?.disks || [];
           const root = disks.find(d => d.mount === '/') || disks[0];
           const home = disks.find(d => d.mount === '/home');
+          const gb = (b) => b ? (b / (1024 ** 3)).toFixed(1) + ' GB' : '-';
           return {
             title: 'Storage & Disks',
-            status: 'OK',
-            statusClass: '',
+            status: root && root.pct > 85 ? 'LOW SPACE' : 'OK',
+            statusClass: root && root.pct > 85 ? 'is-warn' : '',
             body: root
-              ? `Root (<code>/</code>): <strong>${root.usePercent || root.percent || '-'}%</strong><br>` + (home ? `Home (<code>/home</code>): <strong>${home.usePercent || home.percent || '-'}%</strong>` : '')
-              : 'พื้นที่ดิสก์ทำงานปกติ (/ 14%, /home 3%)',
+              ? `Root (<code>/</code>): <strong>${root.pct}%</strong> (${gb(root.used)} / ${gb(root.size)})<br>` + (home ? `Home (<code>/home</code>): <strong>${home.pct}%</strong> (${gb(home.used)} / ${gb(home.size)})` : '')
+              : 'กำลังโหลดข้อมูลพื้นที่ดิสก์...',
             actions: [{ label: '💾 เช็คพื้นที่ดิสก์', prompt: 'ตรวจสอบพื้นที่ Disk ทั้งหมดบนเซิร์ฟเวอร์' }]
           };
         }
@@ -2605,13 +2613,14 @@ body::before {
       {
         id: 'net', label: 'VPN', icon: '🌐', ring: 68, speed: 0.0085, angle: 4.91, size: 12, color: '#60a5fa',
         getInfo: () => {
-          const up = liveSummary?.system?.uptimeSec;
+          const up = liveSummary?.host?.uptimeSec;
           const hrs = up ? Math.floor(up / 3600) : null;
+          const mins = up ? Math.floor((up % 3600) / 60) : null;
           return {
             title: 'Network & Tailscale VPN',
             status: 'ONLINE',
             statusClass: '',
-            body: `Domain: <code>homelab.tail285279.ts.net</code><br>LAN IP: <code>192.168.1.123</code><br>` + (hrs !== null ? `Uptime: <strong>${hrs} ชั่วโมง</strong>` : ''),
+            body: `Domain: <code>homelab.tail285279.ts.net</code><br>LAN IP: <code>192.168.1.123</code><br>` + (hrs !== null ? `Uptime: <strong>${hrs} ชม. ${mins} นาที</strong>` : ''),
             actions: [{ label: '🛡️ เช็ค Firewall & Ports', prompt: 'ตรวจสอบไฟร์วอลล์ UFW, พอร์ตที่กำลังเปิดใช้งาน และความปลอดภัยของระบบ' }]
           };
         }
@@ -2623,11 +2632,12 @@ body::before {
         getInfo: () => {
           const p = findPm2('iot-dashboard');
           const online = p ? p.status === 'online' : true;
+          const mb = p?.mem ? Math.round(p.mem / (1024 * 1024)) : null;
           return {
             title: 'IoT Smart Dashboard',
             status: online ? 'ONLINE' : 'OFFLINE',
             statusClass: online ? '' : 'is-down',
-            body: `Standalone Sonoff Direct LAN + PZEM ESPHome + กล้อง Xiaomi<br>Port: <code>8095</code> · URL: <code>/iot/</code>`,
+            body: `Standalone Sonoff Direct LAN + PZEM ESPHome + กล้อง Xiaomi<br>Port: <code>8095</code>` + (mb ? ` · RAM: <strong>${mb} MB</strong>` : ''),
             actions: [
               { label: '🔗 เปิดหน้า IoT', href: '/iot/' },
               { label: '⚡ เช็คอุปกรณ์ IoT', prompt: 'ตรวจสอบสถานะอุปกรณ์ทั้งหมดใน iot-dashboard' }
@@ -2639,12 +2649,12 @@ body::before {
         id: 'ha', label: 'HA', icon: '🏠', ring: 104, speed: -0.0055, angle: 1.45, size: 15, color: '#0ea5e9',
         getInfo: () => {
           const c = findDocker('lab-homeassistant');
-          const up = !c || String(c.status || '').toLowerCase().includes('up');
+          const up = !c || c.state === 'running';
           return {
             title: 'Home Assistant',
             status: up ? 'RUNNING' : 'STOPPED',
             statusClass: up ? '' : 'is-down',
-            body: `Smart Home Core & Automation<br>Container: <code>lab-homeassistant</code> · Port: <code>8123</code>`,
+            body: `Smart Home Core & Automation<br>Container: <code>${c?.status || 'running'}</code>` + (c?.mem ? ` · RAM: <strong>${c.mem}</strong>` : ''),
             actions: [{ label: '🔗 เปิด Home Assistant', href: `http://${location.hostname}:8123` }]
           };
         }
@@ -2654,11 +2664,12 @@ body::before {
         getInfo: () => {
           const p = findPm2('onepercentbot');
           const online = p ? p.status === 'online' : true;
+          const mb = p?.mem ? Math.round(p.mem / (1024 * 1024)) : null;
           return {
             title: 'OnePercentBotTrade',
             status: online ? 'ONLINE' : 'OFFLINE',
             statusClass: online ? '' : 'is-down',
-            body: `Crypto Spot Trading Bot (Binance)<br>PM2 ID: <code>2</code> · RAM: <strong>${p?.memoryMB ? p.memoryMB + ' MB' : '~160 MB'}</strong>`,
+            body: `Crypto Spot Trading Bot (Binance)<br>RAM: <strong>${mb ? mb + ' MB' : '-'}</strong> · CPU: <strong>${p?.cpu ?? 0}%</strong>`,
             actions: [{ label: '📈 วิเคราะห์บอท & Log', prompt: 'วิเคราะห์สถานะ OnePercentBotTrade และตรวจสอบไฟล์ log ล่าสุด' }]
           };
         }
@@ -2667,12 +2678,12 @@ body::before {
         id: 'z2m', label: 'Z2M', icon: '📡', ring: 104, speed: -0.0055, angle: 3.55, size: 13, color: '#a855f7',
         getInfo: () => {
           const c = findDocker('lab-zigbee2mqtt');
-          const up = !c || String(c.status || '').toLowerCase().includes('up');
+          const up = !c || c.state === 'running';
           return {
             title: 'Zigbee2MQTT',
             status: up ? 'RUNNING' : 'EXITED',
             statusClass: up ? '' : 'is-down',
-            body: `Zigbee Bridge (<code>/dev/ttyACM0</code>)<br>MQTT Broker: <code>lab-emqx:1883</code> · Port: <code>8099</code>`,
+            body: `Zigbee Bridge (<code>/dev/ttyACM0</code>)<br>Status: <code>${c?.status || 'running'}</code> · Port: <code>8099</code>`,
             actions: [{ label: '🔍 เช็ค Log Zigbee', prompt: 'ตรวจสอบสถานะและ log ล่าสุดของ lab-zigbee2mqtt' }]
           };
         }
@@ -2680,13 +2691,12 @@ body::before {
       {
         id: 'pm2', label: 'PM2', icon: '⚙️', ring: 104, speed: -0.0055, angle: 4.6, size: 13, color: '#2dd4bf',
         getInfo: () => {
-          const list = liveSummary?.pm2 || [];
-          const onlineCnt = list.filter(x => x.status === 'online').length;
+          const pm2 = liveSummary?.pm2;
           return {
             title: 'PM2 Process Manager',
-            status: list.length ? `${onlineCnt}/${list.length} ONLINE` : 'ONLINE',
-            statusClass: '',
-            body: `ดูแลโปรเซส Node.js ทั้งหมด: <code>lab-dashboard</code>, <code>iot-dashboard</code>, <code>onepercentbot</code>, <code>pm2-ui</code>`,
+            status: pm2 ? `${pm2.online}/${pm2.total} ONLINE` : 'ONLINE',
+            statusClass: pm2 && pm2.online < pm2.total ? 'is-warn' : '',
+            body: `โปรเซส Node.js: <code>lab-dashboard</code>, <code>iot-dashboard</code>, <code>onepercentbot</code>, <code>pm2-ui</code>`,
             actions: [{ label: '🔗 เปิด PM2 UI', href: `http://${location.hostname}:8082` }]
           };
         }
@@ -2694,13 +2704,14 @@ body::before {
       {
         id: 'docker', label: 'DCK', icon: '🐳', ring: 104, speed: -0.0055, angle: 5.65, size: 14, color: '#3b82f6',
         getInfo: () => {
-          const list = liveSummary?.containers || [];
-          const upCnt = list.filter(x => String(x.status || '').toLowerCase().includes('up')).length;
+          const dck = liveSummary?.docker;
           return {
             title: 'Docker Stack (lab-stack)',
-            status: list.length ? `${upCnt}/${list.length} UP` : '13 CONTAINERS',
-            statusClass: list.length && upCnt < list.length ? 'is-warn' : '',
-            body: `Caddy, WireGuard, EMQX, MongoDB, MySQL (omsin), Portainer, Uptime Kuma, Filebrowser`,
+            status: dck ? `${dck.running}/${dck.total} UP` : '13 CONTAINERS',
+            statusClass: dck && dck.stopped > 0 ? 'is-warn' : '',
+            body: dck
+              ? `กำลังทำงาน: <strong>${dck.running}</strong> / ${dck.total} Containers` + (dck.stopped > 0 ? ` (หยุด: ${dck.stopped})` : '')
+              : 'Caddy, WireGuard, EMQX, MongoDB, MySQL, Portainer, Uptime Kuma',
             actions: [
               { label: '🔗 เปิด Portainer', href: `http://${location.hostname}:9000` },
               { label: '🐳 เช็ค Containers', prompt: 'ตรวจสอบสถานะ Docker Containers และ Resource การทำงานของ Host ทั้งหมด' }
@@ -2713,16 +2724,16 @@ body::before {
       {
         id: 'pzem', label: 'PZEM', icon: '🔌', ring: 140, speed: 0.0038, angle: 0.8, size: 16, color: '#facc15',
         getInfo: () => {
-          const w = liveEnergy?.powerW ?? liveEnergy?.power;
-          const v = liveEnergy?.voltageV ?? liveEnergy?.voltage;
-          const kwh = liveEnergy?.todayKwh;
+          const rt = liveEnergy?.realtime;
+          const td = liveEnergy?.today;
+          const tm = liveEnergy?.this_month;
           return {
             title: 'PZEM-01 Energy Meter',
             status: 'LIVE',
             statusClass: '',
-            body: w !== undefined
-              ? `กำลังไฟขณะนี้: <strong>${Number(w).toFixed(1)} W</strong> (${v ?? '-'} V)<br>` + (kwh !== undefined ? `ใช้ไฟวันนี้: <strong>${Number(kwh).toFixed(2)} kWh</strong>` : 'เชื่อมต่อตรง ESPHome (192.168.1.20)')
-              : 'มิเตอร์ไฟฟ้าหลักของบ้าน (ESPHome 192.168.1.20:6053)',
+            body: rt
+              ? `กำลังไฟ: <strong>${rt.power_watts} W</strong> (${rt.voltage_volts} V · ${rt.current_amps} A)<br>วันนี้: <strong>${td?.energy_kwh ?? '-'} kWh</strong> (${td?.cost_thb ?? '-'} บาท)<br>${tm?.month_name || 'รอบบิลนี้'}: <strong>${tm?.cost_thb ?? '-'} บาท</strong>`
+              : 'กำลังโหลดข้อมูลพลังงาน PZEM-01...',
             actions: [{ label: '⚡ สรุปค่าไฟวันนี้', prompt: 'เช็คค่าไฟวันนี้หน่อย' }]
           };
         }
@@ -2823,6 +2834,7 @@ body::before {
     });
 
     function openPlanetPopover(def) {
+      activePopoverDef = def;
       const info = def.getInfo();
       const actionsHtml = (info.actions || []).map((a, idx) => {
         if (a.href) {

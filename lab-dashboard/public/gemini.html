@@ -227,6 +227,153 @@ body::before {
   cursor: grabbing;
 }
 
+/* Interactive Semantic Orbit Planets */
+.orbit-planets-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.orbit-planet {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
+  user-select: none;
+}
+.orbit-planet:hover {
+  z-index: 20;
+  filter: brightness(1.28);
+}
+.orbit-planet.is-grabbed {
+  cursor: grabbing;
+  z-index: 30;
+  filter: brightness(1.35);
+}
+.orbit-planet__tag {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(226, 232, 240, 0.85);
+  background: rgba(2, 10, 18, 0.78);
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0.78;
+  transition: opacity 0.15s ease;
+}
+.orbit-planet:hover .orbit-planet__tag,
+.orbit-planet.is-grabbed .orbit-planet__tag {
+  opacity: 1;
+  color: #fff;
+  border-color: rgba(0, 229, 255, 0.65);
+}
+
+/* Planet Info Bubble / Popover */
+.planet-popover {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 40;
+  background: rgba(5, 16, 26, 0.96);
+  border: 1px solid rgba(0, 229, 255, 0.55);
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.7), 0 0 22px rgba(0, 229, 255, 0.22);
+  backdrop-filter: blur(10px);
+  display: none;
+  animation: msg-slide-in 0.18s ease-out;
+}
+.planet-popover.is-open {
+  display: block;
+}
+.planet-pop__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.planet-pop__title {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.planet-pop__badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #34d399;
+}
+.planet-pop__badge.is-warn {
+  background: rgba(251, 146, 60, 0.18);
+  border-color: rgba(251, 146, 60, 0.5);
+  color: #fdba74;
+}
+.planet-pop__badge.is-down {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+.planet-pop__close {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+}
+.planet-pop__body {
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin-bottom: 10px;
+}
+.planet-pop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.planet-pop__btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--cyan);
+  text-decoration: none;
+  cursor: pointer;
+}
+.planet-pop__btn:hover {
+  background: rgba(0, 229, 255, 0.25);
+  color: #fff;
+}
+
 .reactor-status-wrap {
   position: relative;
   z-index: 2;
@@ -1339,48 +1486,40 @@ body::before {
 
           <!-- Expanded Galaxy Planetary Orbit Ring -->
           <g class="ring-galaxy-outer">
-            <circle cx="150" cy="150" r="154" fill="none" stroke="rgba(168, 85, 247, 0.3)" stroke-width="1.2" stroke-dasharray="3 9" />
-            <ellipse cx="150" cy="150" rx="162" ry="66" transform="rotate(-24 150 150)" fill="none" stroke="rgba(0, 229, 255, 0.25)" stroke-width="1" stroke-dasharray="6 6" />
-            <ellipse cx="150" cy="150" rx="162" ry="66" transform="rotate(32 150 150)" fill="none" stroke="rgba(251, 146, 60, 0.22)" stroke-width="1" stroke-dasharray="4 8" />
-            <!-- Orbiting Planets -->
-            <circle cx="150" cy="-4" r="6.8" fill="url(#planetViolet)" />
-            <circle cx="150" cy="-4" r="11.5" fill="none" stroke="rgba(192, 132, 252, 0.65)" stroke-width="1.2" />
-            <circle cx="302" cy="182" r="5.5" fill="url(#planetCyan)" />
-            <circle cx="10" cy="212" r="6.0" fill="url(#planetAmber)" />
-            <circle cx="248" cy="22" r="5.0" fill="url(#planetEmerald)" />
-            <circle cx="248" cy="22" r="9" fill="none" stroke="rgba(52, 211, 153, 0.5)" stroke-width="1" />
-            <circle cx="48" cy="52" r="4.0" fill="#fde047" />
+            <circle cx="150" cy="150" r="142" fill="none" stroke="rgba(168, 85, 247, 0.28)" stroke-width="1" stroke-dasharray="3 9" />
+            <ellipse cx="150" cy="150" rx="156" ry="62" transform="rotate(-24 150 150)" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="1" stroke-dasharray="6 6" />
+            <ellipse cx="150" cy="150" rx="156" ry="62" transform="rotate(32 150 150)" fill="none" stroke="rgba(251, 146, 60, 0.2)" stroke-width="1" stroke-dasharray="4 8" />
           </g>
 
-          <!-- Outer Fine Degree Ring -->
+          <!-- Outer Fine Degree Ring (Services Track) -->
           <g class="ring-cw-slow">
-            <circle cx="150" cy="150" r="136" fill="none" stroke="rgba(0, 229, 255, 0.28)" stroke-width="1" stroke-dasharray="2 8" />
-            <circle cx="150" cy="150" r="126" fill="none" stroke="rgba(0, 229, 255, 0.48)" stroke-width="1.5" stroke-dasharray="28 14 6 14" />
-            <circle cx="276" cy="150" r="3.4" fill="#38bdf8" />
-            <circle cx="24" cy="150" r="2.6" fill="#fb923c" />
+            <circle cx="150" cy="150" r="106" fill="none" stroke="rgba(0, 229, 255, 0.26)" stroke-width="1" stroke-dasharray="2 8" />
+            <circle cx="150" cy="150" r="126" fill="none" stroke="rgba(0, 229, 255, 0.36)" stroke-width="1.2" stroke-dasharray="28 14 6 14" />
           </g>
 
           <!-- Middle Segmented Cyber Arcs -->
           <g class="ring-ccw-med">
-            <circle cx="150" cy="150" r="108" fill="none" stroke="#00e5ff" stroke-width="3.5" stroke-dasharray="55 24 18 24 70 28" stroke-linecap="round" opacity="0.85" />
-            <circle cx="150" cy="150" r="98" fill="none" stroke="rgba(0, 229, 255, 0.35)" stroke-width="1" stroke-dasharray="4 6" />
-            <circle cx="150" cy="42" r="3.8" fill="#e879f9" />
+            <circle cx="150" cy="150" r="102" fill="none" stroke="#00e5ff" stroke-width="2.5" stroke-dasharray="55 24 18 24 70 28" stroke-linecap="round" opacity="0.72" />
+            <circle cx="150" cy="150" r="94" fill="none" stroke="rgba(0, 229, 255, 0.28)" stroke-width="1" stroke-dasharray="4 6" />
           </g>
 
-          <!-- Inner Precision Arcs -->
+          <!-- Inner Precision Arcs (Server Telemetry Track) -->
           <g class="ring-cw-fast">
-            <circle cx="150" cy="150" r="84" fill="none" stroke="#00e5ff" stroke-width="2" stroke-dasharray="36 18 10 18" opacity="0.92" />
-            <circle cx="150" cy="150" r="74" fill="none" stroke="rgba(0, 229, 255, 0.45)" stroke-width="1.2" stroke-dasharray="12 10" />
-            <circle cx="234" cy="150" r="2.5" fill="#ffffff" />
+            <circle cx="150" cy="150" r="70" fill="none" stroke="#00e5ff" stroke-width="1.8" stroke-dasharray="36 18 10 18" opacity="0.82" />
+            <circle cx="150" cy="150" r="62" fill="none" stroke="rgba(0, 229, 255, 0.35)" stroke-width="1" stroke-dasharray="12 10" />
           </g>
 
           <!-- Inner Octagon Shield -->
           <g class="ring-octa">
-            <polygon points="150,89 193,107 211,150 193,193 150,211 107,193 89,150 107,107" fill="none" stroke="rgba(0, 229, 255, 0.65)" stroke-width="1.5" />
+            <polygon points="150,96 188,112 204,150 188,188 150,204 112,188 96,150 112,112" fill="none" stroke="rgba(0, 229, 255, 0.55)" stroke-width="1.3" />
           </g>
         </svg>
         <div class="reactor-core-orb"></div>
+        <div class="orbit-planets-layer" id="orbit-planets-layer"></div>
       </div>
+
+      <!-- Interactive Planet Info Bubble -->
+      <div class="planet-popover" id="planet-popover"></div>
 
       <div class="reactor-status-wrap">
         <div class="reactor-status-text" id="reactor-status-text">พร้อมรับคำสั่ง</div>
@@ -2250,6 +2389,7 @@ body::before {
     }
 
     stage.addEventListener('pointerdown', (e) => {
+      if (e.target && e.target.closest && e.target.closest('.orbit-planet')) return;
       dragging = true;
       stage.classList.add('is-dragging');
       stage.setPointerCapture(e.pointerId);
@@ -2365,6 +2505,365 @@ body::before {
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
+
+    // ── 3-Tier Semantic Orbiting Planets (Telemetry, Services, Smart Home) ──
+    const planetsLayer = document.getElementById('orbit-planets-layer');
+    const popoverEl = document.getElementById('planet-popover');
+    if (!planetsLayer || !popoverEl) return;
+
+    let liveSummary = null;
+    let liveEnergy = null;
+
+    async function refreshTelemetry() {
+      try {
+        const [sRes, eRes] = await Promise.all([
+          fetch('/api/summary').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/energy').then(r => r.ok ? r.json() : null).catch(() => null)
+        ]);
+        if (sRes) liveSummary = sRes;
+        if (eRes) liveEnergy = eRes;
+      } catch (_) {}
+    }
+    refreshTelemetry();
+    setInterval(refreshTelemetry, 12000);
+
+    function findPm2(name) {
+      const list = liveSummary?.pm2 || [];
+      return list.find(p => (p.name || '').toLowerCase() === name.toLowerCase());
+    }
+    function findDocker(name) {
+      const list = liveSummary?.containers || [];
+      return list.find(c => (c.name || '').toLowerCase() === name.toLowerCase());
+    }
+
+    const PLANET_DEFS = [
+      // Ring 1 (r=68): Server Telemetry (4 planets)
+      {
+        id: 'cpu', label: 'CPU', icon: '⚡', ring: 68, speed: 0.0085, angle: 0.2, size: 13, color: '#38bdf8',
+        getInfo: () => {
+          const cpu = liveSummary?.system?.cpuPercent;
+          const load = liveSummary?.system?.load1;
+          return {
+            title: 'CPU & Load Average',
+            status: cpu > 85 ? 'HIGH LOAD' : 'NORMAL',
+            statusClass: cpu > 85 ? 'is-warn' : '',
+            body: cpu !== undefined
+              ? `การใช้งาน CPU: <strong>${cpu.toFixed(1)}%</strong><br>Load Average (1m): <strong>${load ?? '-'}</strong><br>Host: <code>homelab (Debian 12)</code>`
+              : 'กำลังโหลดข้อมูล CPU ของเซิร์ฟเวอร์...',
+            actions: [{ label: '🔍 ถาม AI เช็ค CPU', prompt: 'ตรวจสอบการใช้ CPU และโปรเซสที่ใช้ทรัพยากรสูงสุดตอนนี้' }]
+          };
+        }
+      },
+      {
+        id: 'ram', label: 'RAM', icon: '🧠', ring: 68, speed: 0.0085, angle: 1.77, size: 13, color: '#34d399',
+        getInfo: () => {
+          const mem = liveSummary?.system?.mem;
+          const pct = mem ? ((mem.used / mem.total) * 100).toFixed(1) : null;
+          return {
+            title: 'Memory (RAM)',
+            status: pct && pct > 85 ? 'HIGH' : 'HEALTHY',
+            statusClass: pct && pct > 85 ? 'is-warn' : '',
+            body: mem
+              ? `ใช้งานไป: <strong>${(mem.used / 1024).toFixed(1)} GB</strong> / ${(mem.total / 1024).toFixed(1)} GB (${pct}%)<br>พร้อมใช้งาน: <strong>${(mem.available / 1024).toFixed(1)} GB</strong>`
+              : 'กำลังโหลดข้อมูลหน่วยความจำ...',
+            actions: [{ label: '📊 เช็ค RAM ทั้งระบบ', prompt: 'ตรวจสอบการใช้ RAM และ Swap ของเซิร์ฟเวอร์ตอนนี้' }]
+          };
+        }
+      },
+      {
+        id: 'disk', label: 'DISK', icon: '💾', ring: 68, speed: 0.0085, angle: 3.34, size: 12, color: '#c084fc',
+        getInfo: () => {
+          const disks = liveSummary?.disks || [];
+          const root = disks.find(d => d.mount === '/') || disks[0];
+          const home = disks.find(d => d.mount === '/home');
+          return {
+            title: 'Storage & Disks',
+            status: 'OK',
+            statusClass: '',
+            body: root
+              ? `Root (<code>/</code>): <strong>${root.usePercent || root.percent || '-'}%</strong><br>` + (home ? `Home (<code>/home</code>): <strong>${home.usePercent || home.percent || '-'}%</strong>` : '')
+              : 'พื้นที่ดิสก์ทำงานปกติ (/ 14%, /home 3%)',
+            actions: [{ label: '💾 เช็คพื้นที่ดิสก์', prompt: 'ตรวจสอบพื้นที่ Disk ทั้งหมดบนเซิร์ฟเวอร์' }]
+          };
+        }
+      },
+      {
+        id: 'net', label: 'VPN', icon: '🌐', ring: 68, speed: 0.0085, angle: 4.91, size: 12, color: '#60a5fa',
+        getInfo: () => {
+          const up = liveSummary?.system?.uptimeSec;
+          const hrs = up ? Math.floor(up / 3600) : null;
+          return {
+            title: 'Network & Tailscale VPN',
+            status: 'ONLINE',
+            statusClass: '',
+            body: `Domain: <code>homelab.tail285279.ts.net</code><br>LAN IP: <code>192.168.1.123</code><br>` + (hrs !== null ? `Uptime: <strong>${hrs} ชั่วโมง</strong>` : ''),
+            actions: [{ label: '🛡️ เช็ค Firewall & Ports', prompt: 'ตรวจสอบไฟร์วอลล์ UFW, พอร์ตที่กำลังเปิดใช้งาน และความปลอดภัยของระบบ' }]
+          };
+        }
+      },
+
+      // Ring 2 (r=104): Core Services on Server (6 planets)
+      {
+        id: 'iot', label: 'IoT', icon: '💡', ring: 104, speed: -0.0055, angle: 0.4, size: 15, color: '#fb923c',
+        getInfo: () => {
+          const p = findPm2('iot-dashboard');
+          const online = p ? p.status === 'online' : true;
+          return {
+            title: 'IoT Smart Dashboard',
+            status: online ? 'ONLINE' : 'OFFLINE',
+            statusClass: online ? '' : 'is-down',
+            body: `Standalone Sonoff Direct LAN + PZEM ESPHome + กล้อง Xiaomi<br>Port: <code>8095</code> · URL: <code>/iot/</code>`,
+            actions: [
+              { label: '🔗 เปิดหน้า IoT', href: '/iot/' },
+              { label: '⚡ เช็คอุปกรณ์ IoT', prompt: 'ตรวจสอบสถานะอุปกรณ์ทั้งหมดใน iot-dashboard' }
+            ]
+          };
+        }
+      },
+      {
+        id: 'ha', label: 'HA', icon: '🏠', ring: 104, speed: -0.0055, angle: 1.45, size: 15, color: '#0ea5e9',
+        getInfo: () => {
+          const c = findDocker('lab-homeassistant');
+          const up = !c || String(c.status || '').toLowerCase().includes('up');
+          return {
+            title: 'Home Assistant',
+            status: up ? 'RUNNING' : 'STOPPED',
+            statusClass: up ? '' : 'is-down',
+            body: `Smart Home Core & Automation<br>Container: <code>lab-homeassistant</code> · Port: <code>8123</code>`,
+            actions: [{ label: '🔗 เปิด Home Assistant', href: `http://${location.hostname}:8123` }]
+          };
+        }
+      },
+      {
+        id: 'bot', label: 'BOT', icon: '📈', ring: 104, speed: -0.0055, angle: 2.5, size: 14, color: '#f59e0b',
+        getInfo: () => {
+          const p = findPm2('onepercentbot');
+          const online = p ? p.status === 'online' : true;
+          return {
+            title: 'OnePercentBotTrade',
+            status: online ? 'ONLINE' : 'OFFLINE',
+            statusClass: online ? '' : 'is-down',
+            body: `Crypto Spot Trading Bot (Binance)<br>PM2 ID: <code>2</code> · RAM: <strong>${p?.memoryMB ? p.memoryMB + ' MB' : '~160 MB'}</strong>`,
+            actions: [{ label: '📈 วิเคราะห์บอท & Log', prompt: 'วิเคราะห์สถานะ OnePercentBotTrade และตรวจสอบไฟล์ log ล่าสุด' }]
+          };
+        }
+      },
+      {
+        id: 'z2m', label: 'Z2M', icon: '📡', ring: 104, speed: -0.0055, angle: 3.55, size: 13, color: '#a855f7',
+        getInfo: () => {
+          const c = findDocker('lab-zigbee2mqtt');
+          const up = !c || String(c.status || '').toLowerCase().includes('up');
+          return {
+            title: 'Zigbee2MQTT',
+            status: up ? 'RUNNING' : 'EXITED',
+            statusClass: up ? '' : 'is-down',
+            body: `Zigbee Bridge (<code>/dev/ttyACM0</code>)<br>MQTT Broker: <code>lab-emqx:1883</code> · Port: <code>8099</code>`,
+            actions: [{ label: '🔍 เช็ค Log Zigbee', prompt: 'ตรวจสอบสถานะและ log ล่าสุดของ lab-zigbee2mqtt' }]
+          };
+        }
+      },
+      {
+        id: 'pm2', label: 'PM2', icon: '⚙️', ring: 104, speed: -0.0055, angle: 4.6, size: 13, color: '#2dd4bf',
+        getInfo: () => {
+          const list = liveSummary?.pm2 || [];
+          const onlineCnt = list.filter(x => x.status === 'online').length;
+          return {
+            title: 'PM2 Process Manager',
+            status: list.length ? `${onlineCnt}/${list.length} ONLINE` : 'ONLINE',
+            statusClass: '',
+            body: `ดูแลโปรเซส Node.js ทั้งหมด: <code>lab-dashboard</code>, <code>iot-dashboard</code>, <code>onepercentbot</code>, <code>pm2-ui</code>`,
+            actions: [{ label: '🔗 เปิด PM2 UI', href: `http://${location.hostname}:8082` }]
+          };
+        }
+      },
+      {
+        id: 'docker', label: 'DCK', icon: '🐳', ring: 104, speed: -0.0055, angle: 5.65, size: 14, color: '#3b82f6',
+        getInfo: () => {
+          const list = liveSummary?.containers || [];
+          const upCnt = list.filter(x => String(x.status || '').toLowerCase().includes('up')).length;
+          return {
+            title: 'Docker Stack (lab-stack)',
+            status: list.length ? `${upCnt}/${list.length} UP` : '13 CONTAINERS',
+            statusClass: list.length && upCnt < list.length ? 'is-warn' : '',
+            body: `Caddy, WireGuard, EMQX, MongoDB, MySQL (omsin), Portainer, Uptime Kuma, Filebrowser`,
+            actions: [
+              { label: '🔗 เปิด Portainer', href: `http://${location.hostname}:9000` },
+              { label: '🐳 เช็ค Containers', prompt: 'ตรวจสอบสถานะ Docker Containers และ Resource การทำงานของ Host ทั้งหมด' }
+            ]
+          };
+        }
+      },
+
+      // Ring 3 (r=140): Smart Home, Energy & Integrations (4 planets)
+      {
+        id: 'pzem', label: 'PZEM', icon: '🔌', ring: 140, speed: 0.0038, angle: 0.8, size: 16, color: '#facc15',
+        getInfo: () => {
+          const w = liveEnergy?.powerW ?? liveEnergy?.power;
+          const v = liveEnergy?.voltageV ?? liveEnergy?.voltage;
+          const kwh = liveEnergy?.todayKwh;
+          return {
+            title: 'PZEM-01 Energy Meter',
+            status: 'LIVE',
+            statusClass: '',
+            body: w !== undefined
+              ? `กำลังไฟขณะนี้: <strong>${Number(w).toFixed(1)} W</strong> (${v ?? '-'} V)<br>` + (kwh !== undefined ? `ใช้ไฟวันนี้: <strong>${Number(kwh).toFixed(2)} kWh</strong>` : 'เชื่อมต่อตรง ESPHome (192.168.1.20)')
+              : 'มิเตอร์ไฟฟ้าหลักของบ้าน (ESPHome 192.168.1.20:6053)',
+            actions: [{ label: '⚡ สรุปค่าไฟวันนี้', prompt: 'เช็คค่าไฟวันนี้หน่อย' }]
+          };
+        }
+      },
+      {
+        id: 'cam', label: 'CAM', icon: '📷', ring: 140, speed: 0.0038, angle: 2.37, size: 14, color: '#f472b6',
+        getInfo: () => ({
+          title: 'Xiaomi 360° Cameras',
+          status: '5 ONLINE',
+          statusClass: '',
+          body: 'กล้องที่ดึงภาพได้: หน้าบ้าน, ห้องครัว, ห้องทำงาน, ร้าน, C301 (รีเฟรชอัตโนมัติบน IoT Dashboard)',
+          actions: [{ label: '📷 ดูภาพกล้องทั้งหมด', href: '/iot/' }]
+        })
+      },
+      {
+        id: 'mail', label: 'MAIL', icon: '📬', ring: 140, speed: 0.0038, angle: 3.94, size: 14, color: '#fb7185',
+        getInfo: () => ({
+          title: 'Gmail IMAP Assistant',
+          status: 'READY',
+          statusClass: '',
+          body: 'บัญชี: <code>asri.utcc@gmail.com</code><br>ดึงหัวข้ออีเมลล่าสุดและรหัส OTP ผ่าน <code>check-mail.py</code>',
+          actions: [{ label: '📬 เช็คเมล์วันนี้', prompt: 'เช็คเมล์หน่อย วันนี้มีเมล์อะไรเข้ามาบ้างมั้ย' }]
+        })
+      },
+      {
+        id: 'git', label: 'GIT', icon: '📦', ring: 140, speed: 0.0038, angle: 5.51, size: 14, color: '#e2e8f0',
+        getInfo: () => ({
+          title: 'GitHub Repository',
+          status: 'SYNCED',
+          statusClass: '',
+          body: 'Repo: <code>asri-utcc/homelab-server</code><br>เก็บซอร์สโค้ด Lab Dashboard, Docker Compose, Caddyfile & Scripts',
+          actions: [{ label: '🔗 เปิด GitHub Repo', href: 'https://github.com/asri-utcc/homelab-server' }]
+        })
+      }
+    ];
+
+    // Create interactive DOM nodes + per-planet independent spring physics state
+    const planetStates = PLANET_DEFS.map((def) => {
+      const el = document.createElement('div');
+      el.className = 'orbit-planet';
+      el.style.width = `${def.size}px`;
+      el.style.height = `${def.size}px`;
+      el.style.background = `radial-gradient(circle at 35% 35%, #ffffff 0%, ${def.color} 55%, rgba(0,0,0,0.4) 100%)`;
+      el.style.boxShadow = `0 0 ${def.size}px ${def.color}, 0 0 ${def.size * 1.8}px rgba(255,255,255,0.22)`;
+      el.title = `${def.icon} ${def.label} (คลิกดูข้อมูล / ลากเหวี่ยงได้)`;
+      el.innerHTML = `<span class="orbit-planet__tag">${def.label}</span>`;
+      planetsLayer.appendChild(el);
+
+      const st = {
+        def, el,
+        angle: def.angle,
+        ox: 0, oy: 0, vx: 0, vy: 0,
+        grabbed: false,
+        dragDist: 0,
+        lastX: 0, lastY: 0
+      };
+
+      el.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        st.grabbed = true;
+        st.dragDist = 0;
+        st.lastX = e.clientX;
+        st.lastY = e.clientY;
+        st.vx = 0;
+        st.vy = 0;
+        el.classList.add('is-grabbed');
+        el.setPointerCapture(e.pointerId);
+      });
+
+      el.addEventListener('pointermove', (e) => {
+        if (!st.grabbed) return;
+        const dx = e.clientX - st.lastX;
+        const dy = e.clientY - st.lastY;
+        st.lastX = e.clientX;
+        st.lastY = e.clientY;
+        st.dragDist += Math.hypot(dx, dy);
+        st.ox += dx;
+        st.oy += dy;
+        st.vx = dx * 0.9;
+        st.vy = dy * 0.9;
+      });
+
+      const onDrop = (e) => {
+        if (!st.grabbed) return;
+        st.grabbed = false;
+        el.classList.remove('is-grabbed');
+        const speed = Math.hypot(st.vx, st.vy);
+        if (st.dragDist < 6) {
+          openPlanetPopover(def);
+        } else {
+          playFlingWhoosh(speed);
+        }
+      };
+      el.addEventListener('pointerup', onDrop);
+      el.addEventListener('pointercancel', onDrop);
+
+      return st;
+    });
+
+    function openPlanetPopover(def) {
+      const info = def.getInfo();
+      const actionsHtml = (info.actions || []).map((a, idx) => {
+        if (a.href) {
+          return `<a class="planet-pop__btn" href="${a.href}" target="_blank" rel="noopener noreferrer">${a.label}</a>`;
+        }
+        return `<button type="button" class="planet-pop__btn" data-pop-act="${idx}">${a.label}</button>`;
+      }).join('');
+
+      popoverEl.innerHTML = `
+        <div class="planet-pop__head">
+          <div class="planet-pop__title">
+            <span>${def.icon} ${info.title}</span>
+            <span class="planet-pop__badge ${info.statusClass || ''}">${info.status}</span>
+          </div>
+          <button type="button" class="planet-pop__close" id="btn-planet-pop-close" title="ปิด">✕</button>
+        </div>
+        <div class="planet-pop__body">${info.body}</div>
+        <div class="planet-pop__actions">${actionsHtml}</div>
+      `;
+      popoverEl.classList.add('is-open');
+
+      popoverEl.querySelector('#btn-planet-pop-close')?.addEventListener('click', () => {
+        popoverEl.classList.remove('is-open');
+      });
+      popoverEl.querySelectorAll('[data-pop-act]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const act = info.actions[Number(btn.dataset.popAct)];
+          if (act && act.prompt) {
+            popoverEl.classList.remove('is-open');
+            sendPrompt(act.prompt);
+          }
+        });
+      });
+    }
+
+    function animatePlanets() {
+      const thinking = hud.classList.contains('is-thinking');
+      const speedMult = thinking ? 3.2 : 1;
+      for (const st of planetStates) {
+        if (!st.grabbed) {
+          st.angle += st.def.speed * speedMult + spinVel * 0.0025;
+          // Spring back to own orbital position
+          st.vx = (st.vx - st.ox * 0.09) * 0.86;
+          st.vy = (st.vy - st.oy * 0.09) * 0.86;
+          st.ox += st.vx;
+          st.oy += st.vy;
+          if (Math.abs(st.ox) < 0.05 && Math.abs(st.vx) < 0.05) { st.ox = 0; st.vx = 0; }
+          if (Math.abs(st.oy) < 0.05 && Math.abs(st.vy) < 0.05) { st.oy = 0; st.vy = 0; }
+        }
+        const bx = Math.cos(st.angle) * st.def.ring;
+        const by = Math.sin(st.angle) * st.def.ring;
+        st.el.style.transform = `translate(calc(-50% + ${(bx + st.ox).toFixed(1)}px), calc(-50% + ${(by + st.oy).toFixed(1)}px))`;
+      }
+      requestAnimationFrame(animatePlanets);
+    }
+    requestAnimationFrame(animatePlanets);
   })();
 
   function setAiThinkingState(thinking) {

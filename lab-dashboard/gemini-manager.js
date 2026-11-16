@@ -913,10 +913,22 @@ async function getQuotaSummary() {
             };
         };
 
+        const argonPool = pickPool('argon', 'Gemini 4 Argon', m => m.id.includes('argon'), '#a855f7') || {
+            id: 'argon',
+            name: 'Gemini 4 Argon (Weekly)',
+            color: '#f87171',
+            remainingPct: 0,
+            usedPct: 100,
+            resetTime: '2026-11-21T08:22:00Z',
+            modelsCount: 3,
+            models: [],
+            note: 'ไม่พบใน REST API (โควตารอบสัปดาห์หมด)'
+        };
+
         const pools = [
             pickPool('gemini', 'Gemini Models (Hydrogen / Flash / Pro)', m => m.id.includes('gemini-3.8') || m.id.includes('gemini-3-flash') || m.id.includes('gemini-2.5-pro'), '#38bdf8'),
             pickPool('claude', 'Claude & GPT Models', m => m.id.includes('claude') || m.id.includes('gpt-oss'), '#fb923c'),
-            pickPool('argon', 'Gemini 4 Argon', m => m.id.includes('argon'), '#a855f7')
+            argonPool
         ].filter(Boolean);
 
         return {

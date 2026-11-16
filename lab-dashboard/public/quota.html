@@ -85,6 +85,77 @@
       border-radius: 14px;
       padding: 16px;
       backdrop-filter: blur(10px);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .pool-card.limit-hit {
+      border-color: rgba(248, 113, 113, 0.75) !important;
+      background: linear-gradient(165deg, rgba(45, 10, 14, 0.92), rgba(18, 10, 18, 0.92));
+      animation: limit-pulse 2s ease-in-out infinite;
+    }
+    @keyframes limit-pulse {
+      0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.22), inset 0 0 14px rgba(239, 68, 68, 0.08); }
+      50% { box-shadow: 0 0 26px rgba(239, 68, 68, 0.55), inset 0 0 22px rgba(239, 68, 68, 0.16); }
+    }
+    .pace-crit {
+      background: #ef4444 !important;
+      border-color: #ef4444 !important;
+      color: #ffffff !important;
+      animation: badge-blink 1.4s ease-in-out infinite;
+    }
+    @keyframes badge-blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.72; }
+    }
+    /* 7-Segment Weekly Rack (from ai-quota-extension) */
+    .weekly-rack {
+      margin-top: 10px;
+      background: #0b0f17;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 4px;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 3px;
+    }
+    .rack-cell {
+      height: 16px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.06);
+      font-family: var(--mono);
+      font-size: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+    }
+    .rack-cell.is-filled { background: rgba(52, 211, 153, 0.35); color: #ecfdf5; }
+    .rack-cell.is-today { border: 1px solid var(--cyan); color: #fff; font-weight: 700; }
+    .rack-cell.is-dead { background: rgba(239, 68, 68, 0.35); color: #fecaca; }
+
+    /* Big Realtime Countdown Box (from ai-quota-extension) */
+    .big-countdown-box {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      text-align: center;
+    }
+    .big-countdown-box.active { display: block; }
+    .big-countdown-label {
+      font-size: 11px;
+      color: #f87171;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+    .big-countdown-timer {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
     }
     .pool-head {
       display: flex;
@@ -233,10 +304,14 @@
       const diff = new Date(iso).getTime() - Date.now();
       if (Number.isNaN(diff)) return '—';
       if (diff <= 0) return 'พร้อมรีเซ็ตแล้ว';
-      const hrs = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+      const hrs = Math.floor((diff % 86400000) / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
       const secs = Math.floor((diff % 60000) / 1000);
-      return `${hrs}ชม. ${String(mins).padStart(2, '0')}น. ${String(secs).padStart(2, '0')}วิ`;
+      if (days > 0) {
+        return `${days} วัน ${hrs} ชม. ${String(mins).padStart(2, '0')} น. ${String(secs).padStart(2, '0')} วิ`;
+      }
+      return `${hrs} ชม. ${String(mins).padStart(2, '0')} น. ${String(secs).padStart(2, '0')} วิ`;
     }
 
     function fmtLocalTime(iso) {
@@ -276,13 +351,23 @@
       const poolGrid = document.getElementById('pool-grid');
       poolGrid.innerHTML = '';
       (data.pools || []).forEach(p => {
-        const pace = paceForPct(p.remainingPct);
+        const isExhausted = p.remainingPct <= 0;
+        const pace = isExhausted
+          ? { cls: 'pace-crit', text: '⚡ หมดโควตา (0%)' }
+          : paceForPct(p.remainingPct);
         const barColor = colorForPct(p.remainingPct);
+        const todayIdx = (new Date().getDay() + 6) % 7; // D1=Mon..D7=Sun
+        const rackHtml = Array.from({ length: 7 }, (_, i) => {
+          const cls = isExhausted ? 'is-dead' : (i <= todayIdx ? 'is-filled' : '');
+          const tod = i === todayIdx ? 'is-today' : '';
+          return `<div class="rack-cell ${cls} ${tod}">${i === todayIdx ? '▼D' : 'D'}${i + 1}</div>`;
+        }).join('');
+
         const card = document.createElement('div');
-        card.className = 'pool-card';
+        card.className = `pool-card ${isExhausted ? 'limit-hit' : ''}`;
         card.innerHTML = `
           <div class="pool-head">
-            <div class="pool-name" style="color:${p.color}">${p.name}</div>
+            <div class="pool-name" style="color:${isExhausted ? '#fca5a5' : p.color}">${p.name}</div>
             <span class="pace-badge ${pace.cls}">${pace.text}</span>
           </div>
           <div class="pool-pct" style="color:${barColor}">${p.remainingPct}% <span>คงเหลือ</span></div>
@@ -290,6 +375,11 @@
           <div class="pool-meta">
             <span>ใช้ไป ${p.usedPct}% (${p.modelsCount} โมเดล)</span>
             <span class="cd" data-reset="${p.resetTime || ''}">${fmtCountdown(p.resetTime)}</span>
+          </div>
+          <div class="weekly-rack">${rackHtml}</div>
+          <div class="big-countdown-box ${isExhausted ? 'active' : ''}">
+            <div class="big-countdown-label">🔴 หมดโควตาแล้ว — รอรีเซ็ตในอีก</div>
+            <div class="big-countdown-timer cd" data-reset="${p.resetTime || ''}">${fmtCountdown(p.resetTime)}</div>
           </div>
         `;
         poolGrid.appendChild(card);

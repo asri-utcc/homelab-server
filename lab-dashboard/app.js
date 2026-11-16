@@ -454,6 +454,7 @@ const VIEW_TITLES = {
     vpn:      { icon: '⚡', text: 'WireGuard VPN &amp; EMQX MQTT Hub' },
     terminal: { icon: '🤖', text: 'Gemini AI Assistant &amp; Tactical Terminal' },
     gemini:   { icon: '🤖', text: 'Gemini AI Assistant &amp; Project Builder' },
+    settings: { icon: '⚙️', text: 'ตั้งค่าระบบ &amp; AI (System Settings)' },
 };
 
 function switchTerminalSubtab(subtab) {
@@ -545,10 +546,19 @@ function switchView(viewName, updateHash = true) {
         switchTerminalSubtab('gemini');
         return;
     }
+    if (viewName === 'vpn') {
+        switchView('ports', updateHash);
+        const vpnTabBtn = document.querySelector('.sec-subtab[data-ports-tab="vpn"]');
+        if (vpnTabBtn) vpnTabBtn.click();
+        return;
+    }
 
     const prevView = state.activeView;
-    const validViews = ['overview', 'services', 'ports', 'vpn', 'terminal'];
+    const validViews = ['overview', 'services', 'ports', 'terminal', 'settings'];
     const target = validViews.includes(viewName) ? viewName : 'overview';
+    if (target === 'settings' && typeof loadSettingsView === 'function') {
+        loadSettingsView();
+    }
     if (state.isReady && prevView !== target) {
         playNavSound();
     }
@@ -2928,4 +2938,148 @@ document.querySelectorAll('.sec-subtab').forEach((btn) => {
             if (secVpnMqtt) secVpnMqtt.style.display = 'block';
         }
     });
+});
+
+// ── Integrated System & AI Settings View ──────────────────────────────────
+let settingsInitialized = false;
+function loadSettingsView() {
+    const selModel = document.getElementById('set-model');
+    const selCwd = document.getElementById('set-cwd');
+    const authBadge = document.getElementById('set-auth-badge');
+    const inpKey = document.getElementById('set-apikey');
+    const selStt = document.getElementById('set-stt');
+    const selVoice = document.getElementById('set-tts-voice');
+    const chkAutoTts = document.getElementById('chk-set-auto-tts');
+    const chkSoundFx = document.getElementById('chk-set-sound-fx');
+    const chkHud = document.getElementById('chk-set-hud');
+    const txtMemory = document.getElementById('set-memory');
+    const hint = document.getElementById('settings-hint');
+
+    if (!selModel) return;
+
+    const notify = (msg) => {
+        if (hint) hint.textContent = msg;
+        if (typeof toast === 'function') toast(msg);
+    };
+
+    if (!settingsInitialized) {
+        settingsInitialized = true;
+        selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-medium';
+        selStt.value = localStorage.getItem('stt_engine') || 'whisper';
+        chkAutoTts.checked = localStorage.getItem('core_auto_tts') === '1';
+        chkSoundFx.checked = localStorage.getItem('gemini_sound_enabled') !== '0';
+        chkHud.checked = localStorage.getItem('core_hud_hidden') !== '1';
+
+        selModel.addEventListener('change', () => {
+            localStorage.setItem('core_default_model', selModel.value);
+            notify('✅ บันทึกโมเดลเริ่มต้นแล้ว');
+        });
+        selCwd.addEventListener('change', () => {
+            localStorage.setItem('core_default_cwd', selCwd.value);
+            notify('✅ บันทึกโฟลเดอร์ทำงานแล้ว');
+        });
+        selStt.addEventListener('change', () => {
+            localStorage.setItem('stt_engine', selStt.value);
+            notify('✅ บันทึกโหมดแปลงเสียงแล้ว');
+        });
+        selVoice.addEventListener('change', () => {
+            localStorage.setItem('core_tts_voice', selVoice.value);
+            notify('✅ บันทึกเสียงพูด AI แล้ว');
+        });
+        chkAutoTts.addEventListener('change', () => {
+            localStorage.setItem('core_auto_tts', chkAutoTts.checked ? '1' : '0');
+            notify(chkAutoTts.checked ? '🗣️ เปิดอ่านออกเสียงอัตโนมัติ' : '🔇 ปิดอ่านออกเสียงอัตโนมัติ');
+        });
+        chkSoundFx.addEventListener('change', () => {
+            localStorage.setItem('gemini_sound_enabled', chkSoundFx.checked ? '1' : '0');
+            notify(chkSoundFx.checked ? '🔊 เปิดเสียงเอฟเฟกต์แล้ว' : '🔇 ปิดเสียงเอฟเฟกต์แล้ว');
+        });
+        chkHud.addEventListener('change', () => {
+            localStorage.setItem('core_hud_hidden', chkHud.checked ? '0' : '1');
+            notify(chkHud.checked ? '👁️ แสดงลูกแก้ว 3D HUD' : '🙈 ซ่อนลูกแก้ว 3D HUD');
+        });
+
+        document.getElementById('btn-set-save-key')?.addEventListener('click', async () => {
+            const res = await fetch('/api/gemini/config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ apiKey: inpKey.value.trim() })
+            });
+            const d = await res.json();
+            notify(d.ok ? '🔑 บันทึก API Key เรียบร้อย' : '❌ บันทึกไม่สำเร็จ');
+        });
+
+        let testAudio = null;
+        document.getElementById('btn-set-test-voice')?.addEventListener('click', async () => {
+            if (testAudio) { try { testAudio.pause(); } catch (_) {} }
+            notify('🔊 กำลังสร้างเสียงทดสอบ...');
+            try {
+                const res = await fetch('/api/tts', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: 'สวัสดีค่ะ ระบบเสียงธรรมชาติพร้อมใช้งานแล้วค่ะ', voice: selVoice.value })
+                });
+                if (!res.ok) throw new Error('TTS HTTP ' + res.status);
+                const blob = await res.blob();
+                testAudio = new Audio(URL.createObjectURL(blob));
+                await testAudio.play();
+                notify('✅ ทดสอบเสียงสำเร็จ');
+            } catch (e) {
+                notify('❌ ทดสอบเสียงไม่สำเร็จ: ' + e.message);
+            }
+        });
+
+        document.getElementById('btn-set-save-memory')?.addEventListener('click', async () => {
+            const res = await fetch('/api/gemini/memory', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ memory: txtMemory.value })
+            });
+            const d = await res.json();
+            notify(d.ok ? '🧠 บันทึกความจำระยะยาวเรียบร้อย' : '❌ บันทึกไม่สำเร็จ');
+        });
+
+        document.getElementById('btn-set-test-telegram')?.addEventListener('click', async () => {
+            notify('✈️ กำลังส่งข้อความทดสอบเข้า Telegram...');
+            try {
+                const res = await fetch('/api/settings/telegram-test', { method: 'POST' });
+                const d = await res.json();
+                notify(d.ok ? '✅ ส่งข้อความเข้า Telegram สำเร็จ!' : '❌ ' + (d.error || 'ส่งไม่สำเร็จ'));
+            } catch (e) {
+                notify('❌ ' + e.message);
+            }
+        });
+    }
+
+    fetch('/api/gemini/status').then(r => r.json()).then(d => {
+        if (authBadge) {
+            if (d.hasApiKey || d.loggedIn) {
+                authBadge.textContent = d.loggedIn ? 'AUTH: ANTIGRAVITY OK' : 'AUTH: API KEY OK';
+                authBadge.className = 'badge badge--ok';
+            } else {
+                authBadge.textContent = 'AUTH: NOT CONFIGURED';
+                authBadge.className = 'badge badge--warn';
+            }
+        }
+        if (Array.isArray(d.availableDirs) && d.availableDirs.length) {
+            selCwd.innerHTML = d.availableDirs.map(dir => `<option value="${esc(dir)}">${esc(dir)}</option>`).join('');
+            const savedCwd = localStorage.getItem('core_default_cwd') || d.defaultCwd || d.availableDirs[0];
+            if ([...selCwd.options].some(o => o.value === savedCwd)) selCwd.value = savedCwd;
+        }
+    }).catch(() => {});
+
+    const savedVoice = localStorage.getItem('core_tts_voice') || 'th-TH-PremwadeeNeural';
+    fetch('/api/tts/voices').then(r => r.json()).then(d => {
+        if (d && d.ok && Array.isArray(d.voices)) {
+            selVoice.innerHTML = d.voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
+            if ([...selVoice.options].some(o => o.value === savedVoice)) selVoice.value = savedVoice;
+        }
+    }).catch(() => {});
+
+    fetch('/api/gemini/memory').then(r => r.json()).then(d => {
+        if (txtMemory) txtMemory.value = d.memory || '';
+    }).catch(() => {});
+}
+
+window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'open-settings') {
+        switchView('settings');
+    }
 });

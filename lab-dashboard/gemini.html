@@ -1483,13 +1483,13 @@ body::before {
     <button type="button" id="btn-memory" class="btn" style="display:none;">🧠 ความจำ</button>
     <button type="button" id="btn-config" class="btn" style="display:none;">🔑 คีย์</button>
     <button type="button" id="btn-clear" class="btn btn--danger desktop-only" title="ล้างประวัติการคุยและเริ่มแชทใหม่">🧹 แชทใหม่</button>
-    <a href="/settings.html" target="_blank" rel="noopener noreferrer" class="btn btn--primary desktop-only" title="ตั้งค่าทั้งหมด (Model, เสียงพูด, ความจำ, Cron, โควตา, Telegram)">⚙️ ตั้งค่า</a>
+    <a href="/#settings" class="btn btn--primary desktop-only" onclick="if(window.parent!==window){window.parent.postMessage({type:'open-settings'},'*');return false;}" title="ตั้งค่าทั้งหมด (Model, เสียงพูด, ความจำ, Cron, โควตา, Telegram)">⚙️ ตั้งค่า</a>
 
     <!-- Mobile-Only Action Controls -->
     <div class="mobile-controls">
       <button type="button" id="mobile-mode-pill" class="mode-pill-btn" data-mode="exec" title="แตะเพื่อเลือกโหมดหรือตั้งค่า">⚡ YOLO</button>
       <button type="button" id="btn-open-settings" class="btn btn--settings" style="display:none;">⚙️ เพิ่มเติม</button>
-      <a href="/settings.html" target="_blank" rel="noopener noreferrer" class="btn btn--settings" style="text-decoration:none;" title="ตั้งค่าทั้งหมด">⚙️ ตั้งค่า</a>
+      <a href="/#settings" class="btn btn--settings" onclick="if(window.parent!==window){window.parent.postMessage({type:'open-settings'},'*');return false;}" style="text-decoration:none;" title="ตั้งค่าทั้งหมด">⚙️ ตั้งค่า</a>
     </div>
   </div>
 </header>

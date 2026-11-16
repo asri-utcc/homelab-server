@@ -101,10 +101,10 @@
           <span class="sidebar__item-label">เทอร์มินัล &amp; AI</span>
           <span class="tab-badge" id="badge-sidebar-terminal" style="background:rgba(0,210,240,0.15); color:#00d2f0; border-color:#00d2f0;">CLI+AI</span>
         </button>
-        <a href="/settings.html" class="sidebar__item" data-magnetic="true" style="text-decoration:none;">
+        <button type="button" class="sidebar__item" data-view="settings" data-magnetic="true">
           <svg class="ico"><use href="#i-settings"/></svg>
           <span class="sidebar__item-label">ตั้งค่าระบบ (Settings)</span>
-        </a>
+        </button>
       </nav>
     </div>
 
@@ -824,6 +824,113 @@
   </div>
 
 
+  <!-- ════════ VIEW 6: SYSTEM & AI SETTINGS ════════ -->
+  <div class="lab-view" id="view-settings" data-view-id="settings" style="display:none">
+    <section class="section" id="sec-settings" aria-labelledby="h-settings">
+      <div class="section__head">
+        <div>
+          <h2 id="h-settings">⚙️ ตั้งค่าระบบทั่วไป (System &amp; AI Settings)</h2>
+          <span class="section__hint" id="settings-hint">ตั้งค่า AI, เสียงพูด (Whisper / Edge Neural TTS), ความจำระยะยาว และการแจ้งเตือน Telegram</span>
+        </div>
+        <div class="section__actions">
+          <span id="set-auth-badge" class="badge">CHECKING...</span>
+        </div>
+      </div>
+
+      <div class="grid grid--2">
+        <!-- AI & Workspace Card -->
+        <div class="card" data-hud="panel">
+          <div class="card__head">
+            <span class="card__title">🤖 AI &amp; Workspace</span>
+          </div>
+          <div class="stack" style="gap:12px;">
+            <div>
+              <label for="set-model" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">โมเดล AI เริ่มต้น (Default Model)</label>
+              <select id="set-model" class="input" style="width:100%;">
+                <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
+                <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
+                <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
+                <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
+                <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
+              </select>
+            </div>
+            <div>
+              <label for="set-cwd" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">โฟลเดอร์ทำงานเริ่มต้น (Working Directory)</label>
+              <select id="set-cwd" class="input" style="width:100%;">
+                <option value="/home/dev/projects">/home/dev/projects</option>
+              </select>
+            </div>
+            <div>
+              <label for="set-apikey" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">Gemini API Key (เว้นว่างหากใช้บัญชี Antigravity)</label>
+              <div style="display:flex;gap:8px;">
+                <input type="password" id="set-apikey" class="input" style="flex:1;" placeholder="AIzaSy... (ไม่บังคับ)" />
+                <button type="button" id="btn-set-save-key" class="btn btn--primary btn--sm">🔑 บันทึก</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Voice, Speaker & UI Card -->
+        <div class="card" data-hud="panel">
+          <div class="card__head">
+            <span class="card__title">🎙️ เสียงพูด &amp; การแสดงผล (Voice &amp; UI)</span>
+          </div>
+          <div class="stack" style="gap:12px;">
+            <div>
+              <label for="set-stt" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">ระบบแปลงเสียงเป็นข้อความ (Speech-to-Text)</label>
+              <select id="set-stt" class="input" style="width:100%;">
+                <option value="whisper">🧠 Whisper (Local Self-Hosted — แม่นยำ)</option>
+                <option value="webspeech">🌐 Web Speech API (เบราว์เซอร์เรียลไทม์)</option>
+              </select>
+            </div>
+            <div>
+              <label for="set-tts-voice" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">เสียงคนพูด AI (Speaker TTS ฟรี)</label>
+              <div style="display:flex;gap:8px;">
+                <select id="set-tts-voice" class="input" style="flex:1;">
+                  <option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>
+                </select>
+                <button type="button" id="btn-set-test-voice" class="btn btn--sm">🔊 ทดสอบ</button>
+              </div>
+            </div>
+            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
+              <span>🗣️ อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Auto-Read)</span>
+              <input type="checkbox" id="chk-set-auto-tts" style="width:18px;height:18px;" />
+            </label>
+            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
+              <span>🔊 เสียงเอฟเฟกต์ (Sound FX)</span>
+              <input type="checkbox" id="chk-set-sound-fx" style="width:18px;height:18px;" />
+            </label>
+            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
+              <span>👁️ แสดงลูกแก้ว 3D Reactor HUD ในหน้า AI</span>
+              <input type="checkbox" id="chk-set-hud" style="width:18px;height:18px;" />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Long-Term Memory -->
+      <div class="card" data-hud="panel" style="margin-top:16px;">
+        <div class="card__head">
+          <span class="card__title">🧠 ความจำระยะยาวของ AI (MEMORY.md)</span>
+          <button type="button" id="btn-set-save-memory" class="btn btn--primary btn--sm">💾 บันทึกความจำ</button>
+        </div>
+        <textarea id="set-memory" class="input" style="width:100%;min-height:150px;font-family:var(--mono);font-size:12.5px;line-height:1.5;resize:vertical;" placeholder="กำลังโหลดความจำระยะยาว..."></textarea>
+      </div>
+
+      <!-- Telegram & System Links -->
+      <div class="card" data-hud="panel" style="margin-top:16px;">
+        <div class="card__head">
+          <span class="card__title">📬 การแจ้งเตือน Telegram &amp; เครื่องมือระบบ</span>
+        </div>
+        <div class="rowbtns" style="flex-wrap:wrap;">
+          <button type="button" id="btn-set-test-telegram" class="btn btn--primary btn--sm">✈️ ทดสอบส่งข้อความเข้า Telegram</button>
+          <a href="/cron.html" target="_blank" rel="noopener" class="btn btn--sm">⏰ จัดการ Cron อัตโนมัติ</a>
+          <a href="/quota.html" target="_blank" rel="noopener" class="btn btn--sm">📊 ดูโควตา AI</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <footer class="foot">
     <span id="foot-gen">—</span>
     <span class="foot__lock"><svg class="ico ico--sm"><use href="#i-lock"/></svg> Protected by HTTP Basic Auth</span>
@@ -944,10 +1051,10 @@
     <svg class="ico"><use href="#i-shield"/></svg>
     <span>พอร์ต</span>
   </button>
-  <a href="/settings.html" class="mobile-nav-btn" style="text-decoration:none;" aria-label="ตั้งค่าระบบ">
+  <button type="button" class="mobile-nav-btn" data-view="settings" aria-label="ตั้งค่าระบบ">
     <svg class="ico"><use href="#i-settings"/></svg>
     <span>ตั้งค่า</span>
-  </a>
+  </button>
   <button type="button" class="mobile-nav-btn" data-view="terminal" aria-label="เทอร์มินัล และ AI">
     <svg class="ico"><use href="#i-terminal"/></svg>
     <span>เทอร์มินัล/AI</span>

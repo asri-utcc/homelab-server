@@ -214,12 +214,17 @@ body::before {
 .reactor-stage {
   position: relative;
   z-index: 2;
-  width: 286px;
-  height: 286px;
+  width: 310px;
+  height: 310px;
   display: grid;
   place-items: center;
-  margin-bottom: 20px;
-  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  margin-bottom: 18px;
+  cursor: grab;
+  touch-action: none;
+  will-change: transform;
+}
+.reactor-stage.is-dragging {
+  cursor: grabbing;
 }
 
 .reactor-status-wrap {
@@ -1293,19 +1298,27 @@ body::before {
               <stop offset="45%" stop-color="#c084fc" />
               <stop offset="100%" stop-color="#7e22ce" />
             </radialGradient>
+            <radialGradient id="planetEmerald" cx="35%" cy="35%" r="65%">
+              <stop offset="0%" stop-color="#ecfdf5" />
+              <stop offset="45%" stop-color="#34d399" />
+              <stop offset="100%" stop-color="#047857" />
+            </radialGradient>
           </defs>
-          <circle cx="150" cy="150" r="154" fill="url(#coreGlowGrad)" />
+          <circle cx="150" cy="150" r="158" fill="url(#coreGlowGrad)" />
 
           <!-- Expanded Galaxy Planetary Orbit Ring -->
           <g class="ring-galaxy-outer">
-            <circle cx="150" cy="150" r="152" fill="none" stroke="rgba(168, 85, 247, 0.28)" stroke-width="1" stroke-dasharray="3 9" />
-            <ellipse cx="150" cy="150" rx="156" ry="62" transform="rotate(-24 150 150)" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="1" stroke-dasharray="6 6" />
-            <ellipse cx="150" cy="150" rx="156" ry="62" transform="rotate(32 150 150)" fill="none" stroke="rgba(251, 146, 60, 0.20)" stroke-width="1" stroke-dasharray="4 8" />
+            <circle cx="150" cy="150" r="154" fill="none" stroke="rgba(168, 85, 247, 0.3)" stroke-width="1.2" stroke-dasharray="3 9" />
+            <ellipse cx="150" cy="150" rx="162" ry="66" transform="rotate(-24 150 150)" fill="none" stroke="rgba(0, 229, 255, 0.25)" stroke-width="1" stroke-dasharray="6 6" />
+            <ellipse cx="150" cy="150" rx="162" ry="66" transform="rotate(32 150 150)" fill="none" stroke="rgba(251, 146, 60, 0.22)" stroke-width="1" stroke-dasharray="4 8" />
             <!-- Orbiting Planets -->
-            <circle cx="150" cy="-2" r="5.5" fill="url(#planetViolet)" />
-            <circle cx="150" cy="-2" r="9.5" fill="none" stroke="rgba(192, 132, 252, 0.55)" stroke-width="1" />
-            <circle cx="298" cy="182" r="4.2" fill="url(#planetCyan)" />
-            <circle cx="14" cy="210" r="4.8" fill="url(#planetAmber)" />
+            <circle cx="150" cy="-4" r="6.8" fill="url(#planetViolet)" />
+            <circle cx="150" cy="-4" r="11.5" fill="none" stroke="rgba(192, 132, 252, 0.65)" stroke-width="1.2" />
+            <circle cx="302" cy="182" r="5.5" fill="url(#planetCyan)" />
+            <circle cx="10" cy="212" r="6.0" fill="url(#planetAmber)" />
+            <circle cx="248" cy="22" r="5.0" fill="url(#planetEmerald)" />
+            <circle cx="248" cy="22" r="9" fill="none" stroke="rgba(52, 211, 153, 0.5)" stroke-width="1" />
+            <circle cx="48" cy="52" r="4.0" fill="#fde047" />
           </g>
 
           <!-- Outer Fine Degree Ring -->
@@ -2156,20 +2169,89 @@ body::before {
     } catch (_) {}
   }
 
-  // Galaxy Starfield & Hyperspace Canvas Engine
-  (function initGalaxyCanvas() {
+  // Interactive Galaxy Starfield + Drag/Fling Spring & Angular Inertia Physics
+  (function initInteractiveGalaxy() {
     const canvas = document.getElementById('galaxy-canvas');
     const hud = document.getElementById('ai-status-hud');
-    if (!canvas || !hud) return;
+    const stage = document.querySelector('.reactor-stage');
+    const svgEl = document.querySelector('.reactor-svg');
+    if (!canvas || !hud || !stage) return;
     const ctx = canvas.getContext('2d');
-    const stars = Array.from({ length: 85 }, () => ({
+
+    const stars = Array.from({ length: 150 }, () => ({
       angle: Math.random() * Math.PI * 2,
-      dist: 15 + Math.random() * 240,
-      speed: 0.15 + Math.random() * 0.45,
-      size: 0.7 + Math.random() * 1.7,
-      hue: Math.random() > 0.7 ? 270 : (Math.random() > 0.5 ? 25 : 190),
+      dist: 16 + Math.random() * 290,
+      speed: 0.18 + Math.random() * 0.55,
+      size: 0.9 + Math.random() * 2.3,
+      hue: [190, 270, 28, 158, 50][Math.floor(Math.random() * 5)],
       twinkle: Math.random() * Math.PI * 2
     }));
+
+    // Physics state for reactor drag, spring return & centrifugal spin
+    let ox = 0, oy = 0, vx = 0, vy = 0;
+    let spinAngle = 0, spinVel = 0;
+    let dragging = false;
+    let lastClientX = 0, lastClientY = 0;
+
+    function playFlingWhoosh(intensity) {
+      if (!isSoundEnabled() || intensity < 4) return;
+      try {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        if (ac.state === 'suspended') ac.resume();
+        const t = ac.currentTime;
+        const osc = ac.createOscillator();
+        const g = ac.createGain();
+        osc.type = 'sine';
+        const base = 240 + Math.min(intensity * 12, 360);
+        osc.frequency.setValueAtTime(base, t);
+        osc.frequency.exponentialRampToValueAtTime(base * 1.45, t + 0.14);
+        g.gain.setValueAtTime(0.001, t);
+        g.gain.linearRampToValueAtTime(Math.min(0.09, intensity * 0.004), t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        osc.connect(g);
+        g.connect(ac.destination);
+        osc.start(t);
+        osc.stop(t + 0.2);
+      } catch (_) {}
+    }
+
+    stage.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      stage.classList.add('is-dragging');
+      stage.setPointerCapture(e.pointerId);
+      lastClientX = e.clientX;
+      lastClientY = e.clientY;
+      vx = 0;
+      vy = 0;
+    });
+
+    stage.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastClientX;
+      const dy = e.clientY - lastClientY;
+      lastClientX = e.clientX;
+      lastClientY = e.clientY;
+
+      ox += dx;
+      oy += dy;
+      vx = dx * 0.85;
+      vy = dy * 0.85;
+
+      // Torque = r x F (tangential fling adds angular spin!)
+      const torque = (ox * dy - oy * dx) * 0.0022;
+      spinVel = Math.max(-22, Math.min(22, spinVel + torque + (dx - dy) * 0.04));
+    });
+
+    function releaseDrag() {
+      if (!dragging) return;
+      dragging = false;
+      stage.classList.remove('is-dragging');
+      const speed = Math.hypot(vx, vy);
+      playFlingWhoosh(speed);
+    }
+    stage.addEventListener('pointerup', releaseDrag);
+    stage.addEventListener('pointercancel', releaseDrag);
 
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -2185,36 +2267,66 @@ body::before {
       const rect = hud.getBoundingClientRect();
       const w = rect.width || 320;
       const h = rect.height || 480;
-      const cx = w * 0.5;
-      const cy = h * 0.36;
       const thinking = hud.classList.contains('is-thinking');
-      const maxDist = Math.hypot(w, h) * 0.65;
+
+      // Spring-damper physics when not dragging
+      if (!dragging) {
+        const stiffness = 0.085;
+        const damping = 0.85;
+        vx = (vx - ox * stiffness) * damping;
+        vy = (vy - oy * stiffness) * damping;
+        ox += vx;
+        oy += vy;
+        if (Math.abs(ox) < 0.05 && Math.abs(vx) < 0.05) { ox = 0; vx = 0; }
+        if (Math.abs(oy) < 0.05 && Math.abs(vy) < 0.05) { oy = 0; vy = 0; }
+      }
+
+      // Angular inertia decay
+      spinAngle = (spinAngle + spinVel) % 360;
+      spinVel *= dragging ? 0.94 : 0.975;
+      if (Math.abs(spinVel) < 0.01) spinVel = 0;
+
+      // Apply 3D tilt + spring translation + fling scale to reactor stage
+      const baseScale = thinking ? 1.07 : 1;
+      const tiltX = Math.max(-18, Math.min(18, -oy * 0.14));
+      const tiltY = Math.max(-18, Math.min(18, ox * 0.14));
+      stage.style.transform = `translate3d(${ox.toFixed(1)}px, ${oy.toFixed(1)}px, 0) scale(${baseScale}) perspective(600px) rotateX(${tiltX.toFixed(1)}deg) rotateY(${tiltY.toFixed(1)}deg)`;
+      if (svgEl) {
+        svgEl.style.transform = `rotate(${spinAngle.toFixed(2)}deg)`;
+      }
+
+      // Starfield follows reactor center with subtle parallax + reacts to fling spin
+      const cx = w * 0.5 + ox * 0.45;
+      const cy = h * 0.36 + oy * 0.45;
+      const maxDist = Math.hypot(w, h) * 0.72;
+      const energyBoost = Math.min(3.5, Math.abs(spinVel) * 0.16 + Math.hypot(vx, vy) * 0.06);
 
       ctx.clearRect(0, 0, w, h);
       stars.forEach((s) => {
-        s.twinkle += thinking ? 0.12 : 0.03;
-        s.angle += thinking ? 0.0045 : 0.0008;
-        if (thinking) {
-          s.dist += s.speed * 3.4;
-          if (s.dist > maxDist) s.dist = 18 + Math.random() * 30;
+        s.twinkle += thinking ? 0.12 : (0.03 + energyBoost * 0.03);
+        s.angle += (thinking ? 0.0045 : 0.0009) + spinVel * 0.0018;
+        if (thinking || energyBoost > 0.6) {
+          s.dist += s.speed * (thinking ? 3.5 : energyBoost * 1.4);
+          if (s.dist > maxDist) s.dist = 18 + Math.random() * 35;
         }
         const x = cx + Math.cos(s.angle) * s.dist;
         const y = cy + Math.sin(s.angle) * s.dist;
-        const alpha = 0.25 + 0.65 * (0.5 + 0.5 * Math.sin(s.twinkle));
+        const alpha = 0.3 + 0.68 * (0.5 + 0.5 * Math.sin(s.twinkle));
 
-        if (thinking) {
-          const px = cx + Math.cos(s.angle) * Math.max(0, s.dist - s.speed * 14);
-          const py = cy + Math.sin(s.angle) * Math.max(0, s.dist - s.speed * 14);
+        if (thinking || energyBoost > 0.7) {
+          const streak = (thinking ? 15 : energyBoost * 5) * s.speed;
+          const px = cx + Math.cos(s.angle) * Math.max(0, s.dist - streak);
+          const py = cy + Math.sin(s.angle) * Math.max(0, s.dist - streak);
           ctx.beginPath();
           ctx.moveTo(px, py);
           ctx.lineTo(x, y);
-          ctx.strokeStyle = `hsla(${s.hue}, 95%, 72%, ${alpha * 0.75})`;
+          ctx.strokeStyle = `hsla(${s.hue}, 95%, 74%, ${alpha * 0.8})`;
           ctx.lineWidth = s.size * 0.9;
           ctx.stroke();
         }
         ctx.beginPath();
         ctx.arc(x, y, s.size, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${s.hue}, 95%, 80%, ${alpha})`;
+        ctx.fillStyle = `hsla(${s.hue}, 95%, 84%, ${alpha})`;
         ctx.fill();
       });
       requestAnimationFrame(frame);

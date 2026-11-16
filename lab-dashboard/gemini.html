@@ -603,6 +603,45 @@ body::before {
 .md-table tr:last-child td { border-bottom: none; }
 .md-table th:last-child, .md-table td:last-child { border-right: none; }
 
+/* AI Generated / Markdown Images */
+.md-img-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+.md-img-card {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+  margin: 8px 0;
+  background: rgba(1, 10, 16, 0.92);
+  border: 1px solid rgba(0, 229, 255, 0.38);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5), 0 0 14px rgba(0, 229, 255, 0.12);
+}
+.md-img-card a { display: block; line-height: 0; }
+.md-img-card img {
+  display: block;
+  max-width: 100%;
+  max-height: 440px;
+  object-fit: contain;
+  background: #02070b;
+}
+.md-img-caption {
+  padding: 5px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: rgba(0, 229, 255, 0.07);
+  border-top: 1px solid rgba(0, 229, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 /* ── Tactical AI Processing Status Bar in Message ────────────────────── */
 .msg__thinking-card {
   display: flex;
@@ -752,6 +791,96 @@ body::before {
 .mode-btn.is-active[data-mode="plan"] {
   background: rgba(168, 85, 247, 0.22);
   color: #d3a6ff;
+}
+
+/* Image Attachment UI */
+.btn-attach {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: rgba(5, 28, 38, 0.9);
+  border: 1.5px solid rgba(0, 229, 255, 0.4);
+  color: var(--cyan);
+  font-size: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.btn-attach:hover {
+  background: rgba(0, 229, 255, 0.16);
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.45);
+  transform: scale(1.04);
+}
+.attach-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: rgba(2, 14, 22, 0.92);
+  border: 1px solid rgba(0, 229, 255, 0.28);
+}
+.attach-thumb {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border: 1px solid var(--cyan);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 2px 10px rgba(0, 229, 255, 0.25);
+}
+.attach-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.attach-thumb__rm {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 59, 48, 0.9);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.attach-uploading {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan);
+  padding: 4px 8px;
+}
+.msg__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.msg__img-link {
+  display: block;
+  max-width: 220px;
+  max-height: 180px;
+  border: 1px solid rgba(0, 229, 163, 0.45);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+}
+.msg__img-link img {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+}
+.core-chat-pane.is-dragover {
+  outline: 2px dashed var(--cyan);
+  outline-offset: -6px;
+  background: rgba(0, 229, 255, 0.05);
 }
 
 .input-box {
@@ -991,7 +1120,7 @@ body::before {
   .msg--assistant { max-width: 100%; padding: 10px 12px; }
   .core-dock { padding: 6px 10px 10px 10px; gap: 6px; }
   .core-control-strip { display: none; }
-  .btn-mic { width: 38px; height: 38px; min-width: 38px; font-size: 15px; }
+  .btn-mic, .btn-attach { width: 38px; height: 38px; min-width: 38px; font-size: 15px; }
   .btn-send { height: 38px; padding: 0 14px; font-size: 12px; }
   .btn-abort { height: 38px; padding: 0 10px; font-size: 11px; }
   .prompt-input { height: 32px; font-size: 13px; padding-top: 4px; }
@@ -1161,6 +1290,9 @@ body::before {
           </div>
         </div>
 
+        <div id="attach-preview-bar" class="attach-preview-bar" style="display:none;"></div>
+        <input type="file" id="image-file-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none;" />
+
         <div id="voice-active-indicator" style="display:none; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; color:#ff5f56; background:rgba(255,59,48,0.12); border:1px solid rgba(255,59,48,0.3); padding:5px 12px;">
           <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ff3b30; box-shadow:0 0 8px #ff3b30;"></span>
           <span>กำลังฟังเสียงภาษาไทย... พูดคำสั่งได้เลย (คลิกปุ่ม 🔴 อีกครั้งเมื่อพูดเสร็จ)</span>
@@ -1168,8 +1300,9 @@ body::before {
 
         <div class="input-box">
           <button type="button" id="btn-mic" class="btn-mic" title="สั่งการด้วยเสียง (คลิกเพื่อพูด)" aria-label="สั่งการด้วยเสียง">🎙️</button>
+          <button type="button" id="btn-attach" class="btn-attach" title="แนบรูปภาพ (เลือกไฟล์, ลากวาง, หรือ Ctrl+V)" aria-label="แนบรูปภาพ">🖼️</button>
           <div class="prompt-input-wrap">
-            <textarea id="prompt-input" class="prompt-input" placeholder="พิมพ์คำสั่ง... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"></textarea>
+            <textarea id="prompt-input" class="prompt-input" placeholder="พิมพ์คำสั่ง หรือวางรูปภาพ (Ctrl+V)..."></textarea>
           </div>
           <div class="action-btns">
             <button type="button" id="btn-abort" class="btn btn-abort">⏹ หยุด</button>
@@ -1939,7 +2072,7 @@ body::before {
         // If current UI already has messages and is actively running, never clear!
         if (msgList.children.length > 0 && isRunning) return;
         msgList.innerHTML = '';
-        history.forEach((m) => appendMessage(m.role, m.content, false));
+        history.forEach((m) => appendMessage(m.role, m.content, false, m.images || []));
         scrollToBottom();
       }
     } catch (_) {}
@@ -2024,10 +2157,47 @@ body::before {
       return `@@INLINECODE_${idx}@@`;
     });
 
+    const renderedImgUrls = new Set();
+    function resolveImageUrl(rawUrl) {
+      const clean = String(rawUrl || '').replace(/&amp;/g, '&').trim();
+      if (/^file:\/\/(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
+        const localPath = clean.replace(/^file:\/\//i, '');
+        return '/api/gemini/local-image?path=' + encodeURIComponent(localPath);
+      }
+      if (/^(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
+        return '/api/gemini/local-image?path=' + encodeURIComponent(clean);
+      }
+      if (/^(https?:\/\/|\/api\/|\/icons\/)/i.test(clean)) {
+        return clean;
+      }
+      return null;
+    }
+
+    function buildImgCard(src, caption) {
+      renderedImgUrls.add(src);
+      const safeCap = escapeHtml(caption || 'Generated Image');
+      return `<div class="md-img-card">` +
+        `<a href="${src}" target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูรูปขนาดเต็ม">` +
+          `<img src="${src}" alt="${safeCap}" loading="lazy" onerror="this.closest('.md-img-card').style.display='none'" />` +
+        `</a>` +
+        `<div class="md-img-caption"><span>🖼️ ${safeCap}</span><a class="md-link" href="${src}" target="_blank" rel="noopener noreferrer">เปิดเต็มจอ ↗</a></div>` +
+      `</div>`;
+    }
+
     function formatInline(s) {
+      // Markdown Images: ![alt](url)
+      s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, url) => {
+        const src = resolveImageUrl(url);
+        if (src) return buildImgCard(src, alt || url.split('/').pop());
+        return `<span class="md-link">[รูปภาพ: ${alt || url}]</span>`;
+      });
       // Links: [label](url)
       s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, url) => {
         const cleanUrl = url.replace(/&amp;/g, '&');
+        if (/\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(cleanUrl)) {
+          const src = resolveImageUrl(cleanUrl);
+          if (src) return buildImgCard(src, label);
+        }
         if (/^(https?:\/\/|\/)/i.test(cleanUrl)) {
           return `<a class="md-link" href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${label}</a>`;
         }
@@ -2173,6 +2343,20 @@ body::before {
       }
     }
 
+    // Auto-detect any bare local image paths mentioned by AI (even without ![]())
+    const bareMatches = String(raw).match(/(?:file:\/\/)?(\/home\/dev\/(?:projects|\.gemini)\/[^\s`"'()<>]+\.(?:png|jpe?g|webp|gif|svg)|\/tmp\/[^\s`"'()<>]+\.(?:png|jpe?g|webp|gif|svg))/gi) || [];
+    const extraCards = [];
+    for (const m of bareMatches) {
+      const src = resolveImageUrl(m);
+      if (src && !renderedImgUrls.has(src)) {
+        const fname = m.split('/').pop();
+        extraCards.push(buildImgCard(src, fname));
+      }
+    }
+    if (extraCards.length > 0) {
+      out.push(`<div class="md-img-gallery">${extraCards.join('')}</div>`);
+    }
+
     return out.join('');
   }
 
@@ -2187,20 +2371,44 @@ body::before {
     }
   }
 
-  function appendMessage(role, content, save = true) {
+  function appendMessage(role, content, save = true, images = []) {
     const el = document.createElement('div');
     el.className = 'msg ' + (role === 'user' ? 'msg--user' : 'msg--assistant');
+    const cleanImgs = Array.isArray(images) ? images : [];
+    if (cleanImgs.length > 0) {
+      el.dataset.images = JSON.stringify(cleanImgs);
+    }
 
     const meta = document.createElement('div');
     meta.className = 'msg__meta';
     const authorName = (role === 'user') ? 'คุณ' : 'CORE';
     meta.innerHTML = '<span class="msg__author">' + authorName + '</span><span>' + new Date().toLocaleTimeString() + '</span>';
+    el.appendChild(meta);
+
+    if (cleanImgs.length > 0) {
+      const imgWrap = document.createElement('div');
+      imgWrap.className = 'msg__images';
+      cleanImgs.forEach((img) => {
+        const url = typeof img === 'string' ? img : (img && img.url);
+        if (!url) return;
+        const a = document.createElement('a');
+        a.className = 'msg__img-link';
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        const imageEl = document.createElement('img');
+        imageEl.src = url;
+        imageEl.alt = (img && img.originalName) || 'attached image';
+        a.appendChild(imageEl);
+        imgWrap.appendChild(a);
+      });
+      el.appendChild(imgWrap);
+    }
 
     const body = document.createElement('div');
     body.className = 'msg__body';
     setBodyContent(body, content, role === 'user');
 
-    el.appendChild(meta);
     el.appendChild(body);
     msgList.appendChild(el);
     scrollToBottom();
@@ -2217,8 +2425,14 @@ body::before {
       const isUser = m.classList.contains('msg--user');
       const bodyEl = m.querySelector('.msg__body');
       const text = (bodyEl && bodyEl.dataset.raw !== undefined) ? bodyEl.dataset.raw : (bodyEl?.textContent || '');
+      let images = [];
+      if (m.dataset.images) {
+        try { images = JSON.parse(m.dataset.images); } catch (_) {}
+      }
       if (!isUser && !text.trim()) return;
-      items.push({ role: isUser ? 'user' : 'assistant', content: text });
+      const entry = { role: isUser ? 'user' : 'assistant', content: text };
+      if (images.length > 0) entry.images = images;
+      items.push(entry);
     });
     fetch('/api/gemini/history', {
       method: 'POST',
@@ -2232,13 +2446,13 @@ body::before {
   let currentTurnJobId = null;
   let currentTurnResponseBody = null;
 
-  function createTurnUI(jobId, promptText) {
+  function createTurnUI(jobId, promptText, images = []) {
     // 1. Clean up any existing thinking card from previous turns
     const oldBar = document.getElementById('active-thinking-bar');
     if (oldBar) oldBar.remove();
 
     // 2. Append User message bubble (with same look & feel as normal prompts)
-    appendMessage('user', promptText, false);
+    appendMessage('user', promptText, false, images);
 
     // 3. Append Assistant message bubble
     const body = appendMessage('assistant', '', false);
@@ -2298,7 +2512,7 @@ body::before {
               currentTurnJobId = job.id;
               currentTurnResponseBody = existingEl;
             } else {
-              currentTurnResponseBody = createTurnUI(job.id, job.prompt);
+              currentTurnResponseBody = createTurnUI(job.id, job.prompt, job.images || []);
             }
           }
 
@@ -2360,7 +2574,7 @@ body::before {
         }
 
         if (!body) {
-          body = createTurnUI(job.id, job.prompt);
+          body = createTurnUI(job.id, job.prompt, job.images || []);
         } else {
           currentTurnJobId = job.id;
           currentTurnResponseBody = body;
@@ -2390,13 +2604,139 @@ body::before {
   let isVoiceListening = false;
   let stopVoiceListening = null;
 
+  // ── Image Attachment Engine (File Picker, Drag & Drop, Ctrl+V Paste) ──────
+  const btnAttach = document.getElementById('btn-attach');
+  const imageFileInput = document.getElementById('image-file-input');
+  const attachPreviewBar = document.getElementById('attach-preview-bar');
+  const chatPane = document.querySelector('.core-chat-pane');
+  let pendingAttachments = [];
+  let uploadingCount = 0;
+
+  function renderAttachPreviews() {
+    if (!attachPreviewBar) return;
+    if (pendingAttachments.length === 0 && uploadingCount === 0) {
+      attachPreviewBar.style.display = 'none';
+      attachPreviewBar.innerHTML = '';
+      return;
+    }
+    attachPreviewBar.style.display = 'flex';
+    attachPreviewBar.innerHTML = '';
+
+    pendingAttachments.forEach((img, idx) => {
+      const box = document.createElement('div');
+      box.className = 'attach-thumb';
+      box.innerHTML = `<img src="${img.url}" alt="attachment" /><button type="button" class="attach-thumb__rm" title="ลบรูปนี้">✕</button>`;
+      box.querySelector('.attach-thumb__rm').addEventListener('click', () => {
+        pendingAttachments.splice(idx, 1);
+        renderAttachPreviews();
+      });
+      attachPreviewBar.appendChild(box);
+    });
+
+    if (uploadingCount > 0) {
+      const sp = document.createElement('div');
+      sp.className = 'attach-uploading';
+      sp.textContent = `⏳ กำลังอัปโหลดรูปภาพ (${uploadingCount})...`;
+      attachPreviewBar.appendChild(sp);
+    }
+  }
+
+  async function uploadImageFiles(fileList) {
+    const files = Array.from(fileList || []).filter((f) => f && f.type && f.type.startsWith('image/'));
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      uploadingCount++;
+      renderAttachPreviews();
+      try {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+          reader.readAsDataURL(file);
+        });
+        const res = await fetch('/api/gemini/upload-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUrl, filename: file.name || 'image.png' })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          pendingAttachments.push({ url: data.url, path: data.path, originalName: data.originalName });
+        } else {
+          alert('อัปโหลดรูปไม่สำเร็จ: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('เกิดข้อผิดพลาดในการอัปโหลดรูป: ' + err.message);
+      } finally {
+        uploadingCount--;
+        renderAttachPreviews();
+      }
+    }
+  }
+
+  if (btnAttach && imageFileInput) {
+    btnAttach.addEventListener('click', () => imageFileInput.click());
+    imageFileInput.addEventListener('change', () => {
+      if (imageFileInput.files && imageFileInput.files.length > 0) {
+        uploadImageFiles(imageFileInput.files);
+        imageFileInput.value = '';
+      }
+    });
+  }
+
+  if (promptInput) {
+    promptInput.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      const imgFiles = [];
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          const f = item.getAsFile();
+          if (f) imgFiles.push(f);
+        }
+      }
+      if (imgFiles.length > 0) {
+        e.preventDefault();
+        uploadImageFiles(imgFiles);
+      }
+    });
+  }
+
+  if (chatPane) {
+    chatPane.addEventListener('dragover', (e) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
+        e.preventDefault();
+        chatPane.classList.add('is-dragover');
+      }
+    });
+    chatPane.addEventListener('dragleave', () => chatPane.classList.remove('is-dragover'));
+    chatPane.addEventListener('drop', (e) => {
+      chatPane.classList.remove('is-dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        e.preventDefault();
+        uploadImageFiles(e.dataTransfer.files);
+      }
+    });
+  }
+
   async function sendPrompt(text) {
     if (typeof stopVoiceListening === 'function') {
       stopVoiceListening(true);
     }
 
-    const prompt = (text || promptInput.value || '').trim();
+    if (uploadingCount > 0) {
+      alert('กรุณารอให้อัปโหลดรูปภาพเสร็จก่อนส่งคำสั่งครับ');
+      return;
+    }
+
+    const attachedImages = pendingAttachments.slice();
+    const rawText = (text || promptInput.value || '').trim();
+    const prompt = rawText || (attachedImages.length > 0 ? 'ช่วยดูและวิเคราะห์รูปภาพที่แนบมานี้หน่อย' : '');
     if (!prompt) return;
+
+    pendingAttachments = [];
+    renderAttachPreviews();
 
     if (isRunning) {
       // ── Enqueue task if AI is currently busy ──
@@ -2407,6 +2747,7 @@ body::before {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt,
+            images: attachedImages,
             mode: currentMode,
             cwd: selCwd.value,
             model: selModel ? selModel.value : undefined
@@ -2427,7 +2768,7 @@ body::before {
 
     promptInput.value = '';
     const directJobId = 'job_direct_' + Date.now();
-    const responseBody = createTurnUI(directJobId, prompt);
+    const responseBody = createTurnUI(directJobId, prompt, attachedImages);
 
     let fullOutput = '';
 
@@ -2437,7 +2778,7 @@ body::before {
       const res = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, mode: currentMode, cwd, model, resetSession: needNewSession })
+        body: JSON.stringify({ prompt, images: attachedImages, mode: currentMode, cwd, model, resetSession: needNewSession })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');

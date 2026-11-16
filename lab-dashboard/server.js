@@ -1595,12 +1595,12 @@ function sendJson(res, code, obj) {
     res.end(body);
 }
 
-function readJsonBody(req) {
+function readJsonBody(req, maxBytes = 64 * 1024) {
     return new Promise((resolve, reject) => {
         let raw = '';
         req.on('data', (chunk) => {
             raw += chunk;
-            if (raw.length > 64 * 1024) {
+            if (raw.length > maxBytes) {
                 req.destroy();
                 reject(new Error('Request body too large'));
             }
@@ -1764,6 +1764,65 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 200, result);
         }
 
+        if (req.method === 'POST' && p === '/api/gemini/upload-image') {
+            const body = await readJsonBody(req, 12 * 1024 * 1024);
+            try {
+                const result = await geminiManager.saveUploadedImage(body.dataUrl, body.filename);
+                return sendJson(res, 200, result);
+            } catch (err) {
+                return sendJson(res, 400, { error: err.message });
+            }
+        }
+        if (req.method === 'GET' && p.startsWith('/api/gemini/uploads/')) {
+            const fname = path.basename(p.slice('/api/gemini/uploads/'.length));
+            const filePath = path.join(geminiManager.UPLOADS_DIR, fname);
+            try {
+                const data = await fsp.readFile(filePath);
+                const ext = path.extname(fname).toLowerCase();
+                const mime = ext === '.png' ? 'image/png'
+                    : (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg'
+                    : ext === '.webp' ? 'image/webp'
+                    : ext === '.gif' ? 'image/gif' : 'application/octet-stream';
+                res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' });
+                res.end(data);
+                return;
+            } catch (_) {
+                return sendJson(res, 404, { error: 'Image not found' });
+            }
+        }
+
+        if (req.method === 'GET' && p === '/api/gemini/local-image') {
+            const rawPath = (url.searchParams.get('path') || '').replace(/^file:\/\//i, '');
+            if (!rawPath) return sendJson(res, 400, { error: 'Missing path' });
+            const resolved = path.resolve(rawPath);
+            const allowedRoots = ['/home/dev/projects', '/home/dev/.gemini', '/tmp'];
+            const isAllowed = allowedRoots.some((root) => resolved === root || resolved.startsWith(root + '/'));
+            const ext = path.extname(resolved).toLowerCase();
+            const allowedExts = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.webp': 'image/webp',
+                '.gif': 'image/gif',
+                '.svg': 'image/svg+xml'
+            };
+            if (!isAllowed || !allowedExts[ext]) {
+                return sendJson(res, 403, { error: 'Forbidden image path' });
+            }
+            try {
+                const st = await fsp.stat(resolved);
+                if (!st.isFile() || st.size > 25 * 1024 * 1024) {
+                    return sendJson(res, 404, { error: 'Image not available' });
+                }
+                const data = await fsp.readFile(resolved);
+                res.writeHead(200, { 'Content-Type': allowedExts[ext], 'Cache-Control': 'public, max-age=3600' });
+                res.end(data);
+                return;
+            } catch (_) {
+                return sendJson(res, 404, { error: 'Image not found' });
+            }
+        }
+
         if (req.method === 'POST' && p === '/api/gemini/abort') {
             return sendJson(res, 200, geminiManager.abortActive());
         }
@@ -1772,7 +1831,8 @@ const server = http.createServer(async (req, res) => {
         }
         if (req.method === 'POST' && p === '/api/gemini/chat') {
             const body = await readJsonBody(req);
-            const prompt = (body.prompt || '').trim();
+            const images = Array.isArray(body.images) ? body.images : [];
+            const prompt = (body.prompt || '').trim() || (images.length > 0 ? 'ช่วยดูและวิเคราะห์รูปภาพที่แนบมานี้หน่อย' : '');
             if (!prompt) {
                 return sendJson(res, 400, { error: 'Prompt cannot be empty' });
             }
@@ -1812,6 +1872,7 @@ const server = http.createServer(async (req, res) => {
                 geminiManager.executePrompt(
                     {
                         prompt,
+                        images,
                         mode: body.mode || 'chat',
                         cwd: body.cwd,
                         model: body.model,

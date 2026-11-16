@@ -18,9 +18,9 @@
 ```text
 homelab-server/
 ├── lab-dashboard/          # ซอร์สโค้ด Web Dashboard หลัก (Node.js/Express, PM2 ID 0)
-│   ├── server.js           # Main Backend API & WebSocket & System Info
-│   ├── gemini.html         # AI Terminal Interface & Sound Effects Synthesizer
-│   ├── gemini-manager.js   # Background task streaming & AI state engine
+│   ├── server.js           # Main Backend API, WebSocket, Image Streaming & System Metrics
+│   ├── gemini.html         # AI Terminal Interface, Rich Markdown, Image Upload & SFX Synthesizer
+│   ├── gemini-manager.js   # Background task streaming, Image Uploads Manager & AI State Engine
 │   ├── wireguard-manager.js# WireGuard Peer Policy & IP Manager
 │   └── public/             # Frontend UI, Icons, PWA Manifest, Terminal, Styles
 ├── configs/
@@ -32,6 +32,18 @@ homelab-server/
     ├── get-energy.py       # เครื่องมือดึงข้อมูลไฟฟ้า Real-time & คำนวณค่าไฟ PZEM-01
     └── check-mail.py       # เครื่องมือตรวจเช็คอีเมลและแจ้งเตือนผ่าน Gmail IMAP
 ```
+
+---
+
+## ✨ Lab Dashboard & AI Terminal Features
+* **AI Chat & Terminal:** คอนโซลสื่อสารกับ Antigravity / Gemini พร้อมเสียง Sound Effects เชิงมิติ Sci-Fi
+* **Direct Image Attachment & Rendering:**
+  * รองรับการแนบและอัปโหลดรูปภาพผ่านแชทโดยตรง (ลากวาง / เลือกไฟล์ / คัดลอก-วาง) สูงสุด 10 MB
+  * แสดงผลรูปภาพแบบ Responsive Card Gallery พร้อมระบบคลิกดูภาพขยาย
+  * มี Media Proxy Endpoint เสิร์ฟรูปภาพทั้งจากระบบ AI Brain และ User Uploads อย่างปลอดภัย
+* **Rich Markdown Formatting:** จัดรูปแบบข้อความอัตโนมัติ (Headings, Tables, Lists, Code Syntax Highlighting)
+* **WireGuard & Network Management:** จัดการสถานะ Peer และกำหนด Routing Policy
+* **Homelab System Metrics:** รายงานการใช้ CPU, RAM, Disk และ Docker Status แบบ Real-time
 
 ---
 

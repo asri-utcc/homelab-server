@@ -34,6 +34,7 @@ const HISTORY_FILE = path.join(GEMINI_DIR, 'webui-history.json');
 const MEMORY_FILE = path.join(GEMINI_DIR, 'MEMORY.md');
 const PROJECTS_BASE = path.join(HOME_DIR, 'projects');
 const QUEUE_FILE = path.join(GEMINI_DIR, 'task-queue.json');
+const UPLOADS_DIR = path.join(GEMINI_DIR, 'uploads');
 
 let activeChild = null;
 let shouldResetSession = false;
@@ -68,13 +69,39 @@ function getQueue() {
     return taskQueue.map((item, idx) => ({ ...item, order: idx + 1 }));
 }
 
-async function enqueueTask({ prompt, mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-3.8-flash-medium' }) {
-    const cleanPrompt = (prompt || '').trim();
+async function saveUploadedImage(dataUrl, originalName = 'image.png') {
+    const match = String(dataUrl || '').match(/^data:image\/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=]+)$/i);
+    if (!match) {
+        throw new Error('รองรับเฉพาะไฟล์รูปภาพ PNG, JPG, WEBP หรือ GIF เท่านั้น');
+    }
+    const rawExt = match[1].toLowerCase();
+    const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+    const buffer = Buffer.from(match[2], 'base64');
+    if (buffer.length > 10 * 1024 * 1024) {
+        throw new Error('ขนาดไฟล์รูปภาพต้องไม่เกิน 10 MB');
+    }
+    await fsp.mkdir(UPLOADS_DIR, { recursive: true });
+    const filename = `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+    const filePath = path.join(UPLOADS_DIR, filename);
+    await fsp.writeFile(filePath, buffer);
+    return {
+        ok: true,
+        filename,
+        originalName: path.basename(originalName || filename),
+        path: filePath,
+        url: `/api/gemini/uploads/${filename}`
+    };
+}
+
+async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-3.8-flash-medium' }) {
+    const cleanImages = Array.isArray(images) ? images : [];
+    const cleanPrompt = (prompt || '').trim() || (cleanImages.length > 0 ? 'ช่วยดูและวิเคราะห์รูปภาพที่แนบมานี้หน่อย' : '');
     if (!cleanPrompt) throw new Error('ข้อความคำสั่งว่างเปล่า ไม่สามารถเพิ่มเข้าคิวได้');
 
     const item = {
         id: 'task_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
         prompt: cleanPrompt,
+        images: cleanImages,
         mode: mode || 'exec',
         cwd: cwd || PROJECTS_BASE,
         model: model || 'gemini-3.8-flash-medium',
@@ -155,6 +182,7 @@ async function processNextInQueue() {
         executePrompt(
             {
                 prompt: nextTask.prompt,
+                images: Array.isArray(nextTask.images) ? nextTask.images : [],
                 mode: nextTask.mode,
                 cwd: nextTask.cwd,
                 model: nextTask.model,
@@ -397,10 +425,19 @@ async function setApiKey(key) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ prompt, mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-3.8-flash-medium', resetSession = false }, onChunk, onDone) {
+function executePrompt({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-3.8-flash-medium', resetSession = false }, onChunk, onDone) {
     if (activeChild) {
         throw new Error('Another AI command is currently running. Please wait or stop it.');
     }
+
+    const cleanImages = Array.isArray(images) ? images : [];
+    const imagePaths = cleanImages
+        .map((img) => (typeof img === 'string' ? img : img && img.path))
+        .filter((p) => p && fs.existsSync(p));
+
+    const cliPrompt = imagePaths.length > 0
+        ? `[ผู้ใช้งานแนบรูปภาพมาด้วย กรุณาอ่าน/ดูไฟล์รูปภาพต่อไปนี้ก่อนตอบคำถาม:\n${imagePaths.map((p) => `- ${p}`).join('\n')}\n]\n\n${prompt}`
+        : prompt;
 
     // Sanitize cwd
     let safeCwd = PROJECTS_BASE;
@@ -416,6 +453,7 @@ function executePrompt({ prompt, mode = 'exec', cwd = PROJECTS_BASE, model = 'ge
         id: jobId,
         status: 'running',
         prompt,
+        images: cleanImages,
         output: '',
         startedAt: Date.now(),
         finishedAt: null,
@@ -430,7 +468,9 @@ function executePrompt({ prompt, mode = 'exec', cwd = PROJECTS_BASE, model = 'ge
     loadHistory().then(async (history) => {
         const last = history[history.length - 1];
         if (!last || last.role !== 'user' || last.content !== prompt) {
-            history.push({ role: 'user', content: prompt });
+            const entry = { role: 'user', content: prompt };
+            if (cleanImages.length > 0) entry.images = cleanImages;
+            history.push(entry);
             await saveHistory(history);
         }
     }).catch((e) => console.error('[GeminiManager] Failed to pre-save prompt:', e.message));
@@ -447,7 +487,7 @@ function executePrompt({ prompt, mode = 'exec', cwd = PROJECTS_BASE, model = 'ge
 
     if (hasAgy) {
         // Run natively with Antigravity CLI (agy)
-        const args = ['-p', prompt];
+        const args = ['-p', cliPrompt];
         if (continueSession) {
             args.unshift('-c'); // Continue the ongoing conversation session
         }
@@ -744,5 +784,7 @@ module.exports = {
     removeQueueTask,
     clearQueue,
     reorderQueue,
-    processNextInQueue
+    processNextInQueue,
+    UPLOADS_DIR,
+    saveUploadedImage
 };

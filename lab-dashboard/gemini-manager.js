@@ -850,6 +850,88 @@ async function appendMemory(fact) {
     }
 }
 
+// ── AI Quota Summary (Google Cloud Code / Antigravity OAuth) ─────────────────
+async function getQuotaSummary() {
+    const tokenFile = path.join(HOME_DIR, '.gemini/antigravity-cli/antigravity-oauth-token');
+    if (!fs.existsSync(tokenFile)) {
+        return { ok: false, error: 'ไม่พบไฟล์ antigravity-oauth-token' };
+    }
+    try {
+        const raw = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
+        const inner = typeof raw.token === 'string' ? JSON.parse(raw.token) : raw.token;
+        const accessToken = inner?.access_token;
+        if (!accessToken) {
+            return { ok: false, error: 'ไม่พบ access_token ในไฟล์ OAuth' };
+        }
+
+        const res = await fetch('https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'antigravity/1.15.8'
+            },
+            body: '{}'
+        });
+
+        if (!res.ok) {
+            const errTxt = await res.text().catch(() => '');
+            return { ok: false, error: `Quota API HTTP ${res.status}: ${errTxt.slice(0, 120)}` };
+        }
+
+        const data = await res.json();
+        const modelsObj = data.models || {};
+        const models = [];
+
+        for (const [id, info] of Object.entries(modelsObj)) {
+            if (!info || !info.quotaInfo) continue;
+            const rem = typeof info.quotaInfo.remainingFraction === 'number' ? info.quotaInfo.remainingFraction : 1;
+            const remainingPct = Math.max(0, Math.min(100, Number((rem * 100).toFixed(1))));
+            models.push({
+                id,
+                displayName: info.displayName || id,
+                remainingPct,
+                usedPct: Number((100 - remainingPct).toFixed(1)),
+                resetTime: info.quotaInfo.resetTime || null
+            });
+        }
+
+        const pickPool = (id, name, matchFn, color) => {
+            const matched = models.filter(matchFn);
+            if (!matched.length) return null;
+            // Use lowest remainingPct in pool as conservative indicator
+            const minModel = matched.reduce((a, b) => (a.remainingPct <= b.remainingPct ? a : b));
+            return {
+                id,
+                name,
+                color,
+                remainingPct: minModel.remainingPct,
+                usedPct: minModel.usedPct,
+                resetTime: minModel.resetTime,
+                modelsCount: matched.length,
+                models: matched.sort((a, b) => a.remainingPct - b.remainingPct)
+            };
+        };
+
+        const pools = [
+            pickPool('hydrogen', 'Gemini 4 Hydrogen', m => m.id.includes('hydrogen'), '#38bdf8'),
+            pickPool('argon', 'Gemini 4 Argon / Pro', m => m.id.includes('argon') || m.id.includes('orchestrator') || m.id.includes('gemini-2.5-pro'), '#a855f7'),
+            pickPool('flash', 'Gemini 3.8 Flash', m => m.id.includes('flash'), '#34d399'),
+            pickPool('claude', 'Claude 5.5 & GPT-OSS', m => m.id.includes('claude') || m.id.includes('gpt-oss'), '#fb923c')
+        ].filter(Boolean);
+
+        return {
+            ok: true,
+            email: raw.id_token_email || 'asri.utcc@gmail.com',
+            updatedAt: new Date().toISOString(),
+            pools,
+            models: models.sort((a, b) => a.id.localeCompare(b.id))
+        };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+}
+
 module.exports = {
     getStatus,
     setApiKey,
@@ -870,5 +952,6 @@ module.exports = {
     reorderQueue,
     processNextInQueue,
     UPLOADS_DIR,
-    saveUploadedImage
+    saveUploadedImage,
+    getQuotaSummary
 };

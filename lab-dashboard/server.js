@@ -1691,6 +1691,12 @@ const server = http.createServer(async (req, res) => {
         if (p === '/terminal' || p === '/terminal/') {
             return await serveStatic(req, res, '/terminal.html');
         }
+        if (p === '/quota' || p === '/quota/') {
+            return await serveStatic(req, res, '/quota.html');
+        }
+        if (p === '/api/gemini/quota') {
+            return sendJson(res, 200, await geminiManager.getQuotaSummary());
+        }
         // ── Gemini AI Assistant Endpoints ────────────────────────────
         if (p === '/api/gemini/status') {
             return sendJson(res, 200, await geminiManager.getStatus());

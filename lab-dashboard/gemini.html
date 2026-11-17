@@ -1482,11 +1482,15 @@ body::before {
 
     <button type="button" id="btn-memory" class="btn" style="display:none;">🧠 ความจำ</button>
     <button type="button" id="btn-config" class="btn" style="display:none;">🔑 คีย์</button>
-    <button type="button" id="btn-clear" class="btn btn--danger desktop-only" title="ล้างประวัติการคุยและเริ่มแชทใหม่">🧹 แชทใหม่</button>
+    <button type="button" id="btn-sessions" class="btn desktop-only" title="ดูรายการแชททั้งหมดและสลับ Session">💬 แชท <span id="sessions-running-badge" style="display:none;margin-left:4px;padding:1px 5px;border-radius:10px;background:rgba(52,211,153,0.22);color:#34d399;font-size:10px;"></span></button>
+    <button type="button" id="btn-new-chat" class="btn desktop-only" title="เปิดห้องแชทใหม่ (Session ใหม่)">➕ แชทใหม่</button>
+    <button type="button" id="btn-clear" class="btn btn--danger desktop-only" title="ล้างข้อความในห้องแชทนี้">🧹 ล้าง</button>
     <a href="/#settings" class="btn btn--primary desktop-only" onclick="if(window.parent!==window){window.parent.postMessage({type:'open-settings'},'*');return false;}" title="ตั้งค่าทั้งหมด (Model, เสียงพูด, ความจำ, Cron, โควตา, Telegram)">⚙️ ตั้งค่า</a>
 
     <!-- Mobile-Only Action Controls -->
     <div class="mobile-controls">
+      <button type="button" id="btn-sessions-mobile" class="mode-pill-btn" title="สลับห้องแชท">💬</button>
+      <button type="button" id="btn-new-chat-mobile" class="mode-pill-btn" title="แชทใหม่">➕</button>
       <button type="button" id="mobile-mode-pill" class="mode-pill-btn" data-mode="exec" title="แตะเพื่อเลือกโหมดหรือตั้งค่า">⚡ YOLO</button>
       <button type="button" id="btn-open-settings" class="btn btn--settings" style="display:none;">⚙️ เพิ่มเติม</button>
       <a href="/#settings" class="btn btn--settings" onclick="if(window.parent!==window){window.parent.postMessage({type:'open-settings'},'*');return false;}" style="text-decoration:none;" title="ตั้งค่าทั้งหมด">⚙️ ตั้งค่า</a>
@@ -1706,6 +1710,22 @@ body::before {
     <div class="modal-actions" style="display:flex; justify-content:flex-end; gap:8px;">
       <button type="button" id="btn-modal-qedit-cancel" class="btn">ยกเลิก</button>
       <button type="button" id="btn-modal-qedit-save" class="btn btn--primary">💾 บันทึกการแก้ไข</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-sessions" class="modal-overlay">
+  <div class="modal-card" style="max-width: 580px;">
+    <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <span>💬 ประวัติการสนทนา (Sessions)</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" id="btn-modal-new-chat" class="btn btn--primary" style="padding:5px 10px; font-size:12px;">➕ แชทใหม่</button>
+        <button type="button" id="btn-modal-sessions-x" style="background:none; border:none; color:var(--ink-muted); font-size:18px; cursor:pointer; padding:2px 8px;" title="ปิดหน้าต่าง">✕</button>
+      </div>
+    </div>
+    <input type="text" id="sessions-search" class="field-input" placeholder="🔍 ค้นหาชื่อแชทหรือข้อความ..." style="margin-bottom:10px;" />
+    <div id="sessions-list" style="max-height: 390px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+      <div style="text-align:center; color:var(--ink-muted); padding:20px;">กำลังโหลดรายการแชท...</div>
     </div>
   </div>
 </div>
@@ -3315,26 +3335,239 @@ body::before {
     location.replace('https://' + location.host + location.pathname + location.search);
   }
 
+  let currentSessionId = localStorage.getItem('core_active_session') || null;
+  let activeStreamAbortController = null;
+  let cachedSessions = [];
+
+  function updateRunningSessionsBadge(runningIds) {
+    const badge = document.getElementById('sessions-running-badge');
+    if (!badge) return;
+    const count = Array.isArray(runningIds) ? runningIds.length : 0;
+    if (count > 0) {
+      badge.textContent = count + ' ⏳';
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function renderSessionMessages(messages) {
+    msgList.innerHTML = '';
+    if (Array.isArray(messages) && messages.length > 0) {
+      messages.forEach((m) => appendMessage(m.role, m.content, false, m.images || []));
+    } else {
+      msgList.innerHTML = '<div class="msg msg--assistant"><div class="msg__meta"><span class="msg__author">CORE</span><span>New Session</span></div><div class="msg__body">พร้อมเริ่มบทสนทนาใหม่แล้วครับ พิมพ์หรือกดไมค์สั่งงานได้เลย!</div></div>';
+    }
+    scrollToBottom();
+    requestAnimationFrame(scrollToBottom);
+    setTimeout(scrollToBottom, 150);
+    msgList.querySelectorAll('img').forEach((img) => {
+      if (!img.complete) img.addEventListener('load', scrollToBottom, { once: true });
+    });
+  }
+
   async function loadHistory() {
     if (isRunning || document.getElementById('active-thinking-bar')) return;
     try {
-      const res = await fetch('/api/gemini/history');
-      const history = await res.json();
-      if (Array.isArray(history) && history.length) {
-        // If current UI already has messages and is actively running, never clear!
-        if (msgList.children.length > 0 && isRunning) return;
-        msgList.innerHTML = '';
-        history.forEach((m) => appendMessage(m.role, m.content, false, m.images || []));
-        scrollToBottom();
-        requestAnimationFrame(scrollToBottom);
-        setTimeout(scrollToBottom, 150);
-        setTimeout(scrollToBottom, 500);
-        msgList.querySelectorAll('img').forEach((img) => {
-          if (!img.complete) img.addEventListener('load', scrollToBottom, { once: true });
-        });
+      const q = currentSessionId ? `?id=${encodeURIComponent(currentSessionId)}` : '';
+      const res = await fetch('/api/gemini/session' + q);
+      const data = await res.json();
+      if (data && data.ok && data.session) {
+        currentSessionId = data.session.id;
+        localStorage.setItem('core_active_session', currentSessionId);
+        if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
+          selModel.value = data.session.model;
+        }
+        if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
+          selCwd.value = data.session.cwd;
+        }
+        renderSessionMessages(data.messages || []);
+        if (data.job && data.job.runningSessionIds) {
+          updateRunningSessionsBadge(data.job.runningSessionIds);
+        }
       }
     } catch (_) {}
   }
+
+  async function switchToSession(sid) {
+    if (!sid) return;
+    // Detach current UI stream/polling WITHOUT aborting the server-side process of the previous session!
+    if (activeStreamAbortController) {
+      try { activeStreamAbortController.abort(); } catch (_) {}
+      activeStreamAbortController = null;
+    }
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    isSseActive = false;
+    isRunning = false;
+    currentTurnJobId = null;
+    currentTurnResponseBody = null;
+    const oldBar = document.getElementById('active-thinking-bar');
+    if (oldBar) oldBar.remove();
+
+    currentSessionId = sid;
+    localStorage.setItem('core_active_session', sid);
+    if (modalSessions) modalSessions.classList.remove('is-open');
+
+    try {
+      const res = await fetch('/api/gemini/session?id=' + encodeURIComponent(sid));
+      const data = await res.json();
+      if (!data || !data.ok) return;
+      if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
+        selModel.value = data.session.model;
+      }
+      if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
+        selCwd.value = data.session.cwd;
+      }
+      renderSessionMessages(data.messages || []);
+      if (data.job && data.job.runningSessionIds) {
+        updateRunningSessionsBadge(data.job.runningSessionIds);
+      }
+      if (data.job && data.job.status === 'running') {
+        currentTurnJobId = data.job.id;
+        currentTurnResponseBody = createTurnUI(data.job.id, data.job.prompt, data.job.images || []);
+        if (data.job.output) {
+          setBodyContent(currentTurnResponseBody, data.job.output, false);
+        }
+        startBackgroundJobPolling();
+      } else {
+        setAiThinkingState(false);
+        btnSend.style.display = 'inline-flex';
+        btnAbort.style.display = 'none';
+      }
+    } catch (_) {}
+  }
+
+  async function createNewChat() {
+    try {
+      const res = await fetch('/api/gemini/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'แชทใหม่',
+          model: selModel ? selModel.value : 'gemini-4-hydrogen-medium',
+          cwd: selCwd ? selCwd.value : '/home/dev/projects',
+          mode: currentMode || 'exec'
+        })
+      });
+      const data = await res.json();
+      if (data && data.ok && data.session) {
+        await switchToSession(data.session.id);
+      }
+    } catch (_) {}
+  }
+
+  const modalSessions = document.getElementById('modal-sessions');
+  const sessionsListEl = document.getElementById('sessions-list');
+  const sessionsSearchEl = document.getElementById('sessions-search');
+
+  function formatRelTime(ts) {
+    if (!ts) return '';
+    const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (sec < 60) return 'เมื่อกี้';
+    if (sec < 3600) return Math.floor(sec / 60) + ' นาทีที่แล้ว';
+    if (sec < 86400) return Math.floor(sec / 3600) + ' ชม.ที่แล้ว';
+    return new Date(ts).toLocaleDateString('th-TH');
+  }
+
+  function renderSessionsList() {
+    if (!sessionsListEl) return;
+    const q = (sessionsSearchEl ? sessionsSearchEl.value : '').trim().toLowerCase();
+    const items = cachedSessions.filter(s => !q || (s.title || '').toLowerCase().includes(q) || (s.lastMessage || '').toLowerCase().includes(q));
+    if (!items.length) {
+      sessionsListEl.innerHTML = '<div style="text-align:center;color:var(--ink-muted);padding:20px;">ไม่พบแชทที่ค้นหา</div>';
+      return;
+    }
+    sessionsListEl.innerHTML = '';
+    items.forEach((s) => {
+      const isCur = s.id === currentSessionId;
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid ${isCur ? 'rgba(0,229,255,0.6)' : 'rgba(0,229,255,0.16)'};background:${isCur ? 'rgba(0,229,255,0.12)' : 'rgba(4,16,26,0.75)'};`;
+      const left = document.createElement('div');
+      left.style.cssText = 'flex:1;min-width:0;';
+      const statusBadge = s.running
+        ? '<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:rgba(52,211,153,0.2);color:#34d399;border:1px solid rgba(52,211,153,0.45);margin-left:6px;">🟢 กำลังทำงาน...</span>'
+        : (isCur ? '<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:rgba(0,229,255,0.18);color:#00e5ff;margin-left:6px;">กำลังเปิด</span>' : '');
+      left.innerHTML = `<div style="font-weight:700;font-size:13.5px;color:#e6f4f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.title || 'แชทใหม่')}${statusBadge}</div><div style="font-size:11px;color:var(--ink-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.messageCount || 0} ข้อความ · ${escHtml(s.model || '')} · ${formatRelTime(s.updatedAt)}</div>`;
+      left.addEventListener('click', () => switchToSession(s.id));
+
+      const acts = document.createElement('div');
+      acts.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+      const btnRen = document.createElement('button');
+      btnRen.type = 'button';
+      btnRen.className = 'btn';
+      btnRen.style.cssText = 'padding:3px 7px;font-size:11px;';
+      btnRen.textContent = '✏️';
+      btnRen.title = 'เปลี่ยนชื่อแชท';
+      btnRen.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const nextTitle = prompt('ตั้งชื่อห้องแชท:', s.title || '');
+        if (!nextTitle || !nextTitle.trim()) return;
+        await fetch('/api/gemini/sessions/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: s.id, title: nextTitle.trim() })
+        });
+        openSessionsModal();
+      });
+
+      const btnDel = document.createElement('button');
+      btnDel.type = 'button';
+      btnDel.className = 'btn btn--danger';
+      btnDel.style.cssText = 'padding:3px 7px;font-size:11px;';
+      btnDel.textContent = '🗑️';
+      btnDel.title = 'ลบห้องแชทนี้';
+      btnDel.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`ลบแชท "${s.title}" ใช่หรือไม่?`)) return;
+        const r = await fetch('/api/gemini/sessions/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: s.id })
+        });
+        const d = await r.json();
+        if (d && d.ok && Array.isArray(d.sessions)) {
+          cachedSessions = d.sessions;
+          if (s.id === currentSessionId && cachedSessions.length > 0) {
+            await switchToSession(cachedSessions[0].id);
+          }
+          renderSessionsList();
+        }
+      });
+
+      acts.appendChild(btnRen);
+      acts.appendChild(btnDel);
+      row.appendChild(left);
+      row.appendChild(acts);
+      sessionsListEl.appendChild(row);
+    });
+  }
+
+  async function openSessionsModal() {
+    if (!modalSessions) return;
+    modalSessions.classList.add('is-open');
+    try {
+      const res = await fetch('/api/gemini/sessions');
+      const d = await res.json();
+      if (d && d.ok) {
+        cachedSessions = d.sessions || [];
+        updateRunningSessionsBadge(d.runningSessionIds || []);
+        renderSessionsList();
+      }
+    } catch (_) {}
+  }
+
+  document.getElementById('btn-sessions')?.addEventListener('click', openSessionsModal);
+  document.getElementById('btn-sessions-mobile')?.addEventListener('click', openSessionsModal);
+  document.getElementById('btn-new-chat')?.addEventListener('click', createNewChat);
+  document.getElementById('btn-new-chat-mobile')?.addEventListener('click', createNewChat);
+  document.getElementById('btn-modal-new-chat')?.addEventListener('click', createNewChat);
+  document.getElementById('btn-modal-sessions-x')?.addEventListener('click', () => modalSessions?.classList.remove('is-open'));
+  modalSessions?.addEventListener('click', (e) => { if (e.target === modalSessions) modalSessions.classList.remove('is-open'); });
+  sessionsSearchEl?.addEventListener('input', renderSessionsList);
+
   loadHistory();
   window.addEventListener('load', () => {
     scrollToBottom();
@@ -3824,9 +4057,10 @@ body::before {
 
     pollTimer = setInterval(async () => {
       try {
-        const res = await fetch('/api/gemini/job');
+        const res = await fetch('/api/gemini/job?sessionId=' + encodeURIComponent(currentSessionId || ''));
         if (!res.ok) return;
         const job = await res.json();
+        if (job.runningSessionIds) updateRunningSessionsBadge(job.runningSessionIds);
 
         if (job.queue) {
           renderQueue(job.queue);
@@ -3904,9 +4138,10 @@ body::before {
   async function checkActiveJobOnResume() {
     if (isSseActive) return;
     try {
-      const res = await fetch('/api/gemini/job');
+      const res = await fetch('/api/gemini/job?sessionId=' + encodeURIComponent(currentSessionId || ''));
       if (!res.ok) return;
       const job = await res.json();
+      if (job.runningSessionIds) updateRunningSessionsBadge(job.runningSessionIds);
       if (job.queue) renderQueue(job.queue);
 
       if (job.status === 'running') {
@@ -4140,10 +4375,15 @@ body::before {
     try {
       const cwd = selCwd.value;
       const model = selModel ? selModel.value : undefined;
+      if (activeStreamAbortController) {
+        try { activeStreamAbortController.abort(); } catch (_) {}
+      }
+      activeStreamAbortController = new AbortController();
       const res = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, resetSession: needNewSession })
+        signal: activeStreamAbortController.signal,
+        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, resetSession: needNewSession })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -4214,6 +4454,7 @@ body::before {
 
       finishRun();
     } catch (e) {
+      if (e && e.name === 'AbortError') return;
       console.warn('SSE stream interrupted (screen off, background, or network switch):', e);
       isSseActive = false;
       startBackgroundJobPolling();
@@ -4560,7 +4801,11 @@ body::before {
       pollTimer = null;
     }
     try {
-      await fetch('/api/gemini/abort', { method: 'POST' });
+      await fetch('/api/gemini/abort', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: currentSessionId })
+      });
     } catch (_) {}
     finishRun();
   });
@@ -4860,7 +5105,11 @@ body::before {
   btnClear.addEventListener('click', async () => {
     if (!confirm('ต้องการล้างประวัติการคุยทั้งหมดและเริ่ม Session ใหม่ใช่หรือไม่?')) return;
     needNewSession = true;
-    await fetch('/api/gemini/clear-history', { method: 'POST' }).catch(function(){});
+    await fetch('/api/gemini/clear-history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: currentSessionId })
+    }).catch(function(){});
     msgList.innerHTML = '';
     appendMessage('assistant', 'ประวัติการคุยถูกล้างเรียบร้อย พร้อมเริ่ม Session ใหม่ครับ', false);
     const sessionTag = document.getElementById('ai-hud-session-tag');

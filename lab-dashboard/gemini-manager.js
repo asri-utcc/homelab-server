@@ -35,10 +35,15 @@ const MEMORY_FILE = path.join(GEMINI_DIR, 'MEMORY.md');
 const PROJECTS_BASE = path.join(HOME_DIR, 'projects');
 const QUEUE_FILE = path.join(GEMINI_DIR, 'task-queue.json');
 const UPLOADS_DIR = path.join(GEMINI_DIR, 'uploads');
+const SESSIONS_INDEX_FILE = path.join(GEMINI_DIR, 'webui-sessions.json');
+const SESSIONS_DIR = path.join(GEMINI_DIR, 'sessions');
+const BRAIN_DIR = path.join(GEMINI_DIR, 'antigravity-cli/brain');
 
 let activeChild = null;
 let shouldResetSession = false;
 const sessionActiveByCwd = {};
+const activeRuns = new Map(); // sessionId -> { child, job }
+const lastJobs = new Map();   // sessionId -> last job object
 
 let taskQueue = [];
 let isProcessingQueue = false;
@@ -226,21 +231,26 @@ function formatToolSummary(tc) {
     return clean ? `${tc.name}: ${clean}`.slice(0, 140) : tc.name;
 }
 
-function getLiveThinkingState(sinceMs = 0) {
+function getLiveThinkingState(sinceMs = 0, agyConversationId = null) {
     try {
-        const brainDir = path.join(HOME_DIR, '.gemini/antigravity-cli/brain');
-        if (!fs.existsSync(brainDir)) return null;
-        const subdirs = fs.readdirSync(brainDir)
-            .map(d => path.join(brainDir, d))
-            .filter(p => {
-                try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
+        if (!fs.existsSync(BRAIN_DIR)) return null;
+        let targetDir = null;
+        if (agyConversationId && fs.existsSync(path.join(BRAIN_DIR, agyConversationId))) {
+            targetDir = path.join(BRAIN_DIR, agyConversationId);
+        } else {
+            const subdirs = fs.readdirSync(BRAIN_DIR)
+                .map(d => path.join(BRAIN_DIR, d))
+                .filter(p => {
+                    try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
+                });
+            if (!subdirs.length) return null;
+            subdirs.sort((a, b) => {
+                try { return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs; } catch (_) { return 0; }
             });
-        if (!subdirs.length) return null;
-        subdirs.sort((a, b) => {
-            try { return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs; } catch (_) { return 0; }
-        });
+            targetDir = subdirs[0];
+        }
 
-        const logsDir = path.join(subdirs[0], '.system_generated/logs');
+        const logsDir = path.join(targetDir, '.system_generated/logs');
         const fullFile = path.join(logsDir, 'transcript_full.jsonl');
         const compactFile = path.join(logsDir, 'transcript.jsonl');
         const tFile = fs.existsSync(fullFile) ? fullFile : compactFile;
@@ -301,13 +311,226 @@ function getLiveThinkingState(sinceMs = 0) {
     }
 }
 
-function getActiveJob() {
+function getActiveJob(sessionId = null) {
+    const runningSessionIds = [...activeRuns.keys()];
+    if (sessionId) {
+        const run = activeRuns.get(sessionId);
+        const job = run ? run.job : (lastJobs.get(sessionId) || { id: null, status: 'idle', sessionId });
+        const sess = getSessionMetaSync(sessionId);
+        return {
+            ...job,
+            sessionId,
+            activeRunning: !!run,
+            runningSessionIds,
+            queue: getQueue(),
+            liveThought: job.status === 'running' ? getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId) : null
+        };
+    }
+    const latestSid = runningSessionIds[0] || null;
+    const latestRun = latestSid ? activeRuns.get(latestSid) : null;
+    const job = latestRun ? latestRun.job : activeJob;
+    const sess = latestSid ? getSessionMetaSync(latestSid) : null;
     return {
-        ...activeJob,
-        activeRunning: activeChild !== null,
+        ...job,
+        sessionId: job.sessionId || latestSid,
+        activeRunning: activeRuns.size > 0,
+        runningSessionIds,
         queue: getQueue(),
-        liveThought: activeJob.status === 'running' ? getLiveThinkingState(activeJob.startedAt || 0) : null
+        liveThought: job.status === 'running' ? getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId) : null
     };
+}
+
+// ── Multi-Session Conversation Store ─────────────────────────────────────────
+let sessionsCache = null;
+
+function ensureSessionsStoreSync() {
+    if (sessionsCache) return sessionsCache;
+    try {
+        fs.mkdirSync(GEMINI_DIR, { recursive: true });
+        fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+        if (fs.existsSync(SESSIONS_INDEX_FILE)) {
+            const parsed = JSON.parse(fs.readFileSync(SESSIONS_INDEX_FILE, 'utf8'));
+            if (Array.isArray(parsed)) {
+                sessionsCache = parsed;
+                return sessionsCache;
+            }
+        }
+        // Migrate legacy webui-history.json into initial session if present
+        let legacyMsgs = [];
+        if (fs.existsSync(HISTORY_FILE)) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+                if (Array.isArray(raw)) legacyMsgs = raw;
+            } catch (_) {}
+        }
+        const firstUser = legacyMsgs.find(m => m && m.role === 'user' && m.content);
+        const title = firstUser ? String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 48) : 'แชทเริ่มต้น';
+        const now = Date.now();
+        const defSess = {
+            id: 'sess_default',
+            title: title || 'แชทเริ่มต้น',
+            model: 'gemini-4-hydrogen-medium',
+            cwd: PROJECTS_BASE,
+            mode: 'exec',
+            agyConversationId: null,
+            messageCount: legacyMsgs.length,
+            lastMessage: legacyMsgs.length ? String(legacyMsgs[legacyMsgs.length - 1].content || '').slice(0, 80) : '',
+            createdAt: now,
+            updatedAt: now
+        };
+        sessionsCache = [defSess];
+        fs.writeFileSync(path.join(SESSIONS_DIR, 'sess_default.json'), JSON.stringify(legacyMsgs, null, 2), 'utf8');
+        fs.writeFileSync(SESSIONS_INDEX_FILE, JSON.stringify(sessionsCache, null, 2), 'utf8');
+        return sessionsCache;
+    } catch (_) {
+        sessionsCache = [];
+        return sessionsCache;
+    }
+}
+
+function saveSessionsIndexSync() {
+    try {
+        fs.mkdirSync(GEMINI_DIR, { recursive: true });
+        fs.writeFileSync(SESSIONS_INDEX_FILE, JSON.stringify(sessionsCache || [], null, 2), 'utf8');
+    } catch (e) {
+        console.error('[GeminiManager] saveSessionsIndexSync error:', e.message);
+    }
+}
+
+function getSessionMetaSync(sessionId) {
+    const list = ensureSessionsStoreSync();
+    return list.find(s => s.id === sessionId) || null;
+}
+
+function loadSessionMessagesSync(sessionId) {
+    ensureSessionsStoreSync();
+    const file = path.join(SESSIONS_DIR, `${path.basename(sessionId)}.json`);
+    try {
+        if (!fs.existsSync(file)) return [];
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        return Array.isArray(data) ? data : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveSessionMessagesSync(sessionId, messages) {
+    ensureSessionsStoreSync();
+    const slice = (messages || []).slice(-80);
+    const file = path.join(SESSIONS_DIR, `${path.basename(sessionId)}.json`);
+    try {
+        fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(slice, null, 2), 'utf8');
+        const meta = getSessionMetaSync(sessionId);
+        if (meta) {
+            meta.messageCount = slice.length;
+            meta.lastMessage = slice.length ? String(slice[slice.length - 1].content || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+            meta.updatedAt = Date.now();
+            if ((!meta.title || meta.title === 'แชทใหม่' || meta.title === 'New Chat') && slice.length > 0) {
+                const firstUser = slice.find(m => m && m.role === 'user' && m.content);
+                if (firstUser) {
+                    meta.title = String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 48);
+                }
+            }
+            saveSessionsIndexSync();
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function listSessions() {
+    const list = ensureSessionsStoreSync();
+    const sorted = [...list].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return {
+        ok: true,
+        runningSessionIds: [...activeRuns.keys()],
+        sessions: sorted.map(s => ({
+            ...s,
+            running: activeRuns.has(s.id)
+        }))
+    };
+}
+
+function createSession({ title = 'แชทใหม่', model = 'gemini-4-hydrogen-medium', cwd = PROJECTS_BASE, mode = 'exec' } = {}) {
+    const list = ensureSessionsStoreSync();
+    const id = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const now = Date.now();
+    const sess = {
+        id,
+        title: String(title || 'แชทใหม่').trim().slice(0, 60) || 'แชทใหม่',
+        model: model || 'gemini-4-hydrogen-medium',
+        cwd: cwd || PROJECTS_BASE,
+        mode: mode || 'exec',
+        agyConversationId: null,
+        messageCount: 0,
+        lastMessage: '',
+        createdAt: now,
+        updatedAt: now
+    };
+    list.unshift(sess);
+    saveSessionMessagesSync(id, []);
+    saveSessionsIndexSync();
+    return { ok: true, session: { ...sess, running: false } };
+}
+
+function getSession(sessionId) {
+    const list = ensureSessionsStoreSync();
+    let sess = getSessionMetaSync(sessionId);
+    if (!sess && list.length > 0) {
+        sess = [...list].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+    }
+    if (!sess) {
+        sess = createSession().session;
+    }
+    const messages = loadSessionMessagesSync(sess.id);
+    return {
+        ok: true,
+        session: { ...sess, running: activeRuns.has(sess.id) },
+        messages,
+        job: getActiveJob(sess.id)
+    };
+}
+
+function renameSession(sessionId, title) {
+    const sess = getSessionMetaSync(sessionId);
+    if (!sess) throw new Error('ไม่พบ Session นี้');
+    const clean = String(title || '').trim().slice(0, 80);
+    if (!clean) throw new Error('ชื่อแชทต้องไม่ว่างเปล่า');
+    sess.title = clean;
+    sess.updatedAt = Date.now();
+    saveSessionsIndexSync();
+    return { ok: true, session: { ...sess, running: activeRuns.has(sess.id) } };
+}
+
+function deleteSession(sessionId) {
+    const list = ensureSessionsStoreSync();
+    const idx = list.findIndex(s => s.id === sessionId);
+    if (idx === -1) throw new Error('ไม่พบ Session นี้');
+    if (activeRuns.has(sessionId)) {
+        abortActive(sessionId);
+    }
+    lastJobs.delete(sessionId);
+    list.splice(idx, 1);
+    const file = path.join(SESSIONS_DIR, `${path.basename(sessionId)}.json`);
+    try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
+    if (list.length === 0) {
+        createSession();
+    } else {
+        saveSessionsIndexSync();
+    }
+    return { ok: true, sessions: listSessions().sessions };
+}
+
+function resolveSessionId(sessionId) {
+    const list = ensureSessionsStoreSync();
+    if (sessionId && getSessionMetaSync(sessionId)) return sessionId;
+    if (list.length > 0) {
+        const sorted = [...list].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        return sorted[0].id;
+    }
+    return createSession().session.id;
 }
 
 async function persistJobToHistory(job) {
@@ -317,7 +540,8 @@ async function persistJobToHistory(job) {
     if (!promptText && !outputText) return;
 
     try {
-        const history = await loadHistory();
+        const sid = resolveSessionId(job.sessionId);
+        const history = loadSessionMessagesSync(sid);
         const last = history[history.length - 1];
         const secondLast = history[history.length - 2];
 
@@ -329,7 +553,7 @@ async function persistJobToHistory(job) {
             history.push({ role: 'user', content: promptText });
             history.push({ role: 'assistant', content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]') });
         }
-        await saveHistory(history);
+        saveSessionMessagesSync(sid, history);
     } catch (e) {
         console.error('[GeminiManager] persistJobToHistory error:', e.message);
     }
@@ -509,9 +733,10 @@ async function setApiKey(key) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium', resetSession = false }, onChunk, onDone) {
-    if (activeChild) {
-        throw new Error('Another AI command is currently running. Please wait or stop it.');
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium', resetSession = false }, onChunk, onDone) {
+    const sid = resolveSessionId(sessionId);
+    if (activeRuns.has(sid)) {
+        throw new Error('แชทนี้กำลังประมวลผลอยู่ กรุณารอสักครู่หรือกด "➕ แชทใหม่" เพื่อคุยอีกห้องพร้อมกัน');
     }
 
     const cleanImages = Array.isArray(images) ? images : [];
@@ -531,10 +756,20 @@ function executePrompt({ jobId = null, prompt, images = [], mode = 'exec', cwd =
         safeCwd = path.join(PROJECTS_BASE, cwd);
     }
 
-    // Initialize background job tracker
+    const sessMeta = getSessionMetaSync(sid);
+    if (sessMeta) {
+        sessMeta.model = model || sessMeta.model;
+        sessMeta.cwd = safeCwd;
+        sessMeta.mode = mode || sessMeta.mode;
+        if (resetSession) sessMeta.agyConversationId = null;
+        saveSessionsIndexSync();
+    }
+
+    // Initialize background job tracker for this session
     const finalJobId = jobId || ('job_' + Date.now());
-    activeJob = {
+    const job = {
         id: finalJobId,
+        sessionId: sid,
         status: 'running',
         prompt,
         images: cleanImages,
@@ -547,33 +782,50 @@ function executePrompt({ jobId = null, prompt, images = [], mode = 'exec', cwd =
         cwd: safeCwd,
         model
     };
+    activeJob = job;
+    lastJobs.set(sid, job);
 
-    // Pre-save user's prompt immediately to disk so it can never be lost if connection drops
-    loadHistory().then(async (history) => {
+    // Pre-save user's prompt immediately to this session on disk
+    try {
+        const history = loadSessionMessagesSync(sid);
         const last = history[history.length - 1];
         if (!last || last.role !== 'user' || last.content !== prompt) {
             const entry = { role: 'user', content: prompt };
             if (cleanImages.length > 0) entry.images = cleanImages;
             history.push(entry);
-            await saveHistory(history);
+            saveSessionMessagesSync(sid, history);
         }
-    }).catch((e) => console.error('[GeminiManager] Failed to pre-save prompt:', e.message));
+    } catch (e) {
+        console.error('[GeminiManager] Failed to pre-save prompt:', e.message);
+    }
 
-    // Session continuation logic
+    // Session continuation logic via agyConversationId
     const forceNew = Boolean(resetSession) || shouldResetSession;
     if (forceNew) {
         shouldResetSession = false;
-        sessionActiveByCwd[safeCwd] = false;
+        if (sessMeta) {
+            sessMeta.agyConversationId = null;
+            saveSessionsIndexSync();
+        }
     }
-    const continueSession = !forceNew;
+    const existingConvId = (!forceNew && sessMeta) ? sessMeta.agyConversationId : null;
 
     const hasAgy = fs.existsSync(AGY_BIN);
 
     if (hasAgy) {
-        // Run natively with Antigravity CLI (agy)
+        // Snapshot existing brain UUIDs if this session doesn't have an agyConversationId yet
+        let beforeBrains = null;
+        if (!existingConvId) {
+            try {
+                beforeBrains = new Set(fs.existsSync(BRAIN_DIR) ? fs.readdirSync(BRAIN_DIR) : []);
+            } catch (_) {
+                beforeBrains = new Set();
+            }
+        }
+
         const args = ['-p', cliPrompt];
-        if (continueSession) {
-            args.unshift('-c'); // Continue the ongoing conversation session
+        if (existingConvId) {
+            args.unshift('--conversation', existingConvId);
         }
         if (mode === 'exec') {
             args.push('--dangerously-skip-permissions');
@@ -595,12 +847,30 @@ function executePrompt({ jobId = null, prompt, images = [], mode = 'exec', cwd =
             stdio: ['ignore', 'pipe', 'pipe']
         });
 
-        sessionActiveByCwd[safeCwd] = true;
-        activeChild = child;
+        activeRuns.set(sid, { child, job });
+
+        const detectConvId = () => {
+            if (!beforeBrains || (sessMeta && sessMeta.agyConversationId)) return;
+            try {
+                if (!fs.existsSync(BRAIN_DIR)) return;
+                const claimed = new Set(ensureSessionsStoreSync().map(s => s.agyConversationId).filter(Boolean));
+                const nowDirs = fs.readdirSync(BRAIN_DIR).filter(d => !beforeBrains.has(d) && !claimed.has(d));
+                if (nowDirs.length > 0) {
+                    nowDirs.sort((a, b) => {
+                        try { return fs.statSync(path.join(BRAIN_DIR, b)).mtimeMs - fs.statSync(path.join(BRAIN_DIR, a)).mtimeMs; } catch (_) { return 0; }
+                    });
+                    if (sessMeta) {
+                        sessMeta.agyConversationId = nowDirs[0];
+                        saveSessionsIndexSync();
+                    }
+                }
+            } catch (_) {}
+        };
+        const brainPoll = beforeBrains ? setInterval(detectConvId, 600) : null;
 
         child.stdout.on('data', (d) => {
             const str = d.toString('utf8');
-            activeJob.output += str;
+            job.output += str;
             onChunk('stdout', str);
         });
 
@@ -610,47 +880,49 @@ function executePrompt({ jobId = null, prompt, images = [], mode = 'exec', cwd =
         });
 
         child.on('error', (err) => {
-            activeChild = null;
-            activeJob.status = 'error';
-            activeJob.error = err.message;
-            activeJob.finishedAt = Date.now();
+            if (brainPoll) clearInterval(brainPoll);
+            activeRuns.delete(sid);
+            job.status = 'error';
+            job.error = err.message;
+            job.finishedAt = Date.now();
+            lastJobs.set(sid, job);
             onDone(1, err.message);
-            setTimeout(() => {
-                processNextInQueue();
-            }, 600);
+            setTimeout(() => { processNextInQueue(); }, 600);
         });
 
         child.on('close', (code) => {
-            activeChild = null;
-            activeJob.exitCode = code;
-            if (activeJob.status !== 'aborted') {
-                activeJob.status = (code === 0) ? 'completed' : 'error';
-                if (code !== 0 && !activeJob.error) {
-                    activeJob.error = `Exit code ${code}`;
+            if (brainPoll) clearInterval(brainPoll);
+            detectConvId();
+            activeRuns.delete(sid);
+            job.exitCode = code;
+            if (job.status !== 'aborted') {
+                job.status = (code === 0) ? 'completed' : 'error';
+                if (code !== 0 && !job.error) {
+                    job.error = `Exit code ${code}`;
                 }
             }
-            activeJob.finishedAt = Date.now();
+            job.finishedAt = Date.now();
+            lastJobs.set(sid, job);
 
-            // Background auto-persistence to disk
-            persistJobToHistory({ ...activeJob }).catch((err) => {
+            persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist background job:', err.message);
             });
 
-            onDone(code, activeJob.error);
-            setTimeout(() => {
-                processNextInQueue();
-            }, 600);
+            onDone(code, job.error);
+            setTimeout(() => { processNextInQueue(); }, 600);
         });
 
         return {
             abort: () => {
-                if (activeChild === child) {
-                    activeJob.status = 'aborted';
-                    activeJob.finishedAt = Date.now();
+                const run = activeRuns.get(sid);
+                if (run && run.child === child) {
+                    job.status = 'aborted';
+                    job.finishedAt = Date.now();
                     try {
                         child.kill('SIGTERM');
                         setTimeout(() => {
-                            if (activeChild === child) child.kill('SIGKILL');
+                            const r = activeRuns.get(sid);
+                            if (r && r.child === child) child.kill('SIGKILL');
                         }, 2000);
                     } catch (_) {}
                 }
@@ -756,7 +1028,35 @@ function executePrompt({ jobId = null, prompt, images = [], mode = 'exec', cwd =
 }
 
 // ── Abort Active Task ────────────────────────────────────────────────────────
-function abortActive() {
+function abortActive(sessionId = null) {
+    if (sessionId && activeRuns.has(sessionId)) {
+        const run = activeRuns.get(sessionId);
+        if (run.job && run.job.status === 'running') {
+            run.job.status = 'aborted';
+            run.job.finishedAt = Date.now();
+            lastJobs.set(sessionId, run.job);
+        }
+        try {
+            run.child.kill('SIGTERM');
+            activeRuns.delete(sessionId);
+            return { ok: true, killed: true, sessionId };
+        } catch (e) {
+            return { ok: false, error: e.message };
+        }
+    }
+    if (!sessionId && activeRuns.size > 0) {
+        let killed = 0;
+        for (const [sid, run] of activeRuns.entries()) {
+            if (run.job && run.job.status === 'running') {
+                run.job.status = 'aborted';
+                run.job.finishedAt = Date.now();
+                lastJobs.set(sid, run.job);
+            }
+            try { run.child.kill('SIGTERM'); killed++; } catch (_) {}
+            activeRuns.delete(sid);
+        }
+        return { ok: true, killed: killed > 0 };
+    }
     if (activeJob && activeJob.status === 'running') {
         activeJob.status = 'aborted';
         activeJob.finishedAt = Date.now();
@@ -764,9 +1064,8 @@ function abortActive() {
     if (activeChild) {
         try {
             activeChild.kill('SIGTERM');
-            const killed = true;
             activeChild = null;
-            return { ok: true, killed };
+            return { ok: true, killed: true };
         } catch (e) {
             return { ok: false, error: e.message };
         }
@@ -774,35 +1073,30 @@ function abortActive() {
     return { ok: true, message: 'No running process' };
 }
 
-// ── Chat History Persistence ─────────────────────────────────────────────────
-async function loadHistory() {
-    try {
-        if (!fs.existsSync(HISTORY_FILE)) return [];
-        const raw = await fsp.readFile(HISTORY_FILE, 'utf8');
-        return JSON.parse(raw);
-    } catch (_) {
-        return [];
-    }
+// ── Chat History Persistence (Session-Aware) ─────────────────────────────────
+async function loadHistory(sessionId = null) {
+    const sid = resolveSessionId(sessionId);
+    return loadSessionMessagesSync(sid);
 }
 
-async function saveHistory(messages) {
-    try {
-        const slice = (messages || []).slice(-40);
-        await fsp.writeFile(HISTORY_FILE, JSON.stringify(slice, null, 2), 'utf8');
-        return true;
-    } catch (_) {
-        return false;
-    }
+async function saveHistory(messages, sessionId = null) {
+    const sid = resolveSessionId(sessionId);
+    return saveSessionMessagesSync(sid, messages);
 }
 
-async function clearHistory() {
+async function clearHistory(sessionId = null) {
     try {
-        shouldResetSession = true;
-        for (const k of Object.keys(sessionActiveByCwd)) {
-            sessionActiveByCwd[k] = false;
+        const sid = resolveSessionId(sessionId);
+        const sess = getSessionMetaSync(sid);
+        if (sess) {
+            sess.agyConversationId = null;
+            sess.title = 'แชทใหม่';
+            sess.updatedAt = Date.now();
+            saveSessionsIndexSync();
         }
-        if (fs.existsSync(HISTORY_FILE)) await fsp.unlink(HISTORY_FILE);
-        return { ok: true };
+        saveSessionMessagesSync(sid, []);
+        lastJobs.delete(sid);
+        return { ok: true, sessionId: sid };
     } catch (e) {
         return { ok: false, error: e.message };
     }
@@ -964,5 +1258,10 @@ module.exports = {
     processNextInQueue,
     UPLOADS_DIR,
     saveUploadedImage,
-    getQuotaSummary
+    getQuotaSummary,
+    listSessions,
+    createSession,
+    getSession,
+    renameSession,
+    deleteSession
 };

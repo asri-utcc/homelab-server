@@ -1891,16 +1891,49 @@ const server = http.createServer(async (req, res) => {
             const body = await readJsonBody(req);
             return sendJson(res, 200, await geminiManager.setApiKey(body.apiKey));
         }
+        if (p === '/api/gemini/sessions') {
+            if (req.method === 'GET') {
+                return sendJson(res, 200, geminiManager.listSessions());
+            }
+            if (req.method === 'POST') {
+                const body = await readJsonBody(req);
+                return sendJson(res, 200, geminiManager.createSession(body || {}));
+            }
+        }
+        if (req.method === 'GET' && p === '/api/gemini/session') {
+            const sid = url.searchParams.get('id') || null;
+            return sendJson(res, 200, geminiManager.getSession(sid));
+        }
+        if (req.method === 'POST' && p === '/api/gemini/sessions/rename') {
+            const body = await readJsonBody(req);
+            try {
+                return sendJson(res, 200, geminiManager.renameSession(body.id, body.title));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/gemini/sessions/delete') {
+            const body = await readJsonBody(req);
+            try {
+                return sendJson(res, 200, geminiManager.deleteSession(body.id));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
         if (p === '/api/gemini/history') {
-            return sendJson(res, 200, await geminiManager.loadHistory());
+            if (req.method === 'GET') {
+                const sid = url.searchParams.get('sessionId') || null;
+                return sendJson(res, 200, await geminiManager.loadHistory(sid));
+            }
         }
         if (req.method === 'POST' && p === '/api/gemini/history') {
             const body = await readJsonBody(req);
-            await geminiManager.saveHistory(body.messages || []);
+            await geminiManager.saveHistory(body.messages || [], body.sessionId || null);
             return sendJson(res, 200, { ok: true });
         }
         if (req.method === 'POST' && p === '/api/gemini/clear-history') {
-            return sendJson(res, 200, await geminiManager.clearHistory());
+            const body = await readJsonBody(req).catch(() => ({}));
+            return sendJson(res, 200, await geminiManager.clearHistory((body && body.sessionId) || null));
         }
         if (p === '/api/gemini/memory') {
             return sendJson(res, 200, await geminiManager.getMemory());
@@ -2016,10 +2049,12 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (req.method === 'POST' && p === '/api/gemini/abort') {
-            return sendJson(res, 200, geminiManager.abortActive());
+            const body = await readJsonBody(req).catch(() => ({}));
+            return sendJson(res, 200, geminiManager.abortActive((body && body.sessionId) || null));
         }
         if (p === '/api/gemini/job') {
-            return sendJson(res, 200, geminiManager.getActiveJob());
+            const sid = url.searchParams.get('sessionId') || null;
+            return sendJson(res, 200, geminiManager.getActiveJob(sid));
         }
         if (req.method === 'POST' && p === '/api/gemini/chat') {
             const body = await readJsonBody(req);
@@ -2063,6 +2098,7 @@ const server = http.createServer(async (req, res) => {
             try {
                 geminiManager.executePrompt(
                     {
+                        sessionId: body.sessionId || null,
                         jobId: body.jobId,
                         prompt,
                         images,

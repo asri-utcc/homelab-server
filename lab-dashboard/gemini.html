@@ -4613,10 +4613,24 @@ body::before {
 
   function cleanTextForSpeech(rawText) {
     let t = String(rawText || '');
-    t = t.replace(/```[\s\S]*?```/g, ' โค้ด ');
+    t = t.replace(/```[\s\S]*?```/g, ', โค้ด, ');
     t = t.replace(/https?:\/\/\S+/g, '');
     t = t.replace(/file:\/\/\S+/g, '');
+    // Preserve natural pauses at line breaks and bullets
+    t = t.replace(/\n\s*[-*•]\s*/g, ', ');
+    t = t.replace(/\n{2,}/g, '. ');
+    t = t.replace(/\n/g, ', ');
+    // Convert common symbols/units to natural spoken Thai
+    t = t.replace(/(\d+(?:\.\d+)?)\s*%/g, '$1 เปอร์เซ็นต์');
+    t = t.replace(/(\d+(?:\.\d+)?)\s*°C/gi, '$1 องศาเซลเซียส');
+    t = t.replace(/\bkWh\b/gi, ' กิโลวัตต์ชั่วโมง ');
+    t = t.replace(/\bTHB\b/gi, ' บาท ');
+    t = t.replace(/\bGB\b/g, ' กิกะไบต์ ');
+    t = t.replace(/\bMB\b/g, ' เมกะไบต์ ');
+    // Strip markdown & emoji clutter
+    t = t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, ' ');
     t = t.replace(/[*_~`#>|]/g, ' ');
+    t = t.replace(/,\s*,+/g, ', ');
     t = t.replace(/\s+/g, ' ').trim();
     return t;
   }
@@ -4726,7 +4740,7 @@ body::before {
       btn.textContent = '⏳ กำลังโหลด...';
     }
 
-    const chosen = localStorage.getItem('core_tts_voice') || selectedTtsVoice || 'th-TH-PremwadeeNeural';
+    const chosen = localStorage.getItem('core_tts_voice') || selectedTtsVoice || 'en-US-AvaMultilingualNeural';
     selectedTtsVoice = chosen;
     if (chosen.startsWith('browser:') || !neuralTtsAvailable) {
       if (btn) btn.textContent = '⏹️ หยุด (Browser)';
@@ -4740,7 +4754,7 @@ body::before {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleaned, voice: chosen, rate: '+0%', pitch: '+0Hz' })
+        body: JSON.stringify({ text: cleaned, voice: chosen })
       });
       if (token !== ttsQueueToken) return;
       if (!res.ok) throw new Error('TTS HTTP ' + res.status);

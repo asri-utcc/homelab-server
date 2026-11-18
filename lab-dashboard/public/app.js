@@ -1630,6 +1630,7 @@ async function refresh(force) {
         pushHistory(s, rate, diskRates);
 
         renderTiles(s);
+        if (typeof window.updateOverviewGalaxy === 'function') window.updateOverviewGalaxy(s, rate);
         renderEnergy(s);
         renderServices(s);
         renderLinks(s.links);
@@ -3046,7 +3047,10 @@ function loadSettingsView() {
                 notify('❌ ' + e.message);
             }
         });
+
+        initPrayerSettingsUI(notify);
     }
+    if (typeof window._syncPrayerSettingsUI === 'function') window._syncPrayerSettingsUI();
 
     fetch('/api/gemini/status').then(r => r.json()).then(d => {
         if (authBadge) {
@@ -3083,3 +3087,219 @@ window.addEventListener('message', (e) => {
         switchView('settings');
     }
 });
+
+// ── Prayer Times Advanced Settings Controller ─────────────────────────────────
+function initPrayerSettingsUI(notify) {
+    const PRESET_COORDS = {
+        'Bangkok': [13.7563, 100.5018],
+        'Nonthaburi': [13.8621, 100.5144],
+        'Pathum Thani': [14.0208, 100.5250],
+        'Chonburi': [13.3611, 100.9847],
+        'Chiang Mai': [18.7883, 98.9853],
+        'Phuket': [7.8804, 98.3923],
+        'Hat Yai': [7.0086, 100.4747],
+        'Pattani': [6.8695, 101.2505],
+        'Yala': [6.5411, 101.2804],
+        'Narathiwat': [6.4255, 101.8253],
+        'Nakhon Si Thammarat': [8.4304, 99.9631],
+        'Krabi': [8.0863, 98.9063],
+        'Satun': [6.6238, 100.0674]
+    };
+    const METHOD_NAMES = {
+        0: 'Jafari', 1: 'Karachi', 2: 'ISNA', 3: 'MWL', 4: 'Makkah',
+        5: 'Egypt', 11: 'MUIS', 13: 'Diyanet', 15: 'Moonsighting',
+        17: 'JAKIM', 20: 'KEMENAG', 99: 'Custom'
+    };
+    const DEFAULTS = {
+        city: 'Bangkok',
+        lat: 13.7563,
+        lon: 100.5018,
+        tz: 7,
+        method: 3,
+        fajrAngle: 18,
+        ishaAngle: 17,
+        school: 0,
+        highLat: 3,
+        midnightMode: 0,
+        hijriAdj: 0,
+        tune: { Fajr: 0, Dhuhr: 0, Asr: 0, Maghrib: 0, Isha: 0 },
+        showSunrise: false,
+        timeFormat: '24h'
+    };
+
+    const $id = (id) => document.getElementById(id);
+    const selCity = $id('set-prayer-city');
+    if (!selCity) return;
+
+    const inpLat = $id('set-prayer-lat');
+    const inpLon = $id('set-prayer-lon');
+    const inpTz = $id('set-prayer-tz');
+    const selMethod = $id('set-prayer-method');
+    const customRow = $id('prayer-custom-angles-row');
+    const inpFajrAng = $id('set-prayer-fajr-angle');
+    const inpIshaAng = $id('set-prayer-isha-angle');
+    const selSchool = $id('set-prayer-school');
+    const selHighLat = $id('set-prayer-highlat');
+    const selMidnight = $id('set-prayer-midnight');
+    const inpHijriAdj = $id('set-prayer-hijri-adj');
+    const tuneAll = $id('set-prayer-tune-all');
+    const tuneFajr = $id('set-prayer-tune-fajr');
+    const tuneDhuhr = $id('set-prayer-tune-dhuhr');
+    const tuneAsr = $id('set-prayer-tune-asr');
+    const tuneMaghrib = $id('set-prayer-tune-maghrib');
+    const tuneIsha = $id('set-prayer-tune-isha');
+    const chkSunrise = $id('chk-prayer-sunrise');
+    const selTimeFmt = $id('set-prayer-timefmt');
+    const badge = $id('set-prayer-summary-badge');
+
+    function readCfg() {
+        try {
+            const raw = localStorage.getItem('ov_prayer_settings_v1');
+            if (raw) {
+                const p = JSON.parse(raw);
+                return { ...DEFAULTS, ...p, tune: { ...DEFAULTS.tune, ...(p.tune || {}) } };
+            }
+        } catch (_) {}
+        const legacyCity = localStorage.getItem('ov_prayer_city');
+        if (legacyCity && PRESET_COORDS[legacyCity]) {
+            return { ...DEFAULTS, city: legacyCity, lat: PRESET_COORDS[legacyCity][0], lon: PRESET_COORDS[legacyCity][1] };
+        }
+        return { ...DEFAULTS };
+    }
+
+    function updateBadge(cfg) {
+        if (!badge) return;
+        const m = METHOD_NAMES[cfg.method] || 'MWL';
+        const s = Number(cfg.school) === 1 ? 'Hanafi' : 'Shafi';
+        const c = cfg.city === 'custom' ? `${Number(cfg.lat).toFixed(2)},${Number(cfg.lon).toFixed(2)}` : cfg.city;
+        badge.textContent = `${m} · ${s} · ${c}`;
+    }
+
+    function syncUI() {
+        const cfg = readCfg();
+        selCity.value = PRESET_COORDS[cfg.city] ? cfg.city : 'custom';
+        inpLat.value = cfg.lat;
+        inpLon.value = cfg.lon;
+        inpTz.value = cfg.tz;
+        selMethod.value = String(cfg.method);
+        inpFajrAng.value = cfg.fajrAngle;
+        inpIshaAng.value = cfg.ishaAngle;
+        customRow.style.display = Number(cfg.method) === 99 ? 'grid' : 'none';
+        selSchool.value = String(cfg.school);
+        selHighLat.value = String(cfg.highLat);
+        selMidnight.value = String(cfg.midnightMode);
+        inpHijriAdj.value = cfg.hijriAdj;
+        tuneFajr.value = cfg.tune.Fajr || 0;
+        tuneDhuhr.value = cfg.tune.Dhuhr || 0;
+        tuneAsr.value = cfg.tune.Asr || 0;
+        tuneMaghrib.value = cfg.tune.Maghrib || 0;
+        tuneIsha.value = cfg.tune.Isha || 0;
+        chkSunrise.checked = !!cfg.showSunrise;
+        selTimeFmt.value = cfg.timeFormat || '24h';
+        updateBadge(cfg);
+    }
+
+    function saveFromUI(msg) {
+        const cfg = {
+            city: selCity.value,
+            lat: parseFloat(inpLat.value) || DEFAULTS.lat,
+            lon: parseFloat(inpLon.value) || DEFAULTS.lon,
+            tz: parseFloat(inpTz.value) ?? DEFAULTS.tz,
+            method: parseInt(selMethod.value, 10),
+            fajrAngle: parseFloat(inpFajrAng.value) || 18,
+            ishaAngle: parseFloat(inpIshaAng.value) || 17,
+            school: parseInt(selSchool.value, 10) || 0,
+            highLat: parseInt(selHighLat.value, 10) || 3,
+            midnightMode: parseInt(selMidnight.value, 10) || 0,
+            hijriAdj: parseInt(inpHijriAdj.value, 10) || 0,
+            tune: {
+                Fajr: parseInt(tuneFajr.value, 10) || 0,
+                Dhuhr: parseInt(tuneDhuhr.value, 10) || 0,
+                Asr: parseInt(tuneAsr.value, 10) || 0,
+                Maghrib: parseInt(tuneMaghrib.value, 10) || 0,
+                Isha: parseInt(tuneIsha.value, 10) || 0
+            },
+            showSunrise: !!chkSunrise.checked,
+            timeFormat: selTimeFmt.value || '24h'
+        };
+        try {
+            localStorage.setItem('ov_prayer_settings_v1', JSON.stringify(cfg));
+            if (cfg.city !== 'custom') localStorage.setItem('ov_prayer_city', cfg.city);
+        } catch (_) {}
+        updateBadge(cfg);
+        window.dispatchEvent(new CustomEvent('prayer-settings-updated'));
+        if (msg) notify(msg);
+    }
+
+    selCity.addEventListener('change', () => {
+        if (PRESET_COORDS[selCity.value]) {
+            const [lat, lon] = PRESET_COORDS[selCity.value];
+            inpLat.value = lat;
+            inpLon.value = lon;
+        }
+        saveFromUI('📍 อัปเดตตำแหน่งเวลาละหมาดแล้ว');
+    });
+
+    [inpLat, inpLon].forEach((el) => {
+        el.addEventListener('change', () => {
+            selCity.value = 'custom';
+            saveFromUI('🎯 อัปเดตพิกัดเวลาละหมาดแล้ว');
+        });
+    });
+
+    selMethod.addEventListener('change', () => {
+        customRow.style.display = Number(selMethod.value) === 99 ? 'grid' : 'none';
+        saveFromUI('🧭 บันทึกมาตรฐานการคำนวณเวลาละหมาดแล้ว');
+    });
+
+    [inpTz, inpFajrAng, inpIshaAng, selSchool, selHighLat, selMidnight, inpHijriAdj,
+     tuneFajr, tuneDhuhr, tuneAsr, tuneMaghrib, tuneIsha, chkSunrise, selTimeFmt].forEach((el) => {
+        el?.addEventListener('change', () => saveFromUI('☪️ บันทึกการตั้งค่าเวลาละหมาดแล้ว'));
+    });
+
+    $id('btn-prayer-apply-all')?.addEventListener('click', () => {
+        const v = parseInt(tuneAll.value, 10) || 0;
+        tuneFajr.value = v;
+        tuneDhuhr.value = v;
+        tuneAsr.value = v;
+        tuneMaghrib.value = v;
+        tuneIsha.value = v;
+        saveFromUI(`⏱️ ปรับชดเชยทุกเวลา ${v >= 0 ? '+' : ''}${v} นาทีแล้ว`);
+    });
+
+    $id('btn-prayer-gps')?.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            notify('❌ เบราว์เซอร์ไม่รองรับ GPS');
+            return;
+        }
+        notify('📡 กำลังดึงพิกัด GPS...');
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                selCity.value = 'custom';
+                inpLat.value = pos.coords.latitude.toFixed(4);
+                inpLon.value = pos.coords.longitude.toFixed(4);
+                saveFromUI('📡 อัปเดตพิกัดจาก GPS เรียบร้อยแล้ว');
+            },
+            (err) => notify('❌ ดึงพิกัด GPS ไม่สำเร็จ: ' + err.message),
+            { timeout: 8000 }
+        );
+    });
+
+    $id('btn-prayer-save')?.addEventListener('click', () => {
+        saveFromUI('✅ บันทึกและคำนวณเวลาละหมาดใหม่เรียบร้อย');
+    });
+
+    $id('btn-prayer-reset')?.addEventListener('click', () => {
+        try {
+            localStorage.setItem('ov_prayer_settings_v1', JSON.stringify(DEFAULTS));
+            localStorage.setItem('ov_prayer_city', DEFAULTS.city);
+        } catch (_) {}
+        syncUI();
+        window.dispatchEvent(new CustomEvent('prayer-settings-updated'));
+        notify('↺ คืนค่าตั้งต้นเวลาละหมาดแล้ว');
+    });
+
+    window._syncPrayerSettingsUI = syncUI;
+    window.addEventListener('prayer-settings-updated', syncUI);
+    syncUI();
+}

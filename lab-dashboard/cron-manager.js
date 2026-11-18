@@ -6,7 +6,11 @@ const fsp = require('fs').promises;
 const path = require('path');
 
 const LOGS_DIR = path.join(__dirname, 'cron-logs');
+const JOBS_DIR = path.join(__dirname, 'cron-jobs');
 const TAG_PREFIX = '# HOMELAB_CRON:';
+const AI_RUNNER_PATH = '/home/dev/projects/cron-ai-runner.py';
+const DEFAULT_AI_MODEL = 'gemini-3.8-flash-low';
+const VALID_MODES = new Set(['script', 'ai', 'script_ai']);
 
 function runCrontabRead() {
     return new Promise((resolve) => {
@@ -63,11 +67,18 @@ function parseCrontab(raw) {
             const activeLine = disabled ? nextLine.slice('#DISABLED# '.length) : nextLine;
             const match = activeLine.trim().match(/^(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.+)$/);
             if (match) {
+                const mode = VALID_MODES.has(meta.mode) ? meta.mode : 'script';
                 jobs.push({
                     id: meta.id || ('cron_' + i),
                     name: meta.name || 'Scheduled Job',
                     schedule: match[1],
                     command: match[2],
+                    mode,
+                    rawCommand: typeof meta.rawCommand === 'string' ? meta.rawCommand : match[2],
+                    aiPrompt: typeof meta.aiPrompt === 'string' ? meta.aiPrompt : '',
+                    aiModel: meta.aiModel || DEFAULT_AI_MODEL,
+                    notifyTelegram: meta.notifyTelegram !== false,
+                    skipOk: Boolean(meta.skipOk),
                     enabled: !disabled,
                     createdAt: meta.createdAt || null,
                     managed: true
@@ -84,6 +95,12 @@ function parseCrontab(raw) {
                         name: path.basename(match[2].split(/\s+/)[0]) || 'System Cron',
                         schedule: match[1],
                         command: match[2],
+                        mode: 'script',
+                        rawCommand: match[2],
+                        aiPrompt: '',
+                        aiModel: DEFAULT_AI_MODEL,
+                        notifyTelegram: false,
+                        skipOk: false,
                         enabled: !disabled,
                         managed: false
                     });
@@ -103,7 +120,18 @@ function serializeCrontab(jobs, unmanaged) {
     }
     for (const j of jobs) {
         if (j.managed) {
-            out.push(`${TAG_PREFIX}${JSON.stringify({ id: j.id, name: j.name, createdAt: j.createdAt || Date.now() })}`);
+            const meta = {
+                id: j.id,
+                name: j.name,
+                mode: j.mode || 'script',
+                rawCommand: j.rawCommand || '',
+                aiPrompt: j.aiPrompt || '',
+                aiModel: j.aiModel || DEFAULT_AI_MODEL,
+                notifyTelegram: j.notifyTelegram !== false,
+                skipOk: Boolean(j.skipOk),
+                createdAt: j.createdAt || Date.now()
+            };
+            out.push(`${TAG_PREFIX}${JSON.stringify(meta)}`);
         }
         const prefix = j.enabled ? '' : '#DISABLED# ';
         out.push(`${prefix}${j.schedule} ${j.command}`);
@@ -128,10 +156,49 @@ async function listJobs() {
     return jobs;
 }
 
-async function addOrUpdateJob({ id, name, schedule, command, enabled = true }) {
+async function buildCronCommand({ jobId, mode, rawCommand, aiPrompt, aiModel, notifyTelegram, skipOk, logPath }) {
+    const safeModel = String(aiModel || DEFAULT_AI_MODEL).replace(/[^a-zA-Z0-9._-]/g, '');
+    if (mode === 'script') {
+        if (rawCommand.includes(LOGS_DIR)) return rawCommand;
+        return `bash -lc ${JSON.stringify(rawCommand)} >> ${logPath} 2>&1`;
+    }
+    await fsp.mkdir(JOBS_DIR, { recursive: true });
+    const jobFile = path.join(JOBS_DIR, `${jobId}.json`);
+    await fsp.writeFile(jobFile, JSON.stringify({
+        id: jobId,
+        mode,
+        rawCommand,
+        aiPrompt,
+        aiModel: safeModel || DEFAULT_AI_MODEL,
+        notifyTelegram: notifyTelegram !== false,
+        skipOk: Boolean(skipOk)
+    }, null, 2), 'utf8');
+    return `/usr/bin/python3 ${AI_RUNNER_PATH} --job-file ${jobFile} >> ${logPath} 2>&1`;
+}
+
+async function addOrUpdateJob({
+    id,
+    name,
+    schedule,
+    mode = 'script',
+    command = '',
+    aiPrompt = '',
+    aiModel = DEFAULT_AI_MODEL,
+    notifyTelegram = true,
+    skipOk = false,
+    enabled = true
+}) {
     const cleanSchedule = validateCronExpr(schedule);
+    const cleanMode = VALID_MODES.has(mode) ? mode : 'script';
     const cleanCmd = String(command || '').trim();
-    if (!cleanCmd) throw new Error('กรุณาระบุคำสั่ง (Command) ที่ต้องการให้ทำงาน');
+    const cleanPrompt = String(aiPrompt || '').trim();
+
+    if ((cleanMode === 'script' || cleanMode === 'script_ai') && !cleanCmd) {
+        throw new Error('กรุณาระบุคำสั่ง (Linux Command) ที่ต้องการให้ทำงาน');
+    }
+    if (cleanMode === 'ai' && !cleanPrompt) {
+        throw new Error('กรุณาระบุ AI Prompt ที่ต้องการให้ทำงาน');
+    }
     const cleanName = String(name || 'Custom Cron Job').trim().slice(0, 80);
 
     const raw = await runCrontabRead();
@@ -141,10 +208,16 @@ async function addOrUpdateJob({ id, name, schedule, command, enabled = true }) {
     const logPath = path.join(LOGS_DIR, `${jobId}.log`);
     await fsp.mkdir(LOGS_DIR, { recursive: true });
 
-    // Wrap command cleanly with bash -lc if not already logging to our log file
-    const wrappedCmd = cleanCmd.includes(LOGS_DIR)
-        ? cleanCmd
-        : `bash -lc ${JSON.stringify(cleanCmd)} >> ${logPath} 2>&1`;
+    const wrappedCmd = await buildCronCommand({
+        jobId,
+        mode: cleanMode,
+        rawCommand: cleanCmd,
+        aiPrompt: cleanPrompt,
+        aiModel,
+        notifyTelegram,
+        skipOk,
+        logPath
+    });
 
     const existingIdx = jobs.findIndex(j => j.id === jobId);
     const newJob = {
@@ -152,6 +225,12 @@ async function addOrUpdateJob({ id, name, schedule, command, enabled = true }) {
         name: cleanName,
         schedule: cleanSchedule,
         command: wrappedCmd,
+        mode: cleanMode,
+        rawCommand: cleanCmd,
+        aiPrompt: cleanPrompt,
+        aiModel: aiModel || DEFAULT_AI_MODEL,
+        notifyTelegram: notifyTelegram !== false,
+        skipOk: Boolean(skipOk),
         enabled: Boolean(enabled),
         createdAt: existingIdx >= 0 ? jobs[existingIdx].createdAt : Date.now(),
         managed: true
@@ -193,9 +272,24 @@ async function runJobNow(id) {
     if (!job) throw new Error('ไม่พบงาน Cron นี้');
 
     await fsp.mkdir(LOGS_DIR, { recursive: true });
+    const logFile = path.join(LOGS_DIR, `${job.id}.log`);
+    let prevSize = 0;
+    try { prevSize = fs.statSync(logFile).size; } catch (_) {}
+
     return new Promise((resolve) => {
-        exec(job.command, { timeout: 30000, shell: '/bin/bash' }, (err, stdout, stderr) => {
-            const output = [stdout, stderr].filter(Boolean).join('\n').trim();
+        exec(job.command, { timeout: 150000, shell: '/bin/bash' }, (err, stdout, stderr) => {
+            let logDelta = '';
+            try {
+                const st = fs.statSync(logFile);
+                if (st.size > prevSize) {
+                    const buf = Buffer.alloc(Math.min(st.size - prevSize, 4096));
+                    const fd = fs.openSync(logFile, 'r');
+                    fs.readSync(fd, buf, 0, buf.length, Math.max(prevSize, st.size - buf.length));
+                    fs.closeSync(fd);
+                    logDelta = buf.toString('utf8').trim();
+                }
+            } catch (_) {}
+            const output = [stdout, stderr, logDelta].filter(Boolean).join('\n').trim();
             resolve({
                 ok: !err,
                 exitCode: err ? (err.code || 1) : 0,

@@ -98,6 +98,16 @@
       color: #cbd5e1; white-space: pre-wrap; max-height: 150px; overflow-y: auto; display: none;
     }
     .job-log.open { display: block; }
+    .mode-badge {
+      font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .mode-script { color: var(--muted); background: rgba(148,163,184,0.1); }
+    .mode-ai { color: #c084fc; background: rgba(192,132,252,0.12); border-color: rgba(192,132,252,0.3); }
+    .mode-script_ai { color: var(--green); background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.3); }
+    .check-row { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12.5px; color: var(--text); }
+    .check-row label { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--text); cursor: pointer; }
+    .check-row input[type="checkbox"] { width: auto; accent-color: var(--cyan); }
   </style>
 </head>
 <body>
@@ -123,6 +133,7 @@
 
         <div style="font-size:11.5px; color:var(--muted); margin-bottom:8px;">เทมเพลตแนะนำ (คลิกเพื่อกรอกอัตโนมัติ):</div>
         <div class="tpl-chips">
+          <button type="button" class="tpl-chip" data-tpl="health-ai">🩺 เช็คสุขภาพ Server (AI กรอง)</button>
           <button type="button" class="tpl-chip" data-tpl="energy-tg">⚡ ส่งค่าไฟเข้า Telegram</button>
           <button type="button" class="tpl-chip" data-tpl="mail-tg">📬 เช็คเมล์เข้า Telegram</button>
           <button type="button" class="tpl-chip" data-tpl="zigbee-chk">📡 กู้คืน Zigbee2MQTT</button>
@@ -174,8 +185,37 @@
         <input type="text" id="cron-expr" value="0 22 * * *" style="font-family:var(--mono);" />
         <div class="cron-preview" id="cron-preview">⏱️ ทำงานทุกวัน เวลา 22:00 น.</div>
 
-        <label>คำสั่ง Linux Command</label>
-        <textarea id="job-cmd" placeholder="เช่น python3 /home/dev/projects/get-energy.py"></textarea>
+        <label>โหมดการทำงาน (Execution Mode)</label>
+        <select id="exec-mode">
+          <option value="script">🖥️ รันสคริปต์ / คำสั่ง Linux อย่างเดียว</option>
+          <option value="ai">🤖 ให้ AI อ่าน Prompt แล้วทำงาน</option>
+          <option value="script_ai">⚡ รันสคริปต์ + ให้ AI ช่วยกรองก่อนแจ้งเตือน</option>
+        </select>
+
+        <div id="wrap-cmd">
+          <label>คำสั่ง Linux Command</label>
+          <textarea id="job-cmd" placeholder="เช่น python3 /home/dev/projects/get-energy.py"></textarea>
+        </div>
+
+        <div id="wrap-ai" style="display:none;">
+          <label id="lbl-ai-prompt">AI Prompt / คำสั่งกรองข้อมูล</label>
+          <textarea id="ai-prompt" placeholder="เช่น วิเคราะห์ผลลัพธ์ ถ้าเป็นแค่ CPU spike ชั่วคราวให้ตอบ SKIP ไม่ต้องแจ้งเตือน"></textarea>
+
+          <div class="row-2" style="margin-top:8px;">
+            <div>
+              <label style="margin-top:0;">โมเดล AI</label>
+              <select id="ai-model">
+                <option value="gemini-3.8-flash-low">Gemini 3.8 Flash (Low - เร็ว/ประหยัด)</option>
+                <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
+                <option value="gemini-4-hydrogen-low">Gemini 4 Hydrogen (Low)</option>
+              </select>
+            </div>
+            <div class="check-row" style="align-items:flex-end; padding-bottom:6px;">
+              <label><input type="checkbox" id="notify-telegram" checked /> ส่งเข้า Telegram</label>
+              <label id="wrap-skip-ok"><input type="checkbox" id="skip-ok" checked /> ข้าม AI ถ้าขึ้นต้น [OK]</label>
+            </div>
+          </div>
+        </div>
 
         <button type="button" class="btn btn-primary" id="btn-save-job" style="width:100%; justify-content:center; margin-top:14px; padding:11px;">💾 บันทึกลง Linux Crontab</button>
       </div>
@@ -239,25 +279,56 @@
       updateScheduleBuilder();
     });
 
+    const execMode = document.getElementById('exec-mode');
+    const wrapCmd = document.getElementById('wrap-cmd');
+    const wrapAi = document.getElementById('wrap-ai');
+    const wrapSkipOk = document.getElementById('wrap-skip-ok');
+    const lblAiPrompt = document.getElementById('lbl-ai-prompt');
+
+    function updateExecModeUI() {
+      const m = execMode.value;
+      wrapCmd.style.display = (m === 'script' || m === 'script_ai') ? 'block' : 'none';
+      wrapAi.style.display = (m === 'ai' || m === 'script_ai') ? 'block' : 'none';
+      wrapSkipOk.style.display = (m === 'script_ai') ? 'inline-flex' : 'none';
+      lblAiPrompt.textContent = m === 'ai'
+        ? 'AI Prompt (คำสั่งให้ AI ทำงาน)'
+        : 'AI Filter Prompt (คำสั่งให้ AI วิเคราะห์/กรองผลจากสคริปต์)';
+    }
+    execMode.addEventListener('change', updateExecModeUI);
+
     const TEMPLATES = {
+      'health-ai': {
+        name: 'ตรวจสอบสุขภาพ Linux Server (AI กรอง Spike)',
+        mode: 'interval_hr', interval: 1,
+        execMode: 'script_ai',
+        cmd: `/usr/bin/python3 /home/dev/projects/server-health-check.py --no-notify`,
+        aiPrompt: `วิเคราะห์สถานะเซิร์ฟเวอร์นี้ หาก CPU/Load สูงแค่ชั่วคราวหรือแนวโน้มลดลงและ Service/Disk/RAM ปกติ ให้ตอบ SKIP คำเดียวเพื่อไม่ต้องแจ้งเตือน แต่ถ้าผิดปกติจริงให้สรุปสาเหตุและค่าสำคัญส่งแจ้งเตือนแบบกระชับ`,
+        aiModel: 'gemini-3.8-flash-low',
+        notifyTelegram: true,
+        skipOk: true
+      },
       'energy-tg': {
         name: 'ส่งสรุปค่าไฟ PZEM เข้า Telegram',
         mode: 'daily', time: '22:00',
+        execMode: 'script',
         cmd: `python3 /home/dev/projects/notify-telegram.py "$(python3 /home/dev/projects/get-energy.py)"`
       },
       'mail-tg': {
         name: 'เช็คเมล์วันนี้ส่งเข้า Telegram',
         mode: 'daily', time: '08:00',
+        execMode: 'script',
         cmd: `python3 /home/dev/projects/notify-telegram.py "$(python3 /home/dev/projects/check-mail.py 5)"`
       },
       'zigbee-chk': {
         name: 'ตรวจสอบและสตาร์ท Zigbee2MQTT อัตโนมัติ',
         mode: 'interval_min', interval: 15,
+        execMode: 'script',
         cmd: `docker ps -q -f name=lab-zigbee2mqtt | grep -q . || docker start lab-zigbee2mqtt`
       },
       'bot-log': {
         name: 'ตัดแต่ง Log บอทเทรดไม่ให้เกิน 5,000 บรรทัด',
         mode: 'weekly', time: '03:00',
+        execMode: 'script',
         cmd: `tail -n 5000 /home/dev/projects/OnePercentBotTrade/logs/pm2-out.log > /tmp/bot.tmp && cat /tmp/bot.tmp > /home/dev/projects/OnePercentBotTrade/logs/pm2-out.log && rm -f /tmp/bot.tmp`
       }
     };
@@ -267,10 +338,16 @@
         const t = TEMPLATES[btn.dataset.tpl];
         if (!t) return;
         document.getElementById('job-name').value = t.name;
-        document.getElementById('job-cmd').value = t.cmd;
+        execMode.value = t.execMode || 'script';
+        document.getElementById('job-cmd').value = t.cmd || '';
+        document.getElementById('ai-prompt').value = t.aiPrompt || '';
+        document.getElementById('ai-model').value = t.aiModel || 'gemini-3.8-flash-low';
+        document.getElementById('notify-telegram').checked = t.notifyTelegram !== false;
+        document.getElementById('skip-ok').checked = Boolean(t.skipOk);
         freqType.value = t.mode;
         if (t.time) inpTime.value = t.time;
         if (t.interval) inpInterval.value = t.interval;
+        updateExecModeUI();
         updateScheduleBuilder();
       });
     });
@@ -278,9 +355,15 @@
     function resetForm() {
       document.getElementById('edit-id').value = '';
       document.getElementById('job-name').value = '';
+      execMode.value = 'script';
       document.getElementById('job-cmd').value = '';
+      document.getElementById('ai-prompt').value = '';
+      document.getElementById('ai-model').value = 'gemini-3.8-flash-low';
+      document.getElementById('notify-telegram').checked = true;
+      document.getElementById('skip-ok').checked = true;
       document.getElementById('form-title').textContent = '➕ เพิ่มงานตั้งเวลาใหม่';
       document.getElementById('btn-reset-form').style.display = 'none';
+      updateExecModeUI();
     }
     document.getElementById('btn-reset-form').addEventListener('click', resetForm);
 
@@ -302,25 +385,55 @@
           const item = document.createElement('div');
           item.className = `job-item ${j.enabled ? '' : 'is-disabled'}`;
           const lastRunTxt = j.lastRunAt ? `รันล่าสุด: ${new Date(j.lastRunAt).toLocaleString('th-TH')}` : 'ยังไม่เคยรันผ่านระบบ';
+          const jMode = j.mode || 'script';
+          const modeLabel = jMode === 'ai' ? '🤖 AI Prompt' : (jMode === 'script_ai' ? '⚡ Script + AI กรอง' : '🖥️ Script');
+          const displayBody = jMode === 'ai'
+            ? `Prompt: ${j.aiPrompt || ''}`
+            : (jMode === 'script_ai'
+              ? `Cmd: ${j.rawCommand || ''}\nAI Filter: ${j.aiPrompt || '(ค่าเริ่มต้น)'}`
+              : (j.rawCommand || j.command));
           item.innerHTML = `
             <div class="job-top">
               <div class="job-name">
                 <span>${j.enabled ? '🟢' : '⏸️'} ${j.name}</span>
+                <span class="mode-badge mode-${jMode}">${modeLabel}</span>
               </div>
               <span class="job-cron">${j.schedule}</span>
             </div>
-            <div class="job-cmd">${j.command}</div>
+            <div class="job-cmd" style="white-space:pre-wrap;">${displayBody.replace(/</g, '&lt;')}</div>
             <div class="job-actions">
               <span class="sub">${lastRunTxt}</span>
               <div style="display:flex; gap:6px;">
                 <button type="button" class="btn btn-sm" data-act="run">▶ ทดสอบรัน</button>
                 <button type="button" class="btn btn-sm" data-act="log">📄 Log</button>
+                ${j.managed ? '<button type="button" class="btn btn-sm" data-act="edit">✏️ แก้ไข</button>' : ''}
                 <button type="button" class="btn btn-sm" data-act="toggle">${j.enabled ? '⏸ พักงาน' : '▶ เปิดใช้'}</button>
                 ${j.managed ? '<button type="button" class="btn btn-sm btn-danger" data-act="delete">✕ ลบ</button>' : ''}
               </div>
             </div>
-            <div class="job-log">${j.lastLog || '(ยังไม่มี log)'}</div>
+            <div class="job-log">${(j.lastLog || '(ยังไม่มี log)').replace(/</g, '&lt;')}</div>
           `;
+
+          const editBtn = item.querySelector('[data-act="edit"]');
+          if (editBtn) {
+            editBtn.addEventListener('click', () => {
+              document.getElementById('edit-id').value = j.id;
+              document.getElementById('job-name').value = j.name;
+              freqType.value = 'custom';
+              cronExpr.value = j.schedule;
+              execMode.value = jMode;
+              document.getElementById('job-cmd').value = j.rawCommand || '';
+              document.getElementById('ai-prompt').value = j.aiPrompt || '';
+              document.getElementById('ai-model').value = j.aiModel || 'gemini-3.8-flash-low';
+              document.getElementById('notify-telegram').checked = j.notifyTelegram !== false;
+              document.getElementById('skip-ok').checked = Boolean(j.skipOk);
+              document.getElementById('form-title').textContent = `✏️ แก้ไขงาน: ${j.name}`;
+              document.getElementById('btn-reset-form').style.display = 'inline-flex';
+              updateExecModeUI();
+              updateScheduleBuilder();
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+          }
 
           item.querySelector('[data-act="log"]').addEventListener('click', () => {
             item.querySelector('.job-log').classList.toggle('open');
@@ -361,7 +474,12 @@
         id: document.getElementById('edit-id').value || undefined,
         name: document.getElementById('job-name').value.trim(),
         schedule: cronExpr.value.trim(),
+        mode: execMode.value,
         command: document.getElementById('job-cmd').value.trim(),
+        aiPrompt: document.getElementById('ai-prompt').value.trim(),
+        aiModel: document.getElementById('ai-model').value,
+        notifyTelegram: document.getElementById('notify-telegram').checked,
+        skipOk: document.getElementById('skip-ok').checked,
         enabled: true
       };
       const res = await fetch('/api/cron', {
@@ -377,6 +495,7 @@
     });
 
     document.getElementById('btn-refresh').addEventListener('click', loadJobs);
+    updateExecModeUI();
     updateScheduleBuilder();
     loadJobs();
   </script>

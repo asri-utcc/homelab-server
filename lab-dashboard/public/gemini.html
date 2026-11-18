@@ -187,7 +187,7 @@ body::before {
   overflow: hidden;
 }
 
-/* Left Panel: Holographic Core Reactor */
+/* Left Panel: 3D Holographic Core Reactor & Celestial Armillary */
 .core-reactor-pane {
   display: flex;
   flex-direction: column;
@@ -195,10 +195,11 @@ body::before {
   justify-content: center;
   padding: 24px 20px;
   border-right: 1px solid rgba(0, 229, 255, 0.14);
-  background: radial-gradient(circle at 50% 42%, rgba(0, 229, 255, 0.09) 0%, rgba(79, 70, 229, 0.05) 38%, transparent 72%);
+  background: radial-gradient(circle at 50% 42%, rgba(0, 229, 255, 0.09) 0%, rgba(79, 70, 229, 0.06) 38%, rgba(245, 208, 97, 0.025) 58%, transparent 74%);
   position: relative;
   overflow: hidden;
   user-select: none;
+  perspective: 1100px;
   transition: background 0.5s ease;
 }
 
@@ -221,18 +222,62 @@ body::before {
   margin-bottom: 18px;
   cursor: grab;
   touch-action: none;
+  transform-style: preserve-3d;
   will-change: transform;
 }
 .reactor-stage.is-dragging {
   cursor: grabbing;
 }
 
-/* Interactive Semantic Orbit Planets */
+/* 3D Gyroscopic Armillary & Zodiac Astrolabe Rings */
+.reactor-armillary-3d {
+  position: absolute;
+  inset: -26px;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  z-index: 1;
+}
+.armillary-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.armillary-ring--zodiac {
+  filter: drop-shadow(0 0 9px rgba(245, 208, 97, 0.34)) drop-shadow(0 0 18px rgba(0, 229, 255, 0.22));
+  animation: spin-3d-zodiac 64s linear infinite;
+}
+.armillary-ring--gyro-a {
+  filter: drop-shadow(0 0 8px rgba(0, 229, 255, 0.36));
+  animation: spin-3d-gyro-a 28s linear infinite;
+}
+.armillary-ring--gyro-b {
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.36));
+  animation: spin-3d-gyro-b 22s linear infinite;
+}
+@keyframes spin-3d-zodiac {
+  0%   { transform: rotateX(62deg) rotateY(-14deg) rotateZ(0deg); }
+  100% { transform: rotateX(62deg) rotateY(-14deg) rotateZ(360deg); }
+}
+@keyframes spin-3d-gyro-a {
+  0%   { transform: rotateX(-56deg) rotateY(28deg) rotateZ(360deg); }
+  100% { transform: rotateX(-56deg) rotateY(28deg) rotateZ(0deg); }
+}
+@keyframes spin-3d-gyro-b {
+  0%   { transform: rotateX(38deg) rotateY(54deg) rotateZ(0deg); }
+  100% { transform: rotateX(38deg) rotateY(54deg) rotateZ(360deg); }
+}
+
+/* Interactive Semantic Orbit Planets (3D Projected) */
 .orbit-planets-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 5;
+  transform-style: preserve-3d;
+  z-index: 6;
 }
 .orbit-planet {
   position: absolute;
@@ -246,8 +291,10 @@ body::before {
   align-items: center;
   justify-content: center;
   transform: translate(-50%, -50%);
-  transition: box-shadow 0.2s ease, filter 0.2s ease;
+  transform-style: preserve-3d;
+  transition: box-shadow 0.2s ease, opacity 0.15s ease;
   user-select: none;
+  will-change: transform;
 }
 .orbit-planet:hover {
   z-index: 20;
@@ -435,10 +482,36 @@ body::before {
   width: 68px;
   height: 68px;
   border-radius: 50%;
-  background: radial-gradient(circle, #ffffff 0%, #7ff6ff 32%, #00d9ff 65%, rgba(0, 229, 255, 0) 100%);
-  box-shadow: 0 0 35px rgba(0, 229, 255, 0.85), 0 0 75px rgba(0, 229, 255, 0.4);
+  background: radial-gradient(circle at 36% 34%, #ffffff 0%, #99f9ff 28%, #00d9ff 62%, rgba(0, 140, 255, 0.25) 85%, rgba(0, 229, 255, 0) 100%);
+  box-shadow: 0 0 38px rgba(0, 229, 255, 0.9), 0 0 80px rgba(0, 229, 255, 0.45), inset 0 0 18px rgba(255, 255, 255, 0.65);
   animation: core-pulse-idle 3.4s ease-in-out infinite;
+  transform-style: preserve-3d;
+  z-index: 6;
   transition: all 0.4s ease;
+}
+.core-meridian {
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  border: 1.4px solid rgba(0, 229, 255, 0.65);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.45);
+  pointer-events: none;
+  animation: core-meridian-a 7.5s linear infinite;
+}
+.core-meridian--2 {
+  inset: -13px;
+  border-color: rgba(245, 208, 97, 0.55);
+  border-style: dashed;
+  box-shadow: 0 0 10px rgba(245, 208, 97, 0.35);
+  animation: core-meridian-b 10.5s linear infinite;
+}
+@keyframes core-meridian-a {
+  0%   { transform: rotateX(68deg) rotateY(15deg) rotateZ(0deg); }
+  100% { transform: rotateX(68deg) rotateY(15deg) rotateZ(360deg); }
+}
+@keyframes core-meridian-b {
+  0%   { transform: rotateX(-52deg) rotateY(64deg) rotateZ(360deg); }
+  100% { transform: rotateX(-52deg) rotateY(64deg) rotateZ(0deg); }
 }
 
 @keyframes core-pulse-idle {
@@ -471,6 +544,14 @@ body::before {
 .core-reactor-pane.is-thinking .ring-ccw-med { animation-duration: 3.2s; }
 .core-reactor-pane.is-thinking .ring-cw-fast { animation-duration: 2.0s; }
 .core-reactor-pane.is-thinking .ring-octa { animation-duration: 4.0s; }
+.core-reactor-pane.is-thinking .armillary-ring--zodiac {
+  animation-duration: 14s;
+  filter: drop-shadow(0 0 14px rgba(245, 208, 97, 0.7)) drop-shadow(0 0 26px rgba(255, 123, 41, 0.45));
+}
+.core-reactor-pane.is-thinking .armillary-ring--gyro-a { animation-duration: 5.5s; }
+.core-reactor-pane.is-thinking .armillary-ring--gyro-b { animation-duration: 4.2s; }
+.core-reactor-pane.is-thinking .core-meridian { animation-duration: 1.8s; border-color: rgba(255, 123, 41, 0.85); }
+.core-reactor-pane.is-thinking .core-meridian--2 { animation-duration: 2.4s; border-color: rgba(245, 208, 97, 0.9); }
 .core-reactor-pane.is-thinking .reactor-core-orb {
   background: radial-gradient(circle, #ffffff 0%, #ffe0b2 25%, #ff7b29 55%, #a855f7 82%, rgba(0, 229, 255, 0) 100%);
   box-shadow: 0 0 48px rgba(255, 123, 41, 0.95), 0 0 95px rgba(168, 85, 247, 0.65), 0 0 130px rgba(0, 229, 255, 0.45);
@@ -1404,6 +1485,15 @@ body::before {
     width: 18px;
     height: 18px;
   }
+  .reactor-armillary-3d {
+    inset: -5px;
+  }
+  .core-meridian { inset: -3px; border-width: 1px; }
+  .core-meridian--2 { inset: -5px; border-width: 1px; }
+  .orbit-planets-layer { display: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .armillary-ring, .core-meridian, .reactor-core-orb { animation: none !important; }
+  }
   .reactor-status-wrap {
     flex: 1;
     display: flex;
@@ -1582,7 +1672,21 @@ body::before {
             <circle id="quota-ring-weekly" cx="150" cy="150" r="160" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1005.31 1005.31" opacity="0.85" />
           </g>
         </svg>
-        <div class="reactor-core-orb"></div>
+        <div class="reactor-armillary-3d" id="reactor-armillary-3d" aria-hidden="true">
+          <svg class="armillary-ring armillary-ring--zodiac" id="zodiac-astrolabe-svg" viewBox="0 0 360 360"></svg>
+          <svg class="armillary-ring armillary-ring--gyro-a" viewBox="0 0 360 360">
+            <circle cx="180" cy="180" r="158" fill="none" stroke="rgba(0, 229, 255, 0.34)" stroke-width="1.2" stroke-dasharray="24 12 6 12" />
+            <circle cx="180" cy="180" r="148" fill="none" stroke="rgba(168, 85, 247, 0.28)" stroke-width="0.9" stroke-dasharray="3 7" />
+          </svg>
+          <svg class="armillary-ring armillary-ring--gyro-b" viewBox="0 0 360 360">
+            <circle cx="180" cy="180" r="136" fill="none" stroke="rgba(52, 211, 153, 0.32)" stroke-width="1.2" stroke-dasharray="18 10 4 10" />
+            <circle cx="180" cy="180" r="126" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="0.8" stroke-dasharray="2 8" />
+          </svg>
+        </div>
+        <div class="reactor-core-orb">
+          <div class="core-meridian"></div>
+          <div class="core-meridian core-meridian--2"></div>
+        </div>
         <div class="orbit-planets-layer" id="orbit-planets-layer"></div>
       </div>
 
@@ -1723,7 +1827,7 @@ body::before {
         <button type="button" id="btn-modal-sessions-x" style="background:none; border:none; color:var(--ink-muted); font-size:18px; cursor:pointer; padding:2px 8px;" title="ปิดหน้าต่าง">✕</button>
       </div>
     </div>
-    <input type="text" id="sessions-search" class="field-input" placeholder="🔍 ค้นหาชื่อแชทหรือข้อความ..." style="margin-bottom:10px;" />
+    <input type="search" id="sessions-search" name="sessions_search_filter" autocomplete="off" data-lpignore="true" readonly onfocus="this.removeAttribute('readonly')" class="field-input" placeholder="🔍 ค้นหาชื่อแชทหรือข้อความ..." style="margin-bottom:10px;" />
     <div id="sessions-list" style="max-height: 390px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
       <div style="text-align:center; color:var(--ink-muted); padding:20px;">กำลังโหลดรายการแชท...</div>
     </div>
@@ -2431,29 +2535,122 @@ body::before {
     } catch (_) {}
   }
 
-  // Interactive Galaxy Starfield + Drag/Fling Spring & Angular Inertia Physics
+  // Interactive 3D Galaxy Starfield, Zodiac Astrolabe & Drag/Fling 3D Physics
   (function initInteractiveGalaxy() {
     const canvas = document.getElementById('galaxy-canvas');
     const hud = document.getElementById('ai-status-hud');
     const stage = document.querySelector('.reactor-stage');
     const svgEl = document.querySelector('.reactor-svg');
+    const zodiacSvg = document.getElementById('zodiac-astrolabe-svg');
     if (!canvas || !hud || !stage) return;
     const ctx = canvas.getContext('2d');
 
-    const stars = Array.from({ length: 150 }, () => ({
-      angle: Math.random() * Math.PI * 2,
-      dist: 16 + Math.random() * 290,
-      speed: 0.18 + Math.random() * 0.55,
-      size: 0.9 + Math.random() * 2.3,
-      hue: [190, 270, 28, 158, 50][Math.floor(Math.random() * 5)],
-      twinkle: Math.random() * Math.PI * 2
-    }));
+    // Render 12-Sign Celestial Zodiac Astrolabe (จักรราศี) with current sun sign highlighted
+    (function initZodiacAstrolabe() {
+      if (!zodiacSvg) return;
+      const SIGNS = [
+        { sym: '♈', name: 'Aries', start: [3, 21] },
+        { sym: '♉', name: 'Taurus', start: [4, 20] },
+        { sym: '♊', name: 'Gemini', start: [5, 21] },
+        { sym: '♋', name: 'Cancer', start: [6, 21] },
+        { sym: '♌', name: 'Leo', start: [7, 23] },
+        { sym: '♍', name: 'Virgo', start: [8, 23] },
+        { sym: '♎', name: 'Libra', start: [9, 23] },
+        { sym: '♏', name: 'Scorpio', start: [10, 23] },
+        { sym: '♐', name: 'Sagittarius', start: [11, 22] },
+        { sym: '♑', name: 'Capricorn', start: [12, 22] },
+        { sym: '♒', name: 'Aquarius', start: [1, 20] },
+        { sym: '♓', name: 'Pisces', start: [2, 19] }
+      ];
+      const now = new Date();
+      const md = (now.getMonth() + 1) * 100 + now.getDate();
+      let activeIdx = 9; // Capricorn wraps year-end
+      for (let i = 0; i < SIGNS.length; i++) {
+        const cur = SIGNS[i].start[0] * 100 + SIGNS[i].start[1];
+        const next = SIGNS[(i + 1) % 12].start[0] * 100 + SIGNS[(i + 1) % 12].start[1];
+        if (cur < next ? (md >= cur && md < next) : (md >= cur || md < next)) {
+          activeIdx = i;
+          break;
+        }
+      }
 
-    // Physics state for reactor drag, spring return & centrifugal spin
+      const cx = 180, cy = 180;
+      let html = `
+        <circle cx="${cx}" cy="${cy}" r="172" fill="none" stroke="rgba(245, 208, 97, 0.34)" stroke-width="1.2" />
+        <circle cx="${cx}" cy="${cy}" r="168" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="0.7" stroke-dasharray="3 5" />
+        <circle cx="${cx}" cy="${cy}" r="142" fill="none" stroke="rgba(245, 208, 97, 0.28)" stroke-width="1" />
+        <circle cx="${cx}" cy="${cy}" r="136" fill="none" stroke="rgba(168, 85, 247, 0.22)" stroke-width="0.8" stroke-dasharray="2 6" />
+      `;
+
+      // 72 fine degree ticks (every 5°)
+      for (let d = 0; d < 360; d += 5) {
+        const rad = (d - 90) * Math.PI / 180;
+        const isMajor = d % 30 === 0;
+        const r1 = isMajor ? 142 : 165;
+        const r2 = 172;
+        const x1 = cx + Math.cos(rad) * r1;
+        const y1 = cy + Math.sin(rad) * r1;
+        const x2 = cx + Math.cos(rad) * r2;
+        const y2 = cy + Math.sin(rad) * r2;
+        html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${isMajor ? 'rgba(245, 208, 97, 0.48)' : 'rgba(0, 229, 255, 0.22)'}" stroke-width="${isMajor ? 1.1 : 0.6}" />`;
+      }
+
+      // 12 Zodiac glyphs + constellation star nodes
+      SIGNS.forEach((s, i) => {
+        const deg = i * 30 + 15;
+        const rad = (deg - 90) * Math.PI / 180;
+        const tx = cx + Math.cos(rad) * 157;
+        const ty = cy + Math.sin(rad) * 157;
+        const isAct = i === activeIdx;
+        const starR = 139;
+        const sx = cx + Math.cos(rad) * starR;
+        const sy = cy + Math.sin(rad) * starR;
+
+        if (isAct) {
+          html += `<circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="10.5" fill="rgba(245, 208, 97, 0.16)" stroke="rgba(245, 208, 97, 0.75)" stroke-width="1" />`;
+        }
+        html += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${isAct ? 2.2 : 1.3}" fill="${isAct ? '#f5d061' : 'rgba(0, 229, 255, 0.65)'}" />`;
+        html += `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${isAct ? 13 : 11}" fill="${isAct ? '#fde68a' : 'rgba(245, 208, 97, 0.78)'}" font-family="serif" transform="rotate(${deg} ${tx.toFixed(1)} ${ty.toFixed(1)})">${s.sym}</text>`;
+      });
+
+      zodiacSvg.innerHTML = html;
+    })();
+
+    // 3D Perspective Starfield (x, y, z)
+    const stars = Array.from({ length: 165 }, () => {
+      const a = Math.random() * Math.PI * 2;
+      const r = 40 + Math.random() * 340;
+      return {
+        x: Math.cos(a) * r,
+        y: Math.sin(a) * r,
+        z: 90 + Math.random() * 760,
+        speed: 0.25 + Math.random() * 0.7,
+        size: 0.85 + Math.random() * 1.9,
+        hue: [190, 270, 45, 158, 28][Math.floor(Math.random() * 5)],
+        twinkle: Math.random() * Math.PI * 2,
+        constellation: Math.random() < 0.22
+      };
+    });
+
+    // Physics state for reactor drag, hover 3D parallax, spring return & centrifugal spin
     let ox = 0, oy = 0, vx = 0, vy = 0;
+    let hoverTiltX = 0, hoverTiltY = 0, targetHoverX = 0, targetHoverY = 0;
     let spinAngle = 0, spinVel = 0;
     let dragging = false;
     let lastClientX = 0, lastClientY = 0;
+
+    hud.addEventListener('pointermove', (e) => {
+      if (dragging) return;
+      const rect = hud.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / Math.max(1, rect.width) - 0.5) * 2;
+      const ny = ((e.clientY - rect.top) / Math.max(1, rect.height) - 0.5) * 2;
+      targetHoverY = nx * 10;
+      targetHoverX = -ny * 10;
+    });
+    hud.addEventListener('pointerleave', () => {
+      targetHoverX = 0;
+      targetHoverY = 0;
+    });
 
     function playFlingWhoosh(intensity) {
       if (!isSoundEnabled() || intensity < 4) return;
@@ -2549,49 +2746,93 @@ body::before {
       spinVel *= dragging ? 0.94 : 0.975;
       if (Math.abs(spinVel) < 0.01) spinVel = 0;
 
+      // Smooth 3D hover parallax
+      hoverTiltX += (targetHoverX - hoverTiltX) * 0.08;
+      hoverTiltY += (targetHoverY - hoverTiltY) * 0.08;
+
       // Apply 3D tilt + spring translation + fling scale to reactor stage
       const baseScale = thinking ? 1.07 : 1;
-      const tiltX = Math.max(-18, Math.min(18, -oy * 0.14));
-      const tiltY = Math.max(-18, Math.min(18, ox * 0.14));
-      stage.style.transform = `translate3d(${ox.toFixed(1)}px, ${oy.toFixed(1)}px, 0) scale(${baseScale}) perspective(600px) rotateX(${tiltX.toFixed(1)}deg) rotateY(${tiltY.toFixed(1)}deg)`;
+      const tiltX = Math.max(-24, Math.min(24, -oy * 0.14 + hoverTiltX));
+      const tiltY = Math.max(-24, Math.min(24, ox * 0.14 + hoverTiltY));
+      stage.style.transform = `translate3d(${ox.toFixed(1)}px, ${oy.toFixed(1)}px, 0) scale(${baseScale}) perspective(850px) rotateX(${tiltX.toFixed(1)}deg) rotateY(${tiltY.toFixed(1)}deg)`;
       if (svgEl) {
         svgEl.style.transform = `rotate(${spinAngle.toFixed(2)}deg)`;
       }
 
-      // Starfield follows reactor center with subtle parallax + reacts to fling spin
-      const cx = w * 0.5 + ox * 0.45;
-      const cy = h * 0.36 + oy * 0.45;
-      const maxDist = Math.hypot(w, h) * 0.72;
+      // 3D Perspective Starfield with Constellation Lines & Warp Streaks
+      const cx = w * 0.5 + ox * 0.45 + hoverTiltY * 1.1;
+      const cy = h * 0.36 + oy * 0.45 - hoverTiltX * 1.1;
       const energyBoost = Math.min(3.5, Math.abs(spinVel) * 0.16 + Math.hypot(vx, vy) * 0.06);
+      const focal = 340;
+      const rotStep = (thinking ? 0.004 : 0.0007) + spinVel * 0.0014;
+      const cosR = Math.cos(rotStep);
+      const sinR = Math.sin(rotStep);
+      const zSpeed = thinking ? 4.8 : (energyBoost > 0.6 ? energyBoost * 2.4 : 0.35);
 
       ctx.clearRect(0, 0, w, h);
+
+      const projectedConstellation = [];
       stars.forEach((s) => {
         s.twinkle += thinking ? 0.12 : (0.03 + energyBoost * 0.03);
-        s.angle += (thinking ? 0.0045 : 0.0009) + spinVel * 0.0018;
-        if (thinking || energyBoost > 0.6) {
-          s.dist += s.speed * (thinking ? 3.5 : energyBoost * 1.4);
-          if (s.dist > maxDist) s.dist = 18 + Math.random() * 35;
-        }
-        const x = cx + Math.cos(s.angle) * s.dist;
-        const y = cy + Math.sin(s.angle) * s.dist;
-        const alpha = 0.3 + 0.68 * (0.5 + 0.5 * Math.sin(s.twinkle));
+        const nx = s.x * cosR - s.y * sinR;
+        const ny = s.x * sinR + s.y * cosR;
+        s.x = nx;
+        s.y = ny;
 
-        if (thinking || energyBoost > 0.7) {
-          const streak = (thinking ? 15 : energyBoost * 5) * s.speed;
-          const px = cx + Math.cos(s.angle) * Math.max(0, s.dist - streak);
-          const py = cy + Math.sin(s.angle) * Math.max(0, s.dist - streak);
+        const prevZ = s.z;
+        s.z -= s.speed * zSpeed;
+        if (s.z < 55) {
+          s.z = 820 + Math.random() * 60;
+        }
+
+        const proj = focal / s.z;
+        const sx = cx + s.x * proj;
+        const sy = cy + s.y * proj;
+        const depthAlpha = Math.min(1, Math.max(0.15, 1.15 - s.z / 860));
+        const alpha = depthAlpha * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(s.twinkle)));
+        const radius = Math.max(0.5, s.size * proj * 1.15);
+
+        if ((thinking || energyBoost > 0.7) && prevZ > s.z) {
+          const streakProj = focal / Math.min(880, s.z + (thinking ? 42 : energyBoost * 18) * s.speed);
+          const px = cx + s.x * streakProj;
+          const py = cy + s.y * streakProj;
           ctx.beginPath();
           ctx.moveTo(px, py);
-          ctx.lineTo(x, y);
-          ctx.strokeStyle = `hsla(${s.hue}, 95%, 74%, ${alpha * 0.8})`;
-          ctx.lineWidth = s.size * 0.9;
+          ctx.lineTo(sx, sy);
+          ctx.strokeStyle = `hsla(${s.hue}, 95%, 74%, ${alpha * 0.75})`;
+          ctx.lineWidth = radius * 0.85;
           ctx.stroke();
         }
+
         ctx.beginPath();
-        ctx.arc(x, y, s.size, 0, Math.PI * 2);
+        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
         ctx.fillStyle = `hsla(${s.hue}, 95%, 84%, ${alpha})`;
         ctx.fill();
+
+        if (s.constellation && sx > -20 && sx < w + 20 && sy > -20 && sy < h + 20) {
+          projectedConstellation.push({ x: sx, y: sy, alpha });
+        }
       });
+
+      // Subtle Zodiac Constellation Web connecting nearby bright 3D stars
+      if (projectedConstellation.length > 1) {
+        ctx.lineWidth = 0.65;
+        for (let i = 0; i < projectedConstellation.length; i++) {
+          const a = projectedConstellation[i];
+          for (let j = i + 1; j < projectedConstellation.length; j++) {
+            const b = projectedConstellation[j];
+            const d = Math.hypot(a.x - b.x, a.y - b.y);
+            if (d < 74) {
+              const lineAlpha = (1 - d / 74) * 0.16 * Math.min(a.alpha, b.alpha);
+              ctx.beginPath();
+              ctx.moveTo(a.x, a.y);
+              ctx.lineTo(b.x, b.y);
+              ctx.strokeStyle = `rgba(245, 208, 97, ${lineAlpha.toFixed(3)})`;
+              ctx.stroke();
+            }
+          }
+        }
+      }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -3059,6 +3300,26 @@ body::before {
       }, 140);
     }
 
+    // 3D Orbital plane projection helper per tier
+    function projectPlanet3D(st) {
+      const r = st.def.ring;
+      const x0 = Math.cos(st.angle) * r;
+      const y0 = Math.sin(st.angle) * r;
+      // Distinct 3D inclination per orbital tier (Inner / Mid / Outer)
+      const tiltX = r <= 75 ? 0.42 : (r <= 112 ? -0.46 : 0.28);
+      const tiltY = r <= 75 ? -0.26 : (r <= 112 ? 0.34 : -0.38);
+
+      // Rotate around X axis
+      const y1 = y0 * Math.cos(tiltX);
+      const z1 = y0 * Math.sin(tiltX);
+      // Rotate around Y axis
+      const x2 = x0 * Math.cos(tiltY) + z1 * Math.sin(tiltY);
+      const z2 = -x0 * Math.sin(tiltY) + z1 * Math.cos(tiltY);
+
+      const scale = Math.max(0.76, Math.min(1.24, 520 / (520 - z2)));
+      return { x: x2 * scale, y: y1 * scale, z: z2, scale };
+    }
+
     function resolvePlanetCollisions() {
       const now = performance.now();
       for (let i = 0; i < planetStates.length; i++) {
@@ -3070,10 +3331,12 @@ body::before {
           const bActive = b.grabbed || Math.hypot(b.ox, b.oy) > 0.4 || Math.hypot(b.vx, b.vy) > 0.4;
           if (!aActive && !bActive) continue;
 
-          const ax = Math.cos(a.angle) * a.def.ring + a.ox;
-          const ay = Math.sin(a.angle) * a.def.ring + a.oy;
-          const bx = Math.cos(b.angle) * b.def.ring + b.ox;
-          const by = Math.sin(b.angle) * b.def.ring + b.oy;
+          const pa = projectPlanet3D(a);
+          const pb = projectPlanet3D(b);
+          const ax = pa.x + a.ox;
+          const ay = pa.y + a.oy;
+          const bx = pb.x + b.ox;
+          const by = pb.y + b.oy;
 
           let dx = bx - ax;
           let dy = by - ay;
@@ -3190,9 +3453,14 @@ body::before {
       resolvePlanetCollisions();
 
       for (const st of planetStates) {
-        const bx = Math.cos(st.angle) * st.def.ring;
-        const by = Math.sin(st.angle) * st.def.ring;
-        st.el.style.transform = `translate(calc(-50% + ${(bx + st.ox).toFixed(1)}px), calc(-50% + ${(by + st.oy).toFixed(1)}px))`;
+        const p = projectPlanet3D(st);
+        const px = p.x + st.ox;
+        const py = p.y + st.oy;
+        const pz = st.grabbed ? 45 : p.z;
+        const pScale = st.grabbed ? 1.18 : p.scale;
+        st.el.style.transform = `translate3d(calc(-50% + ${px.toFixed(1)}px), calc(-50% + ${py.toFixed(1)}px), ${pz.toFixed(1)}px) scale(${pScale.toFixed(3)})`;
+        st.el.style.zIndex = st.grabbed ? '30' : (pz >= 0 ? '12' : '3');
+        st.el.style.opacity = st.grabbed ? '1' : (pz < -15 ? (0.62 + (pz + 150) / 400).toFixed(2) : '1');
       }
       requestAnimationFrame(animatePlanets);
     }
@@ -3551,6 +3819,7 @@ body::before {
 
   async function openSessionsModal() {
     if (!modalSessions) return;
+    if (sessionsSearchEl) sessionsSearchEl.value = '';
     modalSessions.classList.add('is-open');
     try {
       const res = await fetch('/api/gemini/sessions');
@@ -5103,6 +5372,16 @@ body::before {
       }
     });
   }
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'start_voice_new_chat') {
+      document.getElementById('btn-new-chat')?.click();
+      setTimeout(() => {
+        if (!isVoiceListening && !isTranscribing) {
+          startListening();
+        }
+      }, 140);
+    }
+  });
   syncSttModeUi();
 
   btnSend.addEventListener('click', () => sendPrompt());

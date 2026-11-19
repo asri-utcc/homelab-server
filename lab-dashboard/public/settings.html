@@ -133,6 +133,7 @@
       <div class="field">
         <label for="set-model">โมเดล AI เริ่มต้น (Default Model)</label>
         <select id="set-model">
+          <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
           <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
           <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
           <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
@@ -169,10 +170,19 @@
         <label for="set-tts-voice">เสียงคนพูด AI (Speaker TTS ฟรี)</label>
         <div class="row">
           <select id="set-tts-voice" style="flex:1">
-            <option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>
+            <option value="en-US-AvaMultilingualNeural">👩 Ava (Copilot ธรรมชาติ - หญิง อบอุ่น นุ่มนวล แนะนำ)</option>
           </select>
           <button type="button" id="btn-test-voice" class="btn btn--green">🔊 ทดสอบ</button>
         </div>
+      </div>
+      <div class="field">
+        <label for="set-tts-style">สไตล์น้ำเสียง &amp; อารมณ์ (Voice Mood)</label>
+        <select id="set-tts-style">
+          <option value="natural">🌿 ธรรมชาติ นุ่มนวล (แนะนำ)</option>
+          <option value="warm">☕ อบอุ่น ผ่อนคลาย เล่าเรื่อง</option>
+          <option value="cheerful">✨ สดใส เป็นกันเอง มีชีวิตชีวา</option>
+          <option value="calm">🎙️ สุขุม นิ่ง ชัดเจน</option>
+        </select>
       </div>
       <div class="toggle-row">
         <div>
@@ -238,14 +248,16 @@
   const inpApiKey = document.getElementById('set-apikey');
   const selStt = document.getElementById('set-stt');
   const selVoice = document.getElementById('set-tts-voice');
+  const selVoiceStyle = document.getElementById('set-tts-style');
   const chkAutoTts = document.getElementById('chk-auto-tts');
   const chkSoundFx = document.getElementById('chk-sound-fx');
   const chkHud = document.getElementById('chk-hud-visible');
   const txtMemory = document.getElementById('set-memory');
 
   // Load localStorage preferences
-  selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-medium';
+  selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-high';
   selStt.value = localStorage.getItem('stt_engine') || 'whisper';
+  if (selVoiceStyle) selVoiceStyle.value = localStorage.getItem('core_tts_style') || 'natural';
   chkAutoTts.checked = localStorage.getItem('core_auto_tts') === '1';
   chkSoundFx.checked = localStorage.getItem('gemini_sound_enabled') !== '0';
   chkHud.checked = localStorage.getItem('core_hud_hidden') !== '1';
@@ -303,9 +315,14 @@
   });
 
   // Load Voices
-  const savedVoice = localStorage.getItem('core_tts_voice') || 'th-TH-PremwadeeNeural';
+  let savedVoice = localStorage.getItem('core_tts_voice') || 'vachana:th_f_1';
   fetch('/api/tts/voices').then(r => r.json()).then(d => {
     if (d && d.ok && Array.isArray(d.voices)) {
+      if (d.defaultVoice && localStorage.getItem('core_tts_v2_migrated') !== '1') {
+        savedVoice = d.defaultVoice;
+        localStorage.setItem('core_tts_voice', savedVoice);
+        localStorage.setItem('core_tts_v2_migrated', '1');
+      }
       selVoice.innerHTML = d.voices.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
       if ([...selVoice.options].some(o => o.value === savedVoice)) selVoice.value = savedVoice;
     }
@@ -313,6 +330,10 @@
   selVoice.addEventListener('change', () => {
     localStorage.setItem('core_tts_voice', selVoice.value);
     showToast('✅ บันทึกเสียงพูด AI แล้ว');
+  });
+  selVoiceStyle?.addEventListener('change', () => {
+    localStorage.setItem('core_tts_style', selVoiceStyle.value);
+    showToast('✅ บันทึกสไตล์น้ำเสียงแล้ว');
   });
 
   // Test Voice
@@ -323,7 +344,11 @@
     try {
       const res = await fetch('/api/tts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: 'สวัสดีค่ะ ระบบเสียงธรรมชาติพร้อมใช้งานแล้วค่ะ', voice: selVoice.value })
+        body: JSON.stringify({
+          text: 'สวัสดีค่ะ! ระบบเสียงธรรมชาติพร้อมใช้งานแล้วนะคะ ✨ วันนี้อยากให้ช่วยดูแลเรื่องอะไรดีคะ?',
+          voice: selVoice.value,
+          style: selVoiceStyle ? selVoiceStyle.value : (localStorage.getItem('core_tts_style') || 'natural')
+        })
       });
       if (!res.ok) throw new Error('TTS failed');
       const blob = await res.blob();

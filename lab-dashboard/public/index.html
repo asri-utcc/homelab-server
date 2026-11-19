@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>Home-lab Control Panel</title>
-<link rel="stylesheet" href="/styles.css?v=20261118-sb3d">
+<link rel="stylesheet" href="/styles.css?v=20261120-warpstudio">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -398,7 +398,8 @@
               </g>
             </svg>
             <div class="reactor-core-orb ov-core-orb" id="ov-core-voice-btn" role="button" tabindex="0" title="กด 2 ครั้ง (ดับเบิลคลิก) เพื่อเปิด AI Chat + เริ่มแชทใหม่ + เปิดไมค์สั่งงานด้วยเสียง" aria-label="ดับเบิลคลิกเพื่อเปิด AI Chat และพูดสั่งงานด้วยเสียง">
-              <div class="ov-core-surface"></div>
+              <canvas id="ov-core-particle-canvas" width="180" height="180"></canvas>
+              <div class="core-singularity"></div>
               <div class="core-meridian"></div>
               <div class="core-meridian core-meridian--2"></div>
               <div class="core-meridian core-meridian--3"></div>
@@ -1178,6 +1179,7 @@
             <div>
               <label for="set-model" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">โมเดล AI เริ่มต้น (Default Model)</label>
               <select id="set-model" class="input" style="width:100%;">
+                <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
                 <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
                 <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
                 <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
@@ -1218,10 +1220,19 @@
               <label for="set-tts-voice" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">เสียงคนพูด AI (Speaker TTS ฟรี)</label>
               <div style="display:flex;gap:8px;">
                 <select id="set-tts-voice" class="input" style="flex:1;">
-                  <option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>
+                  <option value="en-US-AvaMultilingualNeural">👩 Ava (Copilot ธรรมชาติ - หญิง อบอุ่น นุ่มนวล แนะนำ)</option>
                 </select>
                 <button type="button" id="btn-set-test-voice" class="btn btn--sm">🔊 ทดสอบ</button>
               </div>
+            </div>
+            <div>
+              <label for="set-tts-style" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">สไตล์น้ำเสียง &amp; อารมณ์ (Voice Mood)</label>
+              <select id="set-tts-style" class="input" style="width:100%;">
+                <option value="natural">🌿 ธรรมชาติ นุ่มนวล (แนะนำ)</option>
+                <option value="warm">☕ อบอุ่น ผ่อนคลาย เล่าเรื่อง</option>
+                <option value="cheerful">✨ สดใส เป็นกันเอง มีชีวิตชีวา</option>
+                <option value="calm">🎙️ สุขุม นิ่ง ชัดเจน</option>
+              </select>
             </div>
             <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
               <span>🗣️ อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Auto-Read)</span>
@@ -1236,6 +1247,84 @@
               <input type="checkbox" id="chk-set-hud" style="width:18px;height:18px;" />
             </label>
           </div>
+        </div>
+      </div>
+
+      <!-- Warp FX Studio (rendered/bound by initWarpStudio in app.js) -->
+      <div class="card warp-studio" id="card-warp-studio" data-hud="panel" style="margin-top:16px;">
+        <div class="card__head">
+          <span class="card__title">🌀 สตูดิโอเอฟเฟกต์วาร์ป (Warp FX Studio)</span>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span id="warp-summary-badge" class="badge badge--ok">—</span>
+            <button type="button" id="btn-warp-test-random" class="btn btn--sm" title="ทดสอบตามการตั้งค่าปัจจุบัน">🎲 ทดสอบสุ่ม</button>
+            <button type="button" id="btn-warp-reset" class="btn btn--sm" title="คืนค่าตั้งต้นทั้งหมด">↺ ค่าเริ่มต้น</button>
+          </div>
+        </div>
+
+        <div class="warp-studio__top">
+          <label class="warp-switch warp-switch--master">
+            <input type="checkbox" id="warp-enabled" />
+            <span class="warp-switch__track" aria-hidden="true"></span>
+            <span class="warp-switch__text">
+              <strong>เปิดใช้เอฟเฟกต์วาร์ปเมื่อเปลี่ยนหน้า</strong>
+              <small>ปิดแล้วจะเปลี่ยนหน้าทันทีแบบไม่มีเอฟเฟกต์</small>
+            </span>
+          </label>
+
+          <div class="warp-field">
+            <span class="warp-field__label">โหมดการเลือกฉาก</span>
+            <div class="warp-seg" role="radiogroup" aria-label="โหมดการเลือกฉาก">
+              <label><input type="radio" name="warp-mode" value="random" /><span>🎲 สุ่มตามน้ำหนัก</span></label>
+              <label><input type="radio" name="warp-mode" value="cycle" /><span>🔁 วนตามลำดับ</span></label>
+              <label><input type="radio" name="warp-mode" value="fixed" /><span>📌 ใช้แบบเดียว</span></label>
+            </div>
+            <small class="warp-field__hint" id="warp-mode-hint"></small>
+          </div>
+        </div>
+
+        <div class="warp-scenes" id="warp-scenes"></div>
+
+        <div class="warp-options">
+          <div class="warp-field">
+            <span class="warp-field__label">⏱️ ความยาวฉาก <b id="warp-duration-val">2.0 วิ</b></span>
+            <input type="range" id="warp-duration" min="0.8" max="4" step="0.1" />
+            <div class="warp-chips">
+              <button type="button" class="warp-chip" data-warp-duration="1.2">⚡ เร็ว 1.2</button>
+              <button type="button" class="warp-chip" data-warp-duration="2">🌌 มาตรฐาน 2.0</button>
+              <button type="button" class="warp-chip" data-warp-duration="3">🎬 ซีเนมาติก 3.0</button>
+            </div>
+          </div>
+          <div class="warp-field">
+            <span class="warp-field__label">✨ ความหนาแน่นอนุภาค</span>
+            <div class="warp-seg" role="radiogroup" aria-label="ความหนาแน่นอนุภาค">
+              <label><input type="radio" name="warp-density" value="0.5" /><span>🍃 ประหยัด</span></label>
+              <label><input type="radio" name="warp-density" value="1" /><span>⚖️ มาตรฐาน</span></label>
+              <label><input type="radio" name="warp-density" value="1.6" /><span>🔥 สูงสุด</span></label>
+            </div>
+            <small class="warp-field__hint">ลดลงถ้ามือถือหรือเครื่องเก่ากระตุก</small>
+          </div>
+          <div class="warp-field">
+            <span class="warp-field__label">⚡ ความสว่างแฟลช <b id="warp-flash-val">100%</b></span>
+            <input type="range" id="warp-flash" min="0" max="100" step="5" />
+            <small class="warp-field__hint">ลดลงเพื่อถนอมสายตา (0% = ไม่มีแฟลชขาว)</small>
+          </div>
+          <div class="warp-field">
+            <span class="warp-field__label">🔊 ระดับเสียงวาร์ป <b id="warp-volume-val">80%</b></span>
+            <input type="range" id="warp-volume" min="0" max="100" step="5" />
+            <small class="warp-field__hint">จะดังเมื่อเปิดทั้งเสียงวาร์ปและเสียงเอฟเฟกต์หลัก (Sound FX)</small>
+          </div>
+        </div>
+
+        <div class="warp-toggles">
+          <label class="warp-switch"><input type="checkbox" id="warp-sound" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">🎵 เล่นเสียงประกอบวาร์ป</span></label>
+          <label class="warp-switch"><input type="checkbox" id="warp-norepeat" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">🚫 ไม่สุ่มซ้ำแบบเดิมติดกัน</span></label>
+          <label class="warp-switch"><input type="checkbox" id="warp-mobile-off" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">📱 ปิดเอฟเฟกต์บนจอเล็ก (มือถือ)</span></label>
+          <label class="warp-switch"><input type="checkbox" id="warp-reduced-motion" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">♿ ปิดเมื่อระบบตั้ง "ลดการเคลื่อนไหว"</span></label>
+        </div>
+
+        <div class="warp-stats">
+          <span id="warp-stats-text">ยังไม่มีสถิติ</span>
+          <button type="button" id="btn-warp-stats-reset" class="btn btn--sm btn--ghost">ล้างสถิติ</button>
         </div>
       </div>
 
@@ -1538,7 +1627,8 @@
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/app.js?v=20261109-v13"></script>
+<script src="/warp-fx.js?v=20261120-warpstudio"></script>
+<script src="/app.js?v=20261120-warpstudio"></script>
 
 <!-- ── mobile bottom navigation bar ──────────────────────────────────────── -->
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">

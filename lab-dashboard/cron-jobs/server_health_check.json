@@ -1,0 +1,11 @@
+{
+  "id": "server_health_check",
+  "mode": "script_ai",
+  "rawCommand": "/usr/bin/python3 /home/dev/projects/server-health-check.py --no-notify",
+  "aiPrompt": "สืบสวนเชิงลึกแบบ Senior Linux SRE: ตรวจสอบความผิดปกติ (CPU/Load/IO/RAM/Disk/PM2/Docker) รันคำสั่ง Read-Only ดูโปรเซสและ log ล่าสุดเพื่อระบุต้นตอ และสรุปแจ้งเตือนเข้า Telegram ให้สั้นกระชับ สวยงาม ไม่เกิน 4-5 บรรทัด (กรณี [RECOVERED] สรุปสั้นๆ ว่ากลับสู่ปกติแล้ว)",
+  "aiModel": "gemini-4-hydrogen-medium",
+  "notifyTelegram": true,
+  "skipOk": true,
+  "investigate": true,
+  "timeoutSec": 210
+}

@@ -1390,4 +1390,102 @@
     loadPrayerTimes();
     setInterval(updateCountdown, 1000);
   })();
+
+  // ── 10. 3D Rotating Transparent Quantum Particle Sphere inside Overview Core ─
+  (function initOvCoreParticleSphere() {
+    const pCanvas = document.getElementById('ov-core-particle-canvas');
+    if (!pCanvas) return;
+    const pCtx = pCanvas.getContext('2d');
+    const N = 115;
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const pts = Array.from({ length: N }, (_, i) => {
+      const y = 1 - (i / (N - 1)) * 2;
+      const rAtY = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = goldenAngle * i;
+      return {
+        x: Math.cos(theta) * rAtY,
+        y,
+        z: Math.sin(theta) * rAtY,
+        size: 1.0 + (i % 4) * 0.35,
+        phase: i * 0.45,
+        huePick: i % 5
+      };
+    });
+
+    let angleY = 0;
+    let angleX = 0.32;
+
+    function renderCoreSphere() {
+      const viewOv = document.getElementById('view-overview');
+      if (!viewOv || viewOv.style.display !== 'none') {
+        const highLoad = hero.classList.contains('is-high-load');
+        angleY += highLoad ? 0.028 : 0.011;
+        angleX = 0.32 + Math.sin(angleY * 0.4) * 0.14;
+
+        const w = pCanvas.width;
+        const h = pCanvas.height;
+        const cx = w * 0.5;
+        const cy = h * 0.5;
+        const radius = w * 0.34;
+        const cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+        const cosX = Math.cos(angleX), sinX = Math.sin(angleX);
+
+        pCtx.clearRect(0, 0, w, h);
+
+        const projected = pts.map((p) => {
+          const x1 = p.x * cosY - p.z * sinY;
+          const z1 = p.x * sinY + p.z * cosY;
+          const y2 = p.y * cosX - z1 * sinX;
+          const z2 = p.y * sinX + z1 * cosX;
+          const persp = 2.6 / (2.6 - z2);
+          return {
+            sx: cx + x1 * radius * persp,
+            sy: cy + y2 * radius * persp,
+            z2,
+            depth: (z2 + 1) * 0.5,
+            p,
+            persp
+          };
+        });
+
+        projected.sort((a, b) => a.z2 - b.z2);
+
+        const palIdle = ['190, 100%, 82%', '195, 100%, 65%', '48, 95%, 74%', '270, 90%, 78%', '0, 0%, 100%'];
+        const palLoad = ['25, 100%, 70%', '45, 100%, 72%', '190, 100%, 75%', '280, 95%, 75%', '0, 0%, 100%'];
+        const pal = highLoad ? palLoad : palIdle;
+
+        pCtx.lineWidth = 0.75;
+        for (let i = 0; i < projected.length; i++) {
+          const a = projected[i];
+          if (a.z2 < 0.05) continue;
+          for (let j = i + 1; j < projected.length; j++) {
+            const b = projected[j];
+            if (b.z2 < 0.05) continue;
+            const d = Math.hypot(a.sx - b.sx, a.sy - b.sy);
+            if (d < 24) {
+              pCtx.beginPath();
+              pCtx.moveTo(a.sx, a.sy);
+              pCtx.lineTo(b.sx, b.sy);
+              pCtx.strokeStyle = highLoad
+                ? `rgba(255, 165, 80, ${(1 - d / 24) * 0.25})`
+                : `rgba(0, 229, 255, ${(1 - d / 24) * 0.24})`;
+              pCtx.stroke();
+            }
+          }
+        }
+
+        projected.forEach(({ sx, sy, depth, p, persp }) => {
+          const twinkle = 0.75 + 0.25 * Math.sin(angleY * 3 + p.phase);
+          const alpha = (0.16 + depth * 0.84) * twinkle;
+          const r = p.size * persp * (0.7 + depth * 0.65);
+          pCtx.beginPath();
+          pCtx.arc(sx, sy, r, 0, Math.PI * 2);
+          pCtx.fillStyle = `hsla(${pal[p.huePick]}, ${alpha.toFixed(2)})`;
+          pCtx.fill();
+        });
+      }
+      requestAnimationFrame(renderCoreSphere);
+    }
+    requestAnimationFrame(renderCoreSphere);
+  })();
 })();

@@ -62,10 +62,17 @@ async function sh(cmd, args, opts) {
 }
 
 const cache = new Map();
-async function cached(key, ttlMs, producer) {
+const inflight = new Map();                     // รวม request ที่มาพร้อมกันให้รันคำสั่งครั้งเดียว
+function cached(key, ttlMs, producer) {
     const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) return Promise.resolve(hit.value);
+    if (!inflight.has(key)) {
+        inflight.set(key, refreshCached(key, ttlMs, producer, hit).finally(() => inflight.delete(key)));
+    }
+    return inflight.get(key);
+}
+async function refreshCached(key, ttlMs, producer, hit) {
     const now = Date.now();
-    if (hit && now - hit.at < ttlMs) return hit.value;
     try {
         const value = await producer();
         cache.set(key, { at: now, value });
@@ -1199,10 +1206,10 @@ async function energyMetrics() {
 async function buildSummary() {
     const [host, containers, pm2, kuma, mongo, probes, tailscale, wireguard, emqx, ports, energy] = await Promise.all([
         cached('host', 2000, hostMetrics),
-        cached('containers', 8000, dockerContainers),
-        cached('pm2', 8000, pm2Processes),
+        cached('containers', 15000, dockerContainers),
+        cached('pm2', 15000, pm2Processes),
         cached('kuma', 15000, kumaMonitors),
-        cached('mongo', 20000, mongoStats),
+        cached('mongo', 60000, mongoStats),
         cached('probes', 10000, async () => {
             const list = await Promise.all(SERVICE_TARGETS.map(async (t) => {
                 const r = await probe(t.probe);
@@ -1210,11 +1217,12 @@ async function buildSummary() {
             }));
             return list;
         }),
-        cached('tailscale', 4000, tailscaleStatus),
-        cached('wireguard', 5000, wireguardStats),
-        cached('emqx', 5000, emqxStats),
-        cached('ports', 4000, portManagerStatus),
-        cached('energy', 6000, energyMetrics),
+        // TTL ยาวขึ้นสำหรับงานที่ต้อง spawn process หนัก (emqx ctl = Erlang VM, ufw = sudo+python)
+        cached('tailscale', 15000, tailscaleStatus),
+        cached('wireguard', 15000, wireguardStats),
+        cached('emqx', 30000, emqxStats),
+        cached('ports', 30000, portManagerStatus),
+        cached('energy', 10000, energyMetrics),
     ]);
 
     const upCount = (probes || []).filter((s) => s.up).length;
@@ -1883,6 +1891,10 @@ const server = http.createServer(async (req, res) => {
         if (p === '/api/gemini/quota') {
             return sendJson(res, 200, await geminiManager.getQuotaSummary());
         }
+        if (req.method === 'POST' && p === '/api/gemini/claude-key') {
+            const body = await readJsonBody(req);
+            return sendJson(res, 200, await geminiManager.setClaudeSessionKey(body.sessionKey || ''));
+        }
         // ── Gemini AI Assistant Endpoints ────────────────────────────
         if (p === '/api/gemini/status') {
             return sendJson(res, 200, await geminiManager.getStatus());
@@ -1908,6 +1920,14 @@ const server = http.createServer(async (req, res) => {
             const body = await readJsonBody(req);
             try {
                 return sendJson(res, 200, geminiManager.renameSession(body.id, body.title));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/gemini/sessions/pin') {
+            const body = await readJsonBody(req);
+            try {
+                return sendJson(res, 200, geminiManager.togglePinSession(body.id, body.pinned));
             } catch (err) {
                 return sendJson(res, 400, { ok: false, error: err.message });
             }

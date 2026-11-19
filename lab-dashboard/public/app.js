@@ -147,6 +147,306 @@ function playNavSound() {
     } catch (_) {}
 }
 
+// Each warp scene gets its own synthesized soundtrack, timed to the scene's phases
+function playWarpSound(duration = 2000, sceneName = 'blackhole', volume = 1) {
+    if (!isSoundEnabled() || volume <= 0) return;
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const scene = (window.WarpFX && window.WarpFX.scenes[sceneName]) || { swapAt: 0.4, emergeAt: 0.7 };
+        const d = duration / 1000;
+        const t0 = ctx.currentTime;
+        const at = (frac) => t0 + d * frac;
+        const tSwap = at(scene.swapAt);
+        const tOut = at(scene.emergeAt);
+
+        const master = ctx.createGain();
+        master.gain.value = 0.22 * volume;
+        master.connect(ctx.destination);
+
+        const ramp = (param, v0, t, v1, t1) => {
+            param.setValueAtTime(v0, t);
+            param.exponentialRampToValueAtTime(v1, t1);
+        };
+
+        // Brown noise shared by the whooshes
+        const noiseBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * (d + 2)), ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        let last = 0;
+        for (let i = 0; i < data.length; i++) {
+            last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+            data[i] = last * 3.5;
+        }
+        const noise = (start, stop, filterType, f0, f1, q, peak, tPeak, tEnd) => {
+            const src = ctx.createBufferSource();
+            src.buffer = noiseBuf;
+            const f = ctx.createBiquadFilter();
+            f.type = filterType;
+            f.Q.value = q;
+            ramp(f.frequency, f0, start, f1, tEnd);
+            const g = ctx.createGain();
+            ramp(g.gain, 0.0001, start, peak, tPeak);
+            g.gain.exponentialRampToValueAtTime(0.0001, tEnd);
+            src.connect(f).connect(g).connect(master);
+            src.start(start);
+            src.stop(stop);
+        };
+        // Oscillator with a pitch glide and an attack/decay envelope
+        const tone = (type, f0, f1, start, tPeak, end, peak, dest = master) => {
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.type = type;
+            ramp(o.frequency, f0, start, f1, end);
+            ramp(g.gain, 0.0001, start, peak, tPeak);
+            g.gain.exponentialRampToValueAtTime(0.0001, end);
+            o.connect(g).connect(dest);
+            o.start(start);
+            o.stop(end + 0.05);
+        };
+        const sweepFilter = (type, f0, f1, start, end, q) => {
+            const f = ctx.createBiquadFilter();
+            f.type = type;
+            f.Q.value = q;
+            ramp(f.frequency, f0, start, f1, end);
+            f.connect(master);
+            return f;
+        };
+
+        if (sceneName === 'supernova') {
+            const tDet = at(0.30);
+            // Charge-up: beating sines climbing as the star destabilizes
+            tone('sine', 180, 900, t0, tDet - 0.05, tDet, 0.35);
+            tone('sine', 183, 915, t0, tDet - 0.05, tDet, 0.3);
+            tone('sawtooth', 60, 240, t0, tDet - 0.05, tDet, 0.12, sweepFilter('lowpass', 200, 2500, t0, tDet, 4));
+            // Implosion suck
+            noise(tDet - 0.2, tDet + 0.02, 'bandpass', 4500, 250, 1.5, 0.7, tDet - 0.01, tDet + 0.01);
+            // Detonation: sub boom + long rolling blast + crackles
+            tone('sine', 95, 22, tDet, tDet + 0.02, tDet + 1.6, 1.0);
+            noise(tDet, tDet + 2, 'lowpass', 7000, 90, 0.7, 1.0, tDet + 0.015, tDet + 1.9);
+            for (let i = 0; i < 7; i++) {
+                const st = tDet + 0.05 + Math.random() * 0.6;
+                noise(st, st + 0.08, 'highpass', 3000, 6000, 1, 0.35, st + 0.005, st + 0.07);
+            }
+            // Pulsar ticks + nebula chord
+            for (let i = 0; i < 10; i++) {
+                const st = tSwap + i * 0.085;
+                tone('sine', 2400, 2200, st, st + 0.004, st + 0.04, 0.12);
+            }
+            [261.6, 329.6, 392, 523.3, 659.3].forEach((f) => tone('sine', f, f * 1.01, tOut - 0.1, tOut + 0.35, tOut + 1.6, 0.06));
+        } else if (sceneName === 'galaxy') {
+            // Cosmic choir pad swelling as the camera dives in
+            const pad = sweepFilter('lowpass', 400, 4500, t0, tSwap, 2);
+            [110, 164.8, 220, 329.6, 493.9].forEach((f) => tone('triangle', f, f * 1.5, t0, tSwap - 0.05, tSwap + 0.3, 0.09, pad));
+            noise(t0, tSwap + 0.2, 'bandpass', 300, 3200, 0.8, 0.45, tSwap - 0.05, tSwap + 0.15);
+            // Golden gong in the core
+            [196, 523.5, 871, 1310, 1863].forEach((f, i) => tone('sine', f, f * 0.995, tSwap, tSwap + 0.01, tSwap + 1.8 - i * 0.2, 0.14 / (i + 1)));
+            tone('sine', 70, 40, tSwap, tSwap + 0.02, tSwap + 1, 0.6);
+            // Pull-back shimmer
+            noise(tOut, tOut + 0.6, 'highpass', 7000, 900, 0.7, 0.25, tOut + 0.05, tOut + 0.55);
+            [1568, 2093, 2637].forEach((f, i) => {
+                const st = tOut + 0.05 + i * 0.07;
+                tone('sine', f, f, st, st + 0.01, st + 1.1, 0.07);
+            });
+        } else if (sceneName === 'grid') {
+            const tCrt = at(0.26);
+            // Arpeggiator racing upward
+            const arp = sweepFilter('lowpass', 1200, 7000, t0, tOut, 3);
+            const notes = [220, 261.6, 329.6, 392, 440, 523.3, 659.3, 784];
+            const steps = 24;
+            const step = (tOut - t0) / steps;
+            for (let i = 0; i < steps; i++) {
+                const f = notes[i % notes.length] * (i >= 16 ? 2 : 1);
+                const st = t0 + i * step;
+                tone('square', f, f, st, st + 0.005, st + step * 0.9, 0.05, arp);
+            }
+            // Glitch bursts
+            for (let i = 0; i < 4; i++) {
+                const st = t0 + Math.random() * (tCrt - t0);
+                noise(st, st + 0.06, 'highpass', 2500, 5000, 1, 0.4, st + 0.004, st + 0.05);
+                tone('square', 55, 55, st, st + 0.004, st + 0.05, 0.08);
+            }
+            // CRT power-off
+            tone('sine', 1600, 40, tCrt, tCrt + 0.01, tSwap, 0.35);
+            // Synthwave bass pulses during the ride
+            const bass = sweepFilter('lowpass', 300, 1400, tSwap, tOut, 6);
+            const beats = 6;
+            for (let i = 0; i < beats; i++) {
+                const st = tSwap + i * ((tOut - tSwap) / beats);
+                tone('sawtooth', 55, 55, st, st + 0.01, st + (tOut - tSwap) / beats * 0.9, 0.3, bass);
+            }
+            // CRT power-on: thoom + zap
+            tone('sine', 130, 38, tOut, tOut + 0.015, tOut + 0.7, 0.9);
+            tone('sawtooth', 70, 1100, tOut, tOut + 0.02, tOut + 0.28, 0.12);
+            noise(tOut, tOut + 0.3, 'bandpass', 6000, 1500, 2, 0.4, tOut + 0.01, tOut + 0.25);
+        } else {
+            // Black hole: rumble into the horizon, suction, hyperdrive, white-hole boom
+            tone('sine', 110, 28, t0, tSwap - 0.05, tSwap + 0.25, 0.9);
+            noise(t0, tSwap + 0.15, 'bandpass', 2400, 120, 1.2, 0.8, tSwap - 0.08, tSwap + 0.1);
+            const hf = sweepFilter('lowpass', 200, 5000, tSwap, tOut, 8);
+            [55, 55.7, 82.4].forEach((f) => tone('sawtooth', f, f * 4, tSwap, tSwap + 0.12, tOut + 0.15, 0.16, hf));
+            noise(tSwap, tOut + 0.1, 'highpass', 400, 6000, 0.7, 0.35, tOut - 0.02, tOut + 0.08);
+            tone('sine', 150, 35, tOut, tOut + 0.02, tOut + 0.9, 1.0);
+            noise(tOut, tOut + 0.8, 'lowpass', 3000, 200, 0.8, 0.6, tOut + 0.02, tOut + 0.7);
+            [1318.5, 1975.5, 2637].forEach((f, i) => {
+                const st = tOut + 0.05 + i * 0.05;
+                tone('sine', f, f, st, st + 0.01, st + 1.2, 0.07);
+            });
+        }
+    } catch (_) {}
+}
+
+// ── Warp FX config (one JSON blob; migrates the older per-setting keys) ──────
+const WARP_CONFIG_KEY = 'core_warp_config';
+const WARP_SCENE_META = {
+    blackhole: { desc: 'หลุมดำดูดหน้าเดิม → อุโมงค์ไฮเปอร์สเปซ → หลุมขาวพ่นหน้าใหม่', grad: 'radial-gradient(circle at 50% 50%, #000 0 18%, #fff 20%, #38bdf8 26%, #8b5cf6 38%, #0b0420 70%)' },
+    supernova: { desc: 'ดาวยักษ์ยุบตัวแล้วระเบิด เศษดาวพุ่ง 3D เนบิวลาและพัลซาร์', grad: 'radial-gradient(circle at 50% 50%, #fff 0 6%, #ffd27a 14%, #ff6a2a 30%, #c0265e 48%, #1a0612 75%)' },
+    galaxy: { desc: 'หน้าเดิมนอนลงในกาแล็กซี่ก้นหอย กล้องดิ่งทะลุแกนกลางสีทอง', grad: 'radial-gradient(ellipse 60% 30% at 50% 50%, #fff4d6 0 8%, #f5b65a 18%, #4f7dff 45%, #120a2a 80%)' },
+    grid: { desc: 'Glitch + ปิดทีวีจอแก้ว ซิ่งบนกริดนีออนซินธ์เวฟ แล้วเปิดจอใหม่', grad: 'linear-gradient(180deg, #12002e 0%, #6a0f8e 48%, #ff3cac 52%, #14002a 54%, #2b0a4a 100%)' },
+};
+
+function defaultWarpConfig() {
+    const scenes = {};
+    Object.keys(WARP_SCENE_META).forEach((n) => { scenes[n] = { on: true, weight: 3 }; });
+    return {
+        enabled: true,
+        mode: 'random',
+        fixed: 'blackhole',
+        scenes,
+        noRepeat: true,
+        duration: 2,
+        density: 1,
+        flash: 1,
+        sound: true,
+        volume: 0.8,
+        disableMobile: false,
+        respectReducedMotion: true,
+        cycleIndex: 0,
+        stats: {},
+    };
+}
+
+function getWarpConfig() {
+    const cfg = defaultWarpConfig();
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(WARP_CONFIG_KEY) || 'null'); } catch (_) {}
+    if (saved && typeof saved === 'object') {
+        Object.assign(cfg, saved, { scenes: cfg.scenes });
+        Object.keys(cfg.scenes).forEach((n) => Object.assign(cfg.scenes[n], (saved.scenes || {})[n]));
+        cfg.stats = saved.stats || {};
+    } else {
+        // Migrate the keys used before the Warp FX Studio existed
+        if (localStorage.getItem('core_warp_fx') === '0') cfg.enabled = false;
+        const speed = parseFloat(localStorage.getItem('core_warp_speed'));
+        if (speed) cfg.duration = Math.round(speed * 20) / 10;
+        const style = localStorage.getItem('core_warp_style');
+        if (style && cfg.scenes[style]) { cfg.mode = 'fixed'; cfg.fixed = style; }
+    }
+    return cfg;
+}
+
+function saveWarpConfig(cfg) {
+    localStorage.setItem(WARP_CONFIG_KEY, JSON.stringify(cfg));
+}
+
+function warpSceneNames() {
+    return window.WarpFX ? Object.keys(window.WarpFX.scenes) : [];
+}
+
+function warpPool(cfg) {
+    const pool = warpSceneNames().filter((n) => cfg.scenes[n] && cfg.scenes[n].on);
+    return pool.length ? pool : warpSceneNames();
+}
+
+function isWarpActive(cfg) {
+    if (!cfg.enabled || !window.WarpFX) return false;
+    if (cfg.respectReducedMotion && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    if (cfg.disableMobile && window.innerWidth < 700) return false;
+    return true;
+}
+
+// Pick the next scene per the configured mode (fixed / cycle / weighted random)
+function pickWarpScene(cfg, record = true) {
+    const names = warpSceneNames();
+    let pick;
+    if (cfg.mode === 'fixed' && names.includes(cfg.fixed)) {
+        pick = cfg.fixed;
+    } else if (cfg.mode === 'cycle') {
+        const pool = warpPool(cfg);
+        pick = pool[(cfg.cycleIndex || 0) % pool.length];
+        cfg.cycleIndex = ((cfg.cycleIndex || 0) + 1) % pool.length;
+    } else {
+        let pool = warpPool(cfg);
+        if (cfg.noRepeat && pool.length > 1) pool = pool.filter((n) => n !== state.lastWarpScene);
+        const weights = pool.map((n) => Math.max(0, Number(cfg.scenes[n].weight) || 0));
+        const total = weights.reduce((a, w) => a + w, 0);
+        if (total <= 0) {
+            pick = pool[Math.floor(Math.random() * pool.length)];
+        } else {
+            let r = Math.random() * total;
+            pick = pool[pool.length - 1];
+            for (let i = 0; i < pool.length; i++) {
+                r -= weights[i];
+                if (r < 0) { pick = pool[i]; break; }
+            }
+        }
+    }
+    state.lastWarpScene = pick;
+    if (record) cfg.stats[pick] = (cfg.stats[pick] || 0) + 1;
+    saveWarpConfig(cfg);
+    if (typeof refreshWarpStudio === 'function') refreshWarpStudio();
+    return pick;
+}
+
+// Run a warp scene over a view: fromEl leaves, hooks.swap() returns the element that
+// enters (already displayed), hooks.done() runs after the overlay is gone
+function playViewWarp(fromEl, sceneName, cfg, hooks) {
+    const S = window.WarpFX.scenes[sceneName];
+    const duration = Math.round(cfg.duration * 1000);
+    let toEl = null;
+    if (cfg.sound) playWarpSound(duration, sceneName, cfg.volume);
+
+    fromEl.dataset.warp = sceneName;
+    fromEl.style.animation = '';
+    setViewportOrigin(fromEl);
+    fromEl.style.setProperty('--warp-dur', `${Math.round(duration * S.swapAt)}ms`);
+    fromEl.classList.add('warp-out');
+
+    window.WarpFX.play({
+        scene: sceneName,
+        duration,
+        density: cfg.density,
+        flash: cfg.flash,
+        onSwap: () => {
+            fromEl.classList.remove('warp-out');
+            fromEl.style.transformOrigin = '';
+            toEl = hooks.swap();
+            toEl.dataset.warp = sceneName;
+            toEl.style.animation = '';
+            toEl.classList.add('warp-hold');
+        },
+        onEmerge: () => {
+            setViewportOrigin(toEl);
+            toEl.style.setProperty('--warp-dur', `${Math.round(duration * (1 - S.emergeAt))}ms`);
+            toEl.classList.remove('warp-hold');
+            toEl.classList.add('warp-in');
+        },
+        onDone: () => {
+            // Pin animation to none so the base fade-in doesn't replay when warp-in is removed
+            toEl.style.animation = 'none';
+            toEl.style.transformOrigin = '';
+            toEl.classList.remove('warp-in', 'warp-hold');
+            if (hooks.done) hooks.done();
+        },
+    });
+}
+
+// Point a view's transform-origin at the viewport centre (views can be taller than the screen)
+function setViewportOrigin(el) {
+    const rect = el.getBoundingClientRect();
+    el.style.transformOrigin = `${window.innerWidth / 2 - rect.left}px ${window.innerHeight / 2 - rect.top}px`;
+}
+
 window.addEventListener('message', (ev) => {
     if (ev.data && ev.data.type === 'homelab_sound_fx') {
         state.sound = Boolean(ev.data.enabled);
@@ -556,9 +856,128 @@ function switchView(viewName, updateHash = true) {
     const prevView = state.activeView;
     const validViews = ['overview', 'services', 'ports', 'terminal', 'settings'];
     const target = validViews.includes(viewName) ? viewName : 'overview';
+
+    if (state.isReady && prevView === target && !state.warp) {
+        return;
+    }
+
     if (target === 'settings' && typeof loadSettingsView === 'function') {
         loadSettingsView();
     }
+
+    const performNavUpdates = () => {
+        // Update desktop subnav tabs
+        $$('.subnav__tab').forEach((b) => {
+            const isMatch = b.dataset.view === target;
+            b.classList.toggle('is-active', isMatch);
+            b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+        });
+
+        // Update mobile bottom nav buttons
+        $$('.mobile-nav-btn').forEach((b) => {
+            const isMatch = b.dataset.view === target;
+            b.classList.toggle('is-active', isMatch);
+        });
+
+        // Update desktop sidebar items
+        $$('.sidebar__item').forEach((b) => {
+            const isMatch = b.dataset.view === target;
+            b.classList.toggle('is-active', isMatch);
+            b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+        });
+
+        updateSidebarIndicator(target);
+
+        // Update Desktop Topbar Title
+        const titleInfo = VIEW_TITLES[target] || VIEW_TITLES.overview;
+        const iconEl = $('#view-title-icon');
+        const textEl = $('#view-title-text');
+        if (iconEl) iconEl.innerHTML = titleInfo.icon;
+        if (textEl) textEl.innerHTML = titleInfo.text;
+
+        if (updateHash && location.hash !== `#${target}`) {
+            history.replaceState(null, '', `#${target}`);
+        }
+    };
+
+    const activateTargetView = () => {
+        // When switching to overview or terminal, ensure canvas/charts sync
+        if (target === 'overview') {
+            setTimeout(() => { syncHudFrames(); drawCharts(); }, 40);
+        } else if (target === 'terminal') {
+            const subtab = state.activeTermSubtab || 'gemini';
+            switchTerminalSubtab(subtab);
+            if (subtab === 'shell') {
+                const out = $('#dterm-output');
+                if (out) out.scrollTop = out.scrollHeight;
+            }
+        }
+        window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+
+    // A Settings preview is running: end it (its hooks restore the view) and switch normally
+    if (state.warp && state.warp.preview) {
+        window.WarpFX.finish();
+    }
+
+    // A warp is already in flight: retarget it before the swap, queue it after
+    if (state.warp) {
+        const w = state.warp;
+        if (!w.swapped) {
+            if (target !== w.target) {
+                w.target = target;
+                w.activate = activateTargetView;
+                state.activeView = target;
+                performNavUpdates();
+            }
+        } else {
+            w.queued = target === state.activeView ? null : target;
+        }
+        return;
+    }
+
+    const warpCfg = getWarpConfig();
+    const findView = (name) => document.querySelector(`.lab-view[data-view-id="${name}"], .lab-view[data-view="${name}"]`);
+
+    if (state.isReady && prevView && prevView !== target && isWarpActive(warpCfg)) {
+        const currentViewEl = document.querySelector('.lab-view.is-active') || findView(prevView);
+        const firstTargetEl = findView(target);
+
+        if (currentViewEl && firstTargetEl && currentViewEl !== firstTargetEl) {
+            const w = state.warp = { target, activate: activateTargetView, swapped: false, queued: null };
+            state.activeView = target;
+            performNavUpdates();
+
+            $$('.lab-view').forEach((v) => {
+                v.classList.remove('warp-out', 'warp-in', 'warp-hold');
+                v.style.animation = '';
+                if (v !== currentViewEl) {
+                    v.classList.remove('is-active');
+                    v.style.display = 'none';
+                }
+            });
+
+            playViewWarp(currentViewEl, pickWarpScene(warpCfg), warpCfg, {
+                swap: () => {
+                    w.swapped = true;
+                    currentViewEl.classList.remove('is-active');
+                    currentViewEl.style.display = 'none';
+                    const el = findView(w.target);
+                    el.style.display = 'block';
+                    el.classList.add('is-active');
+                    w.activate();
+                    return el;
+                },
+                done: () => {
+                    state.warp = null;
+                    if (w.queued && w.queued !== state.activeView) switchView(w.queued);
+                },
+            });
+            return;
+        }
+    }
+
+    // Default immediate switch (e.g. initial load or reduced motion)
     if (state.isReady && prevView !== target) {
         playNavSound();
     }
@@ -568,56 +987,13 @@ function switchView(viewName, updateHash = true) {
     $$('.lab-view').forEach((v) => {
         const isMatch = (v.dataset.viewId || v.dataset.view) === target;
         v.style.display = isMatch ? 'block' : 'none';
+        v.classList.remove('warp-out', 'warp-in', 'warp-hold');
+        v.style.animation = '';
         v.classList.toggle('is-active', isMatch);
     });
 
-    // Update desktop subnav tabs
-    $$('.subnav__tab').forEach((b) => {
-        const isMatch = b.dataset.view === target;
-        b.classList.toggle('is-active', isMatch);
-        b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
-    });
-
-    // Update mobile bottom nav buttons
-    $$('.mobile-nav-btn').forEach((b) => {
-        const isMatch = b.dataset.view === target;
-        b.classList.toggle('is-active', isMatch);
-    });
-
-    // Update desktop sidebar items
-    $$('.sidebar__item').forEach((b) => {
-        const isMatch = b.dataset.view === target;
-        b.classList.toggle('is-active', isMatch);
-        b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
-    });
-
-    updateSidebarIndicator(target);
-
-    // Update Desktop Topbar Title
-    const titleInfo = VIEW_TITLES[target] || VIEW_TITLES.overview;
-    const iconEl = $('#view-title-icon');
-    const textEl = $('#view-title-text');
-    if (iconEl) iconEl.innerHTML = titleInfo.icon;
-    if (textEl) textEl.innerHTML = titleInfo.text;
-
-    if (updateHash && location.hash !== `#${target}`) {
-        history.replaceState(null, '', `#${target}`);
-    }
-
-    // When switching to overview or terminal, ensure canvas/charts sync
-    if (target === 'overview') {
-        setTimeout(() => { syncHudFrames(); drawCharts(); }, 40);
-    } else if (target === 'terminal') {
-        const subtab = state.activeTermSubtab || 'gemini';
-        switchTerminalSubtab(subtab);
-        if (subtab === 'shell') {
-            const out = $('#dterm-output');
-            if (out) out.scrollTop = out.scrollHeight;
-        }
-    }
-
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    performNavUpdates();
+    activateTargetView();
 }
 
 function renderTiles(s) {
@@ -1585,7 +1961,7 @@ function pushHistory(s, rate, diskRates) {
 }
 
 async function refresh(force) {
-    if (state.paused && !force) return;
+    if ((state.paused || document.hidden) && !force) return;   // ไม่ poll ตอนแท็บถูกซ่อน
     try {
         const r = await fetch('/api/summary', { cache: 'no-store' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -2950,6 +3326,7 @@ function loadSettingsView() {
     const inpKey = document.getElementById('set-apikey');
     const selStt = document.getElementById('set-stt');
     const selVoice = document.getElementById('set-tts-voice');
+    const selVoiceStyle = document.getElementById('set-tts-style');
     const chkAutoTts = document.getElementById('chk-set-auto-tts');
     const chkSoundFx = document.getElementById('chk-set-sound-fx');
     const chkHud = document.getElementById('chk-set-hud');
@@ -2965,8 +3342,9 @@ function loadSettingsView() {
 
     if (!settingsInitialized) {
         settingsInitialized = true;
-        selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-medium';
+        selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-high';
         selStt.value = localStorage.getItem('stt_engine') || 'whisper';
+        if (selVoiceStyle) selVoiceStyle.value = localStorage.getItem('core_tts_style') || 'natural';
         chkAutoTts.checked = localStorage.getItem('core_auto_tts') === '1';
         chkSoundFx.checked = localStorage.getItem('gemini_sound_enabled') !== '0';
         chkHud.checked = localStorage.getItem('core_hud_hidden') !== '1';
@@ -2987,6 +3365,10 @@ function loadSettingsView() {
             localStorage.setItem('core_tts_voice', selVoice.value);
             notify('✅ บันทึกเสียงพูด AI แล้ว');
         });
+        selVoiceStyle?.addEventListener('change', () => {
+            localStorage.setItem('core_tts_style', selVoiceStyle.value);
+            notify('✅ บันทึกสไตล์น้ำเสียงแล้ว');
+        });
         chkAutoTts.addEventListener('change', () => {
             localStorage.setItem('core_auto_tts', chkAutoTts.checked ? '1' : '0');
             notify(chkAutoTts.checked ? '🗣️ เปิดอ่านออกเสียงอัตโนมัติ' : '🔇 ปิดอ่านออกเสียงอัตโนมัติ');
@@ -2999,6 +3381,7 @@ function loadSettingsView() {
             localStorage.setItem('core_hud_hidden', chkHud.checked ? '0' : '1');
             notify(chkHud.checked ? '👁️ แสดงลูกแก้ว 3D HUD' : '🙈 ซ่อนลูกแก้ว 3D HUD');
         });
+        initWarpStudio(notify);
 
         document.getElementById('btn-set-save-key')?.addEventListener('click', async () => {
             const res = await fetch('/api/gemini/config', {
@@ -3016,7 +3399,11 @@ function loadSettingsView() {
             try {
                 const res = await fetch('/api/tts', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: 'สวัสดีค่ะ ระบบเสียงธรรมชาติพร้อมใช้งานแล้วค่ะ', voice: selVoice.value })
+                    body: JSON.stringify({
+                        text: 'สวัสดีค่ะ! ระบบเสียงธรรมชาติพร้อมใช้งานแล้วนะคะ ✨ วันนี้อยากให้ช่วยดูแลเรื่องอะไรดีคะ?',
+                        voice: selVoice.value,
+                        style: selVoiceStyle ? selVoiceStyle.value : (localStorage.getItem('core_tts_style') || 'natural')
+                    })
                 });
                 if (!res.ok) throw new Error('TTS HTTP ' + res.status);
                 const blob = await res.blob();
@@ -3069,9 +3456,14 @@ function loadSettingsView() {
         }
     }).catch(() => {});
 
-    const savedVoice = localStorage.getItem('core_tts_voice') || 'th-TH-PremwadeeNeural';
+    let savedVoice = localStorage.getItem('core_tts_voice') || 'vachana:th_f_1';
     fetch('/api/tts/voices').then(r => r.json()).then(d => {
         if (d && d.ok && Array.isArray(d.voices)) {
+            if (d.defaultVoice && localStorage.getItem('core_tts_v2_migrated') !== '1') {
+                savedVoice = d.defaultVoice;
+                localStorage.setItem('core_tts_voice', savedVoice);
+                localStorage.setItem('core_tts_v2_migrated', '1');
+            }
             selVoice.innerHTML = d.voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
             if ([...selVoice.options].some(o => o.value === savedVoice)) selVoice.value = savedVoice;
         }
@@ -3302,4 +3694,220 @@ function initPrayerSettingsUI(notify) {
     window._syncPrayerSettingsUI = syncUI;
     window.addEventListener('prayer-settings-updated', syncUI);
     syncUI();
+}
+
+// ── Warp FX Studio (Settings card #card-warp-studio) ────────────────────────
+const warpEsc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function warpSceneLabel(name) {
+    const scene = window.WarpFX && window.WarpFX.scenes[name];
+    return scene ? scene.label : name;
+}
+
+// Preview a scene over the current view without changing pages (no stats recorded)
+function previewWarp(sceneName) {
+    if (!window.WarpFX) return null;
+    if (state.warp) {
+        if (!state.warp.preview) return null;
+        window.WarpFX.finish();
+    }
+    const viewEl = document.querySelector('.lab-view.is-active');
+    if (!viewEl) return null;
+    const cfg = getWarpConfig();
+    const name = sceneName || pickWarpScene(cfg, false);
+    const w = state.warp = { preview: true, swapped: true };
+    playViewWarp(viewEl, name, cfg, {
+        swap: () => viewEl,
+        done: () => { if (state.warp === w) state.warp = null; },
+    });
+    return name;
+}
+
+function refreshWarpStudio() {
+    const card = document.getElementById('card-warp-studio');
+    if (!card || !card.dataset.ready) return;
+    const cfg = getWarpConfig();
+    const names = warpSceneNames();
+    const pool = warpPool(cfg);
+    const $id = (id) => document.getElementById(id);
+
+    $id('warp-enabled').checked = cfg.enabled;
+    card.classList.toggle('is-disabled', !cfg.enabled);
+    card.querySelectorAll('input[name="warp-mode"]').forEach((r) => { r.checked = r.value === cfg.mode; });
+    card.querySelectorAll('input[name="warp-density"]').forEach((r) => { r.checked = Number(r.value) === Number(cfg.density); });
+    $id('warp-duration').value = cfg.duration;
+    $id('warp-duration-val').textContent = `${Number(cfg.duration).toFixed(1)} วิ`;
+    card.querySelectorAll('[data-warp-duration]').forEach((b) => b.classList.toggle('is-active', Number(b.dataset.warpDuration) === Number(cfg.duration)));
+    $id('warp-flash').value = Math.round(cfg.flash * 100);
+    $id('warp-flash-val').textContent = `${Math.round(cfg.flash * 100)}%`;
+    $id('warp-volume').value = Math.round(cfg.volume * 100);
+    $id('warp-volume-val').textContent = `${Math.round(cfg.volume * 100)}%`;
+    $id('warp-volume').disabled = !cfg.sound;
+    $id('warp-sound').checked = cfg.sound;
+    $id('warp-norepeat').checked = cfg.noRepeat;
+    $id('warp-mobile-off').checked = cfg.disableMobile;
+    $id('warp-reduced-motion').checked = cfg.respectReducedMotion;
+
+    const hints = {
+        random: 'สุ่มจากฉากที่เปิดไว้ ฉากที่น้ำหนักมากจะออกบ่อยกว่า',
+        cycle: 'เล่นฉากที่เปิดไว้ทีละแบบเรียงตามลำดับ วนไปเรื่อยๆ (ไม่ใช้น้ำหนัก)',
+        fixed: 'ใช้ฉากที่ปักหมุด 📌 ไว้แบบเดียวทุกครั้ง',
+    };
+    $id('warp-mode-hint').textContent = hints[cfg.mode] || '';
+
+    const totalWeight = pool.reduce((a, n) => a + Math.max(0, Number(cfg.scenes[n].weight) || 0), 0);
+    names.forEach((n) => {
+        const el = card.querySelector(`.warp-scene[data-scene="${n}"]`);
+        if (!el) return;
+        const sc = cfg.scenes[n];
+        const inPool = pool.includes(n) && sc.on;
+        let prob = '';
+        if (cfg.mode === 'fixed') prob = n === cfg.fixed ? '📌 100%' : '0%';
+        else if (cfg.mode === 'cycle') prob = inPool ? `ลำดับ ${pool.indexOf(n) + 1}/${pool.length}` : 'ข้าม';
+        else prob = inPool && totalWeight > 0 ? `${Math.round((sc.weight / totalWeight) * 100)}%` : '0%';
+        el.querySelector('[data-role="prob"]').textContent = prob;
+        el.querySelector('[data-role="on"]').checked = sc.on;
+        el.querySelector('[data-role="on"]').disabled = cfg.mode === 'fixed';
+        el.querySelector('[data-role="weight"]').value = sc.weight;
+        el.querySelector('[data-role="weight"]').disabled = cfg.mode !== 'random' || !sc.on;
+        el.querySelector('[data-role="weight-val"]').textContent = sc.weight;
+        el.querySelector('[data-role="count"]').textContent = `เล่นแล้ว ${cfg.stats[n] || 0} ครั้ง`;
+        el.classList.toggle('is-off', cfg.mode === 'fixed' ? n !== cfg.fixed : !sc.on);
+        el.classList.toggle('is-pinned', cfg.mode === 'fixed' && n === cfg.fixed);
+    });
+
+    const badge = $id('warp-summary-badge');
+    const modeText = { random: '🎲 สุ่ม', cycle: '🔁 วนลำดับ', fixed: '📌 แบบเดียว' }[cfg.mode] || '';
+    const scope = cfg.mode === 'fixed' ? warpSceneLabel(cfg.fixed) : `${pool.length}/${names.length} ฉาก`;
+    badge.textContent = cfg.enabled ? `${modeText} · ${scope} · ${Number(cfg.duration).toFixed(1)} วิ` : '⏸️ ปิดอยู่';
+    badge.className = `badge ${cfg.enabled ? 'badge--ok' : ''}`;
+
+    const total = names.reduce((a, n) => a + (cfg.stats[n] || 0), 0);
+    $id('warp-stats-text').textContent = total
+        ? `📊 สถิติการวาร์ป: ${names.map((n) => `${warpSceneLabel(n)} ${cfg.stats[n] || 0}`).join(' · ')} (รวม ${total} ครั้ง)`
+        : '📊 ยังไม่มีสถิติการวาร์ป';
+}
+
+function initWarpStudio(notify) {
+    const card = document.getElementById('card-warp-studio');
+    const list = document.getElementById('warp-scenes');
+    if (!card || !list || card.dataset.ready) return;
+    const say = (msg) => { if (typeof notify === 'function') notify(msg); };
+    const update = (fn, msg) => {
+        const cfg = getWarpConfig();
+        if (fn(cfg) === false) { refreshWarpStudio(); return; }
+        saveWarpConfig(cfg);
+        refreshWarpStudio();
+        if (msg) say(typeof msg === 'function' ? msg(cfg) : msg);
+    };
+
+    list.innerHTML = warpSceneNames().map((n) => {
+        const meta = WARP_SCENE_META[n] || { desc: '', grad: '#111' };
+        return `
+        <div class="warp-scene" data-scene="${warpEsc(n)}">
+          <div class="warp-scene__thumb" style="background:${meta.grad}">
+            <span class="warp-scene__prob" data-role="prob"></span>
+          </div>
+          <div class="warp-scene__body">
+            <div class="warp-scene__title">${warpEsc(warpSceneLabel(n))}</div>
+            <p class="warp-scene__desc">${warpEsc(meta.desc)}</p>
+            <label class="warp-switch warp-switch--sm"><input type="checkbox" data-role="on" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">ใส่ในการสุ่ม</span></label>
+            <label class="warp-scene__weight">น้ำหนัก <input type="range" min="1" max="5" step="1" data-role="weight" /><b data-role="weight-val"></b></label>
+            <div class="warp-scene__actions">
+              <button type="button" class="btn btn--sm" data-role="preview">▶ ดูตัวอย่าง</button>
+              <button type="button" class="btn btn--sm btn--ghost" data-role="pin" title="ใช้ฉากนี้แบบเดียว">📌</button>
+            </div>
+            <small class="warp-scene__count" data-role="count"></small>
+          </div>
+        </div>`;
+    }).join('');
+    card.dataset.ready = '1';
+
+    list.addEventListener('change', (ev) => {
+        const sceneEl = ev.target.closest('.warp-scene');
+        if (!sceneEl) return;
+        const n = sceneEl.dataset.scene;
+        const role = ev.target.dataset.role;
+        if (role === 'on') {
+            const on = ev.target.checked;
+            update((cfg) => {
+                cfg.scenes[n].on = on;
+                if (!warpSceneNames().some((k) => cfg.scenes[k].on)) {
+                    say('⚠️ ต้องเปิดไว้อย่างน้อย 1 ฉาก');
+                    return false;
+                }
+                cfg.cycleIndex = 0;
+                return true;
+            }, `${on ? '✅ เพิ่ม' : '➖ เอาออก'} ${warpSceneLabel(n)} ${on ? 'เข้า' : 'จาก'}การสุ่ม`);
+        } else if (role === 'weight') {
+            update((cfg) => { cfg.scenes[n].weight = Number(ev.target.value); });
+        }
+    });
+    list.addEventListener('input', (ev) => {
+        if (ev.target.dataset.role !== 'weight') return;
+        const n = ev.target.closest('.warp-scene').dataset.scene;
+        update((cfg) => { cfg.scenes[n].weight = Number(ev.target.value); });
+    });
+    list.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button[data-role]');
+        if (!btn) return;
+        const n = btn.closest('.warp-scene').dataset.scene;
+        if (btn.dataset.role === 'preview') {
+            previewWarp(n);
+        } else if (btn.dataset.role === 'pin') {
+            update((cfg) => { cfg.mode = 'fixed'; cfg.fixed = n; }, `📌 ใช้ ${warpSceneLabel(n)} แบบเดียว`);
+        }
+    });
+
+    document.getElementById('warp-enabled').addEventListener('change', (ev) => {
+        const on = ev.target.checked;
+        update((cfg) => { cfg.enabled = on; }, on ? '🌀 เปิดเอฟเฟกต์วาร์ปเปลี่ยนหน้าแล้ว' : '⚡ ปิดเอฟเฟกต์วาร์ป (เปลี่ยนหน้าทันที)');
+    });
+    card.querySelectorAll('input[name="warp-mode"]').forEach((r) => r.addEventListener('change', () => {
+        update((cfg) => { cfg.mode = r.value; cfg.cycleIndex = 0; }, `🎛️ โหมดวาร์ป: ${r.nextElementSibling.textContent}`);
+    }));
+    card.querySelectorAll('input[name="warp-density"]').forEach((r) => r.addEventListener('change', () => {
+        update((cfg) => { cfg.density = Number(r.value); }, `✨ ความหนาแน่นอนุภาค: ${r.nextElementSibling.textContent}`);
+    }));
+    document.getElementById('warp-duration').addEventListener('input', (ev) => {
+        update((cfg) => { cfg.duration = Number(ev.target.value); });
+    });
+    card.querySelectorAll('[data-warp-duration]').forEach((b) => b.addEventListener('click', () => {
+        update((cfg) => { cfg.duration = Number(b.dataset.warpDuration); }, `⏱️ ความยาวฉากวาร์ป ${Number(b.dataset.warpDuration).toFixed(1)} วิ`);
+    }));
+    document.getElementById('warp-flash').addEventListener('input', (ev) => {
+        update((cfg) => { cfg.flash = Number(ev.target.value) / 100; });
+    });
+    document.getElementById('warp-volume').addEventListener('input', (ev) => {
+        update((cfg) => { cfg.volume = Number(ev.target.value) / 100; });
+    });
+    const toggles = {
+        'warp-sound': ['sound', '🎵 เปิดเสียงประกอบวาร์ป', '🔇 ปิดเสียงประกอบวาร์ป'],
+        'warp-norepeat': ['noRepeat', '🚫 ไม่สุ่มซ้ำแบบเดิมติดกัน', '🔂 อนุญาตให้สุ่มซ้ำติดกันได้'],
+        'warp-mobile-off': ['disableMobile', '📱 ปิดวาร์ปบนจอเล็กแล้ว', '📱 เปิดวาร์ปบนจอเล็กแล้ว'],
+        'warp-reduced-motion': ['respectReducedMotion', '♿ เคารพการตั้งค่า "ลดการเคลื่อนไหว" ของระบบ', '♿ เล่นวาร์ปแม้ระบบตั้ง "ลดการเคลื่อนไหว"'],
+    };
+    Object.entries(toggles).forEach(([id, [key, onMsg, offMsg]]) => {
+        document.getElementById(id).addEventListener('change', (ev) => {
+            const on = ev.target.checked;
+            update((cfg) => { cfg[key] = on; }, on ? onMsg : offMsg);
+        });
+    });
+
+    document.getElementById('btn-warp-test-random').addEventListener('click', () => {
+        const name = previewWarp();
+        if (name) say(`🎲 ทดสอบ: ${warpSceneLabel(name)}`);
+    });
+    document.getElementById('btn-warp-reset').addEventListener('click', () => {
+        update((cfg) => {
+            const stats = cfg.stats;
+            Object.keys(cfg).forEach((k) => delete cfg[k]);
+            Object.assign(cfg, defaultWarpConfig(), { stats });
+        }, '↺ คืนค่าเอฟเฟกต์วาร์ปเป็นค่าเริ่มต้นแล้ว');
+    });
+    document.getElementById('btn-warp-stats-reset').addEventListener('click', () => {
+        update((cfg) => { cfg.stats = {}; }, '🧹 ล้างสถิติการวาร์ปแล้ว');
+    });
+
+    refreshWarpStudio();
 }

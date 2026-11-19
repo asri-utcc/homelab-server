@@ -24,9 +24,17 @@ const fsp = require('fs/promises');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const deepseekAgent = require('./deepseek-agent');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
+const CLAUDE_BIN = process.env.CLAUDE_BIN || path.join(HOME_DIR, '.local/bin/claude');
+const CLAUDE_CODE_MODELS = [
+    { id: 'claude-code-sonnet', name: 'Claude Code · Sonnet (Sub)' },
+    { id: 'claude-code-opus', name: 'Claude Code · Opus (Sub)' },
+    { id: 'claude-code-haiku', name: 'Claude Code · Haiku (Sub)' }
+];
 const GEMINI_DIR = path.join(HOME_DIR, '.gemini');
 const GEMINI_ENV_FILE = path.join(GEMINI_DIR, '.env');
 const GEMINI_SETTINGS_FILE = path.join(GEMINI_DIR, 'settings.json');
@@ -98,7 +106,7 @@ async function saveUploadedImage(dataUrl, originalName = 'image.png') {
     };
 }
 
-async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium' }) {
+async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high' }) {
     const cleanImages = Array.isArray(images) ? images : [];
     const cleanPrompt = (prompt || '').trim() || (cleanImages.length > 0 ? 'ช่วยดูและวิเคราะห์รูปภาพที่แนบมานี้หน่อย' : '');
     if (!cleanPrompt) throw new Error('ข้อความคำสั่งว่างเปล่า ไม่สามารถเพิ่มเข้าคิวได้');
@@ -109,7 +117,7 @@ async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_
         images: cleanImages,
         mode: mode || 'exec',
         cwd: cwd || PROJECTS_BASE,
-        model: model || 'gemini-4-hydrogen-medium',
+        model: model || 'gemini-4-hydrogen-high',
         createdAt: Date.now()
     };
 
@@ -275,6 +283,7 @@ function getLiveThinkingState(sinceMs = 0, agyConversationId = null) {
         let currentAction = '';
         let lastStepTime = '';
         const steps = [];
+        const timeline = [];
 
         for (let i = 0; i < lines.length; i++) {
             const raw = lines[i].trim();
@@ -287,6 +296,7 @@ function getLiveThinkingState(sinceMs = 0, agyConversationId = null) {
                 if (obj.created_at) lastStepTime = obj.created_at;
                 if (obj.thinking && String(obj.thinking).trim()) {
                     latestThinking = String(obj.thinking).trim();
+                    timeline.push({ kind: 'think', text: latestThinking, ts: ts || Date.now() });
                 }
                 if (Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0) {
                     for (const tc of obj.tool_calls) {
@@ -294,6 +304,7 @@ function getLiveThinkingState(sinceMs = 0, agyConversationId = null) {
                         if (summary) {
                             currentAction = summary;
                             steps.push(summary);
+                            timeline.push({ kind: 'tool', text: summary, ts: ts || Date.now() });
                         }
                     }
                 }
@@ -303,12 +314,41 @@ function getLiveThinkingState(sinceMs = 0, agyConversationId = null) {
         return {
             thinking: latestThinking || (steps.length ? 'ขั้นตอนที่ทำในรอบนี้:\n' + steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : ''),
             currentAction: currentAction || 'กำลังคิดวิเคราะห์คำสั่ง...',
+            steps,
             stepsCount: steps.length,
-            lastStepTime
+            timeline: timeline.slice(-120),
+            lastStepTime,
+            engine: 'antigravity'
         };
     } catch (_) {
         return null;
     }
+}
+
+function formatClaudeToolSummary(name, input) {
+    const args = (input && typeof input === 'object') ? input : {};
+    if (name === 'Bash') {
+        const desc = args.description || args.command || '';
+        return `⚙️ Bash: ${String(desc).replace(/\s+/g, ' ').trim()}`.slice(0, 140);
+    }
+    if (name === 'Read') return `📖 Read: ${args.file_path || ''}`.slice(0, 140);
+    if (name === 'Edit' || name === 'MultiEdit') return `✏️ ${name}: ${args.file_path || ''}`.slice(0, 140);
+    if (name === 'Write') return `📝 Write: ${args.file_path || ''}`.slice(0, 140);
+    if (name === 'Grep') return `🔍 Grep: ${args.pattern || ''}`.slice(0, 140);
+    if (name === 'Glob') return `📁 Glob: ${args.pattern || ''}`.slice(0, 140);
+    if (name === 'WebSearch' || name === 'WebFetch') return `🌐 ${name}: ${args.query || args.url || ''}`.slice(0, 140);
+    if (name === 'Agent' || name === 'Task') return `🤖 ${name}: ${args.description || ''}`.slice(0, 140);
+    const fallbackDetail = args.command || args.path || args.file_path || args.pattern || args.query || '';
+    const clean = String(fallbackDetail).replace(/\s+/g, ' ').trim();
+    return clean ? `🔧 ${name}: ${clean}`.slice(0, 140) : `🔧 ${name}`;
+}
+
+function resolveJobLiveThought(job, sess) {
+    if (!job || job.status !== 'running') return null;
+    if (job.liveThought) return job.liveThought;
+    const m = typeof job.model === 'string' ? job.model : '';
+    if (m.startsWith('claude-code-') || deepseekAgent.isDeepSeekModel(m)) return null;
+    return getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId);
 }
 
 function getActiveJob(sessionId = null) {
@@ -323,7 +363,7 @@ function getActiveJob(sessionId = null) {
             activeRunning: !!run,
             runningSessionIds,
             queue: getQueue(),
-            liveThought: job.status === 'running' ? getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId) : null
+            liveThought: resolveJobLiveThought(job, sess)
         };
     }
     const latestSid = runningSessionIds[0] || null;
@@ -336,7 +376,7 @@ function getActiveJob(sessionId = null) {
         activeRunning: activeRuns.size > 0,
         runningSessionIds,
         queue: getQueue(),
-        liveThought: job.status === 'running' ? getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId) : null
+        liveThought: resolveJobLiveThought(job, sess)
     };
 }
 
@@ -369,7 +409,7 @@ function ensureSessionsStoreSync() {
         const defSess = {
             id: 'sess_default',
             title: title || 'แชทเริ่มต้น',
-            model: 'gemini-4-hydrogen-medium',
+            model: 'gemini-4-hydrogen-high',
             cwd: PROJECTS_BASE,
             mode: 'exec',
             agyConversationId: null,
@@ -429,7 +469,7 @@ function saveSessionMessagesSync(sessionId, messages) {
             if ((!meta.title || meta.title === 'แชทใหม่' || meta.title === 'New Chat') && slice.length > 0) {
                 const firstUser = slice.find(m => m && m.role === 'user' && m.content);
                 if (firstUser) {
-                    meta.title = String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 48);
+                    meta.title = String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 80);
                 }
             }
             saveSessionsIndexSync();
@@ -442,27 +482,33 @@ function saveSessionMessagesSync(sessionId, messages) {
 
 function listSessions() {
     const list = ensureSessionsStoreSync();
-    const sorted = [...list].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const sorted = [...list].sort((a, b) => {
+        const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+        if (pinDiff !== 0) return pinDiff;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
     return {
         ok: true,
         runningSessionIds: [...activeRuns.keys()],
         sessions: sorted.map(s => ({
             ...s,
+            pinned: Boolean(s.pinned),
             running: activeRuns.has(s.id)
         }))
     };
 }
 
-function createSession({ title = 'แชทใหม่', model = 'gemini-4-hydrogen-medium', cwd = PROJECTS_BASE, mode = 'exec' } = {}) {
+function createSession({ title = 'แชทใหม่', model = 'gemini-4-hydrogen-high', cwd = PROJECTS_BASE, mode = 'exec' } = {}) {
     const list = ensureSessionsStoreSync();
     const id = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const now = Date.now();
     const sess = {
         id,
         title: String(title || 'แชทใหม่').trim().slice(0, 60) || 'แชทใหม่',
-        model: model || 'gemini-4-hydrogen-medium',
+        model: model || 'gemini-4-hydrogen-high',
         cwd: cwd || PROJECTS_BASE,
         mode: mode || 'exec',
+        pinned: false,
         agyConversationId: null,
         messageCount: 0,
         lastMessage: '',
@@ -502,6 +548,15 @@ function renameSession(sessionId, title) {
     sess.updatedAt = Date.now();
     saveSessionsIndexSync();
     return { ok: true, session: { ...sess, running: activeRuns.has(sess.id) } };
+}
+
+function togglePinSession(sessionId, pinned) {
+    const sess = getSessionMetaSync(sessionId);
+    if (!sess) throw new Error('ไม่พบ Session นี้');
+    sess.pinned = typeof pinned === 'boolean' ? pinned : !Boolean(sess.pinned);
+    sess.pinnedAt = sess.pinned ? Date.now() : null;
+    saveSessionsIndexSync();
+    return { ok: true, session: { ...sess, pinned: Boolean(sess.pinned), running: activeRuns.has(sess.id) }, sessions: listSessions().sessions };
 }
 
 function deleteSession(sessionId) {
@@ -545,13 +600,20 @@ async function persistJobToHistory(job) {
         const last = history[history.length - 1];
         const secondLast = history[history.length - 2];
 
+        const startTs = job.startedAt || Date.now();
+        const finishTs = job.finishedAt || Date.now();
+        const durationMs = Math.max(0, finishTs - startTs);
         if (secondLast && secondLast.role === 'user' && secondLast.content === promptText && last && last.role === 'assistant') {
+            if (!secondLast.timestamp) secondLast.timestamp = startTs;
             last.content = outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]');
+            last.timestamp = finishTs;
+            last.durationMs = durationMs;
         } else if (last && last.role === 'user' && last.content === promptText) {
-            history.push({ role: 'assistant', content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]') });
+            if (!last.timestamp) last.timestamp = startTs;
+            history.push({ role: 'assistant', content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]'), timestamp: finishTs, durationMs });
         } else {
-            history.push({ role: 'user', content: promptText });
-            history.push({ role: 'assistant', content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]') });
+            history.push({ role: 'user', content: promptText, timestamp: startTs });
+            history.push({ role: 'assistant', content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]'), timestamp: finishTs, durationMs });
         }
         saveSessionMessagesSync(sid, history);
     } catch (e) {
@@ -677,6 +739,22 @@ async function getStatus() {
         ];
     }
 
+    const hasDeepSeek = !!deepseekAgent.getApiKey();
+    if (hasDeepSeek) {
+        const existingIds = new Set(models.map((m) => m.id));
+        for (const dm of deepseekAgent.DEEPSEEK_MODELS) {
+            if (!existingIds.has(dm.id)) models.push(dm);
+        }
+    }
+
+    const hasClaudeCode = fs.existsSync(CLAUDE_BIN);
+    if (hasClaudeCode) {
+        const existingIds = new Set(models.map((m) => m.id));
+        for (const cm of CLAUDE_CODE_MODELS) {
+            if (!existingIds.has(cm.id)) models.push(cm);
+        }
+    }
+
     // List available project folders
     let projects = [];
     try {
@@ -695,6 +773,7 @@ async function getStatus() {
         engine,
         engineLabel,
         hasKey: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10),
+        hasDeepSeek,
         hasOAuth: hasAuth,
         oauthEmail,
         authType,
@@ -733,7 +812,7 @@ async function setApiKey(key) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-medium', resetSession = false }, onChunk, onDone) {
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false }, onChunk, onDone) {
     const sid = resolveSessionId(sessionId);
     if (activeRuns.has(sid)) {
         throw new Error('แชทนี้กำลังประมวลผลอยู่ กรุณารอสักครู่หรือกด "➕ แชทใหม่" เพื่อคุยอีกห้องพร้อมกัน');
@@ -761,7 +840,10 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         sessMeta.model = model || sessMeta.model;
         sessMeta.cwd = safeCwd;
         sessMeta.mode = mode || sessMeta.mode;
-        if (resetSession) sessMeta.agyConversationId = null;
+        if (resetSession) {
+            sessMeta.agyConversationId = null;
+            sessMeta.claudeSessionId = null;
+        }
         saveSessionsIndexSync();
     }
 
@@ -790,7 +872,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         const history = loadSessionMessagesSync(sid);
         const last = history[history.length - 1];
         if (!last || last.role !== 'user' || last.content !== prompt) {
-            const entry = { role: 'user', content: prompt };
+            const entry = { role: 'user', content: prompt, timestamp: job.startedAt };
             if (cleanImages.length > 0) entry.images = cleanImages;
             history.push(entry);
             saveSessionMessagesSync(sid, history);
@@ -810,9 +892,394 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
     }
     const existingConvId = (!forceNew && sessMeta) ? sessMeta.agyConversationId : null;
 
+    // Route to Claude Code CLI (monthly Claude.ai OAuth subscription)
+    if (typeof model === 'string' && model.startsWith('claude-code-')) {
+        if (!fs.existsSync(CLAUDE_BIN)) {
+            throw new Error('ไม่พบ Claude Code CLI (/home/dev/.local/bin/claude)');
+        }
+        const cliModel = model.replace('claude-code-', '').trim() || 'sonnet';
+        const claudeProjectsDir = path.join(HOME_DIR, '.claude', 'projects');
+        const claudeSessionExistsOnDisk = (uuid) => {
+            if (!uuid || !fs.existsSync(claudeProjectsDir)) return false;
+            try {
+                for (const d of fs.readdirSync(claudeProjectsDir)) {
+                    if (fs.existsSync(path.join(claudeProjectsDir, d, `${uuid}.jsonl`))) return true;
+                }
+            } catch (_) {}
+            return false;
+        };
+        const hadClaudeSession = Boolean(!forceNew && sessMeta && sessMeta.claudeSessionId && claudeSessionExistsOnDisk(sessMeta.claudeSessionId));
+        let claudeSid = hadClaudeSession ? sessMeta.claudeSessionId : crypto.randomUUID();
+        let finalClaudePrompt = cliPrompt;
+
+        // Bridge prior messages if first time using Claude Code in this room or after another engine
+        if (!hadClaudeSession || (sessMeta && sessMeta.needsClaudeBridge)) {
+            try {
+                const hist = loadSessionMessagesSync(sid);
+                const prior = hist.slice(0, -1).slice(-6);
+                if (prior.length > 0) {
+                    const summaryLines = prior.map((m) => {
+                        const role = m.role === 'user' ? 'User' : 'Assistant';
+                        return `${role}: ${String(m.content || '').slice(0, 1200)}`;
+                    });
+                    finalClaudePrompt = `[บริบทล่าสุดในห้องแชทเดียวกัน (อ่านเพื่อความต่อเนื่อง):\n${summaryLines.join('\n---\n')}\n]\n\n${cliPrompt}`;
+                }
+            } catch (_) {}
+        }
+
+        if (sessMeta) {
+            sessMeta.claudeSessionId = claudeSid;
+            sessMeta.needsClaudeBridge = false;
+            sessMeta.needsAgyBridge = true;
+            saveSessionsIndexSync();
+        }
+
+        const args = [
+            '-p', finalClaudePrompt,
+            '--model', cliModel,
+            '--output-format', 'stream-json',
+            '--verbose',
+            '--include-partial-messages'
+        ];
+        if (hadClaudeSession) {
+            args.push('--resume', claudeSid);
+        } else {
+            args.push('--session-id', claudeSid);
+        }
+        if (mode === 'exec') {
+            args.push('--dangerously-skip-permissions');
+        } else {
+            args.push('--permission-mode', 'plan');
+        }
+
+        const env = {
+            ...process.env,
+            PATH: `/home/dev/.local/bin:${process.env.PATH || ''}`,
+            TERM: 'xterm-256color',
+            FORCE_COLOR: '0'
+        };
+
+        const child = spawn(CLAUDE_BIN, args, {
+            cwd: safeCwd,
+            env,
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        activeRuns.set(sid, { child, job });
+
+        let claudeStdoutBuf = '';
+        let claudeThinking = '';
+        let currentBlockThinking = '';
+        const claudeSteps = [];
+        const claudeTimeline = [];
+        const seenClaudeToolIds = new Set();
+        let currentBlockType = '';
+        let currentToolName = '';
+        let currentToolId = '';
+        let currentToolJson = '';
+        let currentAction = 'กำลังเชื่อมต่อ Claude Code...';
+        let emittedTextFromDeltas = false;
+        let lastClaudeThoughtAt = 0;
+
+        const pushClaudeEvent = (kind, text) => {
+            const clean = String(text || '').trim();
+            if (!clean) return;
+            claudeTimeline.push({ kind, text: clean, ts: Date.now() });
+            if (claudeTimeline.length > 120) claudeTimeline.shift();
+        };
+        pushClaudeEvent('init', `claude-code --model=${cliModel} --mode=${mode}`);
+
+        const emitClaudeThought = (action, force = false) => {
+            if (action) currentAction = action;
+            const stepList = claudeSteps.length
+                ? 'ขั้นตอนที่ทำในรอบนี้:\n' + claudeSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')
+                : '';
+            const thinkingText = claudeThinking
+                ? (stepList ? `${claudeThinking}\n\n${stepList}` : claudeThinking)
+                : stepList;
+            const payload = {
+                currentAction: currentAction || 'กำลังคิดวิเคราะห์ (Claude)...',
+                thinking: thinkingText.slice(-3000),
+                steps: [...claudeSteps],
+                stepsCount: claudeSteps.length,
+                timeline: [...claudeTimeline],
+                engine: 'claude-code'
+            };
+            job.liveThought = payload;
+            const now = Date.now();
+            if (force || now - lastClaudeThoughtAt >= 100) {
+                lastClaudeThoughtAt = now;
+                try { onChunk('thought', payload); } catch (_) {}
+            }
+        };
+
+        emitClaudeThought('กำลังเชื่อมต่อ Claude Code...', true);
+
+        const processClaudeLine = (rawLine) => {
+            const line = rawLine.trim();
+            if (!line) return;
+            let obj;
+            try {
+                obj = JSON.parse(line);
+            } catch (_) {
+                const cleaned = line.replace(/^\[claude-code:unrecognized_model\][^\n]*$/gm, '').trim();
+                if (cleaned && !line.startsWith('{')) {
+                    job.output += cleaned + '\n';
+                    onChunk('stdout', cleaned + '\n');
+                }
+                return;
+            }
+
+            if (obj.type === 'system') {
+                if (obj.subtype === 'init') {
+                    pushClaudeEvent('status', `session=${String(obj.session_id || claudeSid).slice(0, 8)} model=${obj.model || cliModel}`);
+                    emitClaudeThought('เชื่อมต่อ Claude Code สำเร็จ — กำลังรอผล...', true);
+                } else if (obj.subtype === 'status' && obj.status) {
+                    const statusMsg = obj.status === 'requesting' ? 'กำลังส่งคำขอไปยัง Claude API...' : `status: ${obj.status}`;
+                    pushClaudeEvent('status', statusMsg);
+                    emitClaudeThought(statusMsg, true);
+                }
+                return;
+            }
+
+            if (obj.type === 'stream_event' && obj.event) {
+                const ev = obj.event;
+                if (ev.type === 'message_start') {
+                    if (job.output && !job.output.endsWith('\n')) {
+                        job.output += '\n\n';
+                        onChunk('stdout', '\n\n');
+                    }
+                } else if (ev.type === 'content_block_start' && ev.content_block) {
+                    const cb = ev.content_block;
+                    currentBlockType = cb.type || '';
+                    if (currentBlockType === 'thinking') {
+                        currentBlockThinking = '';
+                        pushClaudeEvent('status', 'กำลังคิดวิเคราะห์ (extended thinking)...');
+                        emitClaudeThought('กำลังคิดวิเคราะห์ (Claude)...', true);
+                    } else if (currentBlockType === 'tool_use') {
+                        currentToolName = cb.name || 'tool';
+                        currentToolId = cb.id || '';
+                        currentToolJson = '';
+                        emitClaudeThought(`⚙️ กำลังเตรียมเครื่องมือ: ${currentToolName}...`, true);
+                    } else if (currentBlockType === 'text') {
+                        pushClaudeEvent('status', 'กำลังเรียบเรียงคำตอบ (streaming)...');
+                        emitClaudeThought('กำลังเรียบเรียงคำตอบ (Claude)...', true);
+                    }
+                } else if (ev.type === 'content_block_delta' && ev.delta) {
+                    const d = ev.delta;
+                    if (d.type === 'thinking_delta' && d.thinking) {
+                        claudeThinking += d.thinking;
+                        currentBlockThinking += d.thinking;
+                        emitClaudeThought('กำลังคิดวิเคราะห์ (Claude)...');
+                    } else if (d.type === 'input_json_delta' && d.partial_json) {
+                        currentToolJson += d.partial_json;
+                    } else if (d.type === 'text_delta' && d.text) {
+                        emittedTextFromDeltas = true;
+                        job.output += d.text;
+                        onChunk('stdout', d.text);
+                    }
+                } else if (ev.type === 'content_block_stop') {
+                    if (currentBlockType === 'thinking' && currentBlockThinking.trim()) {
+                        pushClaudeEvent('think', currentBlockThinking.trim().slice(-1200));
+                        emitClaudeThought('กำลังคิดวิเคราะห์ (Claude)...', true);
+                        currentBlockThinking = '';
+                    } else if (currentBlockType === 'tool_use' && currentToolName) {
+                        let parsedInput = {};
+                        try {
+                            if (currentToolJson) parsedInput = JSON.parse(currentToolJson);
+                        } catch (_) {}
+                        const summary = formatClaudeToolSummary(currentToolName, parsedInput);
+                        if (!currentToolId || !seenClaudeToolIds.has(currentToolId)) {
+                            if (currentToolId) seenClaudeToolIds.add(currentToolId);
+                            claudeSteps.push(summary);
+                            pushClaudeEvent('tool', summary);
+                        }
+                        emitClaudeThought(summary, true);
+                    }
+                    currentBlockType = '';
+                    currentToolName = '';
+                    currentToolId = '';
+                    currentToolJson = '';
+                }
+                return;
+            }
+
+            if (obj.type === 'assistant' && obj.message && Array.isArray(obj.message.content)) {
+                let updated = false;
+                for (const block of obj.message.content) {
+                    if (!block) continue;
+                    if (block.type === 'thinking' && block.thinking && !claudeThinking.includes(block.thinking)) {
+                        claudeThinking += (claudeThinking ? '\n' : '') + block.thinking;
+                        pushClaudeEvent('think', block.thinking.trim().slice(-1200));
+                        updated = true;
+                    } else if (block.type === 'tool_use' && block.name) {
+                        const tid = block.id || '';
+                        if (!tid || !seenClaudeToolIds.has(tid)) {
+                            if (tid) seenClaudeToolIds.add(tid);
+                            const summary = formatClaudeToolSummary(block.name, block.input);
+                            claudeSteps.push(summary);
+                            pushClaudeEvent('tool', summary);
+                            currentAction = summary;
+                            updated = true;
+                        }
+                    } else if (block.type === 'text' && block.text && !emittedTextFromDeltas) {
+                        job.output += block.text;
+                        onChunk('stdout', block.text);
+                    }
+                }
+                if (updated) emitClaudeThought(currentAction, true);
+                return;
+            }
+
+            if (obj.type === 'user' && obj.message && Array.isArray(obj.message.content)) {
+                let gotResult = false;
+                for (const block of obj.message.content) {
+                    if (block && block.type === 'tool_result') {
+                        const len = typeof block.content === 'string'
+                            ? block.content.length
+                            : JSON.stringify(block.content || '').length;
+                        pushClaudeEvent('tool_ok', `tool_result received (${len} bytes)`);
+                        gotResult = true;
+                    }
+                }
+                if (gotResult) emitClaudeThought('วิเคราะห์ผลลัพธ์จากเครื่องมือ...', true);
+                return;
+            }
+
+            if (obj.type === 'result') {
+                const dur = obj.duration_ms ? `${(obj.duration_ms / 1000).toFixed(1)}s` : '';
+                const cost = typeof obj.total_cost_usd === 'number' ? `$${obj.total_cost_usd.toFixed(4)}` : '';
+                pushClaudeEvent('status', `completed turns=${obj.num_turns || 1}${dur ? ' time=' + dur : ''}${cost ? ' cost=' + cost : ''}`);
+                emitClaudeThought('เสร็จสิ้นการประมวลผล', true);
+                if (!emittedTextFromDeltas && !job.output && typeof obj.result === 'string' && obj.result) {
+                    job.output += obj.result;
+                    onChunk('stdout', obj.result);
+                }
+                if (obj.is_error && obj.result && !job.error) {
+                    job.error = String(obj.result);
+                }
+            }
+        };
+
+        child.stdout.on('data', (d) => {
+            claudeStdoutBuf += d.toString('utf8');
+            const lines = claudeStdoutBuf.split('\n');
+            claudeStdoutBuf = lines.pop() || '';
+            for (const line of lines) processClaudeLine(line);
+        });
+
+        child.stderr.on('data', (d) => {
+            const str = d.toString('utf8');
+            onChunk('stderr', str);
+        });
+
+        child.on('error', (err) => {
+            activeRuns.delete(sid);
+            job.liveThought = null;
+            job.status = 'error';
+            job.error = err.message;
+            job.finishedAt = Date.now();
+            lastJobs.set(sid, job);
+            onDone(1, err.message);
+            setTimeout(() => { processNextInQueue(); }, 600);
+        });
+
+        child.on('close', (code) => {
+            if (claudeStdoutBuf.trim()) {
+                processClaudeLine(claudeStdoutBuf);
+                claudeStdoutBuf = '';
+            }
+            activeRuns.delete(sid);
+            job.liveThought = null;
+            job.exitCode = code;
+            if (job.status !== 'aborted') {
+                job.status = (code === 0) ? 'completed' : 'error';
+                if (code !== 0 && !job.error) {
+                    job.error = `Exit code ${code}`;
+                }
+            }
+            job.finishedAt = Date.now();
+            lastJobs.set(sid, job);
+            persistJobToHistory({ ...job }).catch((err) => {
+                console.error('[GeminiManager] Failed to persist Claude job:', err.message);
+            });
+            onDone(code, job.error);
+            setTimeout(() => { processNextInQueue(); }, 600);
+        });
+
+        return {
+            abort: () => {
+                const run = activeRuns.get(sid);
+                if (run && run.child === child) {
+                    job.status = 'aborted';
+                    job.finishedAt = Date.now();
+                    try {
+                        child.kill('SIGTERM');
+                        setTimeout(() => {
+                            const r = activeRuns.get(sid);
+                            if (r && r.child === child) child.kill('SIGKILL');
+                        }, 2000);
+                    } catch (_) {}
+                }
+            }
+        };
+    }
+
+    // Route to DeepSeek Agent when a deepseek-* model is selected
+    if (deepseekAgent.isDeepSeekModel(model)) {
+        const sessionHistory = loadSessionMessagesSync(sid);
+        if (sessMeta) {
+            sessMeta.needsAgyBridge = true;
+            sessMeta.needsClaudeBridge = true;
+            saveSessionsIndexSync();
+        }
+        let handle = null;
+        handle = deepseekAgent.runDeepSeekPrompt({
+            job,
+            prompt,
+            imagePaths,
+            mode,
+            cwd: safeCwd,
+            model,
+            history: sessionHistory,
+            onChunk,
+            onDone: (code, errMsg) => {
+                activeRuns.delete(sid);
+                lastJobs.set(sid, job);
+                persistJobToHistory({ ...job }).catch((err) => {
+                    console.error('[GeminiManager] Failed to persist DeepSeek job:', err.message);
+                });
+                onDone(code, errMsg);
+                setTimeout(() => { processNextInQueue(); }, 600);
+            }
+        });
+        activeRuns.set(sid, { abort: handle.abort, job });
+        return handle;
+    }
+
     const hasAgy = fs.existsSync(AGY_BIN);
 
     if (hasAgy) {
+        // Bridge context if user switched back from DeepSeek in the same session
+        let finalAgyPrompt = cliPrompt;
+        if (existingConvId && sessMeta && sessMeta.needsAgyBridge) {
+            try {
+                const hist = loadSessionMessagesSync(sid);
+                const prior = hist.slice(0, -1).slice(-6);
+                if (prior.length > 0) {
+                    const summaryLines = prior.map((m) => {
+                        const role = m.role === 'user' ? 'User' : 'Assistant';
+                        const txt = String(m.content || '').slice(0, 1200);
+                        return `${role}: ${txt}`;
+                    });
+                    finalAgyPrompt = `[บริบทล่าสุดจากการคุยกับ DeepSeek ในห้องแชทเดียวกัน (อ่านเพื่อความต่อเนื่อง):\n${summaryLines.join('\n---\n')}\n]\n\n${cliPrompt}`;
+                }
+            } catch (_) {}
+            sessMeta.needsAgyBridge = false;
+            sessMeta.needsClaudeBridge = true;
+            saveSessionsIndexSync();
+        }
+
         // Snapshot existing brain UUIDs if this session doesn't have an agyConversationId yet
         let beforeBrains = null;
         if (!existingConvId) {
@@ -823,7 +1290,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
         }
 
-        const args = ['-p', cliPrompt];
+        const args = ['-p', finalAgyPrompt];
         if (existingConvId) {
             args.unshift('--conversation', existingConvId);
         }
@@ -867,6 +1334,18 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             } catch (_) {}
         };
         const brainPoll = beforeBrains ? setInterval(detectConvId, 600) : null;
+        let lastAgyThoughtSig = '';
+        const thoughtPoll = setInterval(() => {
+            const state = getLiveThinkingState(job.startedAt || 0, sessMeta && sessMeta.agyConversationId);
+            if (!state) return;
+            const tlLen = Array.isArray(state.timeline) ? state.timeline.length : 0;
+            const sig = `${state.currentAction}|${state.stepsCount}|${tlLen}|${state.thinking}`;
+            if (sig !== lastAgyThoughtSig) {
+                lastAgyThoughtSig = sig;
+                job.liveThought = state;
+                try { onChunk('thought', state); } catch (_) {}
+            }
+        }, 300);
 
         child.stdout.on('data', (d) => {
             const str = d.toString('utf8');
@@ -881,6 +1360,8 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
         child.on('error', (err) => {
             if (brainPoll) clearInterval(brainPoll);
+            clearInterval(thoughtPoll);
+            job.liveThought = null;
             activeRuns.delete(sid);
             job.status = 'error';
             job.error = err.message;
@@ -892,7 +1373,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
         child.on('close', (code) => {
             if (brainPoll) clearInterval(brainPoll);
+            clearInterval(thoughtPoll);
             detectConvId();
+            job.liveThought = null;
             activeRuns.delete(sid);
             job.exitCode = code;
             if (job.status !== 'aborted') {
@@ -1037,7 +1520,8 @@ function abortActive(sessionId = null) {
             lastJobs.set(sessionId, run.job);
         }
         try {
-            run.child.kill('SIGTERM');
+            if (typeof run.abort === 'function') run.abort();
+            else if (run.child) run.child.kill('SIGTERM');
             activeRuns.delete(sessionId);
             return { ok: true, killed: true, sessionId };
         } catch (e) {
@@ -1052,7 +1536,11 @@ function abortActive(sessionId = null) {
                 run.job.finishedAt = Date.now();
                 lastJobs.set(sid, run.job);
             }
-            try { run.child.kill('SIGTERM'); killed++; } catch (_) {}
+            try {
+                if (typeof run.abort === 'function') run.abort();
+                else if (run.child) run.child.kill('SIGTERM');
+                killed++;
+            } catch (_) {}
             activeRuns.delete(sid);
         }
         return { ok: true, killed: killed > 0 };
@@ -1081,7 +1569,23 @@ async function loadHistory(sessionId = null) {
 
 async function saveHistory(messages, sessionId = null) {
     const sid = resolveSessionId(sessionId);
-    return saveSessionMessagesSync(sid, messages);
+    const existing = loadSessionMessagesSync(sid);
+    const merged = (messages || []).map((m, i) => {
+        if (!m || typeof m !== 'object') return m;
+        const ex = existing[i] && existing[i].role === m.role && existing[i].content === m.content
+            ? existing[i]
+            : existing.find(e => e && e.role === m.role && e.content === m.content);
+        const out = { ...m };
+        if (ex) {
+            if (!out.timestamp && ex.timestamp) out.timestamp = ex.timestamp;
+            if (!out.durationMs && ex.durationMs) {
+                out.durationMs = ex.durationMs;
+                if (ex.timestamp) out.timestamp = ex.timestamp;
+            }
+        }
+        return out;
+    });
+    return saveSessionMessagesSync(sid, merged);
 }
 
 async function clearHistory(sessionId = null) {
@@ -1145,48 +1649,137 @@ async function appendMemory(fact) {
 }
 
 // ── AI Quota Summary (Google Cloud Code / Antigravity OAuth) ─────────────────
+const CLOUDCODE_BASE = 'https://daily-cloudcode-pa.googleapis.com/v1internal';
+const CLOUDCODE_HEADERS_BASE = {
+    'Content-Type': 'application/json',
+    'User-Agent': 'antigravity/1.15.8'
+};
+let cachedProjectInfo = { project: null, tier: null, fetchedAt: 0 };
+
+function execFileAsync(cmd, args, opts = {}) {
+    return new Promise((resolve, reject) => {
+        execFile(cmd, args, opts, (err, stdout, stderr) => {
+            if (err) return reject(err);
+            resolve({ stdout, stderr });
+        });
+    });
+}
+
+function readOAuthTokenFile(tokenFile) {
+    const raw = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
+    const inner = typeof raw.token === 'string' ? JSON.parse(raw.token) : raw.token;
+    return { raw, inner };
+}
+
+async function getValidAccessToken(tokenFile, forceRefresh = false) {
+    let { raw, inner } = readOAuthTokenFile(tokenFile);
+    const expiryMs = inner?.expiry ? Date.parse(inner.expiry) : 0;
+    const needsRefresh = forceRefresh || !inner?.access_token || !expiryMs || (expiryMs - Date.now() < 60_000);
+
+    if (needsRefresh && fs.existsSync(AGY_BIN)) {
+        try {
+            await execFileAsync(AGY_BIN, ['models'], { timeout: 15000 });
+            ({ raw, inner } = readOAuthTokenFile(tokenFile));
+        } catch (_) {
+            // Fall through and use existing token if refresh failed
+        }
+    }
+
+    return {
+        accessToken: inner?.access_token || null,
+        email: raw.id_token_email || 'asri.utcc@gmail.com'
+    };
+}
+
+async function postCloudCode(endpoint, accessToken, bodyObj) {
+    const res = await fetch(`${CLOUDCODE_BASE}:${endpoint}`, {
+        method: 'POST',
+        headers: {
+            ...CLOUDCODE_HEADERS_BASE,
+            'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(bodyObj)
+    });
+    return res;
+}
+
+function toPctObj(remainingFraction, resetTime = null) {
+    const rem = typeof remainingFraction === 'number' ? remainingFraction : 1;
+    const remainingPct = Math.max(0, Math.min(100, Number((rem * 100).toFixed(1))));
+    return {
+        remainingPct,
+        usedPct: Number((100 - remainingPct).toFixed(1)),
+        resetTime: resetTime || null
+    };
+}
+
 async function getQuotaSummary() {
     const tokenFile = path.join(HOME_DIR, '.gemini/antigravity-cli/antigravity-oauth-token');
     if (!fs.existsSync(tokenFile)) {
         return { ok: false, error: 'ไม่พบไฟล์ antigravity-oauth-token' };
     }
     try {
-        const raw = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
-        const inner = typeof raw.token === 'string' ? JSON.parse(raw.token) : raw.token;
-        const accessToken = inner?.access_token;
+        let { accessToken, email } = await getValidAccessToken(tokenFile, false);
         if (!accessToken) {
             return { ok: false, error: 'ไม่พบ access_token ในไฟล์ OAuth' };
         }
 
-        const res = await fetch('https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-                'User-Agent': 'antigravity/1.15.8'
-            },
-            body: '{}'
-        });
+        // Resolve project & tier via loadCodeAssist (cached for 10 minutes)
+        if (!cachedProjectInfo.project || Date.now() - cachedProjectInfo.fetchedAt > 10 * 60_000) {
+            let lcaRes = await postCloudCode('loadCodeAssist', accessToken, {
+                metadata: { ideType: 'ANTIGRAVITY', pluginType: 'GEMINI' }
+            });
+            if (lcaRes.status === 401) {
+                ({ accessToken, email } = await getValidAccessToken(tokenFile, true));
+                lcaRes = await postCloudCode('loadCodeAssist', accessToken, {
+                    metadata: { ideType: 'ANTIGRAVITY', pluginType: 'GEMINI' }
+                });
+            }
+            if (lcaRes.ok) {
+                const lcaData = await lcaRes.json();
+                cachedProjectInfo = {
+                    project: lcaData.cloudaicompanionProject || 'aicode-consumers',
+                    tier: lcaData.currentTier?.name || lcaData.currentTier?.id || null,
+                    fetchedAt: Date.now()
+                };
+            }
+        }
+        const project = cachedProjectInfo.project || 'aicode-consumers';
 
-        if (!res.ok) {
-            const errTxt = await res.text().catch(() => '');
-            return { ok: false, error: `Quota API HTTP ${res.status}: ${errTxt.slice(0, 120)}` };
+        let [modelsRes, summaryRes, deepseekInfo, claudeWebInfo] = await Promise.all([
+            postCloudCode('fetchAvailableModels', accessToken, { project }),
+            postCloudCode('retrieveUserQuotaSummary', accessToken, { project }),
+            deepseekAgent.getDeepSeekBalance(),
+            getClaudeWebQuota()
+        ]);
+
+        if (modelsRes.status === 401 || summaryRes.status === 401) {
+            ({ accessToken, email } = await getValidAccessToken(tokenFile, true));
+            [modelsRes, summaryRes] = await Promise.all([
+                postCloudCode('fetchAvailableModels', accessToken, { project }),
+                postCloudCode('retrieveUserQuotaSummary', accessToken, { project })
+            ]);
         }
 
-        const data = await res.json();
+        if (!modelsRes.ok) {
+            const errTxt = await modelsRes.text().catch(() => '');
+            return { ok: false, error: `Quota API HTTP ${modelsRes.status}: ${errTxt.slice(0, 120)}` };
+        }
+
+        const data = await modelsRes.json();
+        const summaryData = summaryRes.ok ? await summaryRes.json().catch(() => null) : null;
         const modelsObj = data.models || {};
         const models = [];
 
         for (const [id, info] of Object.entries(modelsObj)) {
             if (!info || !info.quotaInfo) continue;
-            const rem = typeof info.quotaInfo.remainingFraction === 'number' ? info.quotaInfo.remainingFraction : 1;
-            const remainingPct = Math.max(0, Math.min(100, Number((rem * 100).toFixed(1))));
+            const pct = toPctObj(info.quotaInfo.remainingFraction, info.quotaInfo.resetTime);
             models.push({
                 id,
                 displayName: info.displayName || id,
-                remainingPct,
-                usedPct: Number((100 - remainingPct).toFixed(1)),
-                resetTime: info.quotaInfo.resetTime || null
+                provider: info.modelProvider || info.apiProvider || null,
+                apiProvider: info.apiProvider || null,
+                ...pct
             });
         }
 
@@ -1207,33 +1800,404 @@ async function getQuotaSummary() {
             };
         };
 
-        const argonPool = pickPool('argon', 'Gemini 4 Argon', m => m.id.includes('argon'), '#a855f7') || {
-            id: 'argon',
-            name: 'Gemini 4 Argon (Weekly)',
-            color: '#f87171',
-            remainingPct: 0,
-            usedPct: 100,
-            resetTime: '2026-11-21T08:22:00Z',
-            modelsCount: 3,
-            models: [],
-            note: 'ไม่พบใน REST API (โควตารอบสัปดาห์หมด)'
+        // ── Pool definitions: ทุก pool ที่ระบบรู้จัก (data-driven, ไม่ hardcode ยอด) ──
+        const POOL_DEFS = [
+            {
+                id: 'gemini',
+                name: 'Gemini Models (Hydrogen / Flash / Pro)',
+                color: '#38bdf8',
+                match: m => !/argon/i.test(m.id) && (
+                    /GOOGLE/i.test(m.provider || '') || m.id.startsWith('gemini-') || m.id.startsWith('chat_') || m.id.startsWith('tab_')
+                )
+            },
+            {
+                id: 'claude',
+                name: 'Claude & GPT Models',
+                color: '#fb923c',
+                match: m => !/argon/i.test(m.id) && (
+                    /claude|gpt/i.test(m.id) || /ANTHROPIC|OPENAI/i.test(m.provider || '')
+                )
+            },
+            {
+                id: 'argon',
+                name: 'Gemini 4 Argon',
+                color: '#a855f7',
+                match: m => /argon/i.test(m.id)
+            }
+        ];
+
+        const pools = [];
+        const unavailablePools = [];
+        const claimed = new Set();
+
+        for (const def of POOL_DEFS) {
+            const matched = models.filter(m => !claimed.has(m.id) && def.match(m));
+            if (!matched.length) {
+                unavailablePools.push({
+                    id: def.id,
+                    name: def.name,
+                    color: def.color,
+                    reason: 'ไม่มีโมเดลนี้ในบัญชีของคุณ (API ไม่ส่ง quota กลับมา)'
+                });
+                continue;
+            }
+            matched.forEach(m => claimed.add(m.id));
+            const pool = pickPool(def.id, def.name, m => matched.includes(m), def.color);
+            if (pool) pools.push(pool);
+        }
+
+        // โมเดลที่ยังไม่ถูกจัดเข้า pool ใด → แสดงเป็น pool เสริม ไม่ให้ข้อมูลหาย
+        const leftovers = models.filter(m => !claimed.has(m.id));
+        if (leftovers.length) {
+            leftovers.forEach(m => claimed.add(m.id));
+            const pool = pickPool('other', 'Other Models (Internal / Preview)', m => leftovers.includes(m), '#94a3b8');
+            if (pool) pools.push(pool);
+        }
+
+        // ── Enrich pool ด้วย bucket 5h / weekly จาก retrieveUserQuotaSummary ──
+        const poolById = Object.fromEntries(pools.map(p => [p.id, p]));
+        const applyBuckets = (pool, group) => {
+            if (!pool || !Array.isArray(group?.buckets)) return;
+            const b5h = group.buckets.find(b => b.window === '5h');
+            const bWk = group.buckets.find(b => b.window === 'weekly');
+            if (b5h) pool.fiveHour = toPctObj(b5h.remainingFraction, b5h.resetTime);
+            if (bWk) pool.weekly = toPctObj(bWk.remainingFraction, bWk.resetTime);
+            const tighter = [pool.fiveHour, pool.weekly]
+                .filter(Boolean)
+                .reduce((a, b) => (!a || b.remainingPct < a.remainingPct ? b : a), null);
+            if (tighter && tighter.remainingPct < pool.remainingPct) {
+                pool.remainingPct = tighter.remainingPct;
+                pool.usedPct = tighter.usedPct;
+                pool.resetTime = tighter.resetTime;
+            }
+            pool.bucketGroup = group.displayName || null;
         };
 
-        const pools = [
-            pickPool('gemini', 'Gemini Models (Hydrogen / Flash / Pro)', m => m.id.includes('gemini-3.8') || m.id.includes('gemini-3-flash') || m.id.includes('gemini-2.5-pro'), '#38bdf8'),
-            pickPool('claude', 'Claude & GPT Models', m => m.id.includes('claude') || m.id.includes('gpt-oss'), '#fb923c'),
-            argonPool
-        ].filter(Boolean);
+        if (Array.isArray(summaryData?.groups) && summaryData.groups.length) {
+            for (const group of summaryData.groups) {
+                const desc = `${group.displayName || ''} ${group.description || ''}`.toLowerCase();
+                // เลือก pool ที่มีชื่อโมเดลตรงกับคำอธิบายกลุ่มมากที่สุด
+                let best = null;
+                let bestScore = 0;
+                for (const pool of pools) {
+                    const score = (pool.models || []).reduce((acc, m) => {
+                        const nm = (m.displayName || m.id || '').toLowerCase().split(' (')[0];
+                        return acc + (nm && desc.includes(nm) ? 1 : 0);
+                    }, 0);
+                    if (score > bestScore) { bestScore = score; best = pool; }
+                }
+                if (!best && (group.buckets || []).some(b => (b.bucketId || '').startsWith('3p-'))) {
+                    best = poolById.claude || null;
+                }
+                applyBuckets(best, group);
+            }
+        }
 
         return {
             ok: true,
-            email: raw.id_token_email || 'asri.utcc@gmail.com',
+            email,
+            tier: cachedProjectInfo.tier,
+            project,
             updatedAt: new Date().toISOString(),
             pools,
+            unavailablePools,
+            deepseek: deepseekInfo || null,
+            claudeWeb: claudeWebInfo || null,
+            summaryGroups: summaryData?.groups || [],
             models: models.sort((a, b) => a.id.localeCompare(b.id))
         };
     } catch (err) {
         return { ok: false, error: err.message };
+    }
+}
+
+async function setClaudeSessionKey(key) {
+    const cleanKey = (key || '').trim();
+    if (cleanKey && cleanKey.length < 15) {
+        throw new Error('sessionKey ไม่ถูกต้อง (สั้นเกินไป)');
+    }
+    if (!fs.existsSync(GEMINI_DIR)) {
+        await fsp.mkdir(GEMINI_DIR, { recursive: true });
+    }
+    let lines = [];
+    if (fs.existsSync(GEMINI_ENV_FILE)) {
+        const raw = await fsp.readFile(GEMINI_ENV_FILE, 'utf8');
+        lines = raw.split('\n').filter(l => l.trim() && !l.startsWith('CLAUDE_SESSION_KEY='));
+    }
+    if (cleanKey) {
+        lines.push(`CLAUDE_SESSION_KEY=${cleanKey}`);
+        process.env.CLAUDE_SESSION_KEY = cleanKey;
+    } else {
+        delete process.env.CLAUDE_SESSION_KEY;
+    }
+    await fsp.writeFile(GEMINI_ENV_FILE, lines.join('\n') + '\n', { mode: 0o600 });
+    return { ok: true, configured: !!cleanKey };
+}
+
+function parseClaudeUsagePayload(data) {
+    if (!data || typeof data !== 'object') return null;
+    const now = Date.now();
+    const toValidResetIso = (raw) => {
+        if (!raw) return null;
+        const ms = typeof raw === 'number' ? (raw < 1e12 ? raw * 1000 : raw) : Date.parse(raw);
+        if (Number.isNaN(ms) || ms <= now) return null;
+        return new Date(ms).toISOString();
+    };
+    const root = (data.rate_limits && typeof data.rate_limits === 'object') ? data.rate_limits : data;
+    const extract = (obj) => {
+        if (!obj || typeof obj !== 'object') return null;
+        const rawPct = obj.utilization ?? obj.percent ?? obj.used_percentage ?? obj.percentage;
+        if (rawPct === undefined || rawPct === null) return null;
+        const rawReset = obj.resets_at ?? obj.resetsAt;
+        const resetTime = toValidResetIso(rawReset);
+        const usedPct = (rawReset && !resetTime) ? 0 : Math.max(0, Math.min(100, Number(rawPct) || 0));
+        return {
+            usedPct: Number(usedPct.toFixed(1)),
+            remainingPct: Number((100 - usedPct).toFixed(1)),
+            resetTime
+        };
+    };
+
+    const fiveHour = extract(root.five_hour || root.session) || (
+        (data.session_percentage != null || data.five_hour_percent != null)
+            ? {
+                usedPct: Number(data.session_percentage ?? data.five_hour_percent) || 0,
+                remainingPct: Number((100 - (Number(data.session_percentage ?? data.five_hour_percent) || 0)).toFixed(1)),
+                resetTime: toValidResetIso(data.session_resets_at ?? data.five_hour_resets_at)
+            }
+            : null
+    );
+
+    const wkCandidates = [
+        extract(root.seven_day || root.weekly),
+        extract(root.seven_day_sonnet),
+        extract(root.seven_day_opus)
+    ].filter(Boolean);
+    let weekly = wkCandidates.length > 0
+        ? (wkCandidates[0].usedPct > 0 ? wkCandidates[0] : wkCandidates.reduce((a, b) => (b.usedPct > a.usedPct ? b : a), wkCandidates[0]))
+        : null;
+    if (!weekly && (data.weekly_percentage != null || data.seven_day_percent != null)) {
+        const u = Number(data.weekly_percentage ?? data.seven_day_percent) || 0;
+        weekly = {
+            usedPct: u,
+            remainingPct: Number((100 - u).toFixed(1)),
+            resetTime: toValidResetIso(data.weekly_resets_at ?? data.seven_day_resets_at)
+        };
+    }
+
+    if (!fiveHour && !weekly) return null;
+    return { fiveHour, weekly };
+}
+
+// ── Claude.ai subscription quota ─────────────────────────────────────────────
+// Sources (in order): 1) Claude Code CLI OAuth (monthly plan) 2) manual sessionKey cookie
+const CLAUDE_QUOTA_CACHE_FILE = path.join(GEMINI_DIR, 'claude-quota-cache.json');
+const CLAUDE_QUOTA_OK_TTL_MS = 5 * 60 * 1000;   // reuse a good reading for 5 minutes
+const CLAUDE_QUOTA_ERR_TTL_MS = 60 * 1000;      // back off for 1 minute after a failure
+let claudeQuotaCache = (() => {
+    try {
+        if (fs.existsSync(CLAUDE_QUOTA_CACHE_FILE)) {
+            const parsed = JSON.parse(fs.readFileSync(CLAUDE_QUOTA_CACHE_FILE, 'utf8'));
+            if (parsed && parsed.data && parsed.data.ok) return parsed;
+        }
+    } catch (_) {}
+    return null;
+})();
+let claudeQuotaErrCache = null;   // { at, data } last failure (to avoid hammering Anthropic)
+
+function readClaudeOAuthCreds() {
+    try {
+        const credFile = path.join(HOME_DIR, '.claude', '.credentials.json');
+        if (!fs.existsSync(credFile)) {
+            return { error: 'ไม่พบ ~/.claude/.credentials.json (ยังไม่ได้ล็อกอิน Claude Code)' };
+        }
+        const creds = JSON.parse(fs.readFileSync(credFile, 'utf8'));
+        const oauth = creds.claudeAiOauth || creds;
+        if (!oauth || !oauth.accessToken) return { error: 'ไม่พบ accessToken ใน .credentials.json' };
+        return { oauth, accessToken: oauth.accessToken };
+    } catch (err) {
+        return { error: 'อ่าน Claude credentials ไม่สำเร็จ: ' + err.message };
+    }
+}
+
+async function fetchClaudeOAuthUsage(accessToken) {
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const uRes = await fetch('https://api.anthropic.com/api/oauth/usage', {
+                headers: {
+                    'Authorization': 'Bearer ' + accessToken,
+                    'anthropic-beta': 'oauth-2025-04-20',
+                    'Accept': 'application/json',
+                    'User-Agent': 'claude-cli/2.1.312 (external, cli)'
+                },
+                signal: AbortSignal.timeout(8000)
+            });
+            const bodyText = await uRes.text();
+            if (uRes.ok) {
+                let uData = null;
+                try { uData = JSON.parse(bodyText); } catch (_) { uData = null; }
+                const parsed = parseClaudeUsagePayload(uData);
+                if (parsed) return { ok: true, parsed };
+                lastErr = 'Anthropic API ตอบกลับแต่ไม่มีข้อมูล rate limit ที่อ่านได้';
+                break;
+            }
+            if (uRes.status === 429) {
+                lastErr = 'Anthropic API จำกัดความถี่คำขอ (HTTP 429) — จะลองใหม่ใน 1 นาที';
+                break;
+            }
+            if (uRes.status === 401 || uRes.status === 403) {
+                lastErr = 'OAuth token ถูกปฏิเสธ (HTTP ' + uRes.status + ') — รัน "claude auth login --claudeai" ใหม่';
+                break;
+            }
+            lastErr = 'Anthropic API HTTP ' + uRes.status;
+        } catch (err) {
+            lastErr = err.name === 'TimeoutError' ? 'เชื่อมต่อ Anthropic API หมดเวลา (8s)' : err.message;
+        }
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1200));
+    }
+    return { ok: false, error: lastErr };
+}
+
+async function getClaudeWebQuota(opts) {
+    const force = !!(opts && opts.force);
+    const now = Date.now();
+
+    // Serve fresh cache first (avoids Anthropic rate limits from UI polling)
+    if (!force && claudeQuotaCache && now - claudeQuotaCache.at < CLAUDE_QUOTA_OK_TTL_MS) {
+        return Object.assign({}, claudeQuotaCache.data, {
+            cached: true,
+            ageSec: Math.round((now - claudeQuotaCache.at) / 1000)
+        });
+    }
+    if (!force && claudeQuotaErrCache && now - claudeQuotaErrCache.at < CLAUDE_QUOTA_ERR_TTL_MS) {
+        return claudeQuotaErrCache.data;
+    }
+
+    const succeed = (payload) => {
+        const data = Object.assign({ fetchedAt: new Date().toISOString() }, payload);
+        claudeQuotaCache = { at: Date.now(), data };
+        claudeQuotaErrCache = null;
+        try {
+            fs.writeFileSync(CLAUDE_QUOTA_CACHE_FILE, JSON.stringify(claudeQuotaCache, null, 2), 'utf8');
+        } catch (_) {}
+        return Object.assign({}, data, { cached: false });
+    };
+    const fail = (payload) => {
+        const data = Object.assign({ ok: false, configured: true }, payload);
+        claudeQuotaErrCache = { at: Date.now(), data };
+        return data;
+    };
+    const staleOr = (error) => {
+        if (claudeQuotaCache) {
+            return Object.assign({}, claudeQuotaCache.data, {
+                cached: true,
+                stale: true,
+                warning: error,
+                ageSec: Math.round((Date.now() - claudeQuotaCache.at) / 1000)
+            });
+        }
+        return fail({ error });
+    };
+
+    // ── Source 1: Claude Code CLI OAuth (Claude.ai monthly subscription) ──
+    const creds = readClaudeOAuthCreds();
+    if (creds.accessToken) {
+        const res = await fetchClaudeOAuthUsage(creds.accessToken);
+        if (res.ok) {
+            return succeed({
+                ok: true,
+                configured: true,
+                source: 'oauth',
+                orgName: 'Claude.ai (OAuth · Claude Code)',
+                plan: creds.oauth.subscriptionType || 'Claude Subscription',
+                fiveHour: res.parsed.fiveHour,
+                weekly: res.parsed.weekly
+            });
+        }
+        return staleOr(res.error);
+    }
+
+    // ── Source 2: manual CLAUDE_SESSION_KEY cookie fallback ──
+    const sessionKey = (process.env.CLAUDE_SESSION_KEY || '').trim();
+    if (!sessionKey) {
+        const data = {
+            ok: false,
+            configured: false,
+            error: creds.error || 'ยังไม่ได้เชื่อมต่อ Claude.ai'
+        };
+        claudeQuotaErrCache = { at: Date.now(), data };
+        return data;
+    }
+    const headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Cookie': 'sessionKey=' + sessionKey,
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    };
+    try {
+        const orgRes = await fetch('https://claude.ai/api/organizations', {
+            headers,
+            signal: AbortSignal.timeout(8000)
+        });
+        if (orgRes.status === 401 || orgRes.status === 403) {
+            return staleOr('Cookie sessionKey หมดอายุหรือถูกปฏิเสธ (HTTP ' + orgRes.status + ')');
+        }
+        if (!orgRes.ok) {
+            return staleOr('claude.ai HTTP ' + orgRes.status);
+        }
+        const orgText = await orgRes.text();
+        if (/^\s*<(!doctype|html)/i.test(orgText)) {
+            return staleOr('Cloudflare Block (ดึงจากเซิร์ฟเวอร์ตรงไม่ได้)');
+        }
+        const orgs = JSON.parse(orgText);
+        if (!Array.isArray(orgs) || orgs.length === 0) {
+            return staleOr('ไม่พบ Organization ในบัญชี Claude');
+        }
+        const scoreOrg = (org) => {
+            let s = 0;
+            const caps = Array.isArray(org && org.capabilities) ? org.capabilities.join(' ').toLowerCase() : '';
+            if (caps.includes('claude_max') || caps.includes('max')) s += 40;
+            if (caps.includes('claude_pro') || caps.includes('pro')) s += 30;
+            if (caps.includes('chat')) s += 20;
+            return s;
+        };
+        const sorted = [].concat(orgs).sort((a, b) => scoreOrg(b) - scoreOrg(a));
+        let lastErr = null;
+        for (const org of sorted.slice(0, 4)) {
+            if (!org || !org.uuid) continue;
+            const uRes = await fetch('https://claude.ai/api/organizations/' + org.uuid + '/usage', {
+                headers,
+                signal: AbortSignal.timeout(8000)
+            });
+            if (!uRes.ok) {
+                lastErr = 'claude.ai usage HTTP ' + uRes.status;
+                continue;
+            }
+            const uText = await uRes.text();
+            if (/^\s*<(!doctype|html)/i.test(uText)) {
+                lastErr = 'Cloudflare Block';
+                continue;
+            }
+            let uJson = null;
+            try { uJson = JSON.parse(uText); } catch (_) { uJson = null; }
+            const parsed = parseClaudeUsagePayload(uJson);
+            if (parsed) {
+                const caps = Array.isArray(org.capabilities) ? org.capabilities : [];
+                return succeed({
+                    ok: true,
+                    configured: true,
+                    source: 'sessionKey',
+                    orgName: org.name || 'Claude.ai',
+                    plan: caps.find(c => /max|pro/i.test(c)) || 'Claude',
+                    fiveHour: parsed.fiveHour,
+                    weekly: parsed.weekly
+                });
+            }
+        }
+        return staleOr(lastErr || 'ไม่พบข้อมูล Usage ในองค์กรนี้');
+    } catch (err) {
+        return staleOr(err.message);
     }
 }
 
@@ -1259,9 +2223,11 @@ module.exports = {
     UPLOADS_DIR,
     saveUploadedImage,
     getQuotaSummary,
+    setClaudeSessionKey,
     listSessions,
     createSession,
     getSession,
     renameSession,
+    togglePinSession,
     deleteSession
 };

@@ -164,7 +164,10 @@ async function buildCronCommand({ jobId, mode, rawCommand, aiPrompt, aiModel, no
     }
     await fsp.mkdir(JOBS_DIR, { recursive: true });
     const jobFile = path.join(JOBS_DIR, `${jobId}.json`);
+    let existing = {};
+    try { existing = JSON.parse(await fsp.readFile(jobFile, 'utf8')); } catch (_) {}
     await fsp.writeFile(jobFile, JSON.stringify({
+        ...existing,
         id: jobId,
         mode,
         rawCommand,
@@ -277,7 +280,7 @@ async function runJobNow(id) {
     try { prevSize = fs.statSync(logFile).size; } catch (_) {}
 
     return new Promise((resolve) => {
-        exec(job.command, { timeout: 150000, shell: '/bin/bash' }, (err, stdout, stderr) => {
+        exec(job.command, { timeout: 240000, shell: '/bin/bash' }, (err, stdout, stderr) => {
             let logDelta = '';
             try {
                 const st = fs.statSync(logFile);

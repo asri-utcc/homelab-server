@@ -24,6 +24,8 @@ module.exports = {
                 // จำกัดเฉพาะรายการที่อนุญาตให้ควบคุมได้
                 ALLOWED_CONTAINERS: 'lab-',
                 ALLOWED_PM2: 'pm2-ui,onepercentbot,lab-dashboard',
+                // จำนวนรอบคิด/เรียกเครื่องมือสูงสุดของ deepseek-agent.js (default 20)
+                DEEPSEEK_MAX_STEPS: '20',
             },
         },
     ],

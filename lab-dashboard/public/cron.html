@@ -207,7 +207,9 @@
               <select id="ai-model">
                 <option value="gemini-3.8-flash-low">Gemini 3.8 Flash (Low - เร็ว/ประหยัด)</option>
                 <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
+                <option value="gemini-3.8-flash-high">Gemini 3.8 Flash (High)</option>
                 <option value="gemini-4-hydrogen-low">Gemini 4 Hydrogen (Low)</option>
+                <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium - ฉลาด/เจาะลึก)</option>
               </select>
             </div>
             <div class="check-row" style="align-items:flex-end; padding-bottom:6px;">
@@ -298,12 +300,12 @@
 
     const TEMPLATES = {
       'health-ai': {
-        name: 'ตรวจสอบสุขภาพ Linux Server (AI กรอง Spike)',
-        mode: 'interval_hr', interval: 1,
+        name: 'ตรวจสอบสุขภาพ Linux Server เชิงลึก (AI SRE วิเคราะห์ต้นตอ)',
+        mode: 'interval_min', interval: 5,
         execMode: 'script_ai',
         cmd: `/usr/bin/python3 /home/dev/projects/server-health-check.py --no-notify`,
-        aiPrompt: `วิเคราะห์สถานะเซิร์ฟเวอร์นี้ หาก CPU/Load สูงแค่ชั่วคราวหรือแนวโน้มลดลงและ Service/Disk/RAM ปกติ ให้ตอบ SKIP คำเดียวเพื่อไม่ต้องแจ้งเตือน แต่ถ้าผิดปกติจริงให้สรุปสาเหตุและค่าสำคัญส่งแจ้งเตือนแบบกระชับ`,
-        aiModel: 'gemini-3.8-flash-low',
+        aiPrompt: `สืบสวนเชิงลึกแบบ Senior Linux SRE: ตรวจสอบว่าความผิดปกติ (CPU/Load/IO/RAM/Disk/PM2/Docker) เกิดจากโปรเซส สคริปต์ แอป หรือคอนเทนเนอร์ใด โดยรันคำสั่ง Read-Only ดูโปรเซสและ log ล่าสุดเพื่อระบุต้นตอ (Root Cause) ที่แท้จริง พร้อมแนวทางแก้ไข และสรุปแจ้งเตือนเข้า Telegram อย่างชัดเจน (กรณี [RECOVERED] ให้สรุปการกลับสู่ปกติแบบกระชับ)`,
+        aiModel: 'gemini-4-hydrogen-medium',
         notifyTelegram: true,
         skipOk: true
       },

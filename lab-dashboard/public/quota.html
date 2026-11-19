@@ -73,11 +73,78 @@
       color: var(--cyan);
     }
 
+    /* ── Provider Sections (แยกฝั่ง Antigravity / DeepSeek) ── */
+    .provider-section { margin-bottom: 26px; }
+    .provider-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 11px 14px;
+      margin-bottom: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.12), rgba(15, 23, 42, 0.55) 60%);
+    }
+    .provider-section[data-provider="deepseek"] .provider-head {
+      border-color: rgba(34, 211, 238, 0.34);
+      background: linear-gradient(90deg, rgba(34, 211, 238, 0.14), rgba(124, 58, 237, 0.12) 60%, rgba(15, 23, 42, 0.55));
+    }
+    .provider-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+    .provider-logo {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+      background: rgba(56, 189, 248, 0.16);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }
+    .provider-section[data-provider="deepseek"] .provider-logo {
+      background: rgba(34, 211, 238, 0.16);
+      border-color: rgba(34, 211, 238, 0.45);
+    }
+    .provider-sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .provider-tag {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--cyan);
+      white-space: nowrap;
+    }
+    .provider-section[data-provider="deepseek"] .provider-tag {
+      border-color: rgba(52, 211, 153, 0.4);
+      background: rgba(52, 211, 153, 0.12);
+      color: var(--green);
+    }
+    .provider-section[data-provider="deepseek"] .pool-card {
+      border-color: rgba(34, 211, 238, 0.22);
+    }
+
     .pool-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
       gap: 14px;
-      margin-bottom: 22px;
+      margin-bottom: 0;
     }
     .pool-card {
       background: var(--card);
@@ -86,6 +153,8 @@
       padding: 16px;
       backdrop-filter: blur(10px);
       transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      display: flex;
+      flex-direction: column;
     }
     .pool-card.limit-hit {
       border-color: rgba(248, 113, 113, 0.75) !important;
@@ -239,6 +308,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
       margin-bottom: 10px;
     }
     .pool-name { font-size: 14px; font-weight: 700; }
@@ -246,9 +316,81 @@
       font-family: var(--mono);
       font-size: 10.5px;
       font-weight: 700;
-      padding: 2px 8px;
+      padding: 2px 9px;
       border-radius: 999px;
       border: 1px solid transparent;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .ds-models-rack {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .ds-model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .ds-model-row {
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(34, 211, 238, 0.2);
+      border-radius: 9px;
+      padding: 9px 11px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .ds-model-row__name {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #e2e8f0;
+      white-space: nowrap;
+    }
+    .ds-model-row__id {
+      display: block;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .cap-pills { display: flex; gap: 5px; flex-shrink: 0; }
+    .cap-pill {
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(34, 211, 238, 0.13);
+      border: 1px solid rgba(34, 211, 238, 0.32);
+      color: #67e8f9;
+      white-space: nowrap;
+    }
+    .ds-model-chip {
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .ds-model-chip__name {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ds-model-chip__cap {
+      font-size: 10.5px;
+      color: var(--muted);
     }
     .pace-ok { background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.45); color: var(--green); }
     .pace-warn { background: rgba(251, 191, 36, 0.15); border-color: rgba(251, 191, 36, 0.45); color: var(--amber); }
@@ -314,6 +456,22 @@
       text-transform: uppercase;
     }
     td.mono { font-family: var(--mono); }
+    .group-row td {
+      background: rgba(56, 189, 248, 0.07);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      color: var(--cyan);
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.22);
+    }
+    .group-row.ds td {
+      background: rgba(34, 211, 238, 0.08);
+      color: #67e8f9;
+      border-bottom-color: rgba(34, 211, 238, 0.26);
+      border-top: 1px solid rgba(34, 211, 238, 0.26);
+    }
     .mini-bar {
       width: 90px;
       height: 6px;
@@ -351,7 +509,44 @@
 
     <div class="err-box" id="err-box"></div>
 
-    <div class="pool-grid" id="pool-grid"></div>
+    <!-- ── ฝั่งที่ 1: Google Antigravity (Gemini / Claude) ── -->
+    <section class="provider-section" data-provider="antigravity">
+      <div class="provider-head">
+        <div class="provider-title">
+          <span class="provider-logo">💎</span>
+          <span>Google Antigravity</span>
+          <span class="provider-sub">· Gemini / Claude · รีเซ็ต 5 ชม. &amp; 7 วัน</span>
+        </div>
+        <span class="provider-tag" id="ag-status">⏳ กำลังโหลด</span>
+      </div>
+      <div class="pool-grid" id="pool-grid"></div>
+    </section>
+
+    <!-- ── ฝั่งที่ 2: DeepSeek Platform (API Credit / Pay-As-You-Go) ── -->
+    <section class="provider-section" data-provider="deepseek">
+      <div class="provider-head">
+        <div class="provider-title">
+          <span class="provider-logo">🐳</span>
+          <span>DeepSeek Platform</span>
+          <span class="provider-sub">· Pay-As-You-Go · ไม่มีวันหมดอายุ</span>
+        </div>
+        <span class="provider-tag" id="ds-status">⏳ กำลังโหลด</span>
+      </div>
+      <div class="pool-grid" id="deepseek-grid"></div>
+    </section>
+
+    <!-- ── ฝั่งที่ 3: Claude.ai (Anthropic Rolling 5H & Weekly) ── -->
+    <section class="provider-section" data-provider="claude">
+      <div class="provider-head" style="background:linear-gradient(90deg, rgba(251,146,60,0.12), rgba(245,158,11,0.06)); border-color:rgba(251,146,60,0.28);">
+        <div class="provider-title">
+          <span class="provider-logo">🟠</span>
+          <span>Claude.ai (Anthropic)</span>
+          <span class="provider-sub">· Rolling 5 ชม. &amp; รายสัปดาห์</span>
+        </div>
+        <span class="provider-tag" id="claude-status">⏳ กำลังโหลด</span>
+      </div>
+      <div class="pool-grid" id="claude-grid"></div>
+    </section>
 
     <div style="margin-bottom: 12px;">
       <button type="button" class="btn" id="btn-toggle-models" style="font-size:11.5px; padding:6px 12px;">📋 ดูรายละเอียดรายโมเดล (20 โมเดล) ▾</button>
@@ -500,26 +695,36 @@
       errBox.style.display = 'none';
 
       document.getElementById('sub-info').textContent =
-        `บัญชี: ${data.email} · อัปเดตล่าสุด: ${new Date(data.updatedAt).toLocaleTimeString('th-TH')}`;
+        `บัญชี: ${data.email}${data.tier ? ' (' + data.tier + ')' : ''} · อัปเดตล่าสุด: ${new Date(data.updatedAt).toLocaleTimeString('th-TH')}`;
 
       const poolGrid = document.getElementById('pool-grid');
       poolGrid.innerHTML = '';
-      // Find weekly reset (> 12h away) so 5h-window pools don't falsely land on D7
-      const weeklyPool = (data.pools || []).find(x => x.resetTime && (new Date(x.resetTime).getTime() - Date.now()) > 12 * 3600 * 1000);
-      const sharedWeeklyReset = weeklyPool ? weeklyPool.resetTime : '2026-11-21T08:22:00Z';
+      // Find weekly reset (> 12h away) from pool.weekly or pool.resetTime
+      const weeklyPool = (data.pools || []).find(x =>
+        (x.weekly && x.weekly.resetTime) ||
+        (x.resetTime && (new Date(x.resetTime).getTime() - Date.now()) > 12 * 3600 * 1000)
+      );
+      const sharedWeeklyReset = weeklyPool?.weekly?.resetTime || weeklyPool?.resetTime || new Date(Date.now() + 7 * 86400 * 1000).toISOString();
 
       (data.pools || []).forEach(p => {
         const isExhausted = p.remainingPct <= 0;
         const barColor = colorForPct(p.remainingPct);
         const resetMs = p.resetTime ? (new Date(p.resetTime).getTime() - Date.now()) : 0;
         const is5hWindow = resetMs > 0 && resetMs <= 12 * 3600 * 1000;
-        const weeklyResetForRack = is5hWindow
-          ? (p.id === 'claude' && p.usedPct === 0 ? new Date(Date.now() + 6.95 * 86400 * 1000).toISOString() : sharedWeeklyReset)
-          : p.resetTime;
-        const pace = calculateWeeklyPace(p.usedPct, weeklyResetForRack);
+        const weeklyResetForRack = p.weekly?.resetTime
+          ? p.weekly.resetTime
+          : (is5hWindow ? sharedWeeklyReset : p.resetTime);
+        const rackUsedPct = p.weekly ? p.weekly.usedPct : p.usedPct;
+        const pace = calculateWeeklyPace(rackUsedPct, weeklyResetForRack);
         const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : pace.badgeLabel;
         const badgeCls = isExhausted ? 'pace-crit' : pace.badgeCls;
-        const rackHtml = build7SegmentRackHtml(p.usedPct, pace.currentDayIndex);
+        const rackHtml = build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
+        const windowSplitHtml = (p.fiveHour && p.weekly)
+          ? `<div class="pool-meta" style="margin-top:4px; font-size:11px; color:var(--muted);">
+               <span>5h: <strong style="color:${colorForPct(p.fiveHour.remainingPct)}">${p.fiveHour.remainingPct}%</strong></span>
+               <span>Weekly: <strong style="color:${colorForPct(p.weekly.remainingPct)}">${p.weekly.remainingPct}%</strong> (${fmtCountdown(p.weekly.resetTime)})</span>
+             </div>`
+          : '';
 
         const card = document.createElement('div');
         card.className = `pool-card ${isExhausted ? 'limit-hit' : ''}`;
@@ -534,6 +739,7 @@
             <span>ใช้ไป ${p.usedPct}% (${p.modelsCount} โมเดล)</span>
             <span class="cd" data-reset="${p.resetTime || ''}">${fmtCountdown(p.resetTime)}</span>
           </div>
+          ${windowSplitHtml}
           ${rackHtml}
           <div class="pace-summary ${pace.summaryClass}">${pace.summaryText}</div>
           <div class="big-countdown-box ${isExhausted ? 'active' : ''}">
@@ -544,9 +750,218 @@
         poolGrid.appendChild(card);
       });
 
+      // ── Provider status tags (หัวแต่ละฝั่ง) ──
+      const agTag = document.getElementById('ag-status');
+      if (agTag) {
+        const agPools = data.pools || [];
+        const exhausted = agPools.filter(p => p.remainingPct <= 0).length;
+        agTag.textContent = !agPools.length
+          ? '— ไม่มีข้อมูล'
+          : (exhausted ? `⚡ หมดโควตา ${exhausted} pool` : `● ${agPools.length} pool พร้อมใช้งาน`);
+        agTag.style.color = exhausted ? 'var(--red)' : 'var(--cyan)';
+      }
+
+      const dsGrid = document.getElementById('deepseek-grid');
+      dsGrid.innerHTML = '';
+      const dsTag = document.getElementById('ds-status');
+      if (data.deepseek) {
+        const ds = data.deepseek;
+        const totalNum = parseFloat(ds.totalBalance || '0');
+        const isLow = ds.ok && totalNum <= 0.5;
+        if (dsTag) {
+          dsTag.textContent = !ds.ok ? '⚠️ เชื่อมต่อไม่ได้'
+            : (!ds.isAvailable ? '⚡ เครดิตหมด' : (isLow ? '⚠️ เครดิตใกล้หมด' : '● พร้อมใช้งาน'));
+        }
+        if (ds.ok) {
+          const badgeCls = !ds.isAvailable ? 'pace-crit' : (isLow ? 'pace-warn' : 'pace-ok');
+          const badgeText = !ds.isAvailable ? '⚡ เครดิตหมด' : (isLow ? '⚠️ เครดิตใกล้หมด' : '● พร้อมใช้งาน');
+          const valColor = !ds.isAvailable ? '#ef4444' : (isLow ? '#f59e0b' : '#22d3ee');
+
+          // การ์ดที่ 1 — ยอดเครดิตคงเหลือ
+          const creditCard = document.createElement('div');
+          creditCard.className = `pool-card ${ds.isAvailable ? '' : 'limit-hit'}`;
+          creditCard.innerHTML = `
+            <div class="pool-head">
+              <div class="pool-name" style="color:#22d3ee">💳 API Credit Balance</div>
+              <span class="pace-badge ${badgeCls}">${badgeText}</span>
+            </div>
+            <div class="pool-pct" style="color:${valColor}">$${ds.totalBalance} <span>${ds.currency || 'USD'} คงเหลือ</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${ds.isAvailable ? 100 : 0}%; background:linear-gradient(90deg, #06b6d4, ${valColor});"></div></div>
+            <div class="pool-meta">
+              <span>เติมเอง (ไม่หมดอายุ)</span>
+              <span><strong style="color:#67e8f9">$${ds.toppedUpBalance}</strong></span>
+            </div>
+            <div class="pool-meta" style="margin-top:4px;">
+              <span>โบนัส (Granted)</span>
+              <span><strong style="color:#67e8f9">$${ds.grantedBalance}</strong></span>
+            </div>
+            <div class="pace-summary pace-ok" style="margin-top:auto;">Pay-As-You-Go · หักตาม Token จริง · ไม่มีวันหมดอายุ</div>
+          `;
+          dsGrid.appendChild(creditCard);
+
+          // การ์ดที่ 2 — โมเดลที่เรียกใช้ได้
+          const modelsCard = document.createElement('div');
+          modelsCard.className = 'pool-card';
+          const rows = (ds.models || []).map(m => {
+            const isVision = (m.id || '').includes('flash');
+            const caps = isVision
+              ? '<span class="cap-pill">🖼️ Vision</span><span class="cap-pill">🔧 Tools</span>'
+              : '<span class="cap-pill">🧠 Reasoning</span><span class="cap-pill">🔧 Tools</span>';
+            return `
+              <div class="ds-model-row">
+                <div>
+                  <span class="ds-model-row__name">${m.name}</span>
+                  <span class="ds-model-row__id">${m.id}</span>
+                </div>
+                <div class="cap-pills">${caps}</div>
+              </div>`;
+          }).join('');
+          modelsCard.innerHTML = `
+            <div class="pool-head">
+              <div class="pool-name" style="color:#a78bfa">🤖 โมเดลที่เปิดใช้งาน</div>
+              <span class="pace-badge pace-ok">${(ds.models || []).length} โมเดล</span>
+            </div>
+            <div class="ds-model-list">${rows || '<div class="pool-meta">ไม่พบรายการโมเดล</div>'}</div>
+            <div class="pace-summary pace-ok" style="margin-top:auto; background:rgba(34,211,238,0.08); border-color:rgba(34,211,238,0.28); color:#67e8f9;">
+              ตั้งค่าในหน้า AI Chat · เลือกโมเดลแล้วใช้ Tool Calling ร่วม Session เดียวกับ Antigravity ได้
+            </div>
+          `;
+          dsGrid.appendChild(modelsCard);
+        } else {
+          const errCard = document.createElement('div');
+          errCard.className = 'pool-card limit-hit';
+          errCard.innerHTML = `
+            <div class="pool-head">
+              <div class="pool-name" style="color:#22d3ee">💳 API Credit Balance</div>
+              <span class="pace-badge pace-crit">⚠️ เชื่อมต่อไม่ได้</span>
+            </div>
+            <div class="pool-meta" style="margin-top:10px; color:#fca5a5;">${ds.error || 'ไม่สามารถดึงยอดเครดิตได้'}</div>
+          `;
+          dsGrid.appendChild(errCard);
+        }
+      }
+
+      // ── Section 3: Claude.ai (Anthropic) ──
+      const claudeGrid = document.getElementById('claude-grid');
+      const claudeStatus = document.getElementById('claude-status');
+      if (claudeGrid) {
+        claudeGrid.innerHTML = '';
+        const cw = data.claudeWeb;
+        if (cw && cw.ok) {
+          const fh = cw.fiveHour || { remainingPct: 100, usedPct: 0, resetTime: null };
+          const wk = cw.weekly || { remainingPct: 100, usedPct: 0, resetTime: null };
+          const fhCol = colorForPct(fh.remainingPct);
+          const wkCol = colorForPct(wk.remainingPct);
+          const isExhausted = fh.remainingPct <= 0 || wk.remainingPct <= 0;
+
+          if (claudeStatus) {
+            claudeStatus.textContent = isExhausted ? '⚡ หมดโควตา' : `● พร้อมใช้งาน (${cw.plan || 'Claude'})`;
+            claudeStatus.style.color = isExhausted ? 'var(--red)' : 'var(--green)';
+          }
+
+          // Card 1: Rolling 5H
+          const fhCard = document.createElement('div');
+          fhCard.className = `pool-card ${fh.remainingPct <= 0 ? 'limit-hit' : ''}`;
+          fhCard.innerHTML = `
+            <div class="pool-head">
+              <div class="pool-name" style="color:#fb923c">⏳ Rolling 5-Hour Limit</div>
+              <span class="pace-badge ${fh.remainingPct <= 0 ? 'pace-crit' : (fh.remainingPct < 25 ? 'pace-warn' : 'pace-ok')}">${fh.remainingPct <= 0 ? '⚡ หมดรอบ 5 ชม.' : '● ปกติ'}</span>
+            </div>
+            <div class="pool-pct" style="color:${fhCol}">${fh.remainingPct}% <span>คงเหลือ</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${fh.remainingPct}%; background:${fhCol};"></div></div>
+            <div class="pool-meta">
+              <span>ใช้ไป ${fh.usedPct}%</span>
+              <span class="cd" data-reset="${fh.resetTime || ''}">${fmtCountdown(fh.resetTime)}</span>
+            </div>
+            <div class="pace-summary pace-ok" style="margin-top:auto;">องค์กร: ${cw.orgName || 'Claude.ai'} · รีเซ็ตทุก 5 ชั่วโมง</div>
+          `;
+          claudeGrid.appendChild(fhCard);
+
+          // Card 2: Weekly Limit with 7-Day Rack
+          const wkPace = calculateWeeklyPace(wk.usedPct, wk.resetTime);
+          const wkRack = build7SegmentRackHtml(wk.usedPct, wkPace.currentDayIndex);
+          const wkCard = document.createElement('div');
+          wkCard.className = `pool-card ${wk.remainingPct <= 0 ? 'limit-hit' : ''}`;
+          wkCard.innerHTML = `
+            <div class="pool-head">
+              <div class="pool-name" style="color:#f59e0b">📅 Weekly Limit (7-Day Pace)</div>
+              <span class="pace-badge ${wk.remainingPct <= 0 ? 'pace-crit' : wkPace.badgeCls}">${wk.remainingPct <= 0 ? '⚡ หมดโควตาสัปดาห์' : wkPace.badgeLabel}</span>
+            </div>
+            <div class="pool-pct" style="color:${wkCol}">${wk.remainingPct}% <span>คงเหลือ</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${wk.remainingPct}%; background:${wkCol};"></div></div>
+            <div class="pool-meta">
+              <span>ใช้ไป ${wk.usedPct}%</span>
+              <span class="cd" data-reset="${wk.resetTime || ''}">${fmtCountdown(wk.resetTime)}</span>
+            </div>
+            ${wkRack}
+            <div class="pace-summary ${wkPace.summaryClass}" style="margin-top:auto;">${wkPace.summaryText}</div>
+          `;
+          claudeGrid.appendChild(wkCard);
+        } else {
+          const isCfg = cw && cw.configured;
+          if (claudeStatus) {
+            claudeStatus.textContent = isCfg ? '⚠️ เชื่อมต่อไม่ได้' : '⚙️ ยังไม่ได้เชื่อมต่อ';
+            claudeStatus.style.color = isCfg ? 'var(--amber)' : 'var(--muted)';
+          }
+          const setupCard = document.createElement('div');
+          setupCard.className = 'pool-card';
+          setupCard.style.gridColumn = '1 / -1';
+          setupCard.innerHTML = `
+            <div class="pool-head">
+              <div class="pool-name" style="color:#fb923c">🔑 เชื่อมต่อโควตา Claude.ai (sessionKey)</div>
+              <span class="pace-badge ${isCfg ? 'pace-warn' : 'pace-ok'}">${isCfg ? (cw.error || 'Auth / Cloudflare') : 'พร้อมตั้งค่า'}</span>
+            </div>
+            <div class="pool-meta" style="margin-bottom:10px; line-height:1.5; display:block;">
+              ${isCfg ? `<div style="color:#fca5a5; margin-bottom:6px;">⚠️ สถานะล่าสุด: ${cw.error}</div>` : ''}
+              เปิด <a href="https://claude.ai" target="_blank" style="color:#fb923c;">claude.ai</a> → กด F12 (Application → Cookies) → คัดลอกค่า <code>sessionKey</code> มาวางด้านล่างเพื่อดึงโควตา 5 ชม. &amp; รายสัปดาห์
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <input type="password" id="claude-session-input" placeholder="วาง sessionKey (เช่น sk-ant-sid01-...)" style="flex:1; min-width:220px; background:rgba(15,23,42,0.8); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:8px 10px; font-family:var(--mono); font-size:12px;" />
+              <button type="button" id="btn-save-claude-key" class="btn" style="background:rgba(251,146,60,0.18); border-color:rgba(251,146,60,0.45); color:#fdba74;">💾 บันทึก &amp; ดึงโควตา</button>
+            </div>
+          `;
+          claudeGrid.appendChild(setupCard);
+          const saveBtn = document.getElementById('btn-save-claude-key');
+          const keyInput = document.getElementById('claude-session-input');
+          if (saveBtn && keyInput) {
+            saveBtn.addEventListener('click', async () => {
+              saveBtn.disabled = true;
+              saveBtn.textContent = 'กำลังบันทึก...';
+              try {
+                const r = await fetch('/api/gemini/claude-key', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sessionKey: keyInput.value.trim() })
+                });
+                const resJson = await r.json();
+                if (!r.ok || !resJson.ok) throw new Error(resJson.error || 'บันทึกไม่สำเร็จ');
+                await loadQuota();
+              } catch (e) {
+                alert('❌ ' + e.message);
+                saveBtn.disabled = false;
+                saveBtn.textContent = '💾 บันทึก & ดึงโควตา';
+              }
+            });
+          }
+        }
+      }
+
       const tbody = document.getElementById('models-tbody');
       tbody.innerHTML = '';
-      document.getElementById('models-count').textContent = `${(data.models || []).length} โมเดล`;
+      const dsModelsList = (data.deepseek && data.deepseek.ok && Array.isArray(data.deepseek.models)) ? data.deepseek.models : [];
+      const totalModels = (data.models || []).length + dsModelsList.length;
+      document.getElementById('models-count').textContent = `${totalModels} โมเดล`;
+      const toggleBtn = document.getElementById('btn-toggle-models');
+      const tableCard = document.getElementById('models-table-card');
+      if (toggleBtn && tableCard && tableCard.style.display === 'none') {
+        toggleBtn.textContent = `📋 ดูรายละเอียดรายโมเดล (${totalModels} โมเดล) ▾`;
+      }
+      if ((data.models || []).length) {
+        const gtr = document.createElement('tr');
+        gtr.className = 'group-row';
+        gtr.innerHTML = `<td colspan="4">💎 ฝั่ง Google Antigravity · Gemini / Claude (${(data.models || []).length} โมเดล)</td>`;
+        tbody.appendChild(gtr);
+      }
       (data.models || []).forEach(m => {
         const col = colorForPct(m.remainingPct);
         const tr = document.createElement('tr');
@@ -558,6 +973,24 @@
           </td>
           <td class="mono" style="color:var(--muted)">${m.usedPct}%</td>
           <td class="mono"><span class="cd" data-reset="${m.resetTime || ''}">${fmtCountdown(m.resetTime)}</span> <span style="color:var(--muted)">(${fmtLocalTime(m.resetTime)})</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      if (dsModelsList.length) {
+        const gtr = document.createElement('tr');
+        gtr.className = 'group-row ds';
+        gtr.innerHTML = `<td colspan="4">🐳 ฝั่ง DeepSeek Platform · Pay-As-You-Go (${dsModelsList.length} โมเดล)</td>`;
+        tbody.appendChild(gtr);
+      }
+      dsModelsList.forEach(m => {
+        const ds = data.deepseek;
+        const col = ds.isAvailable ? '#22d3ee' : '#ef4444';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${m.name} <span style="color:var(--muted)">(${m.id})</span></td>
+          <td class="mono"><strong style="color:${col}">$${ds.totalBalance} ${ds.currency || 'USD'}</strong></td>
+          <td class="mono" style="color:var(--muted)">Pay-As-You-Go</td>
+          <td class="mono"><span style="color:var(--muted)">ไม่มีวันหมดอายุ (Topped-up)</span></td>
         `;
         tbody.appendChild(tr);
       });
@@ -578,7 +1011,9 @@
       const card = document.getElementById('models-table-card');
       const open = card.style.display === 'none';
       card.style.display = open ? 'block' : 'none';
-      e.target.textContent = open ? '📋 ซ่อนรายละเอียดรายโมเดล ▴' : '📋 ดูรายละเอียดรายโมเดล (20 โมเดล) ▾';
+      const cnt = (lastData?.models?.length ?? 0)
+        + ((lastData?.deepseek?.ok && Array.isArray(lastData.deepseek.models)) ? lastData.deepseek.models.length : 0);
+      e.target.textContent = open ? '📋 ซ่อนรายละเอียดรายโมเดล ▴' : `📋 ดูรายละเอียดรายโมเดล (${cnt} โมเดล) ▾`;
     });
     loadQuota();
     setInterval(loadQuota, 60000);

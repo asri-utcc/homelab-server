@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>Home-lab Control Panel</title>
-<link rel="stylesheet" href="/styles.css?v=20261109-v13">
+<link rel="stylesheet" href="/styles.css?v=20261120-warp">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -83,26 +83,131 @@
         <div class="sidebar__indicator" id="sidebar-indicator" aria-hidden="true"></div>
 
         <button type="button" class="sidebar__item is-active" data-view="overview" data-magnetic="true">
-          <svg class="ico"><use href="#i-activity"/></svg>
+          <span class="sb-ico3d sb-ico3d--overview" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="ico3d-svg">
+              <defs>
+                <radialGradient id="g-ov-core" cx="35%" cy="30%" r="70%">
+                  <stop offset="0%" stop-color="#a5f3fc"/>
+                  <stop offset="45%" stop-color="#06b6d4"/>
+                  <stop offset="100%" stop-color="#0e7490"/>
+                </radialGradient>
+                <linearGradient id="g-ov-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#67e8f9"/>
+                  <stop offset="100%" stop-color="#3b82f6"/>
+                </linearGradient>
+              </defs>
+              <ellipse class="ico3d-orbit" cx="12" cy="12" rx="10" ry="4.2" transform="rotate(-24 12 12)" fill="none" stroke="url(#g-ov-ring)" stroke-width="1.6" opacity="0.9"/>
+              <circle class="ico3d-core" cx="12" cy="12" r="5.2" fill="url(#g-ov-core)"/>
+              <ellipse cx="10.4" cy="10.2" rx="1.8" ry="1.1" transform="rotate(-25 10.4 10.2)" fill="#ffffff" opacity="0.55"/>
+              <circle class="ico3d-node" cx="19.6" cy="8.6" r="1.7" fill="#fbbf24"/>
+            </svg>
+          </span>
           <span class="sidebar__item-label">แดชบอร์ดภาพรวม</span>
         </button>
         <button type="button" class="sidebar__item" data-view="services" data-magnetic="true">
-          <svg class="ico"><use href="#i-box"/></svg>
+          <span class="sb-ico3d sb-ico3d--services" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="ico3d-svg">
+              <defs>
+                <linearGradient id="g-sv-top" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#a5f3fc"/>
+                  <stop offset="100%" stop-color="#22d3ee"/>
+                </linearGradient>
+                <linearGradient id="g-sv-left" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#0891b2"/>
+                  <stop offset="100%" stop-color="#155e75"/>
+                </linearGradient>
+                <linearGradient id="g-sv-right" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#0e7490"/>
+                  <stop offset="100%" stop-color="#082f49"/>
+                </linearGradient>
+              </defs>
+              <g class="ico3d-cube">
+                <polygon points="12,2.5 20.5,7.2 12,11.9 3.5,7.2" fill="url(#g-sv-top)"/>
+                <polygon points="3.5,7.2 12,11.9 12,21.5 3.5,16.8" fill="url(#g-sv-left)"/>
+                <polygon points="20.5,7.2 12,11.9 12,21.5 20.5,16.8" fill="url(#g-sv-right)"/>
+                <polyline points="3.5,7.2 12,11.9 20.5,7.2" fill="none" stroke="#cffafe" stroke-width="0.9" opacity="0.85"/>
+                <line x1="12" y1="11.9" x2="12" y2="21.5" stroke="#67e8f9" stroke-width="0.9" opacity="0.65"/>
+                <circle class="ico3d-core" cx="12" cy="7.2" r="1.4" fill="#ffffff" opacity="0.8"/>
+              </g>
+            </svg>
+          </span>
           <span class="sidebar__item-label">บริการ &amp; คอนเทนเนอร์</span>
           <span class="tab-badge" id="badge-sidebar-containers">…</span>
         </button>
         <button type="button" class="sidebar__item" data-view="ports" data-magnetic="true">
-          <svg class="ico"><use href="#i-shield"/></svg>
+          <span class="sb-ico3d sb-ico3d--ports" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="ico3d-svg">
+              <defs>
+                <linearGradient id="g-pt-left" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#6ee7b7"/>
+                  <stop offset="100%" stop-color="#059669"/>
+                </linearGradient>
+                <linearGradient id="g-pt-right" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#10b981"/>
+                  <stop offset="100%" stop-color="#064e3b"/>
+                </linearGradient>
+              </defs>
+              <g class="ico3d-shield">
+                <path d="M12 2.2L4 5.6v5.8c0 5.1 3.4 9.6 8 10.9V2.2z" fill="url(#g-pt-left)"/>
+                <path d="M12 2.2l8 3.4v5.8c0 5.1-3.4 9.6-8 10.9V2.2z" fill="url(#g-pt-right)"/>
+                <path d="M12 4.6l-5.6 2.4v4.3c0 3.7 2.4 7 5.6 8.1 3.2-1.1 5.6-4.4 5.6-8.1V7L12 4.6z" fill="none" stroke="#a7f3d0" stroke-width="0.9" opacity="0.75"/>
+                <circle class="ico3d-core" cx="12" cy="11.2" r="2.1" fill="#ecfdf5"/>
+                <rect x="11.2" y="12.4" width="1.6" height="3.2" rx="0.8" fill="#ecfdf5"/>
+              </g>
+            </svg>
+          </span>
           <span class="sidebar__item-label">พอร์ต, ไฟร์วอลล์ &amp; VPN</span>
           <span class="tab-badge" id="badge-sidebar-ports">UFW</span>
         </button>
         <button type="button" class="sidebar__item" data-view="terminal" data-magnetic="true">
-          <svg class="ico"><use href="#i-terminal"/></svg>
+          <span class="sb-ico3d sb-ico3d--terminal" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="ico3d-svg">
+              <defs>
+                <linearGradient id="g-tm-body" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#1e293b"/>
+                  <stop offset="100%" stop-color="#090d16"/>
+                </linearGradient>
+                <linearGradient id="g-tm-edge" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#38bdf8"/>
+                  <stop offset="100%" stop-color="#a855f7"/>
+                </linearGradient>
+                <linearGradient id="g-tm-spark" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#f0abfc"/>
+                  <stop offset="100%" stop-color="#38bdf8"/>
+                </linearGradient>
+              </defs>
+              <rect x="2.5" y="4" width="19" height="16" rx="3.2" fill="url(#g-tm-body)" stroke="url(#g-tm-edge)" stroke-width="1.5"/>
+              <path d="M3.5 5.2h17" stroke="#bae6fd" stroke-width="0.8" opacity="0.6"/>
+              <polyline points="6.8,10.2 10.2,13 6.8,15.8" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <line class="ico3d-cursor" x1="11.8" y1="15.8" x2="15.8" y2="15.8" stroke="#e879f9" stroke-width="2" stroke-linecap="round"/>
+              <path class="ico3d-spark" d="M18.2 4.2l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7z" fill="url(#g-tm-spark)"/>
+            </svg>
+          </span>
           <span class="sidebar__item-label">เทอร์มินัล &amp; AI</span>
           <span class="tab-badge" id="badge-sidebar-terminal" style="background:rgba(0,210,240,0.15); color:#00d2f0; border-color:#00d2f0;">CLI+AI</span>
         </button>
         <button type="button" class="sidebar__item" data-view="settings" data-magnetic="true">
-          <svg class="ico"><use href="#i-settings"/></svg>
+          <span class="sb-ico3d sb-ico3d--settings" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="ico3d-svg">
+              <defs>
+                <linearGradient id="g-st-gear" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#fde68a"/>
+                  <stop offset="50%" stop-color="#f59e0b"/>
+                  <stop offset="100%" stop-color="#b45309"/>
+                </linearGradient>
+                <radialGradient id="g-st-hub" cx="35%" cy="35%" r="70%">
+                  <stop offset="0%" stop-color="#ffffff"/>
+                  <stop offset="60%" stop-color="#38bdf8"/>
+                  <stop offset="100%" stop-color="#0369a1"/>
+                </radialGradient>
+              </defs>
+              <g class="ico3d-gear">
+                <path d="M19.4 13.5c.04-.49.04-1.01 0-1.5l2.06-1.6a.5.5 0 0 0 .12-.64l-1.95-3.38a.5.5 0 0 0-.6-.22l-2.43.98c-.5-.39-1.05-.71-1.65-.96L14.58 3.6a.5.5 0 0 0-.49-.42h-3.9a.5.5 0 0 0-.49.42l-.37 2.58c-.6.25-1.15.57-1.65.96l-2.43-.98a.5.5 0 0 0-.6.22L2.7 9.76a.5.5 0 0 0 .12.64l2.06 1.6c-.04.49-.04 1.01 0 1.5l-2.06 1.6a.5.5 0 0 0-.12.64l1.95 3.38a.5.5 0 0 0 .6.22l2.43-.98c.5.39 1.05.71 1.65.96l.37 2.58a.5.5 0 0 0 .49.42h3.9a.5.5 0 0 0 .49-.42l.37-2.58c.6-.25 1.15-.57 1.65-.96l2.43.98a.5.5 0 0 0 .6-.22l1.95-3.38a.5.5 0 0 0-.12-.64l-2.06-1.6z" fill="url(#g-st-gear)"/>
+                <circle cx="12" cy="12" r="4.3" fill="#0f172a" stroke="#fef3c7" stroke-width="0.9" opacity="0.9"/>
+              </g>
+              <circle class="ico3d-core" cx="12" cy="12" r="2.2" fill="url(#g-st-hub)"/>
+            </svg>
+          </span>
           <span class="sidebar__item-label">ตั้งค่าระบบ (Settings)</span>
         </button>
       </nav>
@@ -198,6 +303,232 @@
 
   <!-- ════════ VIEW 1: OVERVIEW & QUICK LAUNCH ════════ -->
   <div class="lab-view is-active" id="view-overview" data-view-id="overview">
+    <!-- 3D Galaxy & Zodiac Astrolabe Command Hero -->
+    <section class="ov-galaxy-hero" id="ov-galaxy-hero" aria-label="3D Galaxy Linux Server Monitor">
+      <canvas id="ov-galaxy-canvas"></canvas>
+
+      <div class="ov-galaxy-grid">
+        <!-- Left HUD Wing: Linux Compute & Host Vitals -->
+        <aside class="ov-hud-wing ov-hud-wing--left" data-ov-card="vitals">
+          <div class="ov-wing-head">
+            <span class="ov-wing-dot"></span>
+            <span>LINUX SERVER VITALS</span>
+            <button type="button" class="ov-card-toggle" data-ov-toggle="vitals" aria-expanded="true" title="ย่อ/ขยายการ์ด">▾</button>
+          </div>
+          <div class="ov-card-body">
+            <div class="ov-wing-sub" id="ov-wing-host">homelab · Linux</div>
+
+            <div class="ov-vital-item">
+              <div class="ov-vital-row"><span>CPU Load</span><strong id="ov-wing-cpu">—%</strong></div>
+              <div class="ov-vital-bar"><i id="ov-wing-cpu-bar" style="width:0%"></i></div>
+              <div class="ov-vital-meta" id="ov-wing-load">Load: —</div>
+            </div>
+
+            <div class="ov-vital-item">
+              <div class="ov-vital-row"><span>Memory (RAM)</span><strong id="ov-wing-mem">—%</strong></div>
+              <div class="ov-vital-bar"><i id="ov-wing-mem-bar" class="is-emerald" style="width:0%"></i></div>
+              <div class="ov-vital-meta" id="ov-wing-mem-meta">— / —</div>
+            </div>
+
+            <div class="ov-vital-item">
+              <div class="ov-vital-row"><span>Root Disk</span><strong id="ov-wing-disk">—%</strong></div>
+              <div class="ov-vital-bar"><i id="ov-wing-disk-bar" class="is-violet" style="width:0%"></i></div>
+              <div class="ov-vital-meta" id="ov-wing-disk-meta">— / —</div>
+            </div>
+
+            <div class="ov-vital-split">
+              <div class="ov-mini-stat">
+                <span>Peak Temp</span>
+                <strong id="ov-wing-temp">—°C</strong>
+              </div>
+              <div class="ov-mini-stat">
+                <span>Uptime</span>
+                <strong id="ov-wing-uptime">—</strong>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Center Stage: 3D Holographic Armillary, Zodiac Ring & Orbiting Telemetry Planets -->
+        <div class="ov-galaxy-center">
+          <div class="ov-space-nav" id="ov-space-nav">
+            <div class="ov-search-wrap">
+              <input type="text" id="ov-space-search" name="ov_cosmic_radar_filter" class="ov-space-search" placeholder="🔍 ค้นหาดาว / เซอร์วิส (เช่น CPU, HA, Docker)..." autocomplete="off" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly');" />
+              <div class="ov-search-results" id="ov-search-results"></div>
+            </div>
+            <div class="ov-zoom-controls" aria-label="3D Camera Zoom">
+              <button type="button" class="ov-zoom-btn" id="ov-zoom-out" title="Zoom Out (−)">−</button>
+              <span class="ov-zoom-val" id="ov-zoom-val">1.0x</span>
+              <button type="button" class="ov-zoom-btn" id="ov-zoom-in" title="Zoom In (+)">+</button>
+              <button type="button" class="ov-zoom-btn ov-zoom-btn--reset" id="ov-zoom-reset" title="รีเซ็ตมุมกล้อง (Esc)">🎯</button>
+            </div>
+          </div>
+
+          <div class="ov-reactor-stage" id="ov-reactor-stage">
+            <div class="reactor-pulse-wave"></div>
+            <div class="reactor-pulse-wave reactor-pulse-wave--delay"></div>
+            <div class="reactor-armillary-3d" aria-hidden="true">
+              <svg class="armillary-ring armillary-ring--zodiac" id="ov-zodiac-svg" viewBox="0 0 360 360"></svg>
+              <svg class="armillary-ring armillary-ring--gyro-a" viewBox="0 0 360 360">
+                <circle cx="180" cy="180" r="158" fill="none" stroke="rgba(0, 229, 255, 0.34)" stroke-width="1.2" stroke-dasharray="24 12 6 12" />
+                <circle cx="180" cy="180" r="148" fill="none" stroke="rgba(168, 85, 247, 0.28)" stroke-width="0.9" stroke-dasharray="3 7" />
+              </svg>
+              <svg class="armillary-ring armillary-ring--gyro-b" viewBox="0 0 360 360">
+                <circle cx="180" cy="180" r="136" fill="none" stroke="rgba(52, 211, 153, 0.32)" stroke-width="1.2" stroke-dasharray="18 10 4 10" />
+                <circle cx="180" cy="180" r="126" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="0.8" stroke-dasharray="2 8" />
+              </svg>
+              <svg class="armillary-ring armillary-ring--equator" viewBox="0 0 360 360">
+                <circle cx="180" cy="180" r="176" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="1" stroke-dasharray="6 14" />
+                <circle cx="180" cy="180" r="112" fill="none" stroke="rgba(245, 208, 97, 0.2)" stroke-width="0.9" stroke-dasharray="2 10" />
+              </svg>
+            </div>
+            <svg class="reactor-svg" id="ov-reactor-svg" viewBox="0 0 300 300" aria-hidden="true">
+              <circle cx="150" cy="150" r="142" fill="none" stroke="rgba(168, 85, 247, 0.26)" stroke-width="1" stroke-dasharray="3 9" />
+              <g class="ring-cw-slow">
+                <circle cx="150" cy="150" r="126" fill="none" stroke="rgba(0, 229, 255, 0.32)" stroke-width="1.1" stroke-dasharray="28 14 6 14" />
+              </g>
+              <g class="ring-ccw-med">
+                <circle cx="150" cy="150" r="102" fill="none" stroke="#00e5ff" stroke-width="2.2" stroke-dasharray="55 24 18 24 70 28" stroke-linecap="round" opacity="0.65" />
+              </g>
+              <g class="ring-cw-fast">
+                <circle cx="150" cy="150" r="70" fill="none" stroke="#00e5ff" stroke-width="1.6" stroke-dasharray="36 18 10 18" opacity="0.78" />
+              </g>
+              <g class="ring-octa">
+                <polygon points="150,96 188,112 204,150 188,188 150,204 112,188 96,150 112,112" fill="none" stroke="rgba(0, 229, 255, 0.52)" stroke-width="1.2" />
+              </g>
+            </svg>
+            <div class="reactor-core-orb ov-core-orb" id="ov-core-voice-btn" role="button" tabindex="0" title="กด 2 ครั้ง (ดับเบิลคลิก) เพื่อเปิด AI Chat + เริ่มแชทใหม่ + เปิดไมค์สั่งงานด้วยเสียง" aria-label="ดับเบิลคลิกเพื่อเปิด AI Chat และพูดสั่งงานด้วยเสียง">
+              <canvas id="ov-core-particle-canvas" width="180" height="180"></canvas>
+              <div class="core-singularity"></div>
+              <div class="core-meridian"></div>
+              <div class="core-meridian core-meridian--2"></div>
+              <div class="core-meridian core-meridian--3"></div>
+              <svg class="ov-core-mic-ico" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="9" y="2.5" width="6" height="11" rx="3" />
+                <path d="M5 10.5a7 7 0 0 0 14 0" />
+                <line x1="12" y1="17.5" x2="12" y2="21.5" />
+                <line x1="8.5" y1="21.5" x2="15.5" y2="21.5" />
+              </svg>
+            </div>
+            <div class="orbit-planets-layer" id="ov-orbit-planets"></div>
+          </div>
+
+          <div class="ov-galaxy-caption">
+            <div class="ov-reactor-status" id="ov-reactor-status">SYSTEM NOMINAL · LIVE TELEMETRY</div>
+            <div class="ov-galaxy-badges">
+              <span class="ov-zodiac-badge" id="ov-zodiac-badge">♏ SCORPIO</span>
+              <span class="ov-astro-date-badge" id="ov-astro-date-badge">กำลังคำนวณปฏิทินโหราศาสตร์…</span>
+            </div>
+          </div>
+
+          <div class="planet-popover ov-planet-popover" id="ov-planet-popover"></div>
+        </div>
+
+        <!-- Right HUD Column: AC Power, Containers + Premium 3D Prayer Times -->
+        <div class="ov-wing-stack ov-wing-stack--right">
+          <aside class="ov-hud-wing ov-hud-wing--right" data-ov-card="infra">
+            <div class="ov-wing-head">
+              <span class="ov-wing-dot ov-wing-dot--gold"></span>
+              <span>POWER &amp; INFRASTRUCTURE</span>
+              <button type="button" class="ov-card-toggle" data-ov-toggle="infra" aria-expanded="true" title="ย่อ/ขยายการ์ด">▾</button>
+            </div>
+
+            <div class="ov-card-body">
+              <div class="ov-power-box">
+                <span class="ov-power-label">⚡ PZEM-01 Active Load</span>
+                <strong class="ov-power-val" id="ov-wing-watts">— W</strong>
+                <span class="ov-power-sub" id="ov-wing-ac">— V · — A</span>
+              </div>
+
+              <div class="ov-vital-split">
+                <div class="ov-mini-stat">
+                  <span>Docker</span>
+                  <strong id="ov-wing-docker">—/—</strong>
+                </div>
+                <div class="ov-mini-stat">
+                  <span>PM2 Apps</span>
+                  <strong id="ov-wing-pm2">—</strong>
+                </div>
+                <div class="ov-mini-stat">
+                  <span>Services</span>
+                  <strong id="ov-wing-svc">—/—</strong>
+                </div>
+              </div>
+
+              <div class="ov-net-box">
+                <span>🌐 Network I/O</span>
+                <strong id="ov-wing-net">↓ —  ↑ —</strong>
+              </div>
+
+              <div class="ov-quick-actions">
+                <button type="button" class="ov-act-btn" onclick="window.switchView && window.switchView('services')">🐳 คอนเทนเนอร์</button>
+                <button type="button" class="ov-act-btn" onclick="window.switchView && window.switchView('ports')">🛡️ พอร์ต &amp; VPN</button>
+                <button type="button" class="ov-act-btn ov-act-btn--ai" onclick="window.switchView && window.switchView('terminal')">⚡ AI &amp; Terminal</button>
+                <button type="button" class="ov-act-btn" onclick="window.openOverviewCosmic && window.openOverviewCosmic('trends')">🛰️ กราฟย้อนหลัง</button>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Premium 3D Galaxy Prayer Times Card -->
+          <aside class="ov-prayer-card" id="ov-prayer-card" data-ov-card="prayer" aria-label="เวลาละหมาดประจำวัน">
+            <div class="ov-prayer-bg-glow" aria-hidden="true"></div>
+            <div class="ov-prayer-head">
+              <div class="ov-prayer-title-wrap">
+                <div class="ov-prayer-orb3d" aria-hidden="true">
+                  <span class="ov-prayer-ring3d"></span>
+                  <span class="ov-prayer-moon">☪</span>
+                </div>
+                <div class="ov-prayer-title-text">
+                  <div class="ov-prayer-kicker">PRAYER TIMES</div>
+                  <div class="ov-prayer-hijri" id="ov-prayer-hijri">กำลังโหลดปฏิทินฮิจเราะห์…</div>
+                </div>
+              </div>
+              <div class="ov-prayer-head-actions">
+                <button type="button" class="ov-prayer-gear-btn" id="ov-prayer-gear-btn" title="ตั้งค่าเวลาละหมาดขั้นสูง" aria-label="ตั้งค่าเวลาละหมาดขั้นสูง">⚙️</button>
+                <button type="button" class="ov-card-toggle" data-ov-toggle="prayer" aria-expanded="true" title="ย่อ/ขยายการ์ด">▾</button>
+              </div>
+            </div>
+
+            <div class="ov-card-body">
+              <div class="ov-prayer-loc-row">
+                <button type="button" class="ov-prayer-city-btn" id="ov-prayer-city-btn" title="คลิกเพื่อเปลี่ยนจังหวัด/เมือง">📍 Bangkok</button>
+                <span class="ov-prayer-method-pill" id="ov-prayer-method-badge">MWL · Shafi</span>
+              </div>
+
+              <div class="ov-prayer-next">
+                <div class="ov-prayer-next-left">
+                  <span class="ov-prayer-next-label">เวลาถัดไป</span>
+                  <strong class="ov-prayer-next-name" id="ov-prayer-next-name">—</strong>
+                </div>
+                <div class="ov-prayer-next-right">
+                  <strong class="ov-prayer-next-time" id="ov-prayer-next-time">--:--</strong>
+                  <span class="ov-prayer-countdown" id="ov-prayer-countdown">อีก --:--:--</span>
+                </div>
+              </div>
+
+              <div class="ov-prayer-prog-track">
+                <div class="ov-prayer-prog-fill" id="ov-prayer-prog" style="width:0%"></div>
+              </div>
+
+              <div class="ov-prayer-meta-strip" id="ov-prayer-meta-strip" style="display:none">
+                <span id="ov-prayer-sunrise-info">🌅 ชูรูก --:--</span>
+              </div>
+
+              <div class="ov-prayer-grid" id="ov-prayer-grid">
+                <div class="ov-prayer-pill" data-prayer="Fajr"><span>ซุบฮิ</span><strong>--:--</strong></div>
+                <div class="ov-prayer-pill" data-prayer="Dhuhr"><span>ซุฮ์ริ</span><strong>--:--</strong></div>
+                <div class="ov-prayer-pill" data-prayer="Asr"><span>อัศริ</span><strong>--:--</strong></div>
+                <div class="ov-prayer-pill" data-prayer="Maghrib"><span>มัฆริบ</span><strong>--:--</strong></div>
+                <div class="ov-prayer-pill" data-prayer="Isha"><span>อิชาอ์</span><strong>--:--</strong></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hidden legacy DOM targets so app.js telemetry & charts stay synced without cluttering Overview -->
+    <div class="ov-legacy-hidden" style="display:none" aria-hidden="true">
     <!-- Hero System Vitals Tiles -->
     <section class="section" aria-labelledby="h-overview">
       <div class="section__head">
@@ -329,6 +660,7 @@
       </div>
     </div>
   </section>
+    </div><!-- /.ov-legacy-hidden -->
   </div>
 
 
@@ -847,6 +1179,7 @@
             <div>
               <label for="set-model" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">โมเดล AI เริ่มต้น (Default Model)</label>
               <select id="set-model" class="input" style="width:100%;">
+                <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
                 <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
                 <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
                 <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
@@ -887,10 +1220,19 @@
               <label for="set-tts-voice" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">เสียงคนพูด AI (Speaker TTS ฟรี)</label>
               <div style="display:flex;gap:8px;">
                 <select id="set-tts-voice" class="input" style="flex:1;">
-                  <option value="th-TH-PremwadeeNeural">👩 เปรมวดี (ไทย - หญิง ธรรมชาติ)</option>
+                  <option value="en-US-AvaMultilingualNeural">👩 Ava (Copilot ธรรมชาติ - หญิง อบอุ่น นุ่มนวล แนะนำ)</option>
                 </select>
                 <button type="button" id="btn-set-test-voice" class="btn btn--sm">🔊 ทดสอบ</button>
               </div>
+            </div>
+            <div>
+              <label for="set-tts-style" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">สไตล์น้ำเสียง &amp; อารมณ์ (Voice Mood)</label>
+              <select id="set-tts-style" class="input" style="width:100%;">
+                <option value="natural">🌿 ธรรมชาติ นุ่มนวล (แนะนำ)</option>
+                <option value="warm">☕ อบอุ่น ผ่อนคลาย เล่าเรื่อง</option>
+                <option value="cheerful">✨ สดใส เป็นกันเอง มีชีวิตชีวา</option>
+                <option value="calm">🎙️ สุขุม นิ่ง ชัดเจน</option>
+              </select>
             </div>
             <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
               <span>🗣️ อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Auto-Read)</span>
@@ -904,7 +1246,183 @@
               <span>👁️ แสดงลูกแก้ว 3D Reactor HUD ในหน้า AI</span>
               <input type="checkbox" id="chk-set-hud" style="width:18px;height:18px;" />
             </label>
+            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
+              <span>🌀 เอฟเฟกต์วาร์ปเปลี่ยนหน้า (Hyperspace Warp Transition)</span>
+              <input type="checkbox" id="chk-set-warp-fx" style="width:18px;height:18px;" checked />
+            </label>
           </div>
+        </div>
+      </div>
+
+      <!-- Prayer Times Advanced Settings -->
+      <div class="card" id="card-prayer-settings" data-hud="panel" style="margin-top:16px;">
+        <div class="card__head">
+          <span class="card__title">☪️ ตั้งค่าเวลาละหมาดขั้นสูง (Prayer Times Advanced Settings)</span>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span id="set-prayer-summary-badge" class="badge badge--ok">MWL · Shafi</span>
+            <button type="button" id="btn-prayer-reset" class="btn btn--sm" title="คืนค่าตั้งต้น (MWL / Bangkok)">↺ ค่าเริ่มต้น</button>
+          </div>
+        </div>
+
+        <div class="prayer-set-grid">
+          <!-- Location & Coordinates -->
+          <div class="prayer-set-group">
+            <div class="prayer-set-group-title">📍 ตำแหน่งที่ตั้ง &amp; พิกัด (Location &amp; Coordinates)</div>
+            <div class="prayer-set-row">
+              <div>
+                <label for="set-prayer-city">จังหวัด / เมือง (City Preset)</label>
+                <select id="set-prayer-city" class="input">
+                  <option value="Bangkok">กรุงเทพมหานคร (Bangkok)</option>
+                  <option value="Nonthaburi">นนทบุรี (Nonthaburi)</option>
+                  <option value="Pathum Thani">ปทุมธานี (Pathum Thani)</option>
+                  <option value="Chonburi">ชลบุรี (Chonburi)</option>
+                  <option value="Chiang Mai">เชียงใหม่ (Chiang Mai)</option>
+                  <option value="Phuket">ภูเก็ต (Phuket)</option>
+                  <option value="Hat Yai">หาดใหญ่ / สงขลา (Hat Yai)</option>
+                  <option value="Pattani">ปัตตานี (Pattani)</option>
+                  <option value="Yala">ยะลา (Yala)</option>
+                  <option value="Narathiwat">นราธิวาส (Narathiwat)</option>
+                  <option value="Nakhon Si Thammarat">นครศรีธรรมราช</option>
+                  <option value="Krabi">กระบี่ (Krabi)</option>
+                  <option value="Satun">สตูล (Satun)</option>
+                  <option value="custom">🎯 กำหนดพิกัด Lat / Lon เอง (Custom)</option>
+                </select>
+              </div>
+              <div>
+                <label for="set-prayer-tz">โซนเวลา (UTC Offset)</label>
+                <input type="number" id="set-prayer-tz" class="input" step="0.5" min="-12" max="14" value="7" />
+              </div>
+            </div>
+            <div class="prayer-set-row prayer-set-row--coords">
+              <div>
+                <label for="set-prayer-lat">ละติจูด (Latitude)</label>
+                <input type="number" id="set-prayer-lat" class="input" step="0.0001" min="-90" max="90" value="13.7563" />
+              </div>
+              <div>
+                <label for="set-prayer-lon">ลองจิจูด (Longitude)</label>
+                <input type="number" id="set-prayer-lon" class="input" step="0.0001" min="-180" max="180" value="100.5018" />
+              </div>
+              <div style="display:flex;align-items:flex-end;">
+                <button type="button" id="btn-prayer-gps" class="btn btn--sm" style="width:100%;">📡 ใช้พิกัด GPS</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Calculation Method & Juristic School -->
+          <div class="prayer-set-group">
+            <div class="prayer-set-group-title">🧭 วิธีการคำนวณ &amp; มัซฮับ (Calculation &amp; School)</div>
+            <div class="prayer-set-row">
+              <div>
+                <label for="set-prayer-method">มาตรฐานการคำนวณ (Calculation Method)</label>
+                <select id="set-prayer-method" class="input">
+                  <option value="3">Muslim World League (MWL) — 18° / 17°</option>
+                  <option value="11">MUIS (สิงคโปร์) — 20° / 18°</option>
+                  <option value="17">JAKIM (มาเลเซีย) — 20° / 18°</option>
+                  <option value="20">KEMENAG (อินโดนีเซีย) — 20° / 18°</option>
+                  <option value="4">Umm Al-Qura (มักกะห์) — 18.5° / 90m</option>
+                  <option value="5">Egyptian General Authority — 19.5° / 17.5°</option>
+                  <option value="1">Karachi (UIS) — 18° / 18°</option>
+                  <option value="2">ISNA (North America) — 15° / 15°</option>
+                  <option value="13">Diyanet (ตุรกี) — 18° / 17°</option>
+                  <option value="15">Moonsighting Committee Worldwide</option>
+                  <option value="0">Shia Ithna-Ashari (Jafari)</option>
+                  <option value="99">⚙️ กำหนดมุมดวงอาทิตย์เอง (Custom Angles)</option>
+                </select>
+              </div>
+              <div>
+                <label for="set-prayer-school">มัซฮับเวลาอัศริ (Asr Juristic Method)</label>
+                <select id="set-prayer-school" class="input">
+                  <option value="0">ชาฟิอี / มาลิกี / ฮัมบาลี (มาตรฐาน — เงา 1x)</option>
+                  <option value="1">ฮานาฟี (Hanafi — เงา 2x)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="prayer-set-row" id="prayer-custom-angles-row" style="display:none;">
+              <div>
+                <label for="set-prayer-fajr-angle">มุมดวงอาทิตย์ซุบฮิ (Fajr Angle °)</label>
+                <input type="number" id="set-prayer-fajr-angle" class="input" step="0.5" min="10" max="24" value="18" />
+              </div>
+              <div>
+                <label for="set-prayer-isha-angle">มุมดวงอาทิตย์อิชาอ์ (Isha Angle °)</label>
+                <input type="number" id="set-prayer-isha-angle" class="input" step="0.5" min="10" max="24" value="17" />
+              </div>
+            </div>
+
+            <div class="prayer-set-row prayer-set-row--3">
+              <div>
+                <label for="set-prayer-highlat">ละติจูดสูง (High Latitude)</label>
+                <select id="set-prayer-highlat" class="input">
+                  <option value="3">Angle Based (ตามมุม)</option>
+                  <option value="1">Middle of Night (ครึ่งคืน)</option>
+                  <option value="2">One Seventh (1/7 ของคืน)</option>
+                </select>
+              </div>
+              <div>
+                <label for="set-prayer-midnight">โหมดเที่ยงคืน (Midnight Mode)</label>
+                <select id="set-prayer-midnight" class="input">
+                  <option value="0">Standard (มัฆริบ–ซุบฮิ)</option>
+                  <option value="1">Jafari (มัฆริบ–อาทิตย์ขึ้น)</option>
+                </select>
+              </div>
+              <div>
+                <label for="set-prayer-hijri-adj">ปรับวันที่ฮิจเราะห์ (วัน)</label>
+                <input type="number" id="set-prayer-hijri-adj" class="input" step="1" min="-3" max="3" value="0" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Per-Prayer Minute Offsets (Tune +/-) -->
+        <div class="prayer-set-group" style="margin-top:12px;">
+          <div class="prayer-set-group-head">
+            <span class="prayer-set-group-title">⏱️ ปรับชดเชยเวลาบวกลบ (Minute Offsets / Ihtiyat ± นาที)</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <label for="set-prayer-tune-all" style="font-size:11px;color:var(--ink-muted);margin:0;">บวกลบทั้งหมด:</label>
+              <input type="number" id="set-prayer-tune-all" class="input prayer-tune-input" step="1" min="-30" max="30" value="0" title="ปรับทุกเวลาพร้อมกัน (นาที)" />
+              <button type="button" id="btn-prayer-apply-all" class="btn btn--sm">ใช้กับทุกเวลา</button>
+            </div>
+          </div>
+          <div class="prayer-tune-grid">
+            <div class="prayer-tune-item">
+              <label for="set-prayer-tune-fajr">ซุบฮิ (Fajr)</label>
+              <input type="number" id="set-prayer-tune-fajr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+            </div>
+            <div class="prayer-tune-item">
+              <label for="set-prayer-tune-dhuhr">ซุฮ์ริ (Dhuhr)</label>
+              <input type="number" id="set-prayer-tune-dhuhr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+            </div>
+            <div class="prayer-tune-item">
+              <label for="set-prayer-tune-asr">อัศริ (Asr)</label>
+              <input type="number" id="set-prayer-tune-asr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+            </div>
+            <div class="prayer-tune-item">
+              <label for="set-prayer-tune-maghrib">มัฆริบ (Maghrib)</label>
+              <input type="number" id="set-prayer-tune-maghrib" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+            </div>
+            <div class="prayer-tune-item">
+              <label for="set-prayer-tune-isha">อิชาอ์ (Isha)</label>
+              <input type="number" id="set-prayer-tune-isha" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Display Options -->
+        <div class="prayer-set-footer">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="chk-prayer-sunrise" style="width:16px;height:16px;" />
+              <span>🌅 แสดงเวลาชูรูก (Sunrise) &amp; ชื่อวิธีคำนวณในการ์ด</span>
+            </label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label for="set-prayer-timefmt" style="font-size:12px;color:var(--ink-muted);margin:0;">รูปแบบเวลา:</label>
+              <select id="set-prayer-timefmt" class="input" style="width:auto;padding:4px 10px;">
+                <option value="24h">24 ชั่วโมง (18:15)</option>
+                <option value="12h">12 ชั่วโมง (6:15 PM)</option>
+              </select>
+            </div>
+          </div>
+          <button type="button" id="btn-prayer-save" class="btn btn--primary btn--sm">💾 บันทึก &amp; คำนวณเวลาใหม่</button>
         </div>
       </div>
 
@@ -1035,31 +1553,38 @@
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/app.js?v=20261109-v13"></script>
+<!-- ── Hyperspace Warp Transition Overlay ───────────────────────────────── -->
+<div id="warp-speed-tunnel" class="warp-tunnel" aria-hidden="true">
+  <div class="warp-flare"></div>
+  <div class="warp-rings"></div>
+</div>
+
+<script src="/app.js?v=20261120-warp"></script>
 
 <!-- ── mobile bottom navigation bar ──────────────────────────────────────── -->
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">
   <button type="button" class="mobile-nav-btn is-active" data-view="overview" aria-label="หน้าหลัก">
-    <svg class="ico"><use href="#i-activity"/></svg>
+    <span class="mob-ico3d"><svg viewBox="0 0 24 24" class="ico3d-svg"><ellipse class="ico3d-orbit" cx="12" cy="12" rx="10" ry="4.2" transform="rotate(-24 12 12)" fill="none" stroke="url(#g-ov-ring)" stroke-width="1.6" opacity="0.9"/><circle class="ico3d-core" cx="12" cy="12" r="5.2" fill="url(#g-ov-core)"/><circle class="ico3d-node" cx="19.6" cy="8.6" r="1.7" fill="#fbbf24"/></svg></span>
     <span>หน้าหลัก</span>
   </button>
   <button type="button" class="mobile-nav-btn" data-view="services" aria-label="บริการ">
-    <svg class="ico"><use href="#i-box"/></svg>
+    <span class="mob-ico3d"><svg viewBox="0 0 24 24" class="ico3d-svg"><g class="ico3d-cube"><polygon points="12,2.5 20.5,7.2 12,11.9 3.5,7.2" fill="url(#g-sv-top)"/><polygon points="3.5,7.2 12,11.9 12,21.5 3.5,16.8" fill="url(#g-sv-left)"/><polygon points="20.5,7.2 12,11.9 12,21.5 20.5,16.8" fill="url(#g-sv-right)"/><polyline points="3.5,7.2 12,11.9 20.5,7.2" fill="none" stroke="#cffafe" stroke-width="0.9" opacity="0.85"/></g></svg></span>
     <span>บริการ</span>
   </button>
   <button type="button" class="mobile-nav-btn" data-view="ports" aria-label="พอร์ต">
-    <svg class="ico"><use href="#i-shield"/></svg>
+    <span class="mob-ico3d"><svg viewBox="0 0 24 24" class="ico3d-svg"><g class="ico3d-shield"><path d="M12 2.2L4 5.6v5.8c0 5.1 3.4 9.6 8 10.9V2.2z" fill="url(#g-pt-left)"/><path d="M12 2.2l8 3.4v5.8c0 5.1-3.4 9.6-8 10.9V2.2z" fill="url(#g-pt-right)"/><circle class="ico3d-core" cx="12" cy="11.2" r="2.1" fill="#ecfdf5"/></g></svg></span>
     <span>พอร์ต</span>
   </button>
   <button type="button" class="mobile-nav-btn" data-view="settings" aria-label="ตั้งค่าระบบ">
-    <svg class="ico"><use href="#i-settings"/></svg>
+    <span class="mob-ico3d"><svg viewBox="0 0 24 24" class="ico3d-svg"><g class="ico3d-gear"><path d="M19.4 13.5c.04-.49.04-1.01 0-1.5l2.06-1.6a.5.5 0 0 0 .12-.64l-1.95-3.38a.5.5 0 0 0-.6-.22l-2.43.98c-.5-.39-1.05-.71-1.65-.96L14.58 3.6a.5.5 0 0 0-.49-.42h-3.9a.5.5 0 0 0-.49.42l-.37 2.58c-.6.25-1.15.57-1.65.96l-2.43-.98a.5.5 0 0 0-.6.22L2.7 9.76a.5.5 0 0 0 .12.64l2.06 1.6c-.04.49-.04 1.01 0 1.5l-2.06 1.6a.5.5 0 0 0-.12.64l1.95 3.38a.5.5 0 0 0 .6.22l2.43-.98c.5.39 1.05.71 1.65.96l.37 2.58a.5.5 0 0 0 .49.42h3.9a.5.5 0 0 0 .49-.42l.37-2.58c.6-.25 1.15-.57 1.65-.96l2.43.98a.5.5 0 0 0 .6-.22l1.95-3.38a.5.5 0 0 0-.12-.64l-2.06-1.6z" fill="url(#g-st-gear)"/><circle cx="12" cy="12" r="4.3" fill="#0f172a" stroke="#fef3c7" stroke-width="0.9" opacity="0.9"/></g><circle class="ico3d-core" cx="12" cy="12" r="2.2" fill="url(#g-st-hub)"/></svg></span>
     <span>ตั้งค่า</span>
   </button>
   <button type="button" class="mobile-nav-btn" data-view="terminal" aria-label="เทอร์มินัล และ AI">
-    <svg class="ico"><use href="#i-terminal"/></svg>
+    <span class="mob-ico3d"><svg viewBox="0 0 24 24" class="ico3d-svg"><rect x="2.5" y="4" width="19" height="16" rx="3.2" fill="url(#g-tm-body)" stroke="url(#g-tm-edge)" stroke-width="1.5"/><polyline points="6.8,10.2 10.2,13 6.8,15.8" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line class="ico3d-cursor" x1="11.8" y1="15.8" x2="15.8" y2="15.8" stroke="#e879f9" stroke-width="2" stroke-linecap="round"/><path class="ico3d-spark" d="M18.2 4.2l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7z" fill="url(#g-tm-spark)"/></svg></span>
     <span>เทอร์มินัล/AI</span>
   </button>
 </nav>
 
+<script src="/overview-galaxy.js?v=20261118-3d"></script>
 </body>
 </html>

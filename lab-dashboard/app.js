@@ -147,6 +147,43 @@ function playNavSound() {
     } catch (_) {}
 }
 
+function playWarpSound() {
+    if (!isSoundEnabled()) return;
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const t = ctx.currentTime;
+        
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(260, t);
+        osc1.frequency.exponentialRampToValueAtTime(920, t + 0.07);
+        osc1.frequency.exponentialRampToValueAtTime(240, t + 0.22);
+
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(180, t);
+        osc2.frequency.exponentialRampToValueAtTime(540, t + 0.08);
+        osc2.frequency.exponentialRampToValueAtTime(140, t + 0.22);
+
+        gain.gain.setValueAtTime(0.06, t);
+        gain.gain.exponentialRampToValueAtTime(0.10, t + 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc1.start(t);
+        osc2.start(t);
+        osc1.stop(t + 0.23);
+        osc2.stop(t + 0.23);
+    } catch (_) {}
+}
+
 window.addEventListener('message', (ev) => {
     if (ev.data && ev.data.type === 'homelab_sound_fx') {
         state.sound = Boolean(ev.data.enabled);
@@ -556,9 +593,114 @@ function switchView(viewName, updateHash = true) {
     const prevView = state.activeView;
     const validViews = ['overview', 'services', 'ports', 'terminal', 'settings'];
     const target = validViews.includes(viewName) ? viewName : 'overview';
+
+    if (state.isReady && prevView === target) {
+        return;
+    }
+
     if (target === 'settings' && typeof loadSettingsView === 'function') {
         loadSettingsView();
     }
+
+    const performNavUpdates = () => {
+        // Update desktop subnav tabs
+        $$('.subnav__tab').forEach((b) => {
+            const isMatch = b.dataset.view === target;
+            b.classList.toggle('is-active', isMatch);
+            b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+        });
+
+        // Update mobile bottom nav buttons
+        $$('.mobile-nav-btn').forEach((b) => {
+            const isMatch = b.dataset.view === target;
+            b.classList.toggle('is-active', isMatch);
+        });
+
+        // Update desktop sidebar items
+        $$('.sidebar__item').forEach((b) => {
+            const isMatch = b.dataset.view === target;
+            b.classList.toggle('is-active', isMatch);
+            b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+        });
+
+        updateSidebarIndicator(target);
+
+        // Update Desktop Topbar Title
+        const titleInfo = VIEW_TITLES[target] || VIEW_TITLES.overview;
+        const iconEl = $('#view-title-icon');
+        const textEl = $('#view-title-text');
+        if (iconEl) iconEl.innerHTML = titleInfo.icon;
+        if (textEl) textEl.innerHTML = titleInfo.text;
+
+        if (updateHash && location.hash !== `#${target}`) {
+            history.replaceState(null, '', `#${target}`);
+        }
+    };
+
+    const activateTargetView = () => {
+        // When switching to overview or terminal, ensure canvas/charts sync
+        if (target === 'overview') {
+            setTimeout(() => { syncHudFrames(); drawCharts(); }, 40);
+        } else if (target === 'terminal') {
+            const subtab = state.activeTermSubtab || 'gemini';
+            switchTerminalSubtab(subtab);
+            if (subtab === 'shell') {
+                const out = $('#dterm-output');
+                if (out) out.scrollTop = out.scrollHeight;
+            }
+        }
+        window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+
+    const isWarpEnabled = localStorage.getItem('core_warp_fx') !== '0' &&
+                          !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (state.isReady && prevView && prevView !== target && isWarpEnabled) {
+        const currentViewEl = document.querySelector(`.lab-view.is-active, .lab-view[data-view-id="${prevView}"], .lab-view[data-view="${prevView}"]`);
+        const targetViewEl = document.querySelector(`.lab-view[data-view-id="${target}"], .lab-view[data-view="${target}"]`);
+
+        if (currentViewEl && targetViewEl && currentViewEl !== targetViewEl) {
+            state.activeView = target;
+            performNavUpdates();
+            playWarpSound();
+
+            const tunnel = document.getElementById('warp-speed-tunnel');
+            if (tunnel) {
+                tunnel.classList.remove('is-warping');
+                void tunnel.offsetWidth;
+                tunnel.classList.add('is-warping');
+            }
+
+            $$('.lab-view').forEach((v) => {
+                if (v !== currentViewEl && v !== targetViewEl) {
+                    v.classList.remove('warp-out', 'warp-in', 'is-active');
+                    v.style.display = 'none';
+                }
+            });
+
+            currentViewEl.classList.remove('warp-in');
+            currentViewEl.classList.add('warp-out');
+
+            if (state.warpTimer) clearTimeout(state.warpTimer);
+            state.warpTimer = setTimeout(() => {
+                currentViewEl.classList.remove('is-active', 'warp-out');
+                currentViewEl.style.display = 'none';
+
+                targetViewEl.style.display = 'block';
+                targetViewEl.classList.add('is-active', 'warp-in');
+                activateTargetView();
+
+                state.warpTimer = setTimeout(() => {
+                    targetViewEl.classList.remove('warp-in');
+                    if (tunnel) tunnel.classList.remove('is-warping');
+                    state.warpTimer = null;
+                }, 260);
+            }, 150);
+            return;
+        }
+    }
+
+    // Default immediate switch (e.g. initial load or reduced motion)
     if (state.isReady && prevView !== target) {
         playNavSound();
     }
@@ -568,56 +710,12 @@ function switchView(viewName, updateHash = true) {
     $$('.lab-view').forEach((v) => {
         const isMatch = (v.dataset.viewId || v.dataset.view) === target;
         v.style.display = isMatch ? 'block' : 'none';
+        v.classList.remove('warp-out', 'warp-in');
         v.classList.toggle('is-active', isMatch);
     });
 
-    // Update desktop subnav tabs
-    $$('.subnav__tab').forEach((b) => {
-        const isMatch = b.dataset.view === target;
-        b.classList.toggle('is-active', isMatch);
-        b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
-    });
-
-    // Update mobile bottom nav buttons
-    $$('.mobile-nav-btn').forEach((b) => {
-        const isMatch = b.dataset.view === target;
-        b.classList.toggle('is-active', isMatch);
-    });
-
-    // Update desktop sidebar items
-    $$('.sidebar__item').forEach((b) => {
-        const isMatch = b.dataset.view === target;
-        b.classList.toggle('is-active', isMatch);
-        b.setAttribute('aria-selected', isMatch ? 'true' : 'false');
-    });
-
-    updateSidebarIndicator(target);
-
-    // Update Desktop Topbar Title
-    const titleInfo = VIEW_TITLES[target] || VIEW_TITLES.overview;
-    const iconEl = $('#view-title-icon');
-    const textEl = $('#view-title-text');
-    if (iconEl) iconEl.innerHTML = titleInfo.icon;
-    if (textEl) textEl.innerHTML = titleInfo.text;
-
-    if (updateHash && location.hash !== `#${target}`) {
-        history.replaceState(null, '', `#${target}`);
-    }
-
-    // When switching to overview or terminal, ensure canvas/charts sync
-    if (target === 'overview') {
-        setTimeout(() => { syncHudFrames(); drawCharts(); }, 40);
-    } else if (target === 'terminal') {
-        const subtab = state.activeTermSubtab || 'gemini';
-        switchTerminalSubtab(subtab);
-        if (subtab === 'shell') {
-            const out = $('#dterm-output');
-            if (out) out.scrollTop = out.scrollHeight;
-        }
-    }
-
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    performNavUpdates();
+    activateTargetView();
 }
 
 function renderTiles(s) {
@@ -1585,7 +1683,7 @@ function pushHistory(s, rate, diskRates) {
 }
 
 async function refresh(force) {
-    if (state.paused && !force) return;
+    if ((state.paused || document.hidden) && !force) return;   // ไม่ poll ตอนแท็บถูกซ่อน
     try {
         const r = await fetch('/api/summary', { cache: 'no-store' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1630,6 +1728,7 @@ async function refresh(force) {
         pushHistory(s, rate, diskRates);
 
         renderTiles(s);
+        if (typeof window.updateOverviewGalaxy === 'function') window.updateOverviewGalaxy(s, rate);
         renderEnergy(s);
         renderServices(s);
         renderLinks(s.links);
@@ -2949,9 +3048,11 @@ function loadSettingsView() {
     const inpKey = document.getElementById('set-apikey');
     const selStt = document.getElementById('set-stt');
     const selVoice = document.getElementById('set-tts-voice');
+    const selVoiceStyle = document.getElementById('set-tts-style');
     const chkAutoTts = document.getElementById('chk-set-auto-tts');
     const chkSoundFx = document.getElementById('chk-set-sound-fx');
     const chkHud = document.getElementById('chk-set-hud');
+    const chkWarpFx = document.getElementById('chk-set-warp-fx');
     const txtMemory = document.getElementById('set-memory');
     const hint = document.getElementById('settings-hint');
 
@@ -2964,11 +3065,13 @@ function loadSettingsView() {
 
     if (!settingsInitialized) {
         settingsInitialized = true;
-        selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-medium';
+        selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-high';
         selStt.value = localStorage.getItem('stt_engine') || 'whisper';
+        if (selVoiceStyle) selVoiceStyle.value = localStorage.getItem('core_tts_style') || 'natural';
         chkAutoTts.checked = localStorage.getItem('core_auto_tts') === '1';
         chkSoundFx.checked = localStorage.getItem('gemini_sound_enabled') !== '0';
         chkHud.checked = localStorage.getItem('core_hud_hidden') !== '1';
+        if (chkWarpFx) chkWarpFx.checked = localStorage.getItem('core_warp_fx') !== '0';
 
         selModel.addEventListener('change', () => {
             localStorage.setItem('core_default_model', selModel.value);
@@ -2986,6 +3089,10 @@ function loadSettingsView() {
             localStorage.setItem('core_tts_voice', selVoice.value);
             notify('✅ บันทึกเสียงพูด AI แล้ว');
         });
+        selVoiceStyle?.addEventListener('change', () => {
+            localStorage.setItem('core_tts_style', selVoiceStyle.value);
+            notify('✅ บันทึกสไตล์น้ำเสียงแล้ว');
+        });
         chkAutoTts.addEventListener('change', () => {
             localStorage.setItem('core_auto_tts', chkAutoTts.checked ? '1' : '0');
             notify(chkAutoTts.checked ? '🗣️ เปิดอ่านออกเสียงอัตโนมัติ' : '🔇 ปิดอ่านออกเสียงอัตโนมัติ');
@@ -2998,6 +3105,12 @@ function loadSettingsView() {
             localStorage.setItem('core_hud_hidden', chkHud.checked ? '0' : '1');
             notify(chkHud.checked ? '👁️ แสดงลูกแก้ว 3D HUD' : '🙈 ซ่อนลูกแก้ว 3D HUD');
         });
+        if (chkWarpFx) {
+            chkWarpFx.addEventListener('change', () => {
+                localStorage.setItem('core_warp_fx', chkWarpFx.checked ? '1' : '0');
+                notify(chkWarpFx.checked ? '🌀 เปิดเอฟเฟกต์วาร์ปเปลี่ยนหน้าแล้ว' : '⚡ ปิดเอฟเฟกต์วาร์ป (เปลี่ยนหน้าทันที)');
+            });
+        }
 
         document.getElementById('btn-set-save-key')?.addEventListener('click', async () => {
             const res = await fetch('/api/gemini/config', {
@@ -3015,7 +3128,11 @@ function loadSettingsView() {
             try {
                 const res = await fetch('/api/tts', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: 'สวัสดีค่ะ ระบบเสียงธรรมชาติพร้อมใช้งานแล้วค่ะ', voice: selVoice.value })
+                    body: JSON.stringify({
+                        text: 'สวัสดีค่ะ! ระบบเสียงธรรมชาติพร้อมใช้งานแล้วนะคะ ✨ วันนี้อยากให้ช่วยดูแลเรื่องอะไรดีคะ?',
+                        voice: selVoice.value,
+                        style: selVoiceStyle ? selVoiceStyle.value : (localStorage.getItem('core_tts_style') || 'natural')
+                    })
                 });
                 if (!res.ok) throw new Error('TTS HTTP ' + res.status);
                 const blob = await res.blob();
@@ -3046,7 +3163,10 @@ function loadSettingsView() {
                 notify('❌ ' + e.message);
             }
         });
+
+        initPrayerSettingsUI(notify);
     }
+    if (typeof window._syncPrayerSettingsUI === 'function') window._syncPrayerSettingsUI();
 
     fetch('/api/gemini/status').then(r => r.json()).then(d => {
         if (authBadge) {
@@ -3065,9 +3185,14 @@ function loadSettingsView() {
         }
     }).catch(() => {});
 
-    const savedVoice = localStorage.getItem('core_tts_voice') || 'th-TH-PremwadeeNeural';
+    let savedVoice = localStorage.getItem('core_tts_voice') || 'vachana:th_f_1';
     fetch('/api/tts/voices').then(r => r.json()).then(d => {
         if (d && d.ok && Array.isArray(d.voices)) {
+            if (d.defaultVoice && localStorage.getItem('core_tts_v2_migrated') !== '1') {
+                savedVoice = d.defaultVoice;
+                localStorage.setItem('core_tts_voice', savedVoice);
+                localStorage.setItem('core_tts_v2_migrated', '1');
+            }
             selVoice.innerHTML = d.voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
             if ([...selVoice.options].some(o => o.value === savedVoice)) selVoice.value = savedVoice;
         }
@@ -3083,3 +3208,219 @@ window.addEventListener('message', (e) => {
         switchView('settings');
     }
 });
+
+// ── Prayer Times Advanced Settings Controller ─────────────────────────────────
+function initPrayerSettingsUI(notify) {
+    const PRESET_COORDS = {
+        'Bangkok': [13.7563, 100.5018],
+        'Nonthaburi': [13.8621, 100.5144],
+        'Pathum Thani': [14.0208, 100.5250],
+        'Chonburi': [13.3611, 100.9847],
+        'Chiang Mai': [18.7883, 98.9853],
+        'Phuket': [7.8804, 98.3923],
+        'Hat Yai': [7.0086, 100.4747],
+        'Pattani': [6.8695, 101.2505],
+        'Yala': [6.5411, 101.2804],
+        'Narathiwat': [6.4255, 101.8253],
+        'Nakhon Si Thammarat': [8.4304, 99.9631],
+        'Krabi': [8.0863, 98.9063],
+        'Satun': [6.6238, 100.0674]
+    };
+    const METHOD_NAMES = {
+        0: 'Jafari', 1: 'Karachi', 2: 'ISNA', 3: 'MWL', 4: 'Makkah',
+        5: 'Egypt', 11: 'MUIS', 13: 'Diyanet', 15: 'Moonsighting',
+        17: 'JAKIM', 20: 'KEMENAG', 99: 'Custom'
+    };
+    const DEFAULTS = {
+        city: 'Bangkok',
+        lat: 13.7563,
+        lon: 100.5018,
+        tz: 7,
+        method: 3,
+        fajrAngle: 18,
+        ishaAngle: 17,
+        school: 0,
+        highLat: 3,
+        midnightMode: 0,
+        hijriAdj: 0,
+        tune: { Fajr: 0, Dhuhr: 0, Asr: 0, Maghrib: 0, Isha: 0 },
+        showSunrise: false,
+        timeFormat: '24h'
+    };
+
+    const $id = (id) => document.getElementById(id);
+    const selCity = $id('set-prayer-city');
+    if (!selCity) return;
+
+    const inpLat = $id('set-prayer-lat');
+    const inpLon = $id('set-prayer-lon');
+    const inpTz = $id('set-prayer-tz');
+    const selMethod = $id('set-prayer-method');
+    const customRow = $id('prayer-custom-angles-row');
+    const inpFajrAng = $id('set-prayer-fajr-angle');
+    const inpIshaAng = $id('set-prayer-isha-angle');
+    const selSchool = $id('set-prayer-school');
+    const selHighLat = $id('set-prayer-highlat');
+    const selMidnight = $id('set-prayer-midnight');
+    const inpHijriAdj = $id('set-prayer-hijri-adj');
+    const tuneAll = $id('set-prayer-tune-all');
+    const tuneFajr = $id('set-prayer-tune-fajr');
+    const tuneDhuhr = $id('set-prayer-tune-dhuhr');
+    const tuneAsr = $id('set-prayer-tune-asr');
+    const tuneMaghrib = $id('set-prayer-tune-maghrib');
+    const tuneIsha = $id('set-prayer-tune-isha');
+    const chkSunrise = $id('chk-prayer-sunrise');
+    const selTimeFmt = $id('set-prayer-timefmt');
+    const badge = $id('set-prayer-summary-badge');
+
+    function readCfg() {
+        try {
+            const raw = localStorage.getItem('ov_prayer_settings_v1');
+            if (raw) {
+                const p = JSON.parse(raw);
+                return { ...DEFAULTS, ...p, tune: { ...DEFAULTS.tune, ...(p.tune || {}) } };
+            }
+        } catch (_) {}
+        const legacyCity = localStorage.getItem('ov_prayer_city');
+        if (legacyCity && PRESET_COORDS[legacyCity]) {
+            return { ...DEFAULTS, city: legacyCity, lat: PRESET_COORDS[legacyCity][0], lon: PRESET_COORDS[legacyCity][1] };
+        }
+        return { ...DEFAULTS };
+    }
+
+    function updateBadge(cfg) {
+        if (!badge) return;
+        const m = METHOD_NAMES[cfg.method] || 'MWL';
+        const s = Number(cfg.school) === 1 ? 'Hanafi' : 'Shafi';
+        const c = cfg.city === 'custom' ? `${Number(cfg.lat).toFixed(2)},${Number(cfg.lon).toFixed(2)}` : cfg.city;
+        badge.textContent = `${m} · ${s} · ${c}`;
+    }
+
+    function syncUI() {
+        const cfg = readCfg();
+        selCity.value = PRESET_COORDS[cfg.city] ? cfg.city : 'custom';
+        inpLat.value = cfg.lat;
+        inpLon.value = cfg.lon;
+        inpTz.value = cfg.tz;
+        selMethod.value = String(cfg.method);
+        inpFajrAng.value = cfg.fajrAngle;
+        inpIshaAng.value = cfg.ishaAngle;
+        customRow.style.display = Number(cfg.method) === 99 ? 'grid' : 'none';
+        selSchool.value = String(cfg.school);
+        selHighLat.value = String(cfg.highLat);
+        selMidnight.value = String(cfg.midnightMode);
+        inpHijriAdj.value = cfg.hijriAdj;
+        tuneFajr.value = cfg.tune.Fajr || 0;
+        tuneDhuhr.value = cfg.tune.Dhuhr || 0;
+        tuneAsr.value = cfg.tune.Asr || 0;
+        tuneMaghrib.value = cfg.tune.Maghrib || 0;
+        tuneIsha.value = cfg.tune.Isha || 0;
+        chkSunrise.checked = !!cfg.showSunrise;
+        selTimeFmt.value = cfg.timeFormat || '24h';
+        updateBadge(cfg);
+    }
+
+    function saveFromUI(msg) {
+        const cfg = {
+            city: selCity.value,
+            lat: parseFloat(inpLat.value) || DEFAULTS.lat,
+            lon: parseFloat(inpLon.value) || DEFAULTS.lon,
+            tz: parseFloat(inpTz.value) ?? DEFAULTS.tz,
+            method: parseInt(selMethod.value, 10),
+            fajrAngle: parseFloat(inpFajrAng.value) || 18,
+            ishaAngle: parseFloat(inpIshaAng.value) || 17,
+            school: parseInt(selSchool.value, 10) || 0,
+            highLat: parseInt(selHighLat.value, 10) || 3,
+            midnightMode: parseInt(selMidnight.value, 10) || 0,
+            hijriAdj: parseInt(inpHijriAdj.value, 10) || 0,
+            tune: {
+                Fajr: parseInt(tuneFajr.value, 10) || 0,
+                Dhuhr: parseInt(tuneDhuhr.value, 10) || 0,
+                Asr: parseInt(tuneAsr.value, 10) || 0,
+                Maghrib: parseInt(tuneMaghrib.value, 10) || 0,
+                Isha: parseInt(tuneIsha.value, 10) || 0
+            },
+            showSunrise: !!chkSunrise.checked,
+            timeFormat: selTimeFmt.value || '24h'
+        };
+        try {
+            localStorage.setItem('ov_prayer_settings_v1', JSON.stringify(cfg));
+            if (cfg.city !== 'custom') localStorage.setItem('ov_prayer_city', cfg.city);
+        } catch (_) {}
+        updateBadge(cfg);
+        window.dispatchEvent(new CustomEvent('prayer-settings-updated'));
+        if (msg) notify(msg);
+    }
+
+    selCity.addEventListener('change', () => {
+        if (PRESET_COORDS[selCity.value]) {
+            const [lat, lon] = PRESET_COORDS[selCity.value];
+            inpLat.value = lat;
+            inpLon.value = lon;
+        }
+        saveFromUI('📍 อัปเดตตำแหน่งเวลาละหมาดแล้ว');
+    });
+
+    [inpLat, inpLon].forEach((el) => {
+        el.addEventListener('change', () => {
+            selCity.value = 'custom';
+            saveFromUI('🎯 อัปเดตพิกัดเวลาละหมาดแล้ว');
+        });
+    });
+
+    selMethod.addEventListener('change', () => {
+        customRow.style.display = Number(selMethod.value) === 99 ? 'grid' : 'none';
+        saveFromUI('🧭 บันทึกมาตรฐานการคำนวณเวลาละหมาดแล้ว');
+    });
+
+    [inpTz, inpFajrAng, inpIshaAng, selSchool, selHighLat, selMidnight, inpHijriAdj,
+     tuneFajr, tuneDhuhr, tuneAsr, tuneMaghrib, tuneIsha, chkSunrise, selTimeFmt].forEach((el) => {
+        el?.addEventListener('change', () => saveFromUI('☪️ บันทึกการตั้งค่าเวลาละหมาดแล้ว'));
+    });
+
+    $id('btn-prayer-apply-all')?.addEventListener('click', () => {
+        const v = parseInt(tuneAll.value, 10) || 0;
+        tuneFajr.value = v;
+        tuneDhuhr.value = v;
+        tuneAsr.value = v;
+        tuneMaghrib.value = v;
+        tuneIsha.value = v;
+        saveFromUI(`⏱️ ปรับชดเชยทุกเวลา ${v >= 0 ? '+' : ''}${v} นาทีแล้ว`);
+    });
+
+    $id('btn-prayer-gps')?.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            notify('❌ เบราว์เซอร์ไม่รองรับ GPS');
+            return;
+        }
+        notify('📡 กำลังดึงพิกัด GPS...');
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                selCity.value = 'custom';
+                inpLat.value = pos.coords.latitude.toFixed(4);
+                inpLon.value = pos.coords.longitude.toFixed(4);
+                saveFromUI('📡 อัปเดตพิกัดจาก GPS เรียบร้อยแล้ว');
+            },
+            (err) => notify('❌ ดึงพิกัด GPS ไม่สำเร็จ: ' + err.message),
+            { timeout: 8000 }
+        );
+    });
+
+    $id('btn-prayer-save')?.addEventListener('click', () => {
+        saveFromUI('✅ บันทึกและคำนวณเวลาละหมาดใหม่เรียบร้อย');
+    });
+
+    $id('btn-prayer-reset')?.addEventListener('click', () => {
+        try {
+            localStorage.setItem('ov_prayer_settings_v1', JSON.stringify(DEFAULTS));
+            localStorage.setItem('ov_prayer_city', DEFAULTS.city);
+        } catch (_) {}
+        syncUI();
+        window.dispatchEvent(new CustomEvent('prayer-settings-updated'));
+        notify('↺ คืนค่าตั้งต้นเวลาละหมาดแล้ว');
+    });
+
+    window._syncPrayerSettingsUI = syncUI;
+    window.addEventListener('prayer-settings-updated', syncUI);
+    syncUI();
+}

@@ -18,7 +18,7 @@
    · Multi-ring metallic dial + counter-rotating gyro reticle + locking bolts
    · Interactive drag-to-spin on the dial + keystroke-driven ratchet bursts
    · Wrong key → jammed bolt slam + red wobble · Right key → hydraulic bolt
-     retraction + shockwave + galaxy warp → dashboard
+     retraction + shockwave + vault door opening into blinding light → dashboard
    ══════════════════════════════════════════════════════════════════════════ */
 :root {
     color-scheme: dark;
@@ -303,7 +303,7 @@ html, body {
 .d-rot {
     transform-origin: 150px 150px;
     will-change: transform;
-    transition: transform .42s cubic-bezier(.16, .95, .28, 1.06);
+    transition: transform 1s cubic-bezier(.12, .8, .2, 1.02);
 }
 .d-rot.is-dragging { transition: none !important; }
 .dial.is-unlocking .d-rot {
@@ -315,7 +315,7 @@ html, body {
 .d-gyro {
     transform-origin: 150px 150px;
     will-change: transform;
-    transition: transform .55s cubic-bezier(.22, .95, .36, 1);
+    transition: transform 1.15s cubic-bezier(.15, .8, .25, 1);
 }
 .d-gyro.is-dragging { transition: none !important; }
 .dial.is-unlocking .d-gyro {
@@ -602,6 +602,153 @@ html, body {
     .console__log { min-height: calc(1.75em * 3); max-height: calc(1.75em * 3); }
 }
 
+/* ── Vault door opening (login → dashboard transition) ─────────────────────── */
+.vault {
+    --D: min(76vmin, 620px);
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    overflow: hidden;
+    opacity: 0;
+    background: #000;
+}
+.vault[hidden] { display: none; }
+.vault__scene {
+    position: absolute;
+    inset: 0;
+    perspective: 1500px;
+    transform-style: preserve-3d;
+    will-change: transform;
+}
+.vault__light {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(var(--D) * 2.2);
+    height: calc(var(--D) * 2.2);
+    transform: translate(-50%, -50%) translateZ(-80px);
+    border-radius: 50%;
+    opacity: 0;
+    background: radial-gradient(circle, #fff 0, #fffdf2 18%, #fff0c2 32%, #ffd36b 50%, #f59e0b 66%, rgba(120, 50, 0, 0) 78%);
+}
+.vault__wall {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 420vmax;
+    height: 420vmax;
+    transform: translate(-50%, -50%);
+    background:
+        radial-gradient(circle, rgba(255, 255, 255, .06) 0, transparent calc(var(--D) * 0.9)),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, .018) 0 2px, transparent 2px 7px),
+        radial-gradient(circle, #2b303e 0, #171a25 calc(var(--D) * 0.85), #090b11 calc(var(--D) * 2));
+    -webkit-mask: radial-gradient(circle, transparent calc(var(--D) / 2 - 1px), #000 calc(var(--D) / 2));
+    mask: radial-gradient(circle, transparent calc(var(--D) / 2 - 1px), #000 calc(var(--D) / 2));
+}
+.vault__collar {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(var(--D) * 1.16);
+    height: calc(var(--D) * 1.16);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: conic-gradient(from 30deg, #4b5264, #a5adc0, #3c4252, #737c90, #c6ccda, #4b5264, #2e3340, #8a93a7, #4b5264);
+    -webkit-mask: radial-gradient(circle, transparent calc(var(--D) / 2), #000 calc(var(--D) / 2 + 1px));
+    mask: radial-gradient(circle, transparent calc(var(--D) / 2), #000 calc(var(--D) / 2 + 1px));
+    box-shadow: 0 0 60px rgba(0, 0, 0, .8);
+}
+.vault__collar::after {
+    content: "";
+    position: absolute;
+    inset: 7%;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .08);
+}
+.vault__hinge {
+    position: absolute;
+    left: calc(50% - var(--D) / 2 - var(--D) * 0.07);
+    width: calc(var(--D) * 0.1);
+    height: calc(var(--D) * 0.16);
+    border-radius: 8px;
+    background: linear-gradient(90deg, #2c313e, #9aa3b6 45%, #3b4150);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .7);
+}
+.vault__hinge--top { top: calc(50% - var(--D) * 0.3); }
+.vault__hinge--bottom { top: calc(50% + var(--D) * 0.14); }
+.vault__door {
+    position: absolute;
+    left: calc(50% - var(--D) / 2);
+    top: calc(50% - var(--D) / 2);
+    width: var(--D);
+    height: var(--D);
+    transform-origin: 0 50%;
+    transform-style: preserve-3d;
+    transform: translateZ(1px);
+}
+.vault__slab {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: #1b1f2a;
+    border: 2px solid #3b4252;
+}
+.vault__face {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    background:
+        radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .28), transparent 42%),
+        repeating-radial-gradient(circle, rgba(255, 255, 255, .035) 0 1px, transparent 1px 4px),
+        conic-gradient(from 210deg, #5c6477, #a3abbe, #4a5163, #2b303d, #6f788c, #c0c7d6, #555d70, #5c6477);
+    box-shadow: inset 0 0 0 calc(var(--D) * 0.018) #3a4050, inset 0 0 calc(var(--D) * 0.09) rgba(0, 0, 0, .55);
+}
+.vault__face svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.v-ring { fill: none; stroke: rgba(0, 0, 0, .35); stroke-width: 3; }
+.v-ring--hi { stroke: rgba(255, 255, 255, .12); stroke-width: 1.5; }
+.v-bolt { fill: url(#vBoltGrad); stroke: #2a2f3b; stroke-width: 1.2; }
+.v-led { fill: var(--amber); filter: drop-shadow(0 0 4px var(--amber)); transition: fill .4s, filter .4s; }
+.vault__door.is-unlocked .v-led { fill: var(--mint); filter: drop-shadow(0 0 6px var(--mint)); }
+#v-wheel { transform-box: view-box; transform-origin: 200px 200px; }
+.v-wheel-rim { fill: none; stroke: url(#vChrome); stroke-width: 11; }
+.v-spoke { stroke: url(#vChrome); stroke-width: 9; stroke-linecap: round; }
+.v-knob { fill: url(#vBoltGrad); stroke: #2a2f3b; stroke-width: 1.5; }
+.v-hub { fill: url(#vHubGrad); stroke: #a5adc0; stroke-width: 2; }
+.v-hub-core { fill: var(--mint); filter: drop-shadow(0 0 8px var(--mint)); }
+.vault__rays {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 300vmax;
+    height: 300vmax;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    background:
+        radial-gradient(circle, rgba(255, 250, 230, .95) 0, rgba(255, 220, 140, .5) 8%, rgba(255, 190, 90, 0) 26%),
+        repeating-conic-gradient(from 0deg, rgba(255, 236, 180, .55) 0 2.2deg, rgba(255, 236, 180, 0) 2.2deg 9deg);
+    -webkit-mask: radial-gradient(circle, #000 0, rgba(0, 0, 0, .6) 14%, transparent 42%);
+    mask: radial-gradient(circle, #000 0, rgba(0, 0, 0, .6) 14%, transparent 42%);
+    filter: blur(1.5px);
+}
+.vault__flash {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: radial-gradient(circle at 50% 50%, #fff 0, #fffaf0 45%, #ffe7b0 100%);
+}
+.vault__skip {
+    position: absolute;
+    right: 18px;
+    bottom: 16px;
+    font: 11px var(--mono);
+    letter-spacing: .14em;
+    color: rgba(255, 255, 255, .35);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .d-rot, .d-gyro, .d-holo-outer, .gate, .dial, .dial-stage, .dial-halo, .dial-shockwave {
         transition: none !important;
@@ -742,6 +889,27 @@ html, body {
   </section>
 </main>
 
+<div class="vault" id="vault" aria-hidden="true" hidden>
+  <div class="vault__scene" id="vault-scene">
+    <div class="vault__light" id="vault-light"></div>
+    <div class="vault__wall"></div>
+    <div class="vault__collar"></div>
+    <div class="vault__hinge vault__hinge--top"></div>
+    <div class="vault__hinge vault__hinge--bottom"></div>
+    <div class="vault__door" id="vault-door">
+      <div class="vault__slab" style="transform: translateZ(-34px)"></div>
+      <div class="vault__slab" style="transform: translateZ(-26px)"></div>
+      <div class="vault__slab" style="transform: translateZ(-18px)"></div>
+      <div class="vault__slab" style="transform: translateZ(-10px)"></div>
+      <div class="vault__slab" style="transform: translateZ(-3px)"></div>
+      <div class="vault__face"><svg viewBox="0 0 400 400" id="vault-svg"></svg></div>
+    </div>
+    <div class="vault__rays" id="vault-rays"></div>
+  </div>
+  <div class="vault__flash" id="vault-flash"></div>
+  <span class="vault__skip">click to skip</span>
+</div>
+
 <div class="hud hud--bottom">
   <span>Session · HMAC-SHA256</span>
   <span id="foot-site">—</span>
@@ -759,9 +927,21 @@ html, body {
   var countEl = $('count'), segsEl = $('segs'), logEl = $('log'), saved = $('saved');
   var gate = $('gate'), sfxBtn = $('sfx');
 
-  // ══ Realistic Mechanical Safe-Dial & Metaverse Sound FX ═══════════════════
+  // ══ Heavy vault sound engine — louder, slower, metal-room reverb ══════════
+  // Everything feeds mainIn → (bus → compressor → make-up gain) + a short steel-room
+  // reverb, so clicks sound like a big safe dial instead of tiny UI ticks
   var sfxOn = localStorage.getItem('login_sfx') !== '0';
-  var actx = null, masterComp = null, noiseBuf = null;
+  var actx = null, mainIn = null, noiseBuf = null, runGain = null;
+
+  function makeImpulse(c, seconds, decay) {
+    var len = Math.floor(c.sampleRate * seconds);
+    var buf = c.createBuffer(2, len, c.sampleRate);
+    for (var ch = 0; ch < 2; ch++) {
+      var d = buf.getChannelData(ch);
+      for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+    return buf;
+  }
 
   function audio() {
     if (!sfxOn) return null;
@@ -770,13 +950,26 @@ html, body {
         var AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return null;
         actx = new AC();
-        if (actx.createDynamicsCompressor) {
-          masterComp = actx.createDynamicsCompressor();
-          masterComp.threshold.value = -14;
-          masterComp.ratio.value = 4;
-          masterComp.connect(actx.destination);
-        } else {
-          masterComp = actx.destination;
+        var comp = actx.createDynamicsCompressor();
+        comp.threshold.value = -20;
+        comp.knee.value = 8;
+        comp.ratio.value = 8;
+        comp.attack.value = 0.002;
+        comp.release.value = 0.22;
+        var makeup = actx.createGain();
+        makeup.gain.value = 1.5;
+        comp.connect(makeup).connect(actx.destination);
+        var bus = actx.createGain();
+        bus.gain.value = 1.7;
+        bus.connect(comp);
+        mainIn = actx.createGain();
+        mainIn.connect(bus);
+        if (actx.createConvolver) {
+          var conv = actx.createConvolver();
+          conv.buffer = makeImpulse(actx, 1.8, 2.6);
+          var wet = actx.createGain();
+          wet.gain.value = 0.32;
+          mainIn.connect(wet).connect(conv).connect(comp);
         }
       }
       if (actx.state === 'suspended') actx.resume();
@@ -786,165 +979,219 @@ html, body {
 
   function getNoise(c) {
     if (noiseBuf && noiseBuf.sampleRate === c.sampleRate) return noiseBuf;
-    var len = Math.floor(c.sampleRate * 1.0);
+    var len = Math.floor(c.sampleRate * 3);
     noiseBuf = c.createBuffer(1, len, c.sampleRate);
     var data = noiseBuf.getChannelData(0);
     for (var i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
     return noiseBuf;
   }
 
-  // Single crisp mechanical safe-dial detent click ("แกรก" / steel pawl snap)
-  function mechClick(delay, vol, pitchShift, heavy) {
-    var c = audio();
-    if (!c) return;
-    var t = c.currentTime + (delay || 0);
-    var v = vol || 0.22;
-    var p = pitchShift || 1;
-
-    // 1. Crisp metallic pawl transient (bandpass-filtered noise burst)
-    var src = c.createBufferSource();
-    src.buffer = getNoise(c);
-    var bp = c.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.setValueAtTime((heavy ? 2400 : 3400) * p, t);
-    bp.Q.setValueAtTime(heavy ? 3.2 : 4.6, t);
-
-    var ng = c.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.exponentialRampToValueAtTime(v, t + 0.0018);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + (heavy ? 0.022 : 0.013));
-    src.connect(bp).connect(ng).connect(masterComp);
-    src.start(t);
-    src.stop(t + 0.03);
-
-    // 2. Hardened steel housing micro-ring (high transient shimmer)
-    var ring = c.createOscillator(), rg = c.createGain();
-    ring.type = 'triangle';
-    ring.frequency.setValueAtTime((heavy ? 4200 : 5600) * p, t);
-    ring.frequency.exponentialRampToValueAtTime(1900 * p, t + 0.012);
-    rg.gain.setValueAtTime(0.0001, t);
-    rg.gain.exponentialRampToValueAtTime(v * 0.28, t + 0.001);
-    rg.gain.exponentialRampToValueAtTime(0.0001, t + 0.015);
-    ring.connect(rg).connect(masterComp);
-    ring.start(t);
-    ring.stop(t + 0.018);
-
-    // 3. Heavy steel cylinder body thump
-    var body = c.createOscillator(), bg = c.createGain();
-    body.type = 'sine';
-    body.frequency.setValueAtTime((heavy ? 185 : 230) * p, t);
-    body.frequency.exponentialRampToValueAtTime(48, t + (heavy ? 0.034 : 0.02));
-    bg.gain.setValueAtTime(0.0001, t);
-    bg.gain.exponentialRampToValueAtTime(v * (heavy ? 0.72 : 0.45), t + 0.002);
-    bg.gain.exponentialRampToValueAtTime(0.0001, t + (heavy ? 0.038 : 0.022));
-    body.connect(bg).connect(masterComp);
-    body.start(t);
-    body.stop(t + 0.042);
+  // Attack/decay envelope on a fresh gain node
+  function env(c, t, peak, attack, decay) {
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    return g;
   }
 
-  function blip(type, f0, f1, dur, vol, delay) {
-    var c = audio();
-    if (!c) return;
-    var t = c.currentTime + (delay || 0);
-    var o = c.createOscillator(), g = c.createGain();
+  function noiseHit(c, t, type, f0, f1, q, peak, attack, decay, dest) {
+    var src = c.createBufferSource();
+    src.buffer = getNoise(c);
+    var f = c.createBiquadFilter();
+    f.type = type;
+    f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t);
+    if (f1 && f1 !== f0) f.frequency.exponentialRampToValueAtTime(f1, t + attack + decay);
+    src.connect(f).connect(env(c, t, peak, attack, decay)).connect(dest || mainIn);
+    src.start(t, Math.random() * 1.5);
+    src.stop(t + attack + decay + 0.05);
+  }
+
+  function tone(c, t, type, f0, f1, peak, attack, decay, dest) {
+    var o = c.createOscillator();
     o.type = type;
     o.frequency.setValueAtTime(f0, t);
-    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(masterComp);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + attack + decay);
+    o.connect(env(c, t, peak, attack, decay)).connect(dest || mainIn);
     o.start(t);
-    o.stop(t + dur + 0.02);
+    o.stop(t + attack + decay + 0.05);
+  }
+
+  // One heavy safe-dial detent: pawl snap + ringing steel + cylinder thump ("แกรก")
+  function clank(c, t, vol, pitch, heavy, dest) {
+    var p = pitch || 1;
+    noiseHit(c, t, 'bandpass', 2600 * p, 1500 * p, 2.4, vol, 0.002, heavy ? 0.11 : 0.07, dest);
+    noiseHit(c, t, 'highpass', 5200, 5200, 0.7, vol * 0.55, 0.001, 0.03, dest);
+    var base = (heavy ? 520 : 760) * p;
+    [1, 2.76, 5.4].forEach(function (k, i) {
+      tone(c, t, 'sine', base * k, base * k * 0.995, vol * 0.2 / (i + 1), 0.002, (heavy ? 0.38 : 0.22) / (1 + i * 0.4), dest);
+    });
+    tone(c, t, 'sine', (heavy ? 150 : 190) * p, 50, vol * (heavy ? 1.0 : 0.75), 0.003, heavy ? 0.2 : 0.11, dest);
+  }
+
+  // Gear-teeth friction under a spin ("ครืดดด")
+  function grind(c, t, dur, vol, freq, dest) {
+    var src = c.createBufferSource();
+    src.buffer = getNoise(c);
+    var f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(freq || 900, t);
+    f.frequency.exponentialRampToValueAtTime((freq || 900) * 0.55, t + dur);
+    f.Q.value = 1.4;
+    var am = c.createGain();
+    am.gain.value = 0.5;
+    var lfo = c.createOscillator();
+    lfo.type = 'square';
+    lfo.frequency.setValueAtTime(34, t);
+    lfo.frequency.exponentialRampToValueAtTime(12, t + dur);
+    var depth = c.createGain();
+    depth.gain.value = 0.45;
+    lfo.connect(depth).connect(am.gain);
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.06);
+    g.gain.setValueAtTime(vol, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(am).connect(g).connect(dest || mainIn);
+    src.start(t, Math.random());
+    src.stop(t + dur + 0.05);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.05);
+  }
+
+  // Slow, decelerating dial spin: แกรก…แกรก…แกรก……แกรก……กริ๊ก!
+  // Returns the run length so callers can match the visual spin.
+  function ratchetRun(c, t, steps, vol, pitch, dest) {
+    var gap = 0.055;
+    var start = t;
+    for (var i = 0; i < steps; i++) {
+      var last = i === steps - 1;
+      clank(c, t, last ? vol * 1.25 : vol * (1 - (i / steps) * 0.3), (pitch || 1) * (0.95 + Math.random() * 0.1), last, dest);
+      if (!last) { t += gap; gap *= 1.17; }
+    }
+    grind(c, start, t - start + 0.05, vol * 0.35, 950 * (pitch || 1), dest);
+    tone(c, t + 0.02, 'sine', 2900 * (pitch || 1), 2800 * (pitch || 1), vol * 0.12, 0.002, 0.5, dest);
+    return t - start;
   }
 
   var sfx = {
-    // Decelerating safe-dial spin burst: "แกรก-แกรก-แกรก-แกรก... กริ๊ก!"
     ratchet: function (degDelta) {
-      var steps = Math.max(4, Math.min(8, Math.round(Math.abs(degDelta) / 26)));
-      var t = 0;
-      for (var i = 0; i < steps; i++) {
-        var frac = i / Math.max(1, steps - 1);
-        var isLast = i === steps - 1;
-        var vol = isLast ? 0.24 : (0.14 + (1 - frac) * 0.08);
-        var pitch = 0.92 + Math.random() * 0.16 - frac * 0.08;
-        mechClick(t, vol, pitch, isLast);
-        t += 0.018 + frac * frac * 0.044;
-      }
+      var c = audio();
+      if (!c) return;
+      // Fade the previous run so fast typing doesn't pile up into noise
+      if (runGain) runGain.gain.setTargetAtTime(0.0001, c.currentTime, 0.05);
+      runGain = c.createGain();
+      runGain.connect(mainIn);
+      var steps = Math.max(6, Math.min(11, Math.round(Math.abs(degDelta) / 22)));
+      ratchetRun(c, c.currentTime + 0.005, steps, 0.6, 1, runGain);
     },
-    // Single crisp notch click when manually dragging the safe dial
     dialStep: function (speed) {
-      var p = 0.9 + Math.min(0.25, (speed || 0) * 0.02) + (Math.random() - 0.5) * 0.08;
-      mechClick(0, 0.22, p, false);
+      var c = audio();
+      if (!c) return;
+      clank(c, c.currentTime, 0.5, 0.9 + Math.min(0.2, (speed || 0) * 0.02) + (Math.random() - 0.5) * 0.08, false);
     },
     back: function () {
-      mechClick(0, 0.2, 0.85, true);
-      mechClick(0.04, 0.12, 1.15, false);
+      var c = audio();
+      if (!c) return;
+      clank(c, c.currentTime, 0.55, 0.8, true);
+      clank(c, c.currentTime + 0.12, 0.35, 1.1, false);
     },
     toggle: function () {
-      mechClick(0, 0.18, 1.25, false);
-      blip('sine', 520, 760, 0.05, 0.035, 0.01);
+      var c = audio();
+      if (!c) return;
+      clank(c, c.currentTime, 0.45, 1.3, false);
+      tone(c, c.currentTime + 0.02, 'sine', 660, 990, 0.12, 0.01, 0.18);
     },
     error: function () {
-      // Heavy jammed vault bolt slam + mechanical recoil buzz
-      mechClick(0, 0.34, 0.65, true);
-      mechClick(0.07, 0.26, 0.55, true);
-      blip('sawtooth', 165, 78, 0.2, 0.09, 0.02);
-      blip('sawtooth', 142, 62, 0.28, 0.09, 0.14);
+      var c = audio();
+      if (!c) return;
+      var t = c.currentTime;
+      // Jammed bolt slams twice, then a grinding buzz and a low steel boom
+      clank(c, t, 1.0, 0.55, true);
+      clank(c, t + 0.16, 0.85, 0.5, true);
+      tone(c, t, 'sine', 95, 30, 1.0, 0.004, 0.7);
+      var buzz = c.createBiquadFilter();
+      buzz.type = 'lowpass';
+      buzz.frequency.value = 420;
+      buzz.connect(mainIn);
+      tone(c, t + 0.25, 'sawtooth', 72, 58, 0.45, 0.02, 0.55, buzz);
+      tone(c, t + 0.25, 'sawtooth', 75.5, 60, 0.4, 0.02, 0.55, buzz);
+      grind(c, t + 0.22, 0.6, 0.35, 500);
     },
     ok: function () {
-      // Phase 1: 4 steel locking pins snapping open rapidly
-      [0, 0.075, 0.15, 0.225].forEach(function (d, idx) {
-        mechClick(d, 0.26, 0.9 + idx * 0.15, true);
-        blip('triangle', 640 + idx * 180, 960 + idx * 240, 0.08, 0.045, d);
-      });
-      // Phase 2: Heavy hydraulic bolt retraction thud + pneumatic release
       var c = audio();
-      if (c) {
-        var t0 = c.currentTime + 0.31;
-        var ns = c.createBufferSource();
-        ns.buffer = getNoise(c);
-        var lp = c.createBiquadFilter();
-        lp.type = 'bandpass';
-        lp.frequency.setValueAtTime(1400, t0);
-        lp.frequency.exponentialRampToValueAtTime(320, t0 + 0.28);
-        lp.Q.value = 1.6;
-        var ng = c.createGain();
-        ng.gain.setValueAtTime(0.0001, t0);
-        ng.gain.exponentialRampToValueAtTime(0.16, t0 + 0.02);
-        ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
-        ns.connect(lp).connect(ng).connect(masterComp);
-        ns.start(t0);
-        ns.stop(t0 + 0.32);
+      if (!c) return;
+      var t = c.currentTime;
+      // 4 heavy locking pins release one by one
+      for (var i = 0; i < 4; i++) {
+        clank(c, t + i * 0.22, 0.85, 0.82 + i * 0.1, true);
+        tone(c, t + i * 0.22, 'triangle', 320 + i * 60, 180, 0.18, 0.004, 0.18);
       }
-      blip('sine', 120, 34, 0.45, 0.22, 0.31);
-      // Phase 3: Metaverse holographic harmonic chord swell
-      [523.25, 659.25, 783.99, 987.77, 1174.66].forEach(function (f, i) {
-        blip('sine', f, f * 1.003, 0.9, 0.055, 0.42 + i * 0.055);
+      // Hydraulic release + deep thud + bright chord
+      noiseHit(c, t + 0.92, 'bandpass', 3200, 700, 1.1, 0.5, 0.02, 0.75);
+      tone(c, t + 0.92, 'sine', 110, 34, 1.0, 0.005, 0.6);
+      [523.25, 659.25, 783.99, 1046.5].forEach(function (f, k) {
+        tone(c, t + 1.05 + k * 0.08, 'sine', f, f * 1.002, 0.13, 0.03, 1.4);
       });
     },
-    warp: function () {
+    // Full vault-door soundtrack. Times are seconds from now and match openVault()
+    vaultOpen: function (T) {
       var c = audio();
-      if (c) {
-        var t0 = c.currentTime;
-        var ns = c.createBufferSource();
-        ns.buffer = getNoise(c);
-        var bp = c.createBiquadFilter();
-        bp.type = 'bandpass';
-        bp.frequency.setValueAtTime(160, t0);
-        bp.frequency.exponentialRampToValueAtTime(3800, t0 + 0.85);
-        bp.Q.value = 2.4;
-        var ng = c.createGain();
-        ng.gain.setValueAtTime(0.0001, t0);
-        ng.gain.exponentialRampToValueAtTime(0.18, t0 + 0.45);
-        ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.05);
-        ns.connect(bp).connect(ng).connect(masterComp);
-        ns.start(t0);
-        ns.stop(t0 + 1.1);
+      if (!c) return;
+      var t0 = c.currentTime;
+      var at = function (s) { return t0 + s; };
+
+      // Low room tone swelling while the camera pushes in
+      noiseHit(c, at(0), 'lowpass', 120, 260, 0.7, 0.35, 0.8, T.wheel + T.wheelDur);
+      // Big handle wheel: slow heavy gear ratchet
+      ratchetRun(c, at(T.wheel), 12, 0.75, 0.6);
+      grind(c, at(T.wheel), T.wheelDur, 0.35, 420);
+      // 12 rim bolts retract in three volleys
+      for (var v = 0; v < 3; v++) {
+        for (var b = 0; b < 4; b++) clank(c, at(T.bolts + v * 0.11 + b * 0.025), 0.7, 0.68 + v * 0.06, true);
       }
-      blip('sawtooth', 55, 720, 0.95, 0.055);
-      blip('sine', 110, 1440, 0.95, 0.06, 0.04);
-      blip('sine', 2200, 360, 0.9, 0.035, 0.1);
+      noiseHit(c, at(T.bolts + 0.3), 'bandpass', 3600, 900, 1.2, 0.45, 0.02, 0.6);
+      // Seal breaks: thunk + pressurised air hiss
+      tone(c, at(T.crack), 'sine', 72, 38, 1.0, 0.004, 0.6);
+      noiseHit(c, at(T.crack), 'highpass', 2200, 6500, 0.8, 0.55, 0.02, 0.9);
+      // Hinge groan while the door swings
+      var groan = c.createBiquadFilter();
+      groan.type = 'lowpass';
+      groan.frequency.value = 340;
+      groan.Q.value = 6;
+      groan.connect(mainIn);
+      var go = c.createOscillator();
+      go.type = 'sawtooth';
+      go.frequency.setValueAtTime(52, at(T.crack + 0.15));
+      go.frequency.linearRampToValueAtTime(38, at(T.swing + T.swingDur));
+      var vib = c.createOscillator();
+      vib.frequency.value = 5.5;
+      var vibAmt = c.createGain();
+      vibAmt.gain.value = 3;
+      vib.connect(vibAmt).connect(go.frequency);
+      var gg = env(c, at(T.crack + 0.15), 0.5, 0.4, T.swingDur);
+      go.connect(gg).connect(groan);
+      go.start(at(T.crack + 0.15));
+      vib.start(at(T.crack + 0.15));
+      go.stop(at(T.swing + T.swingDur + 0.6));
+      vib.stop(at(T.swing + T.swingDur + 0.6));
+      grind(c, at(T.crack + 0.2), T.swingDur, 0.3, 380);
+      // Light pouring out: rising air rush + shimmering choir chord
+      noiseHit(c, at(T.swing), 'bandpass', 300, 5200, 0.8, 0.5, T.flood - T.swing, 0.6);
+      [220, 277.18, 329.63, 440, 554.37, 659.25, 880].forEach(function (f, i) {
+        tone(c, at(T.swing + 0.2 + i * 0.05), i % 2 ? 'triangle' : 'sine', f, f * 1.003, 0.1, 1.1, 1.8);
+      });
+      for (var s = 0; s < 10; s++) {
+        var st = at(T.swing + 0.5 + Math.random() * (T.flood - T.swing));
+        tone(c, st, 'sine', 1500 + Math.random() * 2400, 1500 + Math.random() * 2400, 0.05, 0.01, 0.9);
+      }
+      // Flood of light: deep boom + bright burst
+      tone(c, at(T.flood), 'sine', 64, 28, 1.0, 0.01, 1.4);
+      noiseHit(c, at(T.flood), 'lowpass', 6000, 300, 0.7, 0.6, 0.01, 1.2);
+      [1046.5, 1318.5, 1568, 2093].forEach(function (f, i) {
+        tone(c, at(T.flood + 0.05 + i * 0.06), 'sine', f, f, 0.12, 0.01, 1.3);
+      });
     }
   };
 
@@ -1211,14 +1458,111 @@ html, body {
       dial.classList.add('is-granted');
       log('✓ vault.unlock() → granted', 'ok');
     }, 620);
-    var go = function () { location.replace(redirect || rd); };
+    var target = redirect || rd;
+    if (target === '/') target = '/#overview';
+    var go = function () {
+      // Tells the dashboard to continue the scene: it opens out of the light
+      try { sessionStorage.setItem('vault_entry', String(Date.now())); } catch (_) { /* private mode */ }
+      location.replace(target);
+    };
     if (reduceMotion) { setTimeout(go, 900); return; }
     setTimeout(function () {
-      log('› warping to dashboard…', 'warn');
-      sfx.warp();
-      gate.classList.add('is-leaving');
-      galaxy.warp(go);
-    }, 1500);
+      log('› opening vault door…', 'warn');
+      openVault(go);
+    }, 1400);
+  }
+
+  // ══ Vault door sequence ═══════════════════════════════════════════════════
+  (function buildVaultDoor() {
+    var svg = $('vault-svg');
+    if (!svg) return;
+    var h = '<defs>' +
+      '<linearGradient id="vChrome" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e8ecf5"/><stop offset=".45" stop-color="#8a93a8"/><stop offset=".55" stop-color="#5a6276"/><stop offset="1" stop-color="#d4d9e4"/></linearGradient>' +
+      '<radialGradient id="vBoltGrad" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#f1f4fa"/><stop offset=".5" stop-color="#8e97ab"/><stop offset="1" stop-color="#3a4050"/></radialGradient>' +
+      '<radialGradient id="vHubGrad" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#d9dee8"/><stop offset=".6" stop-color="#6b7488"/><stop offset="1" stop-color="#2f3442"/></radialGradient>' +
+      '</defs>';
+    h += '<circle class="v-ring" cx="200" cy="200" r="176"/><circle class="v-ring v-ring--hi" cx="200" cy="200" r="173"/>';
+    h += '<circle class="v-ring" cx="200" cy="200" r="128"/><circle class="v-ring v-ring--hi" cx="200" cy="200" r="125"/>';
+    for (var i = 0; i < 12; i++) {
+      h += '<g transform="rotate(' + (i * 30 + 15) + ' 200 200)"><rect class="v-bolt" x="191" y="-16" width="18" height="40" rx="5"/></g>';
+    }
+    for (var l = 0; l < 24; l++) {
+      var a = (l / 24) * Math.PI * 2;
+      h += '<circle class="v-led" cx="' + (200 + Math.sin(a) * 150).toFixed(1) + '" cy="' + (200 - Math.cos(a) * 150).toFixed(1) + '" r="2.6"/>';
+    }
+    h += '<g id="v-wheel"><circle class="v-wheel-rim" cx="200" cy="200" r="78"/>';
+    for (var k = 0; k < 6; k++) {
+      var b = (k / 6) * Math.PI * 2;
+      var x2 = 200 + Math.sin(b) * 104, y2 = 200 - Math.cos(b) * 104;
+      h += '<line class="v-spoke" x1="200" y1="200" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '"/>' +
+           '<circle class="v-knob" cx="' + x2.toFixed(1) + '" cy="' + y2.toFixed(1) + '" r="11"/>';
+    }
+    h += '<circle class="v-hub" cx="200" cy="200" r="30"/><circle class="v-hub-core" cx="200" cy="200" r="8"/></g>';
+    svg.innerHTML = h;
+  })();
+
+  function openVault(go) {
+    var vault = $('vault'), scene = $('vault-scene'), door = $('vault-door');
+    var light = $('vault-light'), rays = $('vault-rays'), flash = $('vault-flash'), wheel = $('v-wheel');
+    if (!vault || !scene || typeof scene.animate !== 'function') { go(); return; }
+
+    var finished = false;
+    var finish = function () {
+      if (finished) return;
+      finished = true;
+      go();
+    };
+    // Seconds; shared with sfx.vaultOpen so picture and sound stay in sync
+    var T = { push: 1.1, wheel: 1.1, wheelDur: 1.4, bolts: 2.4, crack: 3.0, swing: 3.45, swingDur: 1.9, flood: 4.7, end: 5.9 };
+    var ms = function (s) { return Math.round(s * 1000); };
+
+    vault.hidden = false;
+    var r = dial.getBoundingClientRect();
+    var Dpx = door.offsetWidth || 1;
+    var s0 = Math.max(0.12, (r.width * 0.95) / Dpx);
+    var dx = r.left + r.width / 2 - window.innerWidth / 2;
+    var dy = r.top + r.height / 2 - window.innerHeight / 2;
+
+    sfx.vaultOpen(T);
+    gate.classList.add('is-leaving');
+    galaxy.pulse(1.0);
+
+    vault.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 450, fill: 'forwards' });
+    scene.animate(
+      [{ transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + s0 + ')' }, { transform: 'translate(0px,0px) scale(1)' }],
+      { duration: ms(T.push), easing: 'cubic-bezier(.3,0,.15,1)', fill: 'forwards' }
+    );
+    wheel.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(-600deg)' }],
+      { delay: ms(T.wheel), duration: ms(T.wheelDur), easing: 'cubic-bezier(.45,0,.2,1)', fill: 'forwards' });
+    var bolts = door.querySelectorAll('.v-bolt');
+    for (var i = 0; i < bolts.length; i++) {
+      bolts[i].animate([{ transform: 'translateY(0px)' }, { transform: 'translateY(30px)' }],
+        { delay: ms(T.bolts) + (i % 3) * 110 + Math.floor(i / 3) * 25, duration: 380, easing: 'cubic-bezier(.5,0,.2,1.35)', fill: 'forwards' });
+    }
+    setTimeout(function () { door.classList.add('is-unlocked'); }, ms(T.bolts));
+    // Crack open (light leaks through the seam), pause, then swing wide toward the camera
+    door.animate([
+      { transform: 'translateZ(1px) rotateY(0deg)' },
+      { transform: 'translateZ(1px) rotateY(-7deg)', offset: 0.17 },
+      { transform: 'translateZ(1px) rotateY(-7deg)', offset: 0.27 },
+      { transform: 'translateZ(1px) rotateY(-112deg)' }
+    ], { delay: ms(T.crack), duration: ms(T.swing + T.swingDur - T.crack), easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' });
+    light.animate([{ opacity: 0 }, { opacity: 0.6, offset: 0.2 }, { opacity: 1 }],
+      { delay: ms(T.crack), duration: ms(T.flood - T.crack), fill: 'forwards' });
+    rays.animate([
+      { opacity: 0, transform: 'translate(-50%,-50%) rotate(0deg) scale(.7)' },
+      { opacity: 0.35, transform: 'translate(-50%,-50%) rotate(6deg) scale(.85)', offset: 0.2 },
+      { opacity: 1, transform: 'translate(-50%,-50%) rotate(28deg) scale(1.25)' }
+    ], { delay: ms(T.crack + 0.1), duration: ms(T.end - T.crack), easing: 'ease-out', fill: 'forwards' });
+    // Camera rushes through the doorway into the light
+    scene.animate([{ transform: 'translate(0px,0px) scale(1)' }, { transform: 'translate(0px,0px) scale(3.6)' }],
+      { delay: ms(T.flood - 0.5), duration: ms(T.end - T.flood + 0.5), easing: 'cubic-bezier(.6,0,.85,.3)', fill: 'forwards' });
+    flash.animate([{ opacity: 0 }, { opacity: 1 }],
+      { delay: ms(T.flood - 0.1), duration: ms(T.end - T.flood - 0.2), easing: 'ease-in', fill: 'forwards' });
+
+    setTimeout(finish, ms(T.end));
+    vault.addEventListener('pointerdown', finish);
+    window.addEventListener('keydown', finish);
   }
 
   form.addEventListener('submit', function (e) {

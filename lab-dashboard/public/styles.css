@@ -2334,6 +2334,49 @@ a { color: var(--series-1); }
     }
 }
 
+/* ── Vault arrival (continues the login vault-door scene) ─────────────────── */
+.vault-arrival {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    pointer-events: none;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 50%, #fff 0, #fffaf0 35%, #ffe7b0 70%, #f5b54a 100%);
+    animation: vaultArrive 1.9s cubic-bezier(.35, 0, .2, 1) .2s forwards;
+}
+
+.vault-arrival__rays {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 260vmax;
+    height: 260vmax;
+    transform: translate(-50%, -50%);
+    mix-blend-mode: screen;
+    background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, .6) 0 2.2deg, rgba(255, 255, 255, 0) 2.2deg 9deg);
+    -webkit-mask: radial-gradient(circle, #000 0, transparent 45%);
+    mask: radial-gradient(circle, #000 0, transparent 45%);
+    animation: vaultArriveRays 2.1s ease-out forwards;
+}
+
+html.vault-entering .app-layout {
+    animation: vaultReveal 2s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+@keyframes vaultArrive {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes vaultArriveRays {
+    to { transform: translate(-50%, -50%) rotate(32deg) scale(1.5); }
+}
+
+@keyframes vaultReveal {
+    0% { transform: scale(1.14); filter: brightness(2.4) blur(12px); }
+    100% { transform: none; filter: none; }
+}
+
 /* ── Mobile Fixed Bottom Navigation Bar ────────────────────────────────── */
 .mobile-bottom-nav {
     display: none;

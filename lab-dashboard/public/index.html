@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>Home-lab Control Panel</title>
-<link rel="stylesheet" href="/styles.css?v=20261120-warpstudio">
+<link rel="stylesheet" href="/styles.css?v=20261120-vaultdoor">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -15,6 +15,27 @@
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
 </head>
 <body>
+<script>
+// Arriving from the login vault door: start inside the light and let it fade into the dashboard
+(function () {
+  try {
+    var v = sessionStorage.getItem('vault_entry');
+    if (!v) return;
+    sessionStorage.removeItem('vault_entry');
+    if (Date.now() - Number(v) > 15000) return;
+    document.documentElement.classList.add('vault-entering');
+    var o = document.createElement('div');
+    o.className = 'vault-arrival';
+    o.setAttribute('aria-hidden', 'true');
+    o.innerHTML = '<div class="vault-arrival__rays"></div>';
+    document.body.appendChild(o);
+    setTimeout(function () {
+      o.remove();
+      document.documentElement.classList.remove('vault-entering');
+    }, 2600);
+  } catch (_) { /* sessionStorage unavailable */ }
+})();
+</script>
 
 <!-- ── icon sprite ────────────────────────────────────────────────────────── -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -1627,8 +1648,8 @@
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/warp-fx.js?v=20261120-warpstudio"></script>
-<script src="/app.js?v=20261120-warpstudio"></script>
+<script src="/warp-fx.js?v=20261120-vaultdoor"></script>
+<script src="/app.js?v=20261120-vaultdoor"></script>
 
 <!-- ── mobile bottom navigation bar ──────────────────────────────────────── -->
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">

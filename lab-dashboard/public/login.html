@@ -957,10 +957,10 @@ html, body {
         comp.attack.value = 0.002;
         comp.release.value = 0.22;
         var makeup = actx.createGain();
-        makeup.gain.value = 1.5;
+        makeup.gain.value = 0.85;
         comp.connect(makeup).connect(actx.destination);
         var bus = actx.createGain();
-        bus.gain.value = 1.7;
+        bus.gain.value = 1.2;
         bus.connect(comp);
         mainIn = actx.createGain();
         mainIn.connect(bus);
@@ -1105,39 +1105,39 @@ html, body {
     ratchet: function () {
       var c = audio();
       if (!c) return;
-      krak(c, c.currentTime, 0.95, 1);
+      krak(c, c.currentTime, 0.68, 1);
     },
     dialStep: function (speed) {
       var c = audio();
       if (!c) return;
-      krak(c, c.currentTime, 0.8, 0.95 + Math.min(0.15, (speed || 0) * 0.015));
+      krak(c, c.currentTime, 0.58, 0.95 + Math.min(0.15, (speed || 0) * 0.015));
     },
     back: function () {
       var c = audio();
       if (!c) return;
-      krak(c, c.currentTime, 0.85, 0.75);
+      krak(c, c.currentTime, 0.6, 0.75);
     },
     toggle: function () {
       var c = audio();
       if (!c) return;
-      clank(c, c.currentTime, 0.45, 1.3, false);
-      tone(c, c.currentTime + 0.02, 'sine', 660, 990, 0.12, 0.01, 0.18);
+      clank(c, c.currentTime, 0.35, 1.3, false);
+      tone(c, c.currentTime + 0.02, 'sine', 660, 990, 0.09, 0.01, 0.18);
     },
     error: function () {
       var c = audio();
       if (!c) return;
       var t = c.currentTime;
       // Jammed bolt slams twice, then a grinding buzz and a low steel boom
-      clank(c, t, 1.0, 0.55, true);
-      clank(c, t + 0.16, 0.85, 0.5, true);
-      tone(c, t, 'sine', 95, 30, 1.0, 0.004, 0.7);
+      clank(c, t, 0.72, 0.55, true);
+      clank(c, t + 0.16, 0.6, 0.5, true);
+      tone(c, t, 'sine', 95, 30, 0.72, 0.004, 0.7);
       var buzz = c.createBiquadFilter();
       buzz.type = 'lowpass';
       buzz.frequency.value = 420;
       buzz.connect(mainIn);
-      tone(c, t + 0.25, 'sawtooth', 72, 58, 0.45, 0.02, 0.55, buzz);
-      tone(c, t + 0.25, 'sawtooth', 75.5, 60, 0.4, 0.02, 0.55, buzz);
-      grind(c, t + 0.22, 0.6, 0.35, 500);
+      tone(c, t + 0.25, 'sawtooth', 72, 58, 0.32, 0.02, 0.55, buzz);
+      tone(c, t + 0.25, 'sawtooth', 75.5, 60, 0.28, 0.02, 0.55, buzz);
+      grind(c, t + 0.22, 0.6, 0.25, 500);
     },
     ok: function () {
       var c = audio();
@@ -1145,14 +1145,14 @@ html, body {
       var t = c.currentTime;
       // 4 heavy locking pins release one by one
       for (var i = 0; i < 4; i++) {
-        clank(c, t + i * 0.22, 0.85, 0.82 + i * 0.1, true);
-        tone(c, t + i * 0.22, 'triangle', 320 + i * 60, 180, 0.18, 0.004, 0.18);
+        clank(c, t + i * 0.22, 0.62, 0.82 + i * 0.1, true);
+        tone(c, t + i * 0.22, 'triangle', 320 + i * 60, 180, 0.13, 0.004, 0.18);
       }
       // Hydraulic release + deep thud + bright chord
-      noiseHit(c, t + 0.92, 'bandpass', 3200, 700, 1.1, 0.5, 0.02, 0.75);
-      tone(c, t + 0.92, 'sine', 110, 34, 1.0, 0.005, 0.6);
+      noiseHit(c, t + 0.92, 'bandpass', 3200, 700, 1.1, 0.36, 0.02, 0.75);
+      tone(c, t + 0.92, 'sine', 110, 34, 0.72, 0.005, 0.6);
       [523.25, 659.25, 783.99, 1046.5].forEach(function (f, k) {
-        tone(c, t + 1.05 + k * 0.08, 'sine', f, f * 1.002, 0.13, 0.03, 1.4);
+        tone(c, t + 1.05 + k * 0.08, 'sine', f, f * 1.002, 0.095, 0.03, 1.4);
       });
     },
     // Full vault-door soundtrack. Times are seconds from now and match openVault()
@@ -1163,18 +1163,18 @@ html, body {
       var at = function (s) { return t0 + s; };
 
       // Low room tone swelling while the camera pushes in
-      noiseHit(c, at(0), 'lowpass', 120, 260, 0.7, 0.35, 0.8, T.wheel + T.wheelDur);
+      noiseHit(c, at(0), 'lowpass', 120, 260, 0.7, 0.25, 0.8, T.wheel + T.wheelDur);
       // Big handle wheel: slow heavy gear ratchet
-      ratchetRun(c, at(T.wheel), 9, 0.75, 0.6);
-      grind(c, at(T.wheel), T.wheelDur, 0.35, 420);
+      ratchetRun(c, at(T.wheel), 9, 0.55, 0.6);
+      grind(c, at(T.wheel), T.wheelDur, 0.25, 420);
       // 12 rim bolts retract in three volleys
       for (var v = 0; v < 3; v++) {
-        for (var b = 0; b < 4; b++) clank(c, at(T.bolts + v * 0.11 + b * 0.025), 0.7, 0.68 + v * 0.06, true);
+        for (var b = 0; b < 4; b++) clank(c, at(T.bolts + v * 0.11 + b * 0.025), 0.5, 0.68 + v * 0.06, true);
       }
-      noiseHit(c, at(T.bolts + 0.3), 'bandpass', 3600, 900, 1.2, 0.45, 0.02, 0.6);
+      noiseHit(c, at(T.bolts + 0.3), 'bandpass', 3600, 900, 1.2, 0.32, 0.02, 0.6);
       // Seal breaks: thunk + pressurised air hiss
-      tone(c, at(T.crack), 'sine', 72, 38, 1.0, 0.004, 0.6);
-      noiseHit(c, at(T.crack), 'highpass', 2200, 6500, 0.8, 0.55, 0.02, 0.9);
+      tone(c, at(T.crack), 'sine', 72, 38, 0.72, 0.004, 0.6);
+      noiseHit(c, at(T.crack), 'highpass', 2200, 6500, 0.8, 0.4, 0.02, 0.9);
       // Hinge groan while the door swings
       var groan = c.createBiquadFilter();
       groan.type = 'lowpass';
@@ -1190,27 +1190,27 @@ html, body {
       var vibAmt = c.createGain();
       vibAmt.gain.value = 3;
       vib.connect(vibAmt).connect(go.frequency);
-      var gg = env(c, at(T.crack + 0.15), 0.5, 0.4, T.swingDur);
+      var gg = env(c, at(T.crack + 0.15), 0.36, 0.4, T.swingDur);
       go.connect(gg).connect(groan);
       go.start(at(T.crack + 0.15));
       vib.start(at(T.crack + 0.15));
       go.stop(at(T.swing + T.swingDur + 0.6));
       vib.stop(at(T.swing + T.swingDur + 0.6));
-      grind(c, at(T.crack + 0.2), T.swingDur, 0.3, 380);
+      grind(c, at(T.crack + 0.2), T.swingDur, 0.22, 380);
       // Light pouring out: rising air rush + shimmering choir chord
-      noiseHit(c, at(T.swing), 'bandpass', 300, 5200, 0.8, 0.5, T.flood - T.swing, 0.6);
+      noiseHit(c, at(T.swing), 'bandpass', 300, 5200, 0.8, 0.36, T.flood - T.swing, 0.6);
       [220, 277.18, 329.63, 440, 554.37, 659.25, 880].forEach(function (f, i) {
-        tone(c, at(T.swing + 0.2 + i * 0.05), i % 2 ? 'triangle' : 'sine', f, f * 1.003, 0.1, 1.1, 1.8);
+        tone(c, at(T.swing + 0.2 + i * 0.05), i % 2 ? 'triangle' : 'sine', f, f * 1.003, 0.075, 1.1, 1.8);
       });
       for (var s = 0; s < 10; s++) {
         var st = at(T.swing + 0.5 + Math.random() * (T.flood - T.swing));
-        tone(c, st, 'sine', 1500 + Math.random() * 2400, 1500 + Math.random() * 2400, 0.05, 0.01, 0.9);
+        tone(c, st, 'sine', 1500 + Math.random() * 2400, 1500 + Math.random() * 2400, 0.036, 0.01, 0.9);
       }
       // Flood of light: deep boom + bright burst
-      tone(c, at(T.flood), 'sine', 64, 28, 1.0, 0.01, 1.4);
-      noiseHit(c, at(T.flood), 'lowpass', 6000, 300, 0.7, 0.6, 0.01, 1.2);
+      tone(c, at(T.flood), 'sine', 64, 28, 0.72, 0.01, 1.4);
+      noiseHit(c, at(T.flood), 'lowpass', 6000, 300, 0.7, 0.42, 0.01, 1.2);
       [1046.5, 1318.5, 1568, 2093].forEach(function (f, i) {
-        tone(c, at(T.flood + 0.05 + i * 0.06), 'sine', f, f, 0.12, 0.01, 1.3);
+        tone(c, at(T.flood + 0.05 + i * 0.06), 'sine', f, f, 0.09, 0.01, 1.3);
       });
     }
   };

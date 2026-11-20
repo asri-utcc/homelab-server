@@ -7,33 +7,37 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Sign in · Home-lab Control</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#05030f">
+<meta name="theme-color" content="#04020d">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%2307051a' stroke='%23f5a524' stroke-width='2.4'/><circle cx='16' cy='16' r='6' fill='none' stroke='%232de2b8' stroke-width='2'/><path d='M16 3l-2.5 4h5z' fill='%23f5a524'/></svg>">
 <style>
 /* ══════════════════════════════════════════════════════════════════════════
-   Auth gate — "Vault Dial" over a 3D metaverse galaxy
-   · Every keystroke spins the vault dial to a random angle (never reveals the
-     character) and lights one segment of the progress ring
-   · Wrong key → red wobble + reset · Right key → mint spin-up → ACCESS GRANTED
-     → camera dives into the galaxy core → dashboard
-   · Self-contained on purpose: /styles.css and other assets sit behind forward_auth
+   Auth gate — "Cyber-Mechanical Vault Dial" over a 3D Metaverse Galaxy
+   · Realistic mechanical safe-dial ratchet clicks ("แกรกๆ") via filtered noise
+   · Multi-ring metallic dial + counter-rotating gyro reticle + locking bolts
+   · Interactive drag-to-spin on the dial + keystroke-driven ratchet bursts
+   · Wrong key → jammed bolt slam + red wobble · Right key → hydraulic bolt
+     retraction + shockwave + galaxy warp → dashboard
    ══════════════════════════════════════════════════════════════════════════ */
 :root {
     color-scheme: dark;
     --ink-1: #eef2ff;
     --ink-2: #a5b4fc;
-    --ink-muted: #6b7194;
+    --ink-muted: #767da8;
     --amber: #f5a524;
+    --amber-hi: #fde68a;
     --mint: #2de2b8;
+    --cyan: #38bdf8;
     --red: #ff4d6d;
     --violet: #8b5cf6;
-    --glass: rgba(14, 12, 34, 0.62);
-    --glass-border: rgba(165, 180, 252, 0.16);
+    --glass: rgba(12, 10, 32, 0.58);
+    --glass-border: rgba(165, 180, 252, 0.2);
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
     --sans: "Inter", "Segoe UI", system-ui, -apple-system, "Noto Sans Thai", sans-serif;
     --state: var(--amber);
+    --tilt-x: 0deg;
+    --tilt-y: 0deg;
 }
 
 * { box-sizing: border-box; }
@@ -41,7 +45,7 @@
 html, body {
     margin: 0;
     height: 100%;
-    background: #05030f;
+    background: #04020d;
     color: var(--ink-1);
     font-family: var(--sans);
     -webkit-font-smoothing: antialiased;
@@ -62,7 +66,9 @@ html, body {
     inset: 0;
     z-index: 1;
     pointer-events: none;
-    background: radial-gradient(ellipse at 50% 42%, transparent 35%, rgba(3, 1, 10, 0.75) 100%);
+    background:
+        radial-gradient(ellipse at 50% 40%, transparent 32%, rgba(3, 1, 10, 0.78) 100%),
+        linear-gradient(180deg, rgba(5, 2, 16, 0.45) 0%, transparent 18%, transparent 82%, rgba(5, 2, 16, 0.65) 100%);
 }
 
 /* ── HUD bars ─────────────────────────────────────────────────────────────── */
@@ -70,7 +76,7 @@ html, body {
     position: fixed;
     left: 0;
     right: 0;
-    z-index: 3;
+    z-index: 4;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -80,6 +86,7 @@ html, body {
     letter-spacing: .14em;
     text-transform: uppercase;
     color: var(--ink-muted);
+    pointer-events: none;
 }
 .hud--top { top: env(safe-area-inset-top, 0); }
 .hud--bottom { bottom: env(safe-area-inset-bottom, 0); }
@@ -89,23 +96,29 @@ html, body {
     content: "";
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--mint);
-    box-shadow: 0 0 10px var(--mint);
+    box-shadow: 0 0 12px var(--mint), 0 0 24px rgba(45, 226, 184, 0.45);
     animation: pulse 2s ease-in-out infinite;
 }
 .sfx {
     pointer-events: auto;
-    background: none;
+    background: rgba(15, 13, 38, 0.6);
     border: 1px solid var(--glass-border);
     color: var(--ink-2);
     border-radius: 999px;
-    padding: 5px 10px;
+    padding: 5px 11px;
     font: inherit;
     letter-spacing: .1em;
     cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: border-color .2s, color .2s, box-shadow .2s;
 }
-.sfx:hover { border-color: var(--ink-2); }
+.sfx:hover {
+    border-color: var(--cyan);
+    color: var(--ink-1);
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.25);
+}
 
-@keyframes pulse { 50% { opacity: .35; } }
+@keyframes pulse { 50% { opacity: .35; transform: scale(0.85); } }
 
 /* ── Layout ───────────────────────────────────────────────────────────────── */
 .gate {
@@ -116,142 +129,361 @@ html, body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: clamp(14px, 2.6vh, 26px);
-    padding: 64px 16px 56px;
-    transition: transform .9s cubic-bezier(.6, 0, .9, .4), opacity .7s ease-in, filter .8s ease-in;
+    gap: clamp(12px, 2.3vh, 22px);
+    padding: 56px 16px 50px;
+    perspective: 1100px;
+    transition: transform .95s cubic-bezier(.6, 0, .9, .4), opacity .75s ease-in, filter .85s ease-in;
 }
 .gate.is-leaving {
-    transform: scale(1.6);
+    transform: scale(1.75);
     opacity: 0;
-    filter: blur(10px);
+    filter: blur(12px);
 }
 
 .title {
     margin: 0;
-    font-size: clamp(18px, 2.4vw, 22px);
-    font-weight: 700;
-    letter-spacing: .02em;
+    font-size: clamp(20px, 2.8vw, 26px);
+    font-weight: 750;
+    letter-spacing: .04em;
     text-align: center;
+    background: linear-gradient(135deg, #ffffff 0%, #c7d2fe 55%, #67e8f9 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 32px rgba(139, 92, 246, 0.35);
 }
 .title small {
     display: block;
     margin-top: 6px;
-    font: 500 11px/1 var(--mono);
-    letter-spacing: .32em;
+    font: 500 10.5px/1 var(--mono);
+    letter-spacing: .34em;
     text-transform: uppercase;
     color: var(--ink-muted);
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    text-shadow: none;
 }
 
-/* ── Vault dial ───────────────────────────────────────────────────────────── */
+/* ── 3D Cyber-Mechanical Vault Dial ───────────────────────────────────────── */
+.dial-stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    transform-style: preserve-3d;
+    transform: rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+    transition: transform .18s ease-out;
+}
+
+.dial-halo {
+    position: absolute;
+    inset: -18%;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, color-mix(in srgb, var(--state) 22%, transparent) 0%, rgba(56, 189, 248, 0.08) 42%, transparent 70%);
+    filter: blur(14px);
+    transition: background .45s, transform .45s;
+    animation: haloBreathe 4s ease-in-out infinite;
+}
+@keyframes haloBreathe {
+    0%, 100% { transform: scale(0.97); opacity: 0.78; }
+    50% { transform: scale(1.04); opacity: 1; }
+}
+
+.dial-shockwave {
+    position: absolute;
+    inset: 6%;
+    border-radius: 50%;
+    border: 2px solid var(--mint);
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 0 28px var(--mint), inset 0 0 18px var(--mint);
+}
+.dial-shockwave.is-boom {
+    animation: shockBoom 0.9s cubic-bezier(.12, .85, .25, 1) forwards;
+}
+@keyframes shockBoom {
+    0% { transform: scale(0.75); opacity: 0.95; border-width: 4px; }
+    100% { transform: scale(2.8); opacity: 0; border-width: 0.5px; }
+}
+
 .dial {
     position: relative;
-    width: min(64vw, 40vh, 300px);
+    width: min(66vw, 39vh, 316px);
     aspect-ratio: 1;
-    filter: drop-shadow(0 0 28px color-mix(in srgb, var(--state) 35%, transparent));
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 30px color-mix(in srgb, var(--state) 38%, transparent));
     transition: filter .4s;
 }
+.dial:active { cursor: grabbing; }
 .dial svg { width: 100%; height: 100%; overflow: visible; display: block; }
-.dial[data-state="idle"] { --state: #6b7194; }
+.dial[data-state="idle"] { --state: #818cf8; }
 .dial[data-state="typing"] { --state: var(--amber); }
 .dial[data-state="error"] { --state: var(--red); }
 .dial[data-state="ok"] { --state: var(--mint); }
-.dial.wobble { animation: wobble .6s cubic-bezier(.36, .07, .19, .97); }
+.dial.wobble { animation: wobble .58s cubic-bezier(.36, .07, .19, .97); }
 
 @keyframes wobble {
-    15% { transform: rotate(-9deg); }
-    30% { transform: rotate(8deg); }
+    15% { transform: rotate(-10deg) scale(0.98); }
+    30% { transform: rotate(9deg) scale(1.01); }
     45% { transform: rotate(-6deg); }
     60% { transform: rotate(4deg); }
     75% { transform: rotate(-2deg); }
     100% { transform: rotate(0); }
 }
 
-.d-face { fill: url(#faceGrad); stroke: rgba(255, 255, 255, .06); stroke-width: 1; }
+/* Outer holo telemetry ring */
+.d-holo-outer {
+    transform-origin: 150px 150px;
+    animation: slowOrbit 28s linear infinite;
+}
+.d-holo-arc {
+    fill: none;
+    stroke: color-mix(in srgb, var(--state) 45%, #38bdf8);
+    stroke-width: 1.2;
+    stroke-dasharray: 18 10 4 10;
+    opacity: 0.55;
+    transition: stroke .35s, opacity .35s;
+}
+.dial[data-state="typing"] .d-holo-outer { animation-duration: 12s; }
+.dial[data-state="ok"] .d-holo-outer { animation-duration: 4s; }
+@keyframes slowOrbit { to { transform: rotate(360deg); } }
+
+/* Bezel & face */
+.d-bezel {
+    fill: url(#bezelGrad);
+    stroke: rgba(255, 255, 255, .14);
+    stroke-width: 1.2;
+}
+.d-knurl {
+    stroke: rgba(203, 213, 225, .18);
+    stroke-width: 1.3;
+    stroke-linecap: round;
+}
+.d-face {
+    fill: url(#faceGrad);
+    stroke: color-mix(in srgb, var(--state) 35%, rgba(255, 255, 255, .12));
+    stroke-width: 1.2;
+    transition: stroke .35s;
+}
+.d-bevel-inner {
+    fill: none;
+    stroke: rgba(255, 255, 255, .06);
+    stroke-width: 1;
+}
+
+/* Locking bolts (4 diagonal steel pins that visibly retract on unlock) */
+.d-bolt {
+    fill: url(#boltGrad);
+    stroke: color-mix(in srgb, var(--state) 70%, #ffffff);
+    stroke-width: 0.9;
+    transition: transform .55s cubic-bezier(.25, .9, .3, 1.15), filter .35s;
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--state) 45%, transparent));
+}
+.dial.is-unlocking .d-bolt-1 { transform: translate(11px, -11px); }
+.dial.is-unlocking .d-bolt-2 { transform: translate(11px, 11px); }
+.dial.is-unlocking .d-bolt-3 { transform: translate(-11px, 11px); }
+.dial.is-unlocking .d-bolt-4 { transform: translate(-11px, -11px); }
+
+/* Progress segments */
 .d-seg {
     fill: none;
-    stroke: rgba(255, 255, 255, .08);
-    stroke-width: 7;
+    stroke: rgba(255, 255, 255, .07);
+    stroke-width: 6.5;
     stroke-linecap: round;
-    transition: stroke .25s, filter .25s;
+    transition: stroke .2s, filter .2s;
 }
-.d-seg.is-on { stroke: var(--state); filter: drop-shadow(0 0 6px var(--state)); }
+.d-seg.is-on { stroke: var(--state); filter: drop-shadow(0 0 8px var(--state)); }
 .dial[data-state="ok"] .d-seg,
-.dial[data-state="error"] .d-seg { stroke: var(--state); filter: drop-shadow(0 0 7px var(--state)); }
+.dial[data-state="error"] .d-seg { stroke: var(--state); filter: drop-shadow(0 0 9px var(--state)); }
+
+/* Rotating number cylinder */
 .d-rot {
     transform-origin: 150px 150px;
-    transition: transform .55s cubic-bezier(.2, .9, .25, 1.15);
+    will-change: transform;
+    transition: transform .42s cubic-bezier(.16, .95, .28, 1.06);
 }
-.d-rot.is-spinning { filter: url(#motionBlur); }
+.d-rot.is-dragging { transition: none !important; }
 .dial.is-unlocking .d-rot {
-    transition: transform 1s cubic-bezier(.55, 0, .3, 1), opacity .5s .5s;
+    transition: transform 1.05s cubic-bezier(.55, 0, .25, 1), opacity .45s .55s;
     opacity: 0;
 }
-.d-tick { stroke: rgba(226, 232, 255, .22); stroke-width: 1; }
-.d-tick.major { stroke: rgba(226, 232, 255, .55); stroke-width: 1.6; }
-.d-num { fill: rgba(226, 232, 255, .62); font: 600 15px var(--mono); text-anchor: middle; dominant-baseline: central; }
-.d-num.hot { fill: var(--state); }
-.d-pointer { fill: var(--state); filter: drop-shadow(0 0 5px var(--state)); transition: fill .25s; }
-.d-hub { fill: #090716; stroke: color-mix(in srgb, var(--state) 55%, transparent); stroke-width: 1.2; transition: stroke .25s, r .6s cubic-bezier(.2, .9, .25, 1.2); }
+
+/* Counter-rotating inner gyro reticle */
+.d-gyro {
+    transform-origin: 150px 150px;
+    will-change: transform;
+    transition: transform .55s cubic-bezier(.22, .95, .36, 1);
+}
+.d-gyro.is-dragging { transition: none !important; }
+.dial.is-unlocking .d-gyro {
+    transition: transform 1.05s cubic-bezier(.55, 0, .25, 1), opacity .45s .45s;
+    opacity: 0;
+}
+.d-gyro-ring {
+    fill: none;
+    stroke: color-mix(in srgb, var(--state) 42%, #38bdf8);
+    stroke-width: 1;
+    stroke-dasharray: 6 6;
+    opacity: 0.72;
+}
+.d-gyro-tick {
+    stroke: color-mix(in srgb, var(--state) 70%, #ffffff);
+    stroke-width: 1.2;
+    opacity: 0.65;
+}
+
+.d-tick { stroke: rgba(226, 232, 255, .24); stroke-width: 1; }
+.d-tick.major { stroke: rgba(226, 232, 255, .68); stroke-width: 1.7; }
+.d-num {
+    fill: rgba(226, 232, 255, .68);
+    font: 650 14.5px var(--mono);
+    text-anchor: middle;
+    dominant-baseline: central;
+    transition: fill .15s, filter .15s;
+}
+.d-num.hot {
+    fill: var(--state);
+    filter: drop-shadow(0 0 6px var(--state));
+}
+
+.d-pointer {
+    fill: var(--state);
+    filter: drop-shadow(0 0 8px var(--state));
+    transition: fill .25s;
+}
+.d-laser {
+    stroke: var(--state);
+    stroke-width: 1.2;
+    opacity: 0.45;
+    stroke-dasharray: 3 3;
+    transition: stroke .25s;
+}
+
+.d-hub {
+    fill: url(#hubGrad);
+    stroke: color-mix(in srgb, var(--state) 65%, rgba(255, 255, 255, .2));
+    stroke-width: 1.5;
+    transition: stroke .25s, r .58s cubic-bezier(.2, .9, .25, 1.2);
+}
+.d-hub-ring {
+    fill: none;
+    stroke: color-mix(in srgb, var(--state) 35%, transparent);
+    stroke-width: 1;
+    transition: r .58s cubic-bezier(.2, .9, .25, 1.2), opacity .35s;
+}
 .dial.is-unlocking .d-hub { r: 62px; }
+.dial.is-unlocking .d-hub-ring { r: 72px; opacity: 0.9; }
+
 .d-count {
     fill: var(--ink-1);
-    font: 700 44px var(--sans);
+    font: 700 42px var(--sans);
     text-anchor: middle;
     dominant-baseline: central;
     transition: opacity .25s, fill .25s;
 }
 .dial[data-state="error"] .d-count { fill: var(--red); }
 .dial.is-unlocking .d-count { opacity: 0; }
+.d-sublabel {
+    fill: var(--ink-muted);
+    font: 600 7.5px var(--mono);
+    letter-spacing: .24em;
+    text-anchor: middle;
+    transition: opacity .25s;
+}
+.dial.is-unlocking .d-sublabel { opacity: 0; }
+
 .d-check {
     fill: none;
     stroke: var(--mint);
-    stroke-width: 7;
+    stroke-width: 6.5;
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-dasharray: 80;
     stroke-dashoffset: 80;
-    filter: drop-shadow(0 0 8px var(--mint));
+    filter: drop-shadow(0 0 10px var(--mint));
 }
-.dial.is-granted .d-check { transition: stroke-dashoffset .45s cubic-bezier(.6, 0, .2, 1) .1s; stroke-dashoffset: 0; }
+.dial.is-granted .d-check { transition: stroke-dashoffset .42s cubic-bezier(.6, 0, .2, 1) .08s; stroke-dashoffset: 0; }
 .d-granted {
     fill: var(--mint);
     font: 700 9.5px var(--mono);
     letter-spacing: .32em;
     text-anchor: middle;
     opacity: 0;
-    transition: opacity .4s .35s;
+    filter: drop-shadow(0 0 8px var(--mint));
+    transition: opacity .4s .3s;
 }
 .dial.is-granted .d-granted { opacity: 1; }
-.d-ring-ok { fill: none; stroke: var(--mint); stroke-width: 7; opacity: 0; transition: opacity .4s; filter: drop-shadow(0 0 14px var(--mint)); }
+.d-ring-ok {
+    fill: none;
+    stroke: var(--mint);
+    stroke-width: 7;
+    opacity: 0;
+    transition: opacity .4s;
+    filter: drop-shadow(0 0 16px var(--mint));
+}
 .dial.is-granted .d-ring-ok { opacity: 1; }
 
-/* ── Editor-style form ────────────────────────────────────────────────────── */
+/* ── Glassmorphic Code Editor & Console ───────────────────────────────────── */
 .editor, .console {
-    width: min(92vw, 460px);
-    border-radius: 14px;
+    position: relative;
+    width: min(92vw, 464px);
+    border-radius: 15px;
     background: var(--glass);
     border: 1px solid var(--glass-border);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .05);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    box-shadow:
+        0 24px 64px rgba(0, 0, 0, .58),
+        0 0 36px rgba(99, 102, 241, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, .1);
+    overflow: hidden;
+    transition: border-color .3s, box-shadow .3s;
 }
+.editor:focus-within {
+    border-color: rgba(245, 165, 36, 0.45);
+    box-shadow:
+        0 26px 70px rgba(0, 0, 0, .62),
+        0 0 42px rgba(245, 165, 36, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+.editor::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(115deg, transparent 30%, rgba(56, 189, 248, 0.08) 48%, rgba(255, 255, 255, 0.1) 50%, rgba(167, 139, 250, 0.08) 52%, transparent 70%);
+    transform: translateX(-100%);
+    transition: transform .8s ease;
+}
+.editor.is-verifying::before {
+    animation: scanSweep 1.1s linear infinite;
+}
+@keyframes scanSweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
 .editor__bar {
     display: flex;
     align-items: center;
     gap: 7px;
     padding: 10px 14px;
     border-bottom: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.02);
     font: 12px var(--mono);
     color: var(--ink-2);
 }
 .editor__bar i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-.editor__bar i:nth-child(1) { background: #ff5f57; }
-.editor__bar i:nth-child(2) { background: #febc2e; }
-.editor__bar i:nth-child(3) { background: #28c840; margin-right: 8px; }
+.editor__bar i:nth-child(1) { background: #ff5f57; box-shadow: 0 0 6px rgba(255, 95, 87, 0.5); }
+.editor__bar i:nth-child(2) { background: #febc2e; box-shadow: 0 0 6px rgba(254, 188, 46, 0.5); }
+.editor__bar i:nth-child(3) { background: #28c840; box-shadow: 0 0 6px rgba(40, 200, 64, 0.5); margin-right: 8px; }
 .editor__file { flex: 1; }
 .editor__saved { color: var(--ink-muted); font-size: 11px; }
 .editor__saved.dirty { color: var(--amber); }
-.editor__saved.ok { color: var(--mint); }
+.editor__saved.ok { color: var(--mint); text-shadow: 0 0 8px rgba(45, 226, 184, 0.5); }
 
 .code { padding: 10px 0 12px; font: 13px/1.95 var(--mono); }
 .ln {
@@ -261,14 +493,13 @@ html, body {
     padding-right: 12px;
     border-left: 2px solid transparent;
 }
-.ln.is-cur { border-left-color: var(--amber); background: rgba(255, 255, 255, .03); }
-.ln > span:first-child { color: #3d4166; text-align: right; padding-right: 12px; user-select: none; }
-.ln .c { color: #5b6190; font-style: italic; }
+.ln.is-cur { border-left-color: var(--amber); background: rgba(245, 165, 36, .04); }
+.ln > span:first-child { color: #474d78; text-align: right; padding-right: 12px; user-select: none; }
+.ln .c { color: #646b9e; font-style: italic; }
 .ln .k { color: #c084fc; }
 .ln .f { color: #7dd3fc; }
 .ln .s { color: #fbbf24; }
 .ln .p { color: #94a3b8; }
-.ln .b { color: #f472b6; }
 .code-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 
 .key {
@@ -276,7 +507,7 @@ html, body {
     min-width: 0;
     display: flex;
     align-items: center;
-    border-bottom: 1px dashed rgba(251, 191, 36, .35);
+    border-bottom: 1px dashed rgba(251, 191, 36, .4);
     transition: border-color .2s;
 }
 .key:focus-within { border-bottom-color: var(--amber); }
@@ -292,7 +523,7 @@ html, body {
     caret-color: var(--amber);
     letter-spacing: .12em;
 }
-.key input::placeholder { color: rgba(251, 191, 36, .35); letter-spacing: .05em; }
+.key input::placeholder { color: rgba(251, 191, 36, .38); letter-spacing: .05em; }
 .eye {
     background: none;
     border: 0;
@@ -312,32 +543,50 @@ html, body {
     font: 13px var(--mono);
     color: #f472b6;
     cursor: pointer;
+    transition: all .2s;
 }
-.bool[aria-checked="true"] { color: var(--mint); border-color: rgba(45, 226, 184, .35); background: rgba(45, 226, 184, .08); }
-.bool:focus-visible, .run:focus-visible, .sfx:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
+.bool[aria-checked="true"] {
+    color: var(--mint);
+    border-color: rgba(45, 226, 184, .38);
+    background: rgba(45, 226, 184, .1);
+    box-shadow: 0 0 12px rgba(45, 226, 184, 0.16);
+}
+.bool:focus-visible, .run:focus-visible, .sfx:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 .run {
     margin-left: auto;
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 5px 14px;
+    padding: 5px 15px;
     border: 0;
     border-radius: 8px;
     font: 600 12px var(--mono);
     letter-spacing: .06em;
     color: #160b00;
-    background: linear-gradient(135deg, #fbbf24, #f97316);
-    box-shadow: 0 4px 18px rgba(249, 115, 22, .35);
+    background: linear-gradient(135deg, #fde68a 0%, #fbbf24 40%, #f97316 100%);
+    box-shadow: 0 4px 20px rgba(249, 115, 22, .42), inset 0 1px 0 rgba(255, 255, 255, .45);
     cursor: pointer;
-    transition: transform .15s, filter .15s, opacity .15s;
+    transition: transform .15s, filter .15s, opacity .15s, box-shadow .15s;
 }
-.run:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.run:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 26px rgba(249, 115, 22, .55), inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+.run:active { transform: translateY(0) scale(0.97); }
 .run:disabled { opacity: .55; cursor: progress; transform: none; }
 
 /* ── Console ──────────────────────────────────────────────────────────────── */
 .console { padding: 10px 14px 12px; font: 11.5px/1.75 var(--mono); }
-.console__head { color: #3d4166; letter-spacing: .18em; font-size: 10px; margin-bottom: 2px; }
+.console__head {
+    display: flex;
+    justify-content: space-between;
+    color: #4f5686;
+    letter-spacing: .18em;
+    font-size: 10px;
+    margin-bottom: 3px;
+}
 .console__log { min-height: calc(1.75em * 4); max-height: calc(1.75em * 4); overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
 .console__log div { color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: logIn .25s ease-out; }
 .console__log .ok { color: var(--mint); }
@@ -348,13 +597,16 @@ html, body {
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 @media (max-height: 700px) {
-    .gate { gap: 12px; padding-top: 48px; }
+    .gate { gap: 10px; padding-top: 46px; }
     .title small { display: none; }
     .console__log { min-height: calc(1.75em * 3); max-height: calc(1.75em * 3); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .d-rot, .gate, .dial { transition: none !important; animation: none !important; }
+    .d-rot, .d-gyro, .d-holo-outer, .gate, .dial, .dial-stage, .dial-halo, .dial-shockwave {
+        transition: none !important;
+        animation: none !important;
+    }
 }
 </style>
 </head>
@@ -368,30 +620,82 @@ html, body {
 </div>
 
 <main class="gate" id="gate">
-  <h1 class="title">Vault Access<small>Metaverse galaxy gateway</small></h1>
+  <h1 class="title">Vault Access<small>Metaverse galaxy gateway · spin or type</small></h1>
 
-  <div class="dial" id="dial" data-state="idle" aria-hidden="true">
-    <svg viewBox="0 0 300 300">
-      <defs>
-        <radialGradient id="faceGrad" cx="50%" cy="40%" r="65%">
-          <stop offset="0" stop-color="#1b1838"/>
-          <stop offset=".7" stop-color="#0d0b22"/>
-          <stop offset="1" stop-color="#07061a"/>
-        </radialGradient>
-        <filter id="motionBlur" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.4"/>
-        </filter>
-      </defs>
-      <g id="segs"></g>
-      <circle class="d-ring-ok" cx="150" cy="150" r="140"/>
-      <circle class="d-face" cx="150" cy="150" r="128"/>
-      <g class="d-rot" id="rot"></g>
-      <path class="d-pointer" d="M150 30 l-8 -13 h16 z"/>
-      <circle class="d-hub" cx="150" cy="150" r="46"/>
-      <text class="d-count" id="count" x="150" y="152">0</text>
-      <path class="d-check" d="M126 150 l16 16 l32 -34"/>
-      <text class="d-granted" x="150" y="226">ACCESS GRANTED</text>
-    </svg>
+  <div class="dial-stage" id="dial-stage">
+    <div class="dial-halo" aria-hidden="true"></div>
+    <div class="dial-shockwave" id="shockwave" aria-hidden="true"></div>
+
+    <div class="dial" id="dial" data-state="idle" title="Drag to spin mechanical vault dial" aria-hidden="true">
+      <svg viewBox="0 0 300 300">
+        <defs>
+          <radialGradient id="bezelGrad" cx="38%" cy="30%" r="72%">
+            <stop offset="0" stop-color="#313659"/>
+            <stop offset=".45" stop-color="#191b33"/>
+            <stop offset=".85" stop-color="#0b0c1b"/>
+            <stop offset="1" stop-color="#04040c"/>
+          </radialGradient>
+          <radialGradient id="faceGrad" cx="50%" cy="38%" r="65%">
+            <stop offset="0" stop-color="#1e1b44"/>
+            <stop offset=".62" stop-color="#0c0a20"/>
+            <stop offset="1" stop-color="#050412"/>
+          </radialGradient>
+          <radialGradient id="hubGrad" cx="40%" cy="32%" r="68%">
+            <stop offset="0" stop-color="#27244d"/>
+            <stop offset=".55" stop-color="#0e0c21"/>
+            <stop offset="1" stop-color="#05040f"/>
+          </radialGradient>
+          <linearGradient id="boltGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#e2e8f0"/>
+            <stop offset=".5" stop-color="#64748b"/>
+            <stop offset="1" stop-color="#1e293b"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Outer rotating cyber-telemetry orbital ring -->
+        <g class="d-holo-outer">
+          <circle class="d-holo-arc" cx="150" cy="150" r="147"/>
+          <circle cx="150" cy="3" r="2.2" fill="#38bdf8" opacity="0.85"/>
+          <circle cx="150" cy="297" r="2.2" fill="#a78bfa" opacity="0.85"/>
+        </g>
+
+        <!-- Segment arc ring + unlock ring -->
+        <g id="segs"></g>
+        <circle class="d-ring-ok" cx="150" cy="150" r="140"/>
+
+        <!-- Outer brushed-titanium bezel + knurling -->
+        <circle class="d-bezel" cx="150" cy="150" r="133"/>
+        <g id="knurl"></g>
+        <circle class="d-face" cx="150" cy="150" r="124"/>
+        <circle class="d-bevel-inner" cx="150" cy="150" r="118"/>
+
+        <!-- 4 Hydraulic locking bolts -->
+        <g id="bolts">
+          <rect class="d-bolt d-bolt-1" x="224" y="68" width="12" height="10" rx="2.5" transform="rotate(45 230 73)"/>
+          <rect class="d-bolt d-bolt-2" x="224" y="222" width="12" height="10" rx="2.5" transform="rotate(135 230 227)"/>
+          <rect class="d-bolt d-bolt-3" x="64" y="222" width="12" height="10" rx="2.5" transform="rotate(45 70 227)"/>
+          <rect class="d-bolt d-bolt-4" x="64" y="68" width="12" height="10" rx="2.5" transform="rotate(135 70 73)"/>
+        </g>
+
+        <!-- Rotating number cylinder -->
+        <g class="d-rot" id="rot"></g>
+
+        <!-- Counter-rotating holographic gyro reticle -->
+        <g class="d-gyro" id="gyro"></g>
+
+        <!-- Laser alignment & top orange/amber pointer -->
+        <line class="d-laser" x1="150" y1="30" x2="150" y2="104"/>
+        <path class="d-pointer" d="M150 32 l-8 -13 h16 z"/>
+
+        <!-- Center metal hub + live readout -->
+        <circle class="d-hub-ring" cx="150" cy="150" r="54"/>
+        <circle class="d-hub" cx="150" cy="150" r="46"/>
+        <text class="d-count" id="count" x="150" y="147">0</text>
+        <text class="d-sublabel" x="150" y="175">TUMBLER</text>
+        <path class="d-check" d="M126 150 l16 16 l32 -34"/>
+        <text class="d-granted" x="150" y="228">ACCESS GRANTED</text>
+      </svg>
+    </div>
   </div>
 
   <form class="editor" id="form" autocomplete="off" novalidate>
@@ -433,7 +737,7 @@ html, body {
   </form>
 
   <section class="console" aria-live="polite">
-    <div class="console__head">CONSOLE</div>
+    <div class="console__head"><span>CONSOLE</span><span>METAVERSE VAULT OS</span></div>
     <div class="console__log" id="log"></div>
   </section>
 </main>
@@ -451,21 +755,93 @@ html, body {
   var $ = function (id) { return document.getElementById(id); };
   var form = $('form'), pw = $('pw'), eye = $('eye'), remember = $('remember');
   var submit = $('submit'), runLabel = $('run-label'), dial = $('dial'), rot = $('rot');
+  var gyro = $('gyro'), knurl = $('knurl'), shockwave = $('shockwave'), dialStage = $('dial-stage');
   var countEl = $('count'), segsEl = $('segs'), logEl = $('log'), saved = $('saved');
   var gate = $('gate'), sfxBtn = $('sfx');
-  var SVGNS = 'http://www.w3.org/2000/svg';
 
-  // ══ Sound FX (Web Audio, synthesized) ═════════════════════════════════════
+  // ══ Realistic Mechanical Safe-Dial & Metaverse Sound FX ═══════════════════
   var sfxOn = localStorage.getItem('login_sfx') !== '0';
-  var actx = null;
+  var actx = null, masterComp = null, noiseBuf = null;
+
   function audio() {
     if (!sfxOn) return null;
     try {
-      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!actx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        actx = new AC();
+        if (actx.createDynamicsCompressor) {
+          masterComp = actx.createDynamicsCompressor();
+          masterComp.threshold.value = -14;
+          masterComp.ratio.value = 4;
+          masterComp.connect(actx.destination);
+        } else {
+          masterComp = actx.destination;
+        }
+      }
       if (actx.state === 'suspended') actx.resume();
       return actx;
     } catch (_) { return null; }
   }
+
+  function getNoise(c) {
+    if (noiseBuf && noiseBuf.sampleRate === c.sampleRate) return noiseBuf;
+    var len = Math.floor(c.sampleRate * 1.0);
+    noiseBuf = c.createBuffer(1, len, c.sampleRate);
+    var data = noiseBuf.getChannelData(0);
+    for (var i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return noiseBuf;
+  }
+
+  // Single crisp mechanical safe-dial detent click ("แกรก" / steel pawl snap)
+  function mechClick(delay, vol, pitchShift, heavy) {
+    var c = audio();
+    if (!c) return;
+    var t = c.currentTime + (delay || 0);
+    var v = vol || 0.22;
+    var p = pitchShift || 1;
+
+    // 1. Crisp metallic pawl transient (bandpass-filtered noise burst)
+    var src = c.createBufferSource();
+    src.buffer = getNoise(c);
+    var bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime((heavy ? 2400 : 3400) * p, t);
+    bp.Q.setValueAtTime(heavy ? 3.2 : 4.6, t);
+
+    var ng = c.createGain();
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(v, t + 0.0018);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + (heavy ? 0.022 : 0.013));
+    src.connect(bp).connect(ng).connect(masterComp);
+    src.start(t);
+    src.stop(t + 0.03);
+
+    // 2. Hardened steel housing micro-ring (high transient shimmer)
+    var ring = c.createOscillator(), rg = c.createGain();
+    ring.type = 'triangle';
+    ring.frequency.setValueAtTime((heavy ? 4200 : 5600) * p, t);
+    ring.frequency.exponentialRampToValueAtTime(1900 * p, t + 0.012);
+    rg.gain.setValueAtTime(0.0001, t);
+    rg.gain.exponentialRampToValueAtTime(v * 0.28, t + 0.001);
+    rg.gain.exponentialRampToValueAtTime(0.0001, t + 0.015);
+    ring.connect(rg).connect(masterComp);
+    ring.start(t);
+    ring.stop(t + 0.018);
+
+    // 3. Heavy steel cylinder body thump
+    var body = c.createOscillator(), bg = c.createGain();
+    body.type = 'sine';
+    body.frequency.setValueAtTime((heavy ? 185 : 230) * p, t);
+    body.frequency.exponentialRampToValueAtTime(48, t + (heavy ? 0.034 : 0.02));
+    bg.gain.setValueAtTime(0.0001, t);
+    bg.gain.exponentialRampToValueAtTime(v * (heavy ? 0.72 : 0.45), t + 0.002);
+    bg.gain.exponentialRampToValueAtTime(0.0001, t + (heavy ? 0.038 : 0.022));
+    body.connect(bg).connect(masterComp);
+    body.start(t);
+    body.stop(t + 0.042);
+  }
+
   function blip(type, f0, f1, dur, vol, delay) {
     var c = audio();
     if (!c) return;
@@ -477,20 +853,101 @@ html, body {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(c.destination);
+    o.connect(g).connect(masterComp);
     o.start(t);
     o.stop(t + dur + 0.02);
   }
+
   var sfx = {
-    tick: function () { blip('square', 1800 + Math.random() * 600, 900, 0.035, 0.035); blip('sine', 140, 70, 0.06, 0.06); },
-    back: function () { blip('triangle', 700, 300, 0.07, 0.05); },
-    error: function () { blip('sawtooth', 220, 110, 0.18, 0.08); blip('sawtooth', 180, 90, 0.26, 0.08, 0.16); },
-    ok: function () {
-      [523.3, 659.3, 784, 1046.5].forEach(function (f, i) { blip('sine', f, f, 0.5, 0.07, i * 0.07); });
-      blip('sine', 90, 40, 0.9, 0.18, 0.05);
+    // Decelerating safe-dial spin burst: "แกรก-แกรก-แกรก-แกรก... กริ๊ก!"
+    ratchet: function (degDelta) {
+      var steps = Math.max(4, Math.min(8, Math.round(Math.abs(degDelta) / 26)));
+      var t = 0;
+      for (var i = 0; i < steps; i++) {
+        var frac = i / Math.max(1, steps - 1);
+        var isLast = i === steps - 1;
+        var vol = isLast ? 0.24 : (0.14 + (1 - frac) * 0.08);
+        var pitch = 0.92 + Math.random() * 0.16 - frac * 0.08;
+        mechClick(t, vol, pitch, isLast);
+        t += 0.018 + frac * frac * 0.044;
+      }
     },
-    warp: function () { blip('sawtooth', 60, 900, 0.9, 0.05); blip('sine', 2400, 300, 0.9, 0.03); }
+    // Single crisp notch click when manually dragging the safe dial
+    dialStep: function (speed) {
+      var p = 0.9 + Math.min(0.25, (speed || 0) * 0.02) + (Math.random() - 0.5) * 0.08;
+      mechClick(0, 0.22, p, false);
+    },
+    back: function () {
+      mechClick(0, 0.2, 0.85, true);
+      mechClick(0.04, 0.12, 1.15, false);
+    },
+    toggle: function () {
+      mechClick(0, 0.18, 1.25, false);
+      blip('sine', 520, 760, 0.05, 0.035, 0.01);
+    },
+    error: function () {
+      // Heavy jammed vault bolt slam + mechanical recoil buzz
+      mechClick(0, 0.34, 0.65, true);
+      mechClick(0.07, 0.26, 0.55, true);
+      blip('sawtooth', 165, 78, 0.2, 0.09, 0.02);
+      blip('sawtooth', 142, 62, 0.28, 0.09, 0.14);
+    },
+    ok: function () {
+      // Phase 1: 4 steel locking pins snapping open rapidly
+      [0, 0.075, 0.15, 0.225].forEach(function (d, idx) {
+        mechClick(d, 0.26, 0.9 + idx * 0.15, true);
+        blip('triangle', 640 + idx * 180, 960 + idx * 240, 0.08, 0.045, d);
+      });
+      // Phase 2: Heavy hydraulic bolt retraction thud + pneumatic release
+      var c = audio();
+      if (c) {
+        var t0 = c.currentTime + 0.31;
+        var ns = c.createBufferSource();
+        ns.buffer = getNoise(c);
+        var lp = c.createBiquadFilter();
+        lp.type = 'bandpass';
+        lp.frequency.setValueAtTime(1400, t0);
+        lp.frequency.exponentialRampToValueAtTime(320, t0 + 0.28);
+        lp.Q.value = 1.6;
+        var ng = c.createGain();
+        ng.gain.setValueAtTime(0.0001, t0);
+        ng.gain.exponentialRampToValueAtTime(0.16, t0 + 0.02);
+        ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+        ns.connect(lp).connect(ng).connect(masterComp);
+        ns.start(t0);
+        ns.stop(t0 + 0.32);
+      }
+      blip('sine', 120, 34, 0.45, 0.22, 0.31);
+      // Phase 3: Metaverse holographic harmonic chord swell
+      [523.25, 659.25, 783.99, 987.77, 1174.66].forEach(function (f, i) {
+        blip('sine', f, f * 1.003, 0.9, 0.055, 0.42 + i * 0.055);
+      });
+    },
+    warp: function () {
+      var c = audio();
+      if (c) {
+        var t0 = c.currentTime;
+        var ns = c.createBufferSource();
+        ns.buffer = getNoise(c);
+        var bp = c.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(160, t0);
+        bp.frequency.exponentialRampToValueAtTime(3800, t0 + 0.85);
+        bp.Q.value = 2.4;
+        var ng = c.createGain();
+        ng.gain.setValueAtTime(0.0001, t0);
+        ng.gain.exponentialRampToValueAtTime(0.18, t0 + 0.45);
+        ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.05);
+        ns.connect(bp).connect(ng).connect(masterComp);
+        ns.start(t0);
+        ns.stop(t0 + 1.1);
+      }
+      blip('sawtooth', 55, 720, 0.95, 0.055);
+      blip('sine', 110, 1440, 0.95, 0.06, 0.04);
+      blip('sine', 2200, 360, 0.9, 0.035, 0.1);
+    }
   };
+
   function renderSfx() {
     sfxBtn.textContent = sfxOn ? 'SFX ON' : 'SFX OFF';
     sfxBtn.setAttribute('aria-pressed', String(sfxOn));
@@ -499,31 +956,51 @@ html, body {
     sfxOn = !sfxOn;
     localStorage.setItem('login_sfx', sfxOn ? '1' : '0');
     renderSfx();
-    if (sfxOn) sfx.tick();
+    if (sfxOn) sfx.ratchet(120);
   });
   renderSfx();
 
-  // ══ Dial ══════════════════════════════════════════════════════════════════
+  // ══ 3D Cyber-Mechanical Dial Builder ══════════════════════════════════════
   var SEGS = 12;
   var angle = 0;
-  var spinTimer = 0;
+  var gyroAngle = 0;
 
   (function buildDial() {
+    // Outer brushed knurling notches
+    var kHtml = '';
+    for (var k = 0; k < 72; k++) {
+      var ka = (k / 72) * Math.PI * 2;
+      kHtml += '<line class="d-knurl" x1="' + (150 + Math.sin(ka) * 126.5).toFixed(2) + '" y1="' + (150 - Math.cos(ka) * 126.5).toFixed(2) +
+               '" x2="' + (150 + Math.sin(ka) * 131.5).toFixed(2) + '" y2="' + (150 - Math.cos(ka) * 131.5).toFixed(2) + '"/>';
+    }
+    knurl.innerHTML = kHtml;
+
+    // Rotating number wheel (60 ticks + digits 0..9)
     var g = '';
     for (var i = 0; i < 60; i++) {
       var a = (i / 60) * Math.PI * 2;
       var major = i % 6 === 0;
-      var r0 = major ? 104 : 109, r1 = 116;
+      var r0 = major ? 102 : 108, r1 = 115;
       g += '<line class="d-tick' + (major ? ' major' : '') + '" x1="' + (150 + Math.sin(a) * r0).toFixed(2) + '" y1="' + (150 - Math.cos(a) * r0).toFixed(2) +
            '" x2="' + (150 + Math.sin(a) * r1).toFixed(2) + '" y2="' + (150 - Math.cos(a) * r1).toFixed(2) + '"/>';
     }
     for (var n = 0; n < 10; n++) {
       var deg = n * 36;
       var ar = deg * Math.PI / 180;
-      g += '<text class="d-num" data-n="' + n + '" x="' + (150 + Math.sin(ar) * 86).toFixed(2) + '" y="' + (150 - Math.cos(ar) * 86).toFixed(2) +
-           '" transform="rotate(' + deg + ' ' + (150 + Math.sin(ar) * 86).toFixed(2) + ' ' + (150 - Math.cos(ar) * 86).toFixed(2) + ')">' + n + '</text>';
+      g += '<text class="d-num" data-n="' + n + '" x="' + (150 + Math.sin(ar) * 85).toFixed(2) + '" y="' + (150 - Math.cos(ar) * 85).toFixed(2) +
+           '" transform="rotate(' + deg + ' ' + (150 + Math.sin(ar) * 85).toFixed(2) + ' ' + (150 - Math.cos(ar) * 85).toFixed(2) + ')">' + n + '</text>';
     }
     rot.innerHTML = g;
+
+    // Counter-rotating holographic gyro reticle
+    var gy = '<circle class="d-gyro-ring" cx="150" cy="150" r="64"/>';
+    for (var m = 0; m < 12; m++) {
+      var ma = (m / 12) * Math.PI * 2;
+      var mr0 = m % 3 === 0 ? 57 : 60, mr1 = 64;
+      gy += '<line class="d-gyro-tick" x1="' + (150 + Math.sin(ma) * mr0).toFixed(2) + '" y1="' + (150 - Math.cos(ma) * mr0).toFixed(2) +
+            '" x2="' + (150 + Math.sin(ma) * mr1).toFixed(2) + '" y2="' + (150 - Math.cos(ma) * mr1).toFixed(2) + '"/>';
+    }
+    gyro.innerHTML = gy;
   })();
 
   function arcPath(r, a0, a1) {
@@ -545,17 +1022,66 @@ html, body {
 
   function setState(s) { dial.setAttribute('data-state', s); }
 
-  // Spin to a random angle: shows activity without revealing which key was typed
-  function spinTo(delta) {
-    angle += delta;
-    rot.style.transform = 'rotate(' + angle + 'deg)';
-    rot.classList.add('is-spinning');
-    clearTimeout(spinTimer);
-    spinTimer = setTimeout(function () { rot.classList.remove('is-spinning'); }, 320);
+  function updateDialAngle(nextAngle, nextGyro) {
+    angle = nextAngle;
+    gyroAngle = nextGyro !== undefined ? nextGyro : (-angle * 0.65);
+    rot.style.transform = 'rotate(' + angle.toFixed(2) + 'deg)';
+    gyro.style.transform = 'rotate(' + gyroAngle.toFixed(2) + 'deg)';
     var under = Math.round((((-angle % 360) + 360) % 360) / 36) % 10;
     var nums = rot.querySelectorAll('.d-num');
     for (var i = 0; i < nums.length; i++) nums[i].classList.toggle('hot', i === under);
   }
+
+  function spinTo(delta) {
+    updateDialAngle(angle + delta, gyroAngle - delta * 0.72);
+  }
+
+  // Interactive pointer drag-to-spin directly on the vault dial
+  (function initDialDrag() {
+    var dragging = false, prevDeg = 0, accumNotch = 0;
+    function getDeg(e) {
+      var r = dial.getBoundingClientRect();
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      var x = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX);
+      var y = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY);
+      return Math.atan2(y - cy, x - cx) * 180 / Math.PI;
+    }
+    dial.addEventListener('pointerdown', function (e) {
+      if (dial.classList.contains('is-unlocking')) return;
+      dragging = true;
+      prevDeg = getDeg(e);
+      accumNotch = 0;
+      rot.classList.add('is-dragging');
+      gyro.classList.add('is-dragging');
+      if (dial.setPointerCapture) {
+        try { dial.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var curDeg = getDeg(e);
+      var delta = curDeg - prevDeg;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      prevDeg = curDeg;
+      spinTo(delta);
+      accumNotch += Math.abs(delta);
+      if (accumNotch >= 18) {
+        accumNotch %= 18;
+        sfx.dialStep(Math.abs(delta));
+        galaxy.kick(0.08);
+      }
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      rot.classList.remove('is-dragging');
+      gyro.classList.remove('is-dragging');
+      pw.focus();
+    }
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+  })();
 
   var lastLen = 0;
   function syncDial() {
@@ -572,9 +1098,11 @@ html, body {
     saved.textContent = len ? '● unsaved' : '● ready';
     saved.className = 'editor__saved' + (len ? ' dirty' : '');
     if (len > lastLen) {
-      spinTo((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 160));
-      sfx.tick();
-      galaxy.kick(0.35);
+      var delta = (Math.random() < 0.5 ? -1 : 1) * (85 + Math.random() * 145);
+      spinTo(delta);
+      sfx.ratchet(delta);
+      galaxy.kick(0.38);
+      galaxy.pulse(0.28);
     } else if (len < lastLen) {
       spinTo(-36 * (lastLen - len));
       sfx.back();
@@ -619,6 +1147,7 @@ html, body {
     pw.type = show ? 'text' : 'password';
     eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
     eye.setAttribute('title', show ? 'Hide password' : 'Show password');
+    sfx.toggle();
     pw.focus();
   });
 
@@ -627,7 +1156,7 @@ html, body {
     remember.setAttribute('aria-checked', String(on));
     remember.textContent = on ? 'true' : 'false';
     log('› remember = ' + on + (on ? '  // session 30d' : '  // session 12h'));
-    sfx.back();
+    sfx.toggle();
   });
 
   pw.addEventListener('input', function () {
@@ -648,6 +1177,7 @@ html, body {
     log('✗ ' + msg, 'err');
     sfx.error();
     galaxy.mood('error');
+    galaxy.pulse(0.65);
     saved.textContent = '✗ rejected';
     saved.className = 'editor__saved dirty';
     setTimeout(function () {
@@ -665,15 +1195,22 @@ html, body {
     setState('ok');
     dial.classList.add('is-unlocking');
     rot.style.transform = 'rotate(' + (angle + 1080) + 'deg)';
+    gyro.style.transform = 'rotate(' + (gyroAngle - 900) + 'deg)';
     saved.textContent = '✓ saved';
     saved.className = 'editor__saved ok';
     log('✓ 200 session issued', 'ok');
     sfx.ok();
     galaxy.mood('ok');
+    galaxy.pulse(1.0);
+    if (shockwave) {
+      shockwave.classList.remove('is-boom');
+      void shockwave.offsetWidth;
+      shockwave.classList.add('is-boom');
+    }
     setTimeout(function () {
       dial.classList.add('is-granted');
       log('✓ vault.unlock() → granted', 'ok');
-    }, 650);
+    }, 620);
     var go = function () { location.replace(redirect || rd); };
     if (reduceMotion) { setTimeout(go, 900); return; }
     setTimeout(function () {
@@ -691,6 +1228,7 @@ html, body {
 
     submit.disabled = true;
     runLabel.textContent = '◌ verifying';
+    form.classList.add('is-verifying');
     log('› POST /api/login  (' + value.length + ' chars)');
 
     var body = new URLSearchParams();
@@ -708,6 +1246,7 @@ html, body {
         return r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, data: d }; });
       })
       .then(function (res) {
+        form.classList.remove('is-verifying');
         if (res.status === 200 && res.data && res.data.ok) {
           grant(res.data.redirect);
           return;
@@ -718,24 +1257,25 @@ html, body {
         runLabel.textContent = '▶ Run';
       })
       .catch(function () {
+        form.classList.remove('is-verifying');
         fail('cannot reach the control panel');
         submit.disabled = false;
         runLabel.textContent = '▶ Run';
       });
   });
 
-  // ══ 3D metaverse galaxy (2D canvas, perspective-projected) ═══════════════
+  // ══ 3D Metaverse Galaxy + Orbital Rings + Quantum Polyhedra ═══════════════
   var galaxy = (function () {
     var canvas = $('space');
     var ctx = canvas.getContext && canvas.getContext('2d');
     if (!ctx) {
-      return { kick: function () {}, mood: function () {}, warp: function (done) { done(); } };
+      return { kick: function () {}, mood: function () {}, pulse: function () {}, warp: function (done) { done(); } };
     }
     var W = 0, H = 0, cx = 0, cy = 0, minSide = 0, dpr = 1, mobile = false;
-    var stars = [], bg = [], shooters = [];
+    var stars = [], bg = [], shooters = [], rings3d = [], nodes3d = [], waves = [];
     var mx = 0, my = 0, tmx = 0, tmy = 0;
     var energy = 0;
-    var moodRGB = [245, 165, 36], targetRGB = [245, 165, 36];
+    var moodRGB = [139, 92, 246], targetRGB = [139, 92, 246];
     var warpStart = 0, warpDone = null;
     var gridScroll = 0;
     var TAU = Math.PI * 2;
@@ -752,37 +1292,60 @@ html, body {
       mobile = W < 700;
       var r = dial.getBoundingClientRect();
       cx = r.width ? r.left + r.width / 2 : W / 2;
-      cy = r.height ? r.top + r.height / 2 : H * 0.4;
+      cy = r.height ? r.top + r.height / 2 : H * 0.36;
       if (!stars.length || stars.mobile !== mobile) seed();
     }
 
     function rand(a, b) { return a + Math.random() * (b - a); }
 
     function seed() {
-      var n = mobile ? 1300 : 2600;
+      var n = mobile ? 1400 : 2800;
       stars = [];
       stars.mobile = mobile;
       for (var i = 0; i < n; i++) {
         if (Math.random() < 0.18) {
-          var rb = Math.pow(Math.random(), 2) * 0.2;
-          stars.push({ rr: rb, th: Math.random() * TAU, h: (Math.random() - 0.5) * 0.12 * (1 - rb * 3), hue: rand(30, 48), l: 76, size: rand(0.6, 1.8) });
+          var rb = Math.pow(Math.random(), 2) * 0.22;
+          stars.push({ rr: rb, th: Math.random() * TAU, h: (Math.random() - 0.5) * 0.14 * (1 - rb * 3), hue: rand(32, 48), l: 78, size: rand(0.6, 2.0), glint: false });
         } else {
-          var rr = 0.1 + Math.pow(Math.random(), 0.8) * 0.95;
+          var rr = 0.08 + Math.pow(Math.random(), 0.78) * 0.98;
           var arm = ((Math.random() * 3) | 0) * (TAU / 3);
           var pick = Math.random();
           stars.push({
             rr: rr,
-            th: arm + rr * 5.4 + (Math.random() - 0.5) * (0.35 + rr * 0.75),
-            h: (Math.random() - 0.5) * 0.04,
-            hue: pick < 0.12 ? rand(310, 335) : pick < 0.25 ? -1 : pick < 0.6 ? rand(250, 275) : rand(195, 225),
-            l: pick < 0.12 ? 66 : 72,
-            size: rand(0.5, 2.1)
+            th: arm + rr * 5.6 + (Math.random() - 0.5) * (0.32 + rr * 0.78),
+            h: (Math.random() - 0.5) * 0.045,
+            hue: pick < 0.14 ? rand(182, 198) : pick < 0.28 ? rand(308, 336) : pick < 0.4 ? -1 : pick < 0.7 ? rand(250, 275) : rand(195, 228),
+            l: pick < 0.28 ? 68 : 74,
+            size: rand(0.55, 2.2),
+            glint: Math.random() < 0.022
           });
         }
       }
       bg = [];
-      for (var j = 0; j < (mobile ? 160 : 340); j++) {
-        bg.push({ x: Math.random(), y: Math.random(), z: rand(0.2, 1), tw: Math.random() * TAU, s: rand(0.4, 1.6) });
+      for (var j = 0; j < (mobile ? 180 : 380); j++) {
+        bg.push({ x: Math.random(), y: Math.random(), z: rand(0.2, 1), tw: Math.random() * TAU, s: rand(0.4, 1.7) });
+      }
+      // 3D Orbital Holographic Rings around the galaxy core
+      rings3d = [
+        { rad: 0.52, tiltX: 1.18, tiltZ: 0.34, speed: 0.28, color: '56,189,248', segs: 48 },
+        { rad: 0.72, tiltX: -1.04, tiltZ: -0.45, speed: -0.19, color: '167,139,250', segs: 56 }
+      ];
+      // Floating 3D wireframe octahedron quantum nodes
+      nodes3d = [];
+      var nodeCount = mobile ? 4 : 7;
+      for (var k = 0; k < nodeCount; k++) {
+        var ang = (k / nodeCount) * TAU + rand(0, 0.5);
+        var dist = rand(0.42, 0.85);
+        nodes3d.push({
+          x: Math.cos(ang) * dist,
+          y: rand(-0.35, 0.28),
+          z: rand(0.8, 2.2),
+          sz: rand(0.028, 0.048),
+          rx: rand(0, TAU),
+          ry: rand(0, TAU),
+          vrx: rand(-0.6, 0.6),
+          vry: rand(-0.8, 0.8)
+        });
       }
     }
 
@@ -796,43 +1359,75 @@ html, body {
       ctx.fill();
     }
 
-    function drawGrid(t, alpha) {
-      var hy = H * 0.74;
+    function drawGrid(t, alpha, mood) {
+      var hy = H * 0.73;
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, hy, W, H - hy);
       ctx.clip();
       var fade = ctx.createLinearGradient(0, hy, 0, H);
-      fade.addColorStop(0, 'rgba(5,3,15,0)');
-      fade.addColorStop(1, 'rgba(20,6,40,' + 0.6 * alpha + ')');
+      fade.addColorStop(0, 'rgba(4,2,13,0)');
+      fade.addColorStop(1, 'rgba(20,8,44,' + 0.65 * alpha + ')');
       ctx.fillStyle = fade;
       ctx.fillRect(0, hy, W, H - hy);
       ctx.lineWidth = 1;
-      for (var i = -14; i <= 14; i++) {
-        ctx.strokeStyle = 'rgba(139,92,246,' + 0.22 * alpha + ')';
+      for (var i = -16; i <= 16; i++) {
+        ctx.strokeStyle = 'rgba(139,92,246,' + 0.2 * alpha + ')';
         ctx.beginPath();
         ctx.moveTo(W / 2 + i * 6, hy);
         ctx.lineTo(W / 2 + i * W * 0.16, H * 1.25);
         ctx.stroke();
       }
-      for (var n = 0; n < 16; n++) {
-        var z = ((n + (gridScroll % 1)) / 16) * 8 + 0.4;
+      for (var n = 0; n < 18; n++) {
+        var z = ((n + (gridScroll % 1)) / 18) * 8 + 0.38;
         var y = hy + (H - hy) * 0.9 / z * 1.4;
         if (y > H) continue;
-        var a = alpha * Math.min(1, (8 - z) / 8) * 0.5;
-        ctx.strokeStyle = 'rgba(236,72,153,' + a + ')';
+        var a = alpha * Math.min(1, (8 - z) / 8) * 0.48;
+        ctx.strokeStyle = (n % 3 === 0 ? 'rgba(56,189,248,' : 'rgba(236,72,153,') + a + ')';
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(W, y);
         ctx.stroke();
       }
       ctx.restore();
-      var hz = ctx.createLinearGradient(0, hy - 2, 0, hy + 2);
-      hz.addColorStop(0, 'rgba(236,72,153,0)');
-      hz.addColorStop(0.5, 'rgba(236,72,153,' + 0.55 * alpha + ')');
-      hz.addColorStop(1, 'rgba(236,72,153,0)');
+      var hz = ctx.createLinearGradient(0, hy - 3, 0, hy + 3);
+      hz.addColorStop(0, 'rgba(56,189,248,0)');
+      hz.addColorStop(0.5, 'rgba(' + mood + ',' + 0.55 * alpha + ')');
+      hz.addColorStop(1, 'rgba(56,189,248,0)');
       ctx.fillStyle = hz;
-      ctx.fillRect(0, hy - 2, W, 4);
+      ctx.fillRect(0, hy - 3, W, 6);
+    }
+
+    function drawOctahedron(nd, F, D, mood, alpha) {
+      var px0 = nd.x + mx * 0.08 / nd.z;
+      var py0 = nd.y + my * 0.06 / nd.z;
+      var depth = nd.z + D * 0.35;
+      if (depth < 0.15) return;
+      var verts = [
+        [0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]
+      ];
+      var edges = [
+        [0,2],[0,3],[0,4],[0,5],[1,2],[1,3],[1,4],[1,5],[2,4],[4,3],[3,5],[5,2]
+      ];
+      var cxR = Math.cos(nd.rx), sxR = Math.sin(nd.rx);
+      var cyR = Math.cos(nd.ry), syR = Math.sin(nd.ry);
+      var proj = [];
+      for (var i = 0; i < verts.length; i++) {
+        var vx = verts[i][0] * nd.sz, vy = verts[i][1] * nd.sz, vz = verts[i][2] * nd.sz;
+        var y1 = vy * cxR - vz * sxR, z1 = vy * sxR + vz * cxR;
+        var x2 = vx * cyR + z1 * syR, z2 = -vx * syR + z1 * cyR;
+        var d = depth + z2;
+        proj.push([cx + ((px0 + x2) / d) * F, cy + ((py0 + y1) / d) * F]);
+      }
+      ctx.strokeStyle = 'rgba(' + mood + ',' + (0.28 * alpha) + ')';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var e = 0; e < edges.length; e++) {
+        var a = proj[edges[e][0]], b = proj[edges[e][1]];
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+      }
+      ctx.stroke();
     }
 
     var last = performance.now(), time = 0, raf = 0;
@@ -840,62 +1435,102 @@ html, body {
       var dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       time += dt;
-      mx += (tmx - mx) * 0.05;
-      my += (tmy - my) * 0.05;
-      energy *= Math.pow(0.15, dt);
-      for (var c = 0; c < 3; c++) moodRGB[c] += (targetRGB[c] - moodRGB[c]) * Math.min(1, dt * 4);
+      mx += (tmx - mx) * 0.06;
+      my += (tmy - my) * 0.06;
+      energy *= Math.pow(0.16, dt);
+      for (var c = 0; c < 3; c++) moodRGB[c] += (targetRGB[c] - moodRGB[c]) * Math.min(1, dt * 4.5);
       var mood = Math.round(moodRGB[0]) + ',' + Math.round(moodRGB[1]) + ',' + Math.round(moodRGB[2]);
+
+      if (!reduceMotion && dialStage && !warpStart) {
+        dialStage.style.setProperty('--tilt-x', (-my * 7.5).toFixed(2) + 'deg');
+        dialStage.style.setProperty('--tilt-y', (mx * 7.5).toFixed(2) + 'deg');
+      }
 
       var w = warpStart ? Math.min(1, (now - warpStart) / 1300) : 0;
       var wIn = w * w * w;
 
-      // Deep space backdrop
+      // Deep metaverse space backdrop
       ctx.globalCompositeOperation = 'source-over';
       var bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-      bgGrad.addColorStop(0, '#05030f');
-      bgGrad.addColorStop(0.6, '#0a0620');
-      bgGrad.addColorStop(1, '#120826');
+      bgGrad.addColorStop(0, '#04020d');
+      bgGrad.addColorStop(0.58, '#09051f');
+      bgGrad.addColorStop(1, '#130829');
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, W, H);
 
       ctx.globalCompositeOperation = 'lighter';
-      nebula(W * 0.18 + Math.sin(time * 0.05) * 40 - mx * 30, H * 0.25, minSide * 0.7, '99,40,180', 0.16);
-      nebula(W * 0.85 - mx * 20, H * 0.7 + Math.cos(time * 0.04) * 30, minSide * 0.65, '20,90,170', 0.14);
-      nebula(W * 0.6, H * 0.12, minSide * 0.45, '200,40,120', 0.08);
+      nebula(W * 0.16 + Math.sin(time * 0.05) * 42 - mx * 34, H * 0.24, minSide * 0.72, '109,40,217', 0.18);
+      nebula(W * 0.84 - mx * 24, H * 0.68 + Math.cos(time * 0.04) * 32, minSide * 0.68, '14,165,233', 0.15);
+      nebula(W * 0.62, H * 0.12, minSide * 0.48, '219,39,119', 0.1);
 
       for (var b = 0; b < bg.length; b++) {
         var s0 = bg[b];
-        var tw = 0.45 + 0.55 * Math.abs(Math.sin(time * (0.6 + s0.z) + s0.tw));
-        var bx = s0.x * W - mx * 26 * s0.z, by = s0.y * H - my * 20 * s0.z;
+        var tw = 0.4 + 0.6 * Math.abs(Math.sin(time * (0.6 + s0.z) + s0.tw));
+        var bx = s0.x * W - mx * 28 * s0.z, by = s0.y * H - my * 22 * s0.z;
         if (wIn > 0) {
           var dx = bx - cx, dy = by - cy;
-          var k = 1 + wIn * 6 * s0.z;
-          ctx.strokeStyle = 'rgba(220,230,255,' + tw * 0.8 + ')';
+          var k = 1 + wIn * 7 * s0.z;
+          ctx.strokeStyle = 'rgba(220,235,255,' + tw * 0.85 + ')';
           ctx.lineWidth = s0.s;
           ctx.beginPath();
-          ctx.moveTo(cx + dx * (1 + wIn * 0.4), cy + dy * (1 + wIn * 0.4));
+          ctx.moveTo(cx + dx * (1 + wIn * 0.38), cy + dy * (1 + wIn * 0.38));
           ctx.lineTo(cx + dx * k, cy + dy * k);
           ctx.stroke();
         } else {
-          ctx.fillStyle = 'rgba(230,235,255,' + tw * 0.75 + ')';
+          ctx.fillStyle = 'rgba(232,238,255,' + tw * 0.78 + ')';
           ctx.fillRect(bx, by, s0.s, s0.s);
         }
       }
 
-      gridScroll += dt * (0.25 + energy * 2 + wIn * 12);
-      drawGrid(time, 1 - wIn);
+      gridScroll += dt * (0.28 + energy * 2.4 + wIn * 14);
+      drawGrid(time, 1 - wIn, mood);
 
-      // Galaxy: tilted spiral disk centred behind the dial
-      var F = minSide * (mobile ? 1.25 : 1.05);
+      // Galaxy perspective & relativistic core glow
+      var F = minSide * (mobile ? 1.25 : 1.06);
       var D = 2.4 - wIn * 2.36;
-      var tilt = 1.1 + my * 0.12 + wIn * 0.4;
-      var roll = -0.42 + mx * 0.18 + time * 0.012;
-      var spin = time * (0.05 + energy * 0.25) + wIn * 3;
+      var tilt = 1.08 + my * 0.14 + wIn * 0.42;
+      var roll = -0.4 + mx * 0.2 + time * 0.014;
+      var spin = time * (0.055 + energy * 0.28) + wIn * 3.4;
       var cr = Math.cos(roll), sr = Math.sin(roll), ct = Math.cos(tilt), st = Math.sin(tilt);
-      var glowR = Math.min(minSide * 3, (F * 0.3) / Math.max(0.04, D)) * (1 + energy * 0.25);
-      nebula(cx, cy, glowR, mood, 0.35 + energy * 0.25);
-      nebula(cx, cy, glowR * 0.4, '255,245,225', 0.25 + energy * 0.2);
+      var glowR = Math.min(minSide * 3.2, (F * 0.34) / Math.max(0.04, D)) * (1 + energy * 0.32);
+      nebula(cx, cy, glowR, mood, 0.38 + energy * 0.26);
+      nebula(cx, cy, glowR * 0.42, '255,248,235', 0.28 + energy * 0.22);
 
+      // 3D Holographic Orbital Rings around the galaxy
+      if (wIn < 0.85) {
+        for (var rg = 0; rg < rings3d.length; rg++) {
+          var ring = rings3d[rg];
+          var rCt = Math.cos(ring.tiltX + my * 0.15), rSt = Math.sin(ring.tiltX + my * 0.15);
+          var rCz = Math.cos(ring.tiltZ + mx * 0.15), rSz = Math.sin(ring.tiltZ + mx * 0.15);
+          var rRot = time * ring.speed + energy * 0.4;
+          ctx.strokeStyle = 'rgba(' + (rg === 0 ? mood : ring.color) + ',' + ((0.22 + energy * 0.25) * (1 - wIn)) + ')';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          for (var p = 0; p <= ring.segs; p++) {
+            var pa = (p / ring.segs) * TAU + rRot;
+            var rx = ring.rad * Math.cos(pa), rz = ring.rad * Math.sin(pa), ry = 0;
+            var ry1 = ry * rCt - rz * rSt, rz1 = ry * rSt + rz * rCt;
+            var rx2 = rx * rCz - ry1 * rSz, ry2 = rx * rSz + ry1 * rCz;
+            var dR = rz1 + D;
+            if (dR < 0.05) continue;
+            var sx = cx + (rx2 / dR) * F, sy = cy + (ry2 / dR) * F;
+            if (p === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+          }
+          ctx.stroke();
+        }
+      }
+
+      // Floating 3D wireframe octahedron quantum nodes
+      if (!wIn) {
+        for (var qn = 0; qn < nodes3d.length; qn++) {
+          var nd = nodes3d[qn];
+          nd.rx += nd.vrx * dt * (1 + energy * 2);
+          nd.ry += nd.vry * dt * (1 + energy * 2);
+          drawOctahedron(nd, F, D, mood, 0.85 + energy * 0.4);
+        }
+      }
+
+      // Spiral galaxy stars + hero diffraction glints
       for (var i = 0; i < stars.length; i++) {
         var s = stars[i];
         var phi = s.th + spin / (s.rr + 0.18);
@@ -907,36 +1542,58 @@ html, body {
         var x = (X / depth) * F, y = (Yt / depth) * F;
         var px = cx + x * cr - y * sr, py = cy + x * sr + y * cr;
         if (px < -20 || px > W + 20 || py < -20 || py > H + 20) continue;
-        var size = Math.min(6, s.size * (1.7 / depth));
-        var a = Math.min(1, 1.5 - depth * 0.2) * (0.55 + energy * 0.45);
+        var size = Math.min(6, s.size * (1.75 / depth));
+        var a = Math.min(1, 1.55 - depth * 0.2) * (0.58 + energy * 0.42);
         ctx.fillStyle = s.hue < 0 ? 'rgba(255,255,255,' + a + ')' : 'hsla(' + s.hue + ',100%,' + s.l + '%,' + a + ')';
         ctx.fillRect(px - size / 2, py - size / 2, size, size);
+        if (s.glint && !wIn && size > 1.2) {
+          var gl = size * 3.2;
+          ctx.strokeStyle = 'rgba(255,255,255,' + (a * 0.42) + ')';
+          ctx.lineWidth = 0.7;
+          ctx.beginPath();
+          ctx.moveTo(px - gl, py); ctx.lineTo(px + gl, py);
+          ctx.moveTo(px, py - gl); ctx.lineTo(px, py + gl);
+          ctx.stroke();
+        }
+      }
+
+      // Expanding metaverse energy shockwaves (triggered on typing & unlock)
+      for (var wv = waves.length - 1; wv >= 0; wv--) {
+        var wave = waves[wv];
+        wave.r += dt * minSide * (1.2 + wave.strength * 0.8);
+        wave.life -= dt * 1.5;
+        if (wave.life <= 0) { waves.splice(wv, 1); continue; }
+        ctx.strokeStyle = 'rgba(' + mood + ',' + (wave.life * 0.45 * wave.strength) + ')';
+        ctx.lineWidth = 2.2 * wave.life;
+        ctx.beginPath();
+        ctx.arc(cx, cy, wave.r, 0, TAU);
+        ctx.stroke();
       }
 
       // Shooting stars
-      if (!reduceMotion && !warpStart && Math.random() < dt * 0.35) {
+      if (!reduceMotion && !warpStart && Math.random() < dt * 0.42) {
         var ang = rand(0.3, 0.7);
-        shooters.push({ x: rand(0, W), y: rand(-50, H * 0.4), vx: Math.cos(ang) * rand(500, 900), vy: Math.sin(ang) * rand(500, 900), life: 1 });
+        shooters.push({ x: rand(0, W), y: rand(-50, H * 0.4), vx: Math.cos(ang) * rand(520, 960), vy: Math.sin(ang) * rand(520, 960), life: 1 });
       }
       for (var q = shooters.length - 1; q >= 0; q--) {
         var sh = shooters[q];
         sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.life -= dt * 1.4;
         if (sh.life <= 0) { shooters.splice(q, 1); continue; }
-        var grad = ctx.createLinearGradient(sh.x, sh.y, sh.x - sh.vx * 0.12, sh.y - sh.vy * 0.12);
+        var grad = ctx.createLinearGradient(sh.x, sh.y, sh.x - sh.vx * 0.13, sh.y - sh.vy * 0.13);
         grad.addColorStop(0, 'rgba(255,255,255,' + sh.life + ')');
-        grad.addColorStop(1, 'rgba(165,180,252,0)');
+        grad.addColorStop(1, 'rgba(56,189,248,0)');
         ctx.strokeStyle = grad;
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
         ctx.moveTo(sh.x, sh.y);
-        ctx.lineTo(sh.x - sh.vx * 0.12, sh.y - sh.vy * 0.12);
+        ctx.lineTo(sh.x - sh.vx * 0.13, sh.y - sh.vy * 0.13);
         ctx.stroke();
       }
 
-      // Warp finale: white-out then hand over to the dashboard
+      // Warp finale: bright hyperspace handover
       if (w > 0.7) {
         ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = 'rgba(235,250,255,' + Math.min(1, (w - 0.7) / 0.3) + ')';
+        ctx.fillStyle = 'rgba(235,252,255,' + Math.min(1, (w - 0.7) / 0.3) + ')';
         ctx.fillRect(0, 0, W, H);
       }
       if (w >= 1 && warpDone) {
@@ -960,7 +1617,6 @@ html, body {
 
     resize();
     if (reduceMotion) {
-      // Single still frame — no continuous animation
       frame(performance.now());
       cancelAnimationFrame(raf);
     } else {
@@ -970,6 +1626,7 @@ html, body {
     return {
       kick: function (v) { energy = Math.min(1, energy + v); },
       mood: function (m) { targetRGB = (MOODS[m] || MOODS.idle).slice(); if (m === 'error' || m === 'ok') energy = 1; },
+      pulse: function (s) { if (!reduceMotion) waves.push({ r: minSide * 0.14, life: 1, strength: s || 0.5 }); },
       warp: function (done) {
         if (reduceMotion) { done(); return; }
         warpDone = done;

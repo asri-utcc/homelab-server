@@ -2759,6 +2759,15 @@ body::before {
     const optText = (selModel && selModel.selectedIndex >= 0) ? selModel.options[selModel.selectedIndex].text : '';
     const baseName = optText.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
 
+    if (id === 'auto') {
+      return {
+        name: 'AUTO ROUTER CORE',
+        short: 'สมองกลาง · AUTO',
+        detail: 'สมองกลางเลือกโมเดลให้อัตโนมัติ',
+        engine: 'AI Router (Flash classifier + quota-aware)',
+        accent: '#e879f9'
+      };
+    }
     if (id.startsWith('deepseek-')) {
       const isFlash = id.includes('flash');
       return {
@@ -4067,6 +4076,17 @@ body::before {
       else if (s.includes('-low')) { tier = 'Low · Fast'; tierColor = '#34d399'; }
       else if (s.includes('-medium')) { tier = 'Medium · Balanced'; tierColor = '#22d3ee'; }
 
+      if (s === 'auto') {
+        return {
+          family: 'auto',
+          accent: '#e879f9',
+          bg: 'rgba(232, 121, 249, 0.16)',
+          tier: 'Auto · Router',
+          tierColor: '#e879f9',
+          desc: 'สมองกลางเลือกโมเดล/บัญชีให้ตามงาน · ใช้แพ็กเกจรายเดือนก่อน DeepSeek สุดท้าย',
+          svg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e879f9" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3" fill="#e879f9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>`
+        };
+      }
       if (s.startsWith('claude-code-')) {
         const isOpus = s.includes('opus');
         const isHaiku = s.includes('haiku');
@@ -4164,6 +4184,9 @@ body::before {
 
     function getModelQuotaInfo(id) {
       const s = (id || '').toLowerCase();
+      if (s === 'auto') {
+        return { isAuto: true, remainingPct: null, resetTime: null, fiveHour: null, weekly: null };
+      }
       if (s.startsWith('claude-code-')) {
         const cw = liveQuota?.claudeWeb;
         if (cw && cw.ok) {
@@ -4223,7 +4246,7 @@ body::before {
       const curName = selModel.selectedIndex >= 0 ? selModel.options[selModel.selectedIndex].text : curId;
       const vis = getModelVisual(curId);
       const q = getModelQuotaInfo(curId);
-      const pctText = q.isDeepSeek
+      const pctText = q.isAuto ? 'AUTO' : q.isDeepSeek
         ? (q.dsOk ? `$${q.dsTotal}` : '$--')
         : (q.isClaudeSub && !q.cwOk ? 'Sub' : (q.remainingPct !== null ? `${q.remainingPct}%` : '--%'));
       const pctCol = q.isDeepSeek

@@ -31,6 +31,7 @@ const { URL } = require('url');
 const crypto = require('crypto');
 const wgManager = require('./wireguard-manager');
 const geminiManager = require('./gemini-manager');
+const aiRouter = require('./ai-router');
 
 // ── config ────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.DASHBOARD_PORT || '8090', 10);
@@ -1889,7 +1890,31 @@ const server = http.createServer(async (req, res) => {
             });
         }
         if (p === '/api/gemini/quota') {
-            return sendJson(res, 200, await geminiManager.getQuotaSummary());
+            return sendJson(res, 200, await geminiManager.getQuotaSummary({ accountId: url.searchParams.get('account') || 'g1' }));
+        }
+        // ── 🧠 AI Router (สมองกลาง) — used by chat 'auto' + cron-ai-runner.py ──
+        if (req.method === 'POST' && p === '/api/ai-router/route') {
+            const body = await readJsonBody(req);
+            if (!String(body.prompt || '').trim()) {
+                return sendJson(res, 400, { ok: false, error: 'missing prompt' });
+            }
+            return sendJson(res, 200, await aiRouter.routeTask({
+                prompt: String(body.prompt),
+                hasImages: Boolean(body.hasImages),
+                source: String(body.source || 'api').slice(0, 40),
+                minLevel: parseInt(body.minLevel, 10) || 1
+            }));
+        }
+        if (p === '/api/ai-router/log') {
+            const limit = Math.min(500, parseInt(url.searchParams.get('limit'), 10) || 100);
+            return sendJson(res, 200, { ok: true, entries: await aiRouter.readLog(limit) });
+        }
+        if (p === '/api/ai-router/accounts') {
+            return sendJson(res, 200, {
+                ok: true,
+                accounts: aiRouter.listAgyAccounts().map(({ id, label, email, ready, profile }) => ({ id, label, email, ready, profile })),
+                routes: aiRouter.ROUTES
+            });
         }
         if (req.method === 'POST' && p === '/api/gemini/claude-key') {
             const body = await readJsonBody(req);

@@ -26,6 +26,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const deepseekAgent = require('./deepseek-agent');
+const aiRouter = require('./ai-router');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
@@ -239,15 +240,15 @@ function formatToolSummary(tc) {
     return clean ? `${tc.name}: ${clean}`.slice(0, 140) : tc.name;
 }
 
-function getLiveThinkingState(sinceMs = 0, agyConversationId = null) {
+function getLiveThinkingState(sinceMs = 0, agyConversationId = null, brainDir = BRAIN_DIR) {
     try {
-        if (!fs.existsSync(BRAIN_DIR)) return null;
+        if (!fs.existsSync(brainDir)) return null;
         let targetDir = null;
-        if (agyConversationId && fs.existsSync(path.join(BRAIN_DIR, agyConversationId))) {
-            targetDir = path.join(BRAIN_DIR, agyConversationId);
+        if (agyConversationId && fs.existsSync(path.join(brainDir, agyConversationId))) {
+            targetDir = path.join(brainDir, agyConversationId);
         } else {
-            const subdirs = fs.readdirSync(BRAIN_DIR)
-                .map(d => path.join(BRAIN_DIR, d))
+            const subdirs = fs.readdirSync(brainDir)
+                .map(d => path.join(brainDir, d))
                 .filter(p => {
                     try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
                 });
@@ -348,7 +349,8 @@ function resolveJobLiveThought(job, sess) {
     if (job.liveThought) return job.liveThought;
     const m = typeof job.model === 'string' ? job.model : '';
     if (m.startsWith('claude-code-') || deepseekAgent.isDeepSeekModel(m)) return null;
-    return getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId);
+    const brainDir = aiRouter.agyBrainDir(aiRouter.getAgyAccount(job.agyAccount || (sess && sess.agyAccount) || 'g1'));
+    return getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId, brainDir);
 }
 
 function getActiveJob(sessionId = null) {
@@ -755,6 +757,11 @@ async function getStatus() {
         }
     }
 
+    if (models.length > 0) {
+        models.unshift({ id: aiRouter.AUTO_MODEL_ID, name: '🧠 Auto · สมองกลางเลือกให้' });
+    }
+    const agyAccounts = aiRouter.listAgyAccounts().map(({ id, label, email, ready, profile }) => ({ id, label, email, ready, profile }));
+
     // List available project folders
     let projects = [];
     try {
@@ -782,6 +789,7 @@ async function getStatus() {
         projectsBase: PROJECTS_BASE,
         projects,
         activeRunning: activeChild !== null,
+        agyAccounts,
         models
     };
 }
@@ -811,8 +819,147 @@ async function setApiKey(key) {
     return { ok: true, message: 'API key saved and applied successfully' };
 }
 
+// ── 🧠 Auto model: route via ai-router, then run with failover ───────────────
+const AUTO_MAX_ATTEMPTS = 3;
+
+function executeAuto(params, onChunk, onDone) {
+    const sid = resolveSessionId(params.sessionId);
+    if (activeRuns.has(sid)) {
+        throw new Error('แชทนี้กำลังประมวลผลอยู่ กรุณารอสักครู่หรือกด "➕ แชทใหม่" เพื่อคุยอีกห้องพร้อมกัน');
+    }
+    const jobId = params.jobId || ('job_' + Date.now());
+    const images = Array.isArray(params.images) ? params.images : [];
+
+    // Placeholder job while the router classifies (keeps the room busy & pollable)
+    const placeholder = {
+        id: jobId,
+        sessionId: sid,
+        status: 'running',
+        prompt: params.prompt,
+        images,
+        output: '',
+        startedAt: Date.now(),
+        finishedAt: null,
+        error: null,
+        exitCode: null,
+        mode: params.mode,
+        cwd: params.cwd,
+        model: aiRouter.AUTO_MODEL_ID,
+        liveThought: { currentAction: '🧠 สมองกลางกำลังวิเคราะห์งาน...', thinking: '', steps: [], stepsCount: 0, timeline: [] }
+    };
+    let aborted = false;
+    let innerHandle = null;
+    let finished = false;
+    const abort = () => {
+        aborted = true;
+        if (innerHandle) innerHandle.abort();
+        else finish(130, 'aborted', placeholder);
+    };
+    activeRuns.set(sid, { abort, job: placeholder });
+    lastJobs.set(sid, placeholder);
+    try { onChunk('thought', placeholder.liveThought); } catch (_) {}
+
+    const finish = (code, err, job) => {
+        if (finished) return;
+        finished = true;
+        if (job === placeholder) {
+            activeRuns.delete(sid);
+            placeholder.status = code === 130 ? 'aborted' : 'error';
+            placeholder.error = err;
+            placeholder.finishedAt = Date.now();
+            placeholder.liveThought = null;
+        }
+        const meta = getSessionMetaSync(sid);
+        if (meta) {
+            meta.model = aiRouter.AUTO_MODEL_ID;
+            saveSessionsIndexSync();
+        }
+        persistJobToHistory({ ...job }).catch((e) => {
+            console.error('[GeminiManager] Failed to persist auto job:', e.message);
+        });
+        onDone(code, err);
+        setTimeout(() => { processNextInQueue(); }, 600);
+    };
+
+    (async () => {
+        let decision;
+        try {
+            decision = await aiRouter.routeTask({ prompt: params.prompt, hasImages: images.length > 0, source: 'chat' });
+        } catch (err) {
+            decision = { ok: false, candidates: [], error: err.message };
+        }
+        if (aborted) return;
+        if (!decision.ok || !decision.candidates.length) {
+            placeholder.output = '❌ สมองกลางหาโมเดลที่ใช้ได้ไม่เจอ (โควตาทุกบัญชีใกล้หมด และ DeepSeek ไม่มียอดเงิน)';
+            onChunk('stdout', placeholder.output);
+            return finish(1, decision.error || 'no candidates', placeholder);
+        }
+
+        const tried = [];
+        const runAttempt = (idx, note) => {
+            const c = decision.candidates[idx];
+            tried.push(`${c.model}@${c.account}`);
+            const banner = aiRouter.formatBanner(decision, c, note);
+            let maxSteps = 0;
+            if (activeRuns.get(sid) && activeRuns.get(sid).job === placeholder) activeRuns.delete(sid);
+            try {
+                innerHandle = executePrompt({
+                    ...params,
+                    jobId,
+                    model: c.model,
+                    agyAccount: c.engine === 'agy' ? c.account : null,
+                    routeBanner: banner,
+                    deferPersist: true
+                }, (type, payload) => {
+                    if (type === 'thought' && payload && typeof payload === 'object') {
+                        maxSteps = Math.max(maxSteps, payload.stepsCount || 0);
+                    }
+                    onChunk(type, payload);
+                }, (code, err) => {
+                    const job = lastJobs.get(sid);
+                    const body = job ? String(job.output || '').slice(banner.length) : '';
+                    const failed = code !== 0 && code !== 130 && !(job && job.status === 'aborted');
+                    const next = idx + 1;
+                    if (failed && !aborted && next < decision.candidates.length && tried.length < AUTO_MAX_ATTEMPTS) {
+                        if (maxSteps === 0 && aiRouter.isRetryableFailure(err, body)) {
+                            aiRouter.logDecision({ source: 'chat', prompt: params.prompt, decision, event: 'failover', extra: { from: tried[tried.length - 1], error: String(err || body).slice(0, 200) } });
+                            const nc = decision.candidates[next];
+                            onChunk('stdout', `\n\n> ⚠️ ${c.label} · ${c.accountLabel} ใช้ไม่ได้ (${String(err || body).slice(0, 80)}) — สลับไป ${nc.label} · ${nc.accountLabel}\n\n`);
+                            return runAttempt(next, `สลับจาก ${c.label} (${c.accountLabel})`);
+                        }
+                        if (maxSteps > 0 && job) {
+                            const msg = `\n\n> ⚠️ ${c.label} หยุดกลางทางหลังใช้เครื่องมือไปแล้ว ${maxSteps} ขั้น — ไม่สลับโมเดลให้อัตโนมัติ เพื่อกันการแก้ไฟล์ซ้ำ กรุณาตรวจผลแล้วสั่งต่อ`;
+                            job.output += msg;
+                            onChunk('stdout', msg);
+                        }
+                    }
+                    if (failed && job && err && !body.trim()) {
+                        job.output += `❌ ${err}`;
+                    }
+                    finish(code, err, job || placeholder);
+                });
+            } catch (err) {
+                const next = idx + 1;
+                if (next < decision.candidates.length && tried.length < AUTO_MAX_ATTEMPTS) {
+                    return runAttempt(next, `สลับจาก ${c.label} (${err.message.slice(0, 60)})`);
+                }
+                finish(1, err.message, lastJobs.get(sid) || placeholder);
+            }
+        };
+        runAttempt(0, '');
+    })().catch((err) => {
+        console.error('[GeminiManager] Auto routing crashed:', err);
+        finish(1, err.message, lastJobs.get(sid) || placeholder);
+    });
+
+    return { abort };
+}
+
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false }, onChunk, onDone) {
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false }, onChunk, onDone) {
+    if (model === aiRouter.AUTO_MODEL_ID) {
+        return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession }, onChunk, onDone);
+    }
     const sid = resolveSessionId(sessionId);
     if (activeRuns.has(sid)) {
         throw new Error('แชทนี้กำลังประมวลผลอยู่ กรุณารอสักครู่หรือกด "➕ แชทใหม่" เพื่อคุยอีกห้องพร้อมกัน');
@@ -855,17 +1002,22 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         status: 'running',
         prompt,
         images: cleanImages,
-        output: '',
+        output: routeBanner || '',
         startedAt: Date.now(),
         finishedAt: null,
         error: null,
         exitCode: null,
         mode,
         cwd: safeCwd,
-        model
+        model,
+        agyAccount: agyAccount || null,
+        deferPersist: Boolean(deferPersist)
     };
     activeJob = job;
     lastJobs.set(sid, job);
+    if (routeBanner) {
+        try { onChunk('stdout', routeBanner); } catch (_) {}
+    }
 
     // Pre-save user's prompt immediately to this session on disk
     try {
@@ -1151,7 +1303,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                 const cost = typeof obj.total_cost_usd === 'number' ? `$${obj.total_cost_usd.toFixed(4)}` : '';
                 pushClaudeEvent('status', `completed turns=${obj.num_turns || 1}${dur ? ' time=' + dur : ''}${cost ? ' cost=' + cost : ''}`);
                 emitClaudeThought('เสร็จสิ้นการประมวลผล', true);
-                if (!emittedTextFromDeltas && !job.output && typeof obj.result === 'string' && obj.result) {
+                if (!emittedTextFromDeltas && job.output.length <= (routeBanner || '').length && typeof obj.result === 'string' && obj.result) {
                     job.output += obj.result;
                     onChunk('stdout', obj.result);
                 }
@@ -1200,7 +1352,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
             job.finishedAt = Date.now();
             lastJobs.set(sid, job);
-            persistJobToHistory({ ...job }).catch((err) => {
+            if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist Claude job:', err.message);
             });
             onDone(code, job.error);
@@ -1246,7 +1398,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             onDone: (code, errMsg) => {
                 activeRuns.delete(sid);
                 lastJobs.set(sid, job);
-                persistJobToHistory({ ...job }).catch((err) => {
+                if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                     console.error('[GeminiManager] Failed to persist DeepSeek job:', err.message);
                 });
                 onDone(code, errMsg);
@@ -1260,9 +1412,24 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
     const hasAgy = fs.existsSync(AGY_BIN);
 
     if (hasAgy) {
-        // Bridge context if user switched back from DeepSeek in the same session
+        // Google account (HOME profile) — conversations live in each account's own brain dir
+        const agyAcc = aiRouter.getAgyAccount(agyAccount || (sessMeta && sessMeta.agyAccount) || 'g1');
+        const agyBrain = aiRouter.agyBrainDir(agyAcc);
+        job.agyAccount = agyAcc.id;
+        let convId = existingConvId;
+        const switchedAccount = Boolean(sessMeta && (sessMeta.agyAccount || 'g1') !== agyAcc.id);
+        if (sessMeta && switchedAccount) {
+            convId = null;
+            sessMeta.agyConversationId = null;
+        }
+        if (sessMeta) {
+            sessMeta.agyAccount = agyAcc.id;
+            saveSessionsIndexSync();
+        }
+
+        // Bridge context if user switched back from DeepSeek/Claude or to another Google account
         let finalAgyPrompt = cliPrompt;
-        if (existingConvId && sessMeta && sessMeta.needsAgyBridge) {
+        if (sessMeta && ((convId && sessMeta.needsAgyBridge) || switchedAccount)) {
             try {
                 const hist = loadSessionMessagesSync(sid);
                 const prior = hist.slice(0, -1).slice(-6);
@@ -1272,7 +1439,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                         const txt = String(m.content || '').slice(0, 1200);
                         return `${role}: ${txt}`;
                     });
-                    finalAgyPrompt = `[บริบทล่าสุดจากการคุยกับ DeepSeek ในห้องแชทเดียวกัน (อ่านเพื่อความต่อเนื่อง):\n${summaryLines.join('\n---\n')}\n]\n\n${cliPrompt}`;
+                    finalAgyPrompt = `[บริบทล่าสุดในห้องแชทเดียวกัน (อ่านเพื่อความต่อเนื่อง):\n${summaryLines.join('\n---\n')}\n]\n\n${cliPrompt}`;
                 }
             } catch (_) {}
             sessMeta.needsAgyBridge = false;
@@ -1282,17 +1449,17 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
         // Snapshot existing brain UUIDs if this session doesn't have an agyConversationId yet
         let beforeBrains = null;
-        if (!existingConvId) {
+        if (!convId) {
             try {
-                beforeBrains = new Set(fs.existsSync(BRAIN_DIR) ? fs.readdirSync(BRAIN_DIR) : []);
+                beforeBrains = new Set(fs.existsSync(agyBrain) ? fs.readdirSync(agyBrain) : []);
             } catch (_) {
                 beforeBrains = new Set();
             }
         }
 
         const args = ['-p', finalAgyPrompt];
-        if (existingConvId) {
-            args.unshift('--conversation', existingConvId);
+        if (convId) {
+            args.unshift('--conversation', convId);
         }
         if (mode === 'exec') {
             args.push('--dangerously-skip-permissions');
@@ -1306,6 +1473,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             PATH: `/home/dev/.gemini/bin:/home/dev/.local/bin:${process.env.PATH || ''}`,
             TERM: 'xterm-256color',
             FORCE_COLOR: '0',
+            HOME: agyAcc.home,
         };
 
         const child = spawn(AGY_BIN, args, {
@@ -1319,12 +1487,12 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         const detectConvId = () => {
             if (!beforeBrains || (sessMeta && sessMeta.agyConversationId)) return;
             try {
-                if (!fs.existsSync(BRAIN_DIR)) return;
+                if (!fs.existsSync(agyBrain)) return;
                 const claimed = new Set(ensureSessionsStoreSync().map(s => s.agyConversationId).filter(Boolean));
-                const nowDirs = fs.readdirSync(BRAIN_DIR).filter(d => !beforeBrains.has(d) && !claimed.has(d));
+                const nowDirs = fs.readdirSync(agyBrain).filter(d => !beforeBrains.has(d) && !claimed.has(d));
                 if (nowDirs.length > 0) {
                     nowDirs.sort((a, b) => {
-                        try { return fs.statSync(path.join(BRAIN_DIR, b)).mtimeMs - fs.statSync(path.join(BRAIN_DIR, a)).mtimeMs; } catch (_) { return 0; }
+                        try { return fs.statSync(path.join(agyBrain, b)).mtimeMs - fs.statSync(path.join(agyBrain, a)).mtimeMs; } catch (_) { return 0; }
                     });
                     if (sessMeta) {
                         sessMeta.agyConversationId = nowDirs[0];
@@ -1336,7 +1504,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         const brainPoll = beforeBrains ? setInterval(detectConvId, 600) : null;
         let lastAgyThoughtSig = '';
         const thoughtPoll = setInterval(() => {
-            const state = getLiveThinkingState(job.startedAt || 0, sessMeta && sessMeta.agyConversationId);
+            const state = getLiveThinkingState(job.startedAt || 0, sessMeta && sessMeta.agyConversationId, agyBrain);
             if (!state) return;
             const tlLen = Array.isArray(state.timeline) ? state.timeline.length : 0;
             const sig = `${state.currentAction}|${state.stepsCount}|${tlLen}|${state.thinking}`;
@@ -1387,7 +1555,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             job.finishedAt = Date.now();
             lastJobs.set(sid, job);
 
-            persistJobToHistory({ ...job }).catch((err) => {
+            if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist background job:', err.message);
             });
 
@@ -1654,7 +1822,7 @@ const CLOUDCODE_HEADERS_BASE = {
     'Content-Type': 'application/json',
     'User-Agent': 'antigravity/1.15.8'
 };
-let cachedProjectInfo = { project: null, tier: null, fetchedAt: 0 };
+const cachedProjectInfoByAccount = new Map(); // accountId -> { project, tier, fetchedAt }
 
 function execFileAsync(cmd, args, opts = {}) {
     return new Promise((resolve, reject) => {
@@ -1671,14 +1839,14 @@ function readOAuthTokenFile(tokenFile) {
     return { raw, inner };
 }
 
-async function getValidAccessToken(tokenFile, forceRefresh = false) {
+async function getValidAccessToken(tokenFile, forceRefresh = false, home = HOME_DIR) {
     let { raw, inner } = readOAuthTokenFile(tokenFile);
     const expiryMs = inner?.expiry ? Date.parse(inner.expiry) : 0;
     const needsRefresh = forceRefresh || !inner?.access_token || !expiryMs || (expiryMs - Date.now() < 60_000);
 
     if (needsRefresh && fs.existsSync(AGY_BIN)) {
         try {
-            await execFileAsync(AGY_BIN, ['models'], { timeout: 15000 });
+            await execFileAsync(AGY_BIN, ['models'], { timeout: 15000, env: { ...process.env, HOME: home } });
             ({ raw, inner } = readOAuthTokenFile(tokenFile));
         } catch (_) {
             // Fall through and use existing token if refresh failed
@@ -1687,7 +1855,7 @@ async function getValidAccessToken(tokenFile, forceRefresh = false) {
 
     return {
         accessToken: inner?.access_token || null,
-        email: raw.id_token_email || 'asri.utcc@gmail.com'
+        email: raw.id_token_email || (home === HOME_DIR ? 'asri.utcc@gmail.com' : null)
     };
 }
 
@@ -1713,13 +1881,16 @@ function toPctObj(remainingFraction, resetTime = null) {
     };
 }
 
-async function getQuotaSummary() {
-    const tokenFile = path.join(HOME_DIR, '.gemini/antigravity-cli/antigravity-oauth-token');
+async function getQuotaSummary({ accountId = 'g1' } = {}) {
+    const account = aiRouter.getAgyAccount(accountId);
+    const isPrimary = account.id === 'g1';
+    const tokenFile = aiRouter.agyTokenFile(account);
     if (!fs.existsSync(tokenFile)) {
-        return { ok: false, error: 'ไม่พบไฟล์ antigravity-oauth-token' };
+        return { ok: false, account: account.id, error: 'ไม่พบไฟล์ antigravity-oauth-token' };
     }
+    let cachedProjectInfo = cachedProjectInfoByAccount.get(account.id) || { project: null, tier: null, fetchedAt: 0 };
     try {
-        let { accessToken, email } = await getValidAccessToken(tokenFile, false);
+        let { accessToken, email } = await getValidAccessToken(tokenFile, false, account.home);
         if (!accessToken) {
             return { ok: false, error: 'ไม่พบ access_token ในไฟล์ OAuth' };
         }
@@ -1730,7 +1901,7 @@ async function getQuotaSummary() {
                 metadata: { ideType: 'ANTIGRAVITY', pluginType: 'GEMINI' }
             });
             if (lcaRes.status === 401) {
-                ({ accessToken, email } = await getValidAccessToken(tokenFile, true));
+                ({ accessToken, email } = await getValidAccessToken(tokenFile, true, account.home));
                 lcaRes = await postCloudCode('loadCodeAssist', accessToken, {
                     metadata: { ideType: 'ANTIGRAVITY', pluginType: 'GEMINI' }
                 });
@@ -1742,6 +1913,7 @@ async function getQuotaSummary() {
                     tier: lcaData.currentTier?.name || lcaData.currentTier?.id || null,
                     fetchedAt: Date.now()
                 };
+                cachedProjectInfoByAccount.set(account.id, cachedProjectInfo);
             }
         }
         const project = cachedProjectInfo.project || 'aicode-consumers';
@@ -1749,12 +1921,12 @@ async function getQuotaSummary() {
         let [modelsRes, summaryRes, deepseekInfo, claudeWebInfo] = await Promise.all([
             postCloudCode('fetchAvailableModels', accessToken, { project }),
             postCloudCode('retrieveUserQuotaSummary', accessToken, { project }),
-            deepseekAgent.getDeepSeekBalance(),
-            getClaudeWebQuota()
+            isPrimary ? deepseekAgent.getDeepSeekBalance() : null,
+            isPrimary ? getClaudeWebQuota() : null
         ]);
 
         if (modelsRes.status === 401 || summaryRes.status === 401) {
-            ({ accessToken, email } = await getValidAccessToken(tokenFile, true));
+            ({ accessToken, email } = await getValidAccessToken(tokenFile, true, account.home));
             [modelsRes, summaryRes] = await Promise.all([
                 postCloudCode('fetchAvailableModels', accessToken, { project }),
                 postCloudCode('retrieveUserQuotaSummary', accessToken, { project })
@@ -1895,6 +2067,8 @@ async function getQuotaSummary() {
 
         return {
             ok: true,
+            account: account.id,
+            accountLabel: account.label,
             email,
             tier: cachedProjectInfo.tier,
             project,
@@ -2200,6 +2374,8 @@ async function getClaudeWebQuota(opts) {
         return staleOr(err.message);
     }
 }
+
+aiRouter.setQuotaProvider(getQuotaSummary);
 
 module.exports = {
     getStatus,

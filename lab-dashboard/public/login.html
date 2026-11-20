@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="tactical">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -7,425 +7,613 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Sign in · Home-lab Control</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#06090e">
+<meta name="theme-color" content="#05030f">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><polygon points='6,2 26,2 30,6 30,26 26,30 6,30 2,26 2,6' fill='%2304232d' stroke='%2300d2f0' stroke-width='2'/><polyline points='2,12 10,12 13,9 22,9 25,12 30,12' fill='none' stroke='%2300d2f0' stroke-width='1.4'/><rect x='6' y='22' width='3' height='4' fill='%23f2541b'/><rect x='11' y='22' width='3' height='4' fill='%23f2541b'/><rect x='16' y='22' width='3' height='4' fill='none' stroke='%2300d2f0' stroke-width='1.2'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%2307051a' stroke='%23f5a524' stroke-width='2.4'/><circle cx='16' cy='16' r='6' fill='none' stroke='%232de2b8' stroke-width='2'/><path d='M16 3l-2.5 4h5z' fill='%23f5a524'/></svg>">
 <style>
 /* ══════════════════════════════════════════════════════════════════════════
-   Auth gate — ธีม Tactical (Cyber-Frame HUD) ของ Home-lab Control Panel
-   สี/เส้น/มุมตัด 45° ดึงจาก styles.css ของแดชบอร์ด (ธีม tactical)
-   ไฟล์นี้ self-contained เพราะ /styles.css อยู่หลัง forward_auth
+   Auth gate — "Vault Dial" over a 3D metaverse galaxy
+   · Every keystroke spins the vault dial to a random angle (never reveals the
+     character) and lights one segment of the progress ring
+   · Wrong key → red wobble + reset · Right key → mint spin-up → ACCESS GRANTED
+     → camera dives into the galaxy core → dashboard
+   · Self-contained on purpose: /styles.css and other assets sit behind forward_auth
    ══════════════════════════════════════════════════════════════════════════ */
 :root {
     color-scheme: dark;
-    --page:        #050e15;
-    --surface-1:   #04232d;
-    --surface-2:   #073240;
-    --ink-1:       #e6fbff;
-    --ink-2:       #7adff2;
-    --ink-muted:   #4396ab;
-    --cyan:        #00d2f0;
-    --orange:      #f2541b;
-    --green:       #00e5a3;
-    --critical:    #ff3b30;
-    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --ink-1: #eef2ff;
+    --ink-2: #a5b4fc;
+    --ink-muted: #6b7194;
+    --amber: #f5a524;
+    --mint: #2de2b8;
+    --red: #ff4d6d;
+    --violet: #8b5cf6;
+    --glass: rgba(14, 12, 34, 0.62);
+    --glass-border: rgba(165, 180, 252, 0.16);
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+    --sans: "Inter", "Segoe UI", system-ui, -apple-system, "Noto Sans Thai", sans-serif;
+    --state: var(--amber);
 }
 
 * { box-sizing: border-box; }
 
-html, body { margin: 0; padding: 0; min-height: 100%; }
-
-body {
-    background: var(--page);
+html, body {
+    margin: 0;
+    height: 100%;
+    background: #05030f;
     color: var(--ink-1);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    font-size: 15px;
-    line-height: 1.5;
+    font-family: var(--sans);
     -webkit-font-smoothing: antialiased;
-    display: grid;
-    place-items: center;
-    padding: 24px max(16px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-bottom));
-    overflow-x: hidden;
-}
-
-/* ── ชั้นพื้นหลัง: ตารางไซแอน + แสงเรือง (เหมือน body::before ของธีม tactical) ── */
-.fx {
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background:
-        radial-gradient(980px 540px at 14% -8%, rgba(0, 210, 240, .14), transparent 64%),
-        radial-gradient(820px 460px at 88% 4%,  rgba(242, 84, 27, .09), transparent 60%),
-        repeating-linear-gradient(0deg,  rgba(0, 210, 240, .04) 0 1px, transparent 1px 36px),
-        repeating-linear-gradient(90deg, rgba(0, 210, 240, .04) 0 1px, transparent 1px 36px);
-}
-/* เส้นสแกนวิ่งลงมาแบบช้า ๆ */
-.fx::after {
-    content: "";
-    position: absolute; left: 0; right: 0; height: 140px;
-    background: linear-gradient(180deg, transparent, rgba(0, 210, 240, .055) 55%, transparent);
-    animation: scan 9s linear infinite;
-}
-@keyframes scan { from { top: -140px; } to { top: 100%; } }
-
-/* ── กรอบ HUD (เส้นตัดมุม 45°) ────────────────────────────────────────────── */
-.gate { position: relative; z-index: 1; width: 100%; max-width: 424px; }
-
-.panel {
-    position: relative;
-    background: linear-gradient(180deg, rgba(4, 35, 45, .96), rgba(5, 14, 21, .97));
-    padding: 30px 26px 22px;
-    clip-path: polygon(
-        11px 0,
-        calc(100% - 11px) 0,
-        100% 11px,
-        100% calc(100% - 11px),
-        calc(100% - 11px) 100%,
-        11px 100%,
-        0 calc(100% - 11px),
-        0 11px
-    );
-    box-shadow: inset 0 0 28px rgba(0, 210, 240, .06), 0 12px 30px -18px rgba(0, 0, 0, .92);
-}
-.hud {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    pointer-events: none; z-index: 3; overflow: visible;
-    filter: drop-shadow(0 0 6px rgba(0, 210, 240, .24));
-}
-
-/* ── หัวการ์ด ────────────────────────────────────────────────────────────── */
-.head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-
-.mark {
-    width: 40px; height: 40px; flex: none; position: relative;
-    background: #04232d;
-    border: 2px solid var(--cyan);
-    box-shadow: 0 0 16px -2px rgba(0, 210, 240, .65);
-    clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 9px, 100% calc(100% - 9px), calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
-}
-.mark::after {
-    content: ""; position: absolute; inset: 9px;
-    background:
-        linear-gradient(var(--orange) 0 0) 0 0 / 100% 3px no-repeat,
-        linear-gradient(var(--cyan) 0 0) 0 7px / 70% 2px no-repeat,
-        linear-gradient(var(--cyan) 0 0) 0 12px / 45% 2px no-repeat;
-}
-
-.head__text { min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
-.head__text strong {
-    font-family: var(--mono); font-size: 14px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .12em; color: var(--ink-1);
-    text-shadow: 0 0 14px rgba(0, 210, 240, .45);
-}
-.head__text span {
-    font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em;
-    color: var(--ink-muted); text-transform: uppercase;
-}
-
-.clock {
-    margin-left: auto; flex: none;
-    font-family: var(--mono); font-size: 12px; letter-spacing: .08em;
-    color: var(--ink-2); padding: 5px 9px;
-    border: 1px solid var(--cyan); background: rgba(0, 210, 240, .07);
-    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-}
-
-/* ── แถบสถานะ ────────────────────────────────────────────────────────────── */
-.status {
-    display: flex; align-items: center; gap: 9px;
-    font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em;
-    text-transform: uppercase; color: var(--ink-2);
-    padding: 8px 10px; margin-bottom: 20px;
-    background: rgba(0, 229, 163, .06);
-    border-left: 2px solid var(--green);
-}
-.status .dot {
-    width: 7px; height: 7px; flex: none; background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-    animation: pulse 2.4s ease-in-out infinite;
-}
-.status .sep { flex: 1; height: 1px; background: linear-gradient(90deg, rgba(0,229,163,.5), transparent); }
-.status .sep + span { color: var(--ink-muted); }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-
-/* ── ฟอร์ม ────────────────────────────────────────────────────────────────── */
-label.lbl {
-    display: block; margin-bottom: 7px;
-    font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em;
-    text-transform: uppercase; color: var(--ink-muted);
-}
-
-.field { position: relative; display: flex; align-items: center; }
-.field .ico {
-    position: absolute; left: 12px; width: 17px; height: 17px;
-    fill: none; stroke: var(--ink-muted); stroke-width: 1.7;
-    stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
-}
-.field input {
-    width: 100%; padding: 13px 44px 13px 38px;
-    background: rgba(3, 18, 25, .92);
-    border: 1px solid rgba(0, 210, 240, .32);
-    color: var(--ink-1);
-    font-family: var(--mono); font-size: 15px; letter-spacing: .06em;
-    outline: none;
-    clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
-    transition: border-color .18s, box-shadow .18s;
-}
-.field input::placeholder { color: #2f6b7d; letter-spacing: .3em; }
-.field input:focus {
-    border-color: var(--cyan);
-    box-shadow: 0 0 0 1px rgba(0, 210, 240, .35), 0 0 18px -4px rgba(0, 210, 240, .55);
-}
-.field input:-webkit-autofill {
-    -webkit-text-fill-color: var(--ink-1);
-    -webkit-box-shadow: 0 0 0 40px #04232d inset;
-}
-.eye {
-    position: absolute; right: 8px;
-    width: 30px; height: 30px; display: grid; place-items: center;
-    background: none; border: 0; cursor: pointer; padding: 0;
-}
-.eye svg { width: 17px; height: 17px; fill: none; stroke: var(--ink-muted); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.eye:hover svg, .eye:focus-visible svg { stroke: var(--cyan); }
-.eye[hidden] { display: none; }
-
-/* ── ตัวเลือกจดจำฉัน ──────────────────────────────────────────────────────── */
-.keep {
-    display: flex; align-items: center; gap: 9px; margin-top: 14px;
-    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
-    color: var(--ink-2); cursor: pointer; user-select: none;
-}
-.keep input {
-    appearance: none; -webkit-appearance: none;
-    width: 15px; height: 15px; margin: 0; flex: none;
-    border: 1px solid rgba(0, 210, 240, .45); background: rgba(3, 18, 25, .9);
-    display: grid; place-items: center; cursor: pointer;
-}
-.keep input::after {
-    content: ""; width: 7px; height: 7px; background: var(--cyan);
-    transform: scale(0); transition: transform .14s ease;
-}
-.keep input:checked::after { transform: scale(1); }
-.keep input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-
-/* ── ข้อความผิดพลาด ───────────────────────────────────────────────────────── */
-.err {
-    display: flex; align-items: flex-start; gap: 9px;
-    margin-top: 16px; padding: 10px 12px;
-    font-size: 12.5px; line-height: 1.45; color: #ffd9d6;
-    background: rgba(255, 59, 48, .12);
-    border-left: 2px solid var(--critical);
-}
-.err[hidden] { display: none; }
-.err svg { width: 15px; height: 15px; flex: none; margin-top: 1px; fill: none; stroke: var(--critical); stroke-width: 1.8; stroke-linecap: round; }
-.shake { animation: shake .38s cubic-bezier(.36,.07,.19,.97); }
-@keyframes shake {
-    10%, 90% { transform: translateX(-2px); }
-    20%, 80% { transform: translateX(4px); }
-    30%, 50%, 70% { transform: translateX(-7px); }
-    40%, 60% { transform: translateX(7px); }
-}
-
-/* ── ปุ่มหลัก ─────────────────────────────────────────────────────────────── */
-.cta {
-    position: relative; width: 100%; margin-top: 20px;
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    padding: 14px 18px; cursor: pointer;
-    font-family: var(--mono); font-size: 12.5px; font-weight: 600;
-    letter-spacing: .2em; text-transform: uppercase;
-    color: #00181f; background: var(--cyan);
-    border: 0;
-    clip-path: polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px);
-    transition: filter .16s, transform .16s;
     overflow: hidden;
 }
-/* แถบสีส้มแทคติคอลมุมขวาล่าง */
-.cta::after {
-    content: ""; position: absolute; right: 0; bottom: 0; width: 34px; height: 4px;
-    background: var(--orange);
-}
-.cta:hover:not(:disabled) { filter: brightness(1.12); }
-.cta:active:not(:disabled) { transform: translateY(1px); }
-.cta:disabled { cursor: progress; filter: saturate(.55) brightness(.85); }
-.cta:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 2px; }
 
-.spinner {
-    width: 14px; height: 14px; flex: none; display: none;
-    border: 2px solid rgba(0, 24, 31, .3); border-top-color: #00181f;
-    border-radius: 50%; animation: spin .7s linear infinite;
+#space {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
 }
-.is-busy .spinner { display: block; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── ท้ายการ์ด ───────────────────────────────────────────────────────────── */
-.foot {
-    display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between;
-    margin-top: 20px; padding-top: 13px;
-    border-top: 1px solid rgba(0, 210, 240, .18);
-    font-family: var(--mono); font-size: 9.5px; letter-spacing: .13em;
-    text-transform: uppercase; color: var(--ink-muted);
+.vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 42%, transparent 35%, rgba(3, 1, 10, 0.75) 100%);
 }
-.foot .accent { color: var(--orange); }
 
-/* ── จอเล็ก ───────────────────────────────────────────────────────────────── */
-@media (max-width: 420px) {
-    .panel { padding: 24px 18px 18px; }
-    .head__text strong { font-size: 12.5px; }
-    .clock { display: none; }
+/* ── HUD bars ─────────────────────────────────────────────────────────────── */
+.hud {
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px clamp(14px, 3vw, 28px);
+    font: 11px/1.2 var(--mono);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+}
+.hud--top { top: env(safe-area-inset-top, 0); }
+.hud--bottom { bottom: env(safe-area-inset-bottom, 0); }
+.hud b { color: var(--ink-2); font-weight: 600; }
+.hud .live { display: inline-flex; align-items: center; gap: 8px; }
+.hud .live::before {
+    content: "";
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 10px var(--mint);
+    animation: pulse 2s ease-in-out infinite;
+}
+.sfx {
+    pointer-events: auto;
+    background: none;
+    border: 1px solid var(--glass-border);
+    color: var(--ink-2);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font: inherit;
+    letter-spacing: .1em;
+    cursor: pointer;
+}
+.sfx:hover { border-color: var(--ink-2); }
+
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+.gate {
+    position: relative;
+    z-index: 2;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(14px, 2.6vh, 26px);
+    padding: 64px 16px 56px;
+    transition: transform .9s cubic-bezier(.6, 0, .9, .4), opacity .7s ease-in, filter .8s ease-in;
+}
+.gate.is-leaving {
+    transform: scale(1.6);
+    opacity: 0;
+    filter: blur(10px);
+}
+
+.title {
+    margin: 0;
+    font-size: clamp(18px, 2.4vw, 22px);
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-align: center;
+}
+.title small {
+    display: block;
+    margin-top: 6px;
+    font: 500 11px/1 var(--mono);
+    letter-spacing: .32em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+}
+
+/* ── Vault dial ───────────────────────────────────────────────────────────── */
+.dial {
+    position: relative;
+    width: min(64vw, 40vh, 300px);
+    aspect-ratio: 1;
+    filter: drop-shadow(0 0 28px color-mix(in srgb, var(--state) 35%, transparent));
+    transition: filter .4s;
+}
+.dial svg { width: 100%; height: 100%; overflow: visible; display: block; }
+.dial[data-state="idle"] { --state: #6b7194; }
+.dial[data-state="typing"] { --state: var(--amber); }
+.dial[data-state="error"] { --state: var(--red); }
+.dial[data-state="ok"] { --state: var(--mint); }
+.dial.wobble { animation: wobble .6s cubic-bezier(.36, .07, .19, .97); }
+
+@keyframes wobble {
+    15% { transform: rotate(-9deg); }
+    30% { transform: rotate(8deg); }
+    45% { transform: rotate(-6deg); }
+    60% { transform: rotate(4deg); }
+    75% { transform: rotate(-2deg); }
+    100% { transform: rotate(0); }
+}
+
+.d-face { fill: url(#faceGrad); stroke: rgba(255, 255, 255, .06); stroke-width: 1; }
+.d-seg {
+    fill: none;
+    stroke: rgba(255, 255, 255, .08);
+    stroke-width: 7;
+    stroke-linecap: round;
+    transition: stroke .25s, filter .25s;
+}
+.d-seg.is-on { stroke: var(--state); filter: drop-shadow(0 0 6px var(--state)); }
+.dial[data-state="ok"] .d-seg,
+.dial[data-state="error"] .d-seg { stroke: var(--state); filter: drop-shadow(0 0 7px var(--state)); }
+.d-rot {
+    transform-origin: 150px 150px;
+    transition: transform .55s cubic-bezier(.2, .9, .25, 1.15);
+}
+.d-rot.is-spinning { filter: url(#motionBlur); }
+.dial.is-unlocking .d-rot {
+    transition: transform 1s cubic-bezier(.55, 0, .3, 1), opacity .5s .5s;
+    opacity: 0;
+}
+.d-tick { stroke: rgba(226, 232, 255, .22); stroke-width: 1; }
+.d-tick.major { stroke: rgba(226, 232, 255, .55); stroke-width: 1.6; }
+.d-num { fill: rgba(226, 232, 255, .62); font: 600 15px var(--mono); text-anchor: middle; dominant-baseline: central; }
+.d-num.hot { fill: var(--state); }
+.d-pointer { fill: var(--state); filter: drop-shadow(0 0 5px var(--state)); transition: fill .25s; }
+.d-hub { fill: #090716; stroke: color-mix(in srgb, var(--state) 55%, transparent); stroke-width: 1.2; transition: stroke .25s, r .6s cubic-bezier(.2, .9, .25, 1.2); }
+.dial.is-unlocking .d-hub { r: 62px; }
+.d-count {
+    fill: var(--ink-1);
+    font: 700 44px var(--sans);
+    text-anchor: middle;
+    dominant-baseline: central;
+    transition: opacity .25s, fill .25s;
+}
+.dial[data-state="error"] .d-count { fill: var(--red); }
+.dial.is-unlocking .d-count { opacity: 0; }
+.d-check {
+    fill: none;
+    stroke: var(--mint);
+    stroke-width: 7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 80;
+    stroke-dashoffset: 80;
+    filter: drop-shadow(0 0 8px var(--mint));
+}
+.dial.is-granted .d-check { transition: stroke-dashoffset .45s cubic-bezier(.6, 0, .2, 1) .1s; stroke-dashoffset: 0; }
+.d-granted {
+    fill: var(--mint);
+    font: 700 9.5px var(--mono);
+    letter-spacing: .32em;
+    text-anchor: middle;
+    opacity: 0;
+    transition: opacity .4s .35s;
+}
+.dial.is-granted .d-granted { opacity: 1; }
+.d-ring-ok { fill: none; stroke: var(--mint); stroke-width: 7; opacity: 0; transition: opacity .4s; filter: drop-shadow(0 0 14px var(--mint)); }
+.dial.is-granted .d-ring-ok { opacity: 1; }
+
+/* ── Editor-style form ────────────────────────────────────────────────────── */
+.editor, .console {
+    width: min(92vw, 460px);
+    border-radius: 14px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+.editor__bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--glass-border);
+    font: 12px var(--mono);
+    color: var(--ink-2);
+}
+.editor__bar i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.editor__bar i:nth-child(1) { background: #ff5f57; }
+.editor__bar i:nth-child(2) { background: #febc2e; }
+.editor__bar i:nth-child(3) { background: #28c840; margin-right: 8px; }
+.editor__file { flex: 1; }
+.editor__saved { color: var(--ink-muted); font-size: 11px; }
+.editor__saved.dirty { color: var(--amber); }
+.editor__saved.ok { color: var(--mint); }
+
+.code { padding: 10px 0 12px; font: 13px/1.95 var(--mono); }
+.ln {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    align-items: center;
+    padding-right: 12px;
+    border-left: 2px solid transparent;
+}
+.ln.is-cur { border-left-color: var(--amber); background: rgba(255, 255, 255, .03); }
+.ln > span:first-child { color: #3d4166; text-align: right; padding-right: 12px; user-select: none; }
+.ln .c { color: #5b6190; font-style: italic; }
+.ln .k { color: #c084fc; }
+.ln .f { color: #7dd3fc; }
+.ln .s { color: #fbbf24; }
+.ln .p { color: #94a3b8; }
+.ln .b { color: #f472b6; }
+.code-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+
+.key {
+    flex: 1 1 140px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px dashed rgba(251, 191, 36, .35);
+    transition: border-color .2s;
+}
+.key:focus-within { border-bottom-color: var(--amber); }
+.key input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    padding: 2px 2px;
+    color: #fbbf24;
+    font: 13px var(--mono);
+    caret-color: var(--amber);
+    letter-spacing: .12em;
+}
+.key input::placeholder { color: rgba(251, 191, 36, .35); letter-spacing: .05em; }
+.eye {
+    background: none;
+    border: 0;
+    padding: 2px 4px;
+    color: var(--ink-muted);
+    cursor: pointer;
+    display: inline-flex;
+}
+.eye:hover, .eye:focus-visible { color: var(--ink-1); }
+.eye svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.bool {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0 6px;
+    font: 13px var(--mono);
+    color: #f472b6;
+    cursor: pointer;
+}
+.bool[aria-checked="true"] { color: var(--mint); border-color: rgba(45, 226, 184, .35); background: rgba(45, 226, 184, .08); }
+.bool:focus-visible, .run:focus-visible, .sfx:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
+
+.run {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 14px;
+    border: 0;
+    border-radius: 8px;
+    font: 600 12px var(--mono);
+    letter-spacing: .06em;
+    color: #160b00;
+    background: linear-gradient(135deg, #fbbf24, #f97316);
+    box-shadow: 0 4px 18px rgba(249, 115, 22, .35);
+    cursor: pointer;
+    transition: transform .15s, filter .15s, opacity .15s;
+}
+.run:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.run:disabled { opacity: .55; cursor: progress; transform: none; }
+
+/* ── Console ──────────────────────────────────────────────────────────────── */
+.console { padding: 10px 14px 12px; font: 11.5px/1.75 var(--mono); }
+.console__head { color: #3d4166; letter-spacing: .18em; font-size: 10px; margin-bottom: 2px; }
+.console__log { min-height: calc(1.75em * 4); max-height: calc(1.75em * 4); overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+.console__log div { color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: logIn .25s ease-out; }
+.console__log .ok { color: var(--mint); }
+.console__log .err { color: var(--red); }
+.console__log .warn { color: var(--amber); }
+@keyframes logIn { from { opacity: 0; transform: translateY(4px); } }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (max-height: 700px) {
+    .gate { gap: 12px; padding-top: 48px; }
+    .title small { display: none; }
+    .console__log { min-height: calc(1.75em * 3); max-height: calc(1.75em * 3); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .fx::after, .status .dot, .spinner { animation: none !important; }
-    .shake { animation: none !important; }
+    .d-rot, .gate, .dial { transition: none !important; animation: none !important; }
 }
 </style>
 </head>
 <body>
-<div class="fx" aria-hidden="true"></div>
+<canvas id="space" aria-hidden="true"></canvas>
+<div class="vignette" aria-hidden="true"></div>
 
-<main class="gate">
-  <section class="panel" id="panel">
-    <!-- HUD frame: เส้นตัดมุม 45° แบบเดียวกับการ์ดในแดชบอร์ด (วาดด้วย JS) -->
-    <svg class="hud" id="hud" aria-hidden="true"></svg>
+<div class="hud hud--top">
+  <span class="live"><b>Home-lab</b>&nbsp;Secure gateway</span>
+  <span><span id="clock">--:--:--</span>&nbsp;·&nbsp;<button type="button" class="sfx" id="sfx" aria-pressed="true">SFX ON</button></span>
+</div>
 
-    <header class="head">
-      <span class="mark" aria-hidden="true"></span>
-      <span class="head__text">
-        <strong>Home-lab Control</strong>
-        <span>Secure access gateway</span>
-      </span>
-      <span class="clock" id="clock">--:--:--</span>
-    </header>
+<main class="gate" id="gate">
+  <h1 class="title">Vault Access<small>Metaverse galaxy gateway</small></h1>
 
-    <div class="status">
-      <span class="dot" aria-hidden="true"></span>
-      <span>System nominal</span>
-      <span class="sep" aria-hidden="true"></span>
-      <span id="site">tailscale</span>
+  <div class="dial" id="dial" data-state="idle" aria-hidden="true">
+    <svg viewBox="0 0 300 300">
+      <defs>
+        <radialGradient id="faceGrad" cx="50%" cy="40%" r="65%">
+          <stop offset="0" stop-color="#1b1838"/>
+          <stop offset=".7" stop-color="#0d0b22"/>
+          <stop offset="1" stop-color="#07061a"/>
+        </radialGradient>
+        <filter id="motionBlur" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.4"/>
+        </filter>
+      </defs>
+      <g id="segs"></g>
+      <circle class="d-ring-ok" cx="150" cy="150" r="140"/>
+      <circle class="d-face" cx="150" cy="150" r="128"/>
+      <g class="d-rot" id="rot"></g>
+      <path class="d-pointer" d="M150 30 l-8 -13 h16 z"/>
+      <circle class="d-hub" cx="150" cy="150" r="46"/>
+      <text class="d-count" id="count" x="150" y="152">0</text>
+      <path class="d-check" d="M126 150 l16 16 l32 -34"/>
+      <text class="d-granted" x="150" y="226">ACCESS GRANTED</text>
+    </svg>
+  </div>
+
+  <form class="editor" id="form" autocomplete="off" novalidate>
+    <div class="editor__bar" aria-hidden="true">
+      <i></i><i></i><i></i>
+      <span class="editor__file">vault.js</span>
+      <span class="editor__saved" id="saved">● ready</span>
     </div>
-
-    <form id="form" autocomplete="off" novalidate>
-      <label class="lbl" for="pw">Access key</label>
-      <div class="field">
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="3" y="11" width="18" height="11" rx="2"></rect>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-        </svg>
-        <input id="pw" name="password" type="password" placeholder="••••••••" autocomplete="current-password"
-               spellcheck="false" autocapitalize="off" required>
-        <button type="button" class="eye" id="eye" aria-label="Show password" title="Show password">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg>
-        </button>
+    <div class="code">
+      <div class="ln"><span>1</span><span class="c">// homelab access gateway · <span id="site">tailscale</span></span></div>
+      <div class="ln is-cur" id="ln-key"><span>2</span>
+        <span class="code-row">
+          <span><span class="k">const</span> key <span class="p">=</span> <span class="s">'</span></span>
+          <label class="key">
+            <span class="sr-only">Access key</span>
+            <input id="pw" name="password" type="password" placeholder="type access key…" autocomplete="current-password"
+                   spellcheck="false" autocapitalize="off" required>
+            <button type="button" class="eye" id="eye" aria-label="Show password" title="Show password">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </label>
+          <span class="s">'</span>
+        </span>
       </div>
-
-      <label class="keep">
-        <input type="checkbox" id="remember" name="remember">
-        <span>Keep me signed in · 30 days</span>
-      </label>
-
-      <div class="err" id="err" role="alert" hidden>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M12 8v4M12 16h.01"></path>
-        </svg>
-        <span id="err-text"></span>
+      <div class="ln"><span>3</span>
+        <span class="code-row">
+          <span><span class="k">const</span> remember <span class="p">=</span></span>
+          <button type="button" class="bool" id="remember" role="switch" aria-checked="false" aria-label="Keep me signed in for 30 days">false</button>
+          <span class="c">// 30 days</span>
+        </span>
       </div>
+      <div class="ln"><span>4</span>
+        <span class="code-row">
+          <span><span class="k">await</span> vault.<span class="f">unlock</span><span class="p">(</span>key<span class="p">)</span></span>
+          <button class="run" id="submit" type="submit"><span id="run-label">▶ Run</span></button>
+        </span>
+      </div>
+    </div>
+  </form>
 
-      <button class="cta" id="submit" type="submit">
-        <span class="cta__label">Authenticate</span>
-        <span class="spinner" aria-hidden="true"></span>
-      </button>
-    </form>
-
-    <footer class="foot">
-      <span>Session · HMAC-SHA256 signed cookie</span>
-      <span class="accent" id="foot-site">—</span>
-    </footer>
+  <section class="console" aria-live="polite">
+    <div class="console__head">CONSOLE</div>
+    <div class="console__log" id="log"></div>
   </section>
 </main>
+
+<div class="hud hud--bottom">
+  <span>Session · HMAC-SHA256</span>
+  <span id="foot-site">—</span>
+</div>
 
 <script>
 (function () {
   'use strict';
 
-  var form    = document.getElementById('form');
-  var pw      = document.getElementById('pw');
-  var remember= document.getElementById('remember');
-  var errBox  = document.getElementById('err');
-  var errText = document.getElementById('err-text');
-  var submit  = document.getElementById('submit');
-  var panel   = document.getElementById('panel');
-  var eye     = document.getElementById('eye');
-  var clock   = document.getElementById('clock');
-  var siteEl  = document.getElementById('site');
-  var footSite= document.getElementById('foot-site');
-  var hud     = document.getElementById('hud');
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $ = function (id) { return document.getElementById(id); };
+  var form = $('form'), pw = $('pw'), eye = $('eye'), remember = $('remember');
+  var submit = $('submit'), runLabel = $('run-label'), dial = $('dial'), rot = $('rot');
+  var countEl = $('count'), segsEl = $('segs'), logEl = $('log'), saved = $('saved');
+  var gate = $('gate'), sfxBtn = $('sfx');
+  var SVGNS = 'http://www.w3.org/2000/svg';
 
-  // ── HUD frame (กรอบตัดมุม 45° ชุดเดียวกับการ์ดในแดชบอร์ด) ───────────────
-  var C  = '#00d2f0';                       // ไซแอนไฟฟ้า
-  var CD = 'rgba(0, 210, 240, 0.42)';       // เส้นบาง
-  var O  = '#f2541b';                       // ส้มแทคติคอล
-
-  function drawHud() {
-    var w = Math.round(panel.clientWidth);
-    var h = Math.round(panel.clientHeight);
-    if (!w || !h) return;
-    var x1 = w - 1.5, y1 = h - 1.5;
-    var c  = 13;
-    var sx = Math.round(w * 0.46);
-    var outer = 'M 1.5,' + c + ' L ' + c + ',1.5 H ' + (x1 - c) + ' L ' + x1 + ',' + c +
-                ' V ' + (y1 - c) + ' L ' + (x1 - c) + ',' + y1 + ' H ' + c + ' L 1.5,' + (y1 - c) + ' Z';
-    var heavy = 'M 1.5,' + (c + 22) + ' V ' + c + ' L ' + c + ',1.5 H ' + (c + 32) +
-                ' M ' + (x1 - c - 32) + ',' + y1 + ' H ' + (x1 - c) + ' L ' + x1 + ',' + (y1 - c) +
-                ' V ' + (y1 - c - 22);
-    var stepLine = 'M 1.5,38 H ' + sx + ' L ' + (sx + 9) + ',29 H ' + x1;
-    var extra = '<line x1="1.5" y1="' + (c + 28) + '" x2="1.5" y2="' + Math.max(c + 36, h - c - 20) +
-                '" stroke="' + O + '" stroke-width="3"/>' +
-                '<path d="M ' + x1 + ',' + (y1 - 22) + ' V ' + y1 + ' H ' + (x1 - 22) +
-                '" fill="none" stroke="' + O + '" stroke-width="2.6"/>';
-
-    hud.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
-    hud.innerHTML =
-      '<path d="' + outer + '" fill="none" stroke="' + C + '" stroke-width="1.35"/>' +
-      '<path d="' + heavy + '" fill="none" stroke="' + C + '" stroke-width="3" stroke-linecap="square"/>' +
-      '<path d="' + stepLine + '" fill="none" stroke="' + CD + '" stroke-width="1.15"/>' +
-      extra;
+  // ══ Sound FX (Web Audio, synthesized) ═════════════════════════════════════
+  var sfxOn = localStorage.getItem('login_sfx') !== '0';
+  var actx = null;
+  function audio() {
+    if (!sfxOn) return null;
+    try {
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      return actx;
+    } catch (_) { return null; }
   }
-  drawHud();
-  window.addEventListener('resize', drawHud);
-  if (window.ResizeObserver) new ResizeObserver(drawHud).observe(panel);
+  function blip(type, f0, f1, dur, vol, delay) {
+    var c = audio();
+    if (!c) return;
+    var t = c.currentTime + (delay || 0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+  var sfx = {
+    tick: function () { blip('square', 1800 + Math.random() * 600, 900, 0.035, 0.035); blip('sine', 140, 70, 0.06, 0.06); },
+    back: function () { blip('triangle', 700, 300, 0.07, 0.05); },
+    error: function () { blip('sawtooth', 220, 110, 0.18, 0.08); blip('sawtooth', 180, 90, 0.26, 0.08, 0.16); },
+    ok: function () {
+      [523.3, 659.3, 784, 1046.5].forEach(function (f, i) { blip('sine', f, f, 0.5, 0.07, i * 0.07); });
+      blip('sine', 90, 40, 0.9, 0.18, 0.05);
+    },
+    warp: function () { blip('sawtooth', 60, 900, 0.9, 0.05); blip('sine', 2400, 300, 0.9, 0.03); }
+  };
+  function renderSfx() {
+    sfxBtn.textContent = sfxOn ? 'SFX ON' : 'SFX OFF';
+    sfxBtn.setAttribute('aria-pressed', String(sfxOn));
+  }
+  sfxBtn.addEventListener('click', function () {
+    sfxOn = !sfxOn;
+    localStorage.setItem('login_sfx', sfxOn ? '1' : '0');
+    renderSfx();
+    if (sfxOn) sfx.tick();
+  });
+  renderSfx();
 
-  // ── ปลายทางที่จะกลับไปหลังล็อกอิน (กัน open redirect) ────────────────────
+  // ══ Dial ══════════════════════════════════════════════════════════════════
+  var SEGS = 12;
+  var angle = 0;
+  var spinTimer = 0;
+
+  (function buildDial() {
+    var g = '';
+    for (var i = 0; i < 60; i++) {
+      var a = (i / 60) * Math.PI * 2;
+      var major = i % 6 === 0;
+      var r0 = major ? 104 : 109, r1 = 116;
+      g += '<line class="d-tick' + (major ? ' major' : '') + '" x1="' + (150 + Math.sin(a) * r0).toFixed(2) + '" y1="' + (150 - Math.cos(a) * r0).toFixed(2) +
+           '" x2="' + (150 + Math.sin(a) * r1).toFixed(2) + '" y2="' + (150 - Math.cos(a) * r1).toFixed(2) + '"/>';
+    }
+    for (var n = 0; n < 10; n++) {
+      var deg = n * 36;
+      var ar = deg * Math.PI / 180;
+      g += '<text class="d-num" data-n="' + n + '" x="' + (150 + Math.sin(ar) * 86).toFixed(2) + '" y="' + (150 - Math.cos(ar) * 86).toFixed(2) +
+           '" transform="rotate(' + deg + ' ' + (150 + Math.sin(ar) * 86).toFixed(2) + ' ' + (150 - Math.cos(ar) * 86).toFixed(2) + ')">' + n + '</text>';
+    }
+    rot.innerHTML = g;
+  })();
+
+  function arcPath(r, a0, a1) {
+    var p = function (a) { return (150 + Math.sin(a) * r).toFixed(2) + ' ' + (150 - Math.cos(a) * r).toFixed(2); };
+    return 'M ' + p(a0) + ' A ' + r + ' ' + r + ' 0 0 1 ' + p(a1);
+  }
+
+  function buildSegs(n) {
+    var html = '';
+    var gap = 0.075;
+    for (var i = 0; i < n; i++) {
+      var a0 = (i / n) * Math.PI * 2 + gap / 2;
+      var a1 = ((i + 1) / n) * Math.PI * 2 - gap / 2;
+      html += '<path class="d-seg" d="' + arcPath(140, a0, a1) + '"/>';
+    }
+    segsEl.innerHTML = html;
+  }
+  buildSegs(SEGS);
+
+  function setState(s) { dial.setAttribute('data-state', s); }
+
+  // Spin to a random angle: shows activity without revealing which key was typed
+  function spinTo(delta) {
+    angle += delta;
+    rot.style.transform = 'rotate(' + angle + 'deg)';
+    rot.classList.add('is-spinning');
+    clearTimeout(spinTimer);
+    spinTimer = setTimeout(function () { rot.classList.remove('is-spinning'); }, 320);
+    var under = Math.round((((-angle % 360) + 360) % 360) / 36) % 10;
+    var nums = rot.querySelectorAll('.d-num');
+    for (var i = 0; i < nums.length; i++) nums[i].classList.toggle('hot', i === under);
+  }
+
+  var lastLen = 0;
+  function syncDial() {
+    var len = pw.value.length;
+    var n = Math.max(SEGS, Math.ceil(len / SEGS) * SEGS);
+    if (segsEl.children.length !== n) buildSegs(n);
+    var segs = segsEl.children;
+    for (var i = 0; i < segs.length; i++) segs[i].classList.toggle('is-on', i < len);
+    countEl.textContent = String(len);
+    if (dial.getAttribute('data-state') !== 'ok') {
+      setState(len ? 'typing' : 'idle');
+      galaxy.mood(len ? 'typing' : 'idle');
+    }
+    saved.textContent = len ? '● unsaved' : '● ready';
+    saved.className = 'editor__saved' + (len ? ' dirty' : '');
+    if (len > lastLen) {
+      spinTo((Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 160));
+      sfx.tick();
+      galaxy.kick(0.35);
+    } else if (len < lastLen) {
+      spinTo(-36 * (lastLen - len));
+      sfx.back();
+    }
+    lastLen = len;
+  }
+
+  // ══ Console log ═══════════════════════════════════════════════════════════
+  function log(text, cls) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    if (cls) d.className = cls;
+    logEl.appendChild(d);
+    while (logEl.children.length > 6) logEl.removeChild(logEl.firstChild);
+  }
+
+  // ══ Form behaviour ════════════════════════════════════════════════════════
   var rd = '/';
   try {
     var raw = new URLSearchParams(location.search).get('rd') || '/';
     if (raw.charAt(0) === '/' && raw.charAt(1) !== '/' && !/[\r\n\t]/.test(raw)) rd = raw;
   } catch (_) { /* ignore */ }
 
-  // ── นาฬิกา ───────────────────────────────────────────────────────────────
   function tick() {
     var d = new Date();
     var p = function (n) { return String(n).padStart(2, '0'); };
-    clock.textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    $('clock').textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
   }
   tick();
   setInterval(tick, 1000);
 
-  // ── ชื่อเครื่อง (ดึงจาก /api/session ถ้าเปิดให้เข้าถึงได้) ──────────────
+  $('foot-site').textContent = location.host;
   fetch('/api/session', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
-      if (d && d.site) {
-        siteEl.textContent = d.site;
-        footSite.textContent = d.site;
-      }
+      if (d && d.site) { $('site').textContent = d.site; $('foot-site').textContent = d.site; }
     })
-    .catch(function () { /* ไม่มีสิทธิ์อ่าน — ใช้ค่าเริ่มต้น */ });
-  footSite.textContent = location.host;
+    .catch(function () { /* not readable before login — keep defaults */ });
 
-  // ── ปุ่มตา ───────────────────────────────────────────────────────────────
   eye.addEventListener('click', function () {
     var show = pw.type === 'password';
     pw.type = show ? 'text' : 'password';
@@ -434,35 +622,81 @@ label.lbl {
     pw.focus();
   });
 
-  // ── แสดง/ซ่อนข้อความผิดพลาด ─────────────────────────────────────────────
-  function showError(msg) {
-    errText.textContent = msg;
-    errBox.hidden = false;
-    panel.classList.remove('shake');
-    void panel.offsetWidth;          // รีสตาร์ทแอนิเมชัน
-    panel.classList.add('shake');
-  }
-  function clearError() {
-    errBox.hidden = true;
-    errText.textContent = '';
+  remember.addEventListener('click', function () {
+    var on = remember.getAttribute('aria-checked') !== 'true';
+    remember.setAttribute('aria-checked', String(on));
+    remember.textContent = on ? 'true' : 'false';
+    log('› remember = ' + on + (on ? '  // session 30d' : '  // session 12h'));
+    sfx.back();
+  });
+
+  pw.addEventListener('input', function () {
+    if (dial.getAttribute('data-state') === 'error') setState('typing');
+    syncDial();
+  });
+
+  var errParam = new URLSearchParams(location.search).get('err');
+  log('› vault ready · ' + location.host);
+  if (errParam === 'blocked') log('✗ too many attempts — locked for a few minutes', 'err');
+  else if (errParam) log('✗ 401 invalid access key', 'err');
+
+  function fail(msg) {
+    setState('error');
+    dial.classList.remove('wobble');
+    void dial.offsetWidth;
+    dial.classList.add('wobble');
+    log('✗ ' + msg, 'err');
+    sfx.error();
+    galaxy.mood('error');
+    saved.textContent = '✗ rejected';
+    saved.className = 'editor__saved dirty';
+    setTimeout(function () {
+      pw.value = '';
+      lastLen = 0;
+      spinTo(-angle % 360 - 360);
+      syncDial();
+      setState('idle');
+      galaxy.mood('idle');
+      pw.focus();
+    }, 900);
   }
 
-  // ── ส่งฟอร์ม ──────────────────────────────────────────────────────────────
+  function grant(redirect) {
+    setState('ok');
+    dial.classList.add('is-unlocking');
+    rot.style.transform = 'rotate(' + (angle + 1080) + 'deg)';
+    saved.textContent = '✓ saved';
+    saved.className = 'editor__saved ok';
+    log('✓ 200 session issued', 'ok');
+    sfx.ok();
+    galaxy.mood('ok');
+    setTimeout(function () {
+      dial.classList.add('is-granted');
+      log('✓ vault.unlock() → granted', 'ok');
+    }, 650);
+    var go = function () { location.replace(redirect || rd); };
+    if (reduceMotion) { setTimeout(go, 900); return; }
+    setTimeout(function () {
+      log('› warping to dashboard…', 'warn');
+      sfx.warp();
+      gate.classList.add('is-leaving');
+      galaxy.warp(go);
+    }, 1500);
+  }
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
-    clearError();
-
     var value = pw.value;
-    if (!value) { showError('Enter the access key.'); pw.focus(); return; }
+    if (!value) { fail('empty key'); return; }
 
     submit.disabled = true;
-    submit.classList.add('is-busy');
-    submit.querySelector('.cta__label').textContent = 'Verifying';
+    runLabel.textContent = '◌ verifying';
+    log('› POST /api/login  (' + value.length + ' chars)');
 
     var body = new URLSearchParams();
     body.set('password', value);
     body.set('rd', rd);
-    if (remember.checked) body.set('remember', '1');
+    if (remember.getAttribute('aria-checked') === 'true') body.set('remember', '1');
 
     fetch('/api/login', {
       method: 'POST',
@@ -471,28 +705,279 @@ label.lbl {
       credentials: 'same-origin'
     })
       .then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (d) {
-          return { status: r.status, data: d };
-        });
+        return r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, data: d }; });
       })
       .then(function (res) {
         if (res.status === 200 && res.data && res.data.ok) {
-          location.replace(res.data.redirect || rd);
+          grant(res.data.redirect);
           return;
         }
-        var msg = (res.data && res.data.error) || 'Sign-in failed. Please try again.';
-        showError(msg);
-        pw.select();
+        var msg = (res.data && res.data.error) || 'sign-in failed';
+        fail(res.status + ' ' + msg);
+        submit.disabled = false;
+        runLabel.textContent = '▶ Run';
       })
       .catch(function () {
-        showError('Cannot reach the control panel. Check the connection and retry.');
-      })
-      .finally(function () {
+        fail('cannot reach the control panel');
         submit.disabled = false;
-        submit.classList.remove('is-busy');
-        submit.querySelector('.cta__label').textContent = 'Authenticate';
+        runLabel.textContent = '▶ Run';
       });
   });
+
+  // ══ 3D metaverse galaxy (2D canvas, perspective-projected) ═══════════════
+  var galaxy = (function () {
+    var canvas = $('space');
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) {
+      return { kick: function () {}, mood: function () {}, warp: function (done) { done(); } };
+    }
+    var W = 0, H = 0, cx = 0, cy = 0, minSide = 0, dpr = 1, mobile = false;
+    var stars = [], bg = [], shooters = [];
+    var mx = 0, my = 0, tmx = 0, tmy = 0;
+    var energy = 0;
+    var moodRGB = [245, 165, 36], targetRGB = [245, 165, 36];
+    var warpStart = 0, warpDone = null;
+    var gridScroll = 0;
+    var TAU = Math.PI * 2;
+    var MOODS = { idle: [139, 92, 246], typing: [245, 165, 36], error: [255, 77, 109], ok: [45, 226, 184] };
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      minSide = Math.min(W, H);
+      mobile = W < 700;
+      var r = dial.getBoundingClientRect();
+      cx = r.width ? r.left + r.width / 2 : W / 2;
+      cy = r.height ? r.top + r.height / 2 : H * 0.4;
+      if (!stars.length || stars.mobile !== mobile) seed();
+    }
+
+    function rand(a, b) { return a + Math.random() * (b - a); }
+
+    function seed() {
+      var n = mobile ? 1300 : 2600;
+      stars = [];
+      stars.mobile = mobile;
+      for (var i = 0; i < n; i++) {
+        if (Math.random() < 0.18) {
+          var rb = Math.pow(Math.random(), 2) * 0.2;
+          stars.push({ rr: rb, th: Math.random() * TAU, h: (Math.random() - 0.5) * 0.12 * (1 - rb * 3), hue: rand(30, 48), l: 76, size: rand(0.6, 1.8) });
+        } else {
+          var rr = 0.1 + Math.pow(Math.random(), 0.8) * 0.95;
+          var arm = ((Math.random() * 3) | 0) * (TAU / 3);
+          var pick = Math.random();
+          stars.push({
+            rr: rr,
+            th: arm + rr * 5.4 + (Math.random() - 0.5) * (0.35 + rr * 0.75),
+            h: (Math.random() - 0.5) * 0.04,
+            hue: pick < 0.12 ? rand(310, 335) : pick < 0.25 ? -1 : pick < 0.6 ? rand(250, 275) : rand(195, 225),
+            l: pick < 0.12 ? 66 : 72,
+            size: rand(0.5, 2.1)
+          });
+        }
+      }
+      bg = [];
+      for (var j = 0; j < (mobile ? 160 : 340); j++) {
+        bg.push({ x: Math.random(), y: Math.random(), z: rand(0.2, 1), tw: Math.random() * TAU, s: rand(0.4, 1.6) });
+      }
+    }
+
+    function nebula(x, y, r, rgb, a) {
+      var g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(' + rgb + ',' + a + ')');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.fill();
+    }
+
+    function drawGrid(t, alpha) {
+      var hy = H * 0.74;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, hy, W, H - hy);
+      ctx.clip();
+      var fade = ctx.createLinearGradient(0, hy, 0, H);
+      fade.addColorStop(0, 'rgba(5,3,15,0)');
+      fade.addColorStop(1, 'rgba(20,6,40,' + 0.6 * alpha + ')');
+      ctx.fillStyle = fade;
+      ctx.fillRect(0, hy, W, H - hy);
+      ctx.lineWidth = 1;
+      for (var i = -14; i <= 14; i++) {
+        ctx.strokeStyle = 'rgba(139,92,246,' + 0.22 * alpha + ')';
+        ctx.beginPath();
+        ctx.moveTo(W / 2 + i * 6, hy);
+        ctx.lineTo(W / 2 + i * W * 0.16, H * 1.25);
+        ctx.stroke();
+      }
+      for (var n = 0; n < 16; n++) {
+        var z = ((n + (gridScroll % 1)) / 16) * 8 + 0.4;
+        var y = hy + (H - hy) * 0.9 / z * 1.4;
+        if (y > H) continue;
+        var a = alpha * Math.min(1, (8 - z) / 8) * 0.5;
+        ctx.strokeStyle = 'rgba(236,72,153,' + a + ')';
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+      var hz = ctx.createLinearGradient(0, hy - 2, 0, hy + 2);
+      hz.addColorStop(0, 'rgba(236,72,153,0)');
+      hz.addColorStop(0.5, 'rgba(236,72,153,' + 0.55 * alpha + ')');
+      hz.addColorStop(1, 'rgba(236,72,153,0)');
+      ctx.fillStyle = hz;
+      ctx.fillRect(0, hy - 2, W, 4);
+    }
+
+    var last = performance.now(), time = 0, raf = 0;
+    function frame(now) {
+      var dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      time += dt;
+      mx += (tmx - mx) * 0.05;
+      my += (tmy - my) * 0.05;
+      energy *= Math.pow(0.15, dt);
+      for (var c = 0; c < 3; c++) moodRGB[c] += (targetRGB[c] - moodRGB[c]) * Math.min(1, dt * 4);
+      var mood = Math.round(moodRGB[0]) + ',' + Math.round(moodRGB[1]) + ',' + Math.round(moodRGB[2]);
+
+      var w = warpStart ? Math.min(1, (now - warpStart) / 1300) : 0;
+      var wIn = w * w * w;
+
+      // Deep space backdrop
+      ctx.globalCompositeOperation = 'source-over';
+      var bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, '#05030f');
+      bgGrad.addColorStop(0.6, '#0a0620');
+      bgGrad.addColorStop(1, '#120826');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.globalCompositeOperation = 'lighter';
+      nebula(W * 0.18 + Math.sin(time * 0.05) * 40 - mx * 30, H * 0.25, minSide * 0.7, '99,40,180', 0.16);
+      nebula(W * 0.85 - mx * 20, H * 0.7 + Math.cos(time * 0.04) * 30, minSide * 0.65, '20,90,170', 0.14);
+      nebula(W * 0.6, H * 0.12, minSide * 0.45, '200,40,120', 0.08);
+
+      for (var b = 0; b < bg.length; b++) {
+        var s0 = bg[b];
+        var tw = 0.45 + 0.55 * Math.abs(Math.sin(time * (0.6 + s0.z) + s0.tw));
+        var bx = s0.x * W - mx * 26 * s0.z, by = s0.y * H - my * 20 * s0.z;
+        if (wIn > 0) {
+          var dx = bx - cx, dy = by - cy;
+          var k = 1 + wIn * 6 * s0.z;
+          ctx.strokeStyle = 'rgba(220,230,255,' + tw * 0.8 + ')';
+          ctx.lineWidth = s0.s;
+          ctx.beginPath();
+          ctx.moveTo(cx + dx * (1 + wIn * 0.4), cy + dy * (1 + wIn * 0.4));
+          ctx.lineTo(cx + dx * k, cy + dy * k);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = 'rgba(230,235,255,' + tw * 0.75 + ')';
+          ctx.fillRect(bx, by, s0.s, s0.s);
+        }
+      }
+
+      gridScroll += dt * (0.25 + energy * 2 + wIn * 12);
+      drawGrid(time, 1 - wIn);
+
+      // Galaxy: tilted spiral disk centred behind the dial
+      var F = minSide * (mobile ? 1.25 : 1.05);
+      var D = 2.4 - wIn * 2.36;
+      var tilt = 1.1 + my * 0.12 + wIn * 0.4;
+      var roll = -0.42 + mx * 0.18 + time * 0.012;
+      var spin = time * (0.05 + energy * 0.25) + wIn * 3;
+      var cr = Math.cos(roll), sr = Math.sin(roll), ct = Math.cos(tilt), st = Math.sin(tilt);
+      var glowR = Math.min(minSide * 3, (F * 0.3) / Math.max(0.04, D)) * (1 + energy * 0.25);
+      nebula(cx, cy, glowR, mood, 0.35 + energy * 0.25);
+      nebula(cx, cy, glowR * 0.4, '255,245,225', 0.25 + energy * 0.2);
+
+      for (var i = 0; i < stars.length; i++) {
+        var s = stars[i];
+        var phi = s.th + spin / (s.rr + 0.18);
+        var X = s.rr * Math.cos(phi), Zg = s.rr * Math.sin(phi), Y = s.h;
+        var Yt = Y * ct - Zg * st;
+        var Zt = Y * st + Zg * ct;
+        var depth = Zt + D;
+        if (depth < 0.03) continue;
+        var x = (X / depth) * F, y = (Yt / depth) * F;
+        var px = cx + x * cr - y * sr, py = cy + x * sr + y * cr;
+        if (px < -20 || px > W + 20 || py < -20 || py > H + 20) continue;
+        var size = Math.min(6, s.size * (1.7 / depth));
+        var a = Math.min(1, 1.5 - depth * 0.2) * (0.55 + energy * 0.45);
+        ctx.fillStyle = s.hue < 0 ? 'rgba(255,255,255,' + a + ')' : 'hsla(' + s.hue + ',100%,' + s.l + '%,' + a + ')';
+        ctx.fillRect(px - size / 2, py - size / 2, size, size);
+      }
+
+      // Shooting stars
+      if (!reduceMotion && !warpStart && Math.random() < dt * 0.35) {
+        var ang = rand(0.3, 0.7);
+        shooters.push({ x: rand(0, W), y: rand(-50, H * 0.4), vx: Math.cos(ang) * rand(500, 900), vy: Math.sin(ang) * rand(500, 900), life: 1 });
+      }
+      for (var q = shooters.length - 1; q >= 0; q--) {
+        var sh = shooters[q];
+        sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.life -= dt * 1.4;
+        if (sh.life <= 0) { shooters.splice(q, 1); continue; }
+        var grad = ctx.createLinearGradient(sh.x, sh.y, sh.x - sh.vx * 0.12, sh.y - sh.vy * 0.12);
+        grad.addColorStop(0, 'rgba(255,255,255,' + sh.life + ')');
+        grad.addColorStop(1, 'rgba(165,180,252,0)');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(sh.x, sh.y);
+        ctx.lineTo(sh.x - sh.vx * 0.12, sh.y - sh.vy * 0.12);
+        ctx.stroke();
+      }
+
+      // Warp finale: white-out then hand over to the dashboard
+      if (w > 0.7) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = 'rgba(235,250,255,' + Math.min(1, (w - 0.7) / 0.3) + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
+      if (w >= 1 && warpDone) {
+        var cb = warpDone;
+        warpDone = null;
+        cb();
+      }
+
+      raf = requestAnimationFrame(frame);
+    }
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('pointermove', function (e) {
+      tmx = (e.clientX / W - 0.5) * 2;
+      tmy = (e.clientY / H - 0.5) * 2;
+    }, { passive: true });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) cancelAnimationFrame(raf);
+      else { last = performance.now(); raf = requestAnimationFrame(frame); }
+    });
+
+    resize();
+    if (reduceMotion) {
+      // Single still frame — no continuous animation
+      frame(performance.now());
+      cancelAnimationFrame(raf);
+    } else {
+      raf = requestAnimationFrame(frame);
+    }
+
+    return {
+      kick: function (v) { energy = Math.min(1, energy + v); },
+      mood: function (m) { targetRGB = (MOODS[m] || MOODS.idle).slice(); if (m === 'error' || m === 'ok') energy = 1; },
+      warp: function (done) {
+        if (reduceMotion) { done(); return; }
+        warpDone = done;
+        warpStart = performance.now();
+      }
+    };
+  })();
+  galaxy.mood('idle');
 
   pw.focus();
 })();
@@ -500,11 +985,10 @@ label.lbl {
 
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
   });
 }
 </script>
-
 </body>
 </html>

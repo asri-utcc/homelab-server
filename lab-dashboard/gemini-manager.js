@@ -820,7 +820,7 @@ async function setApiKey(key) {
 }
 
 // ── 🧠 Auto model: route via ai-router, then run with failover ───────────────
-const AUTO_MAX_ATTEMPTS = 3;
+const AUTO_MAX_ATTEMPTS = 4;
 
 function executeAuto(params, onChunk, onDone) {
     const sid = resolveSessionId(params.sessionId);
@@ -896,11 +896,21 @@ function executeAuto(params, onChunk, onDone) {
         }
 
         const tried = [];
+        const deadGroups = new Set();
+        let healed = false;
+        const nextIndex = (from) => {
+            for (let i = from; i < decision.candidates.length; i++) {
+                const cand = decision.candidates[i];
+                if (!deadGroups.has(aiRouter.failureGroup(cand, false)) && !deadGroups.has(aiRouter.failureGroup(cand, true))) return i;
+            }
+            return -1;
+        };
         const runAttempt = (idx, note) => {
             const c = decision.candidates[idx];
             tried.push(`${c.model}@${c.account}`);
             const banner = aiRouter.formatBanner(decision, c, note);
             let maxSteps = 0;
+            let stderrTail = '';
             if (activeRuns.get(sid) && activeRuns.get(sid).job === placeholder) activeRuns.delete(sid);
             try {
                 innerHandle = executePrompt({
@@ -914,33 +924,51 @@ function executeAuto(params, onChunk, onDone) {
                     if (type === 'thought' && payload && typeof payload === 'object') {
                         maxSteps = Math.max(maxSteps, payload.stepsCount || 0);
                     }
+                    if (type === 'stderr') {
+                        stderrTail = (stderrTail + String(payload || '')).slice(-4000);
+                        // Raw Go crash dumps are noise in the chat; the banner explains what happened
+                        if (aiRouter.isBinaryCrash(stderrTail)) return;
+                    }
                     onChunk(type, payload);
                 }, (code, err) => {
                     const job = lastJobs.get(sid);
                     const body = job ? String(job.output || '').slice(banner.length) : '';
                     const failed = code !== 0 && code !== 130 && !(job && job.status === 'aborted');
-                    const next = idx + 1;
-                    if (failed && !aborted && next < decision.candidates.length && tried.length < AUTO_MAX_ATTEMPTS) {
-                        if (maxSteps === 0 && aiRouter.isRetryableFailure(err, body)) {
-                            aiRouter.logDecision({ source: 'chat', prompt: params.prompt, decision, event: 'failover', extra: { from: tried[tried.length - 1], error: String(err || body).slice(0, 200) } });
+                    const crashed = failed && aiRouter.isBinaryCrash(stderrTail);
+                    const errText = crashed ? `${c.engine} crashed (${err || 'SIGSEGV'})` : String(err || body);
+                    const canSwitch = failed && !aborted && maxSteps === 0 && tried.length < AUTO_MAX_ATTEMPTS;
+
+                    // agy crashed at startup → bit-flipped page cache: evict once and retry the same model
+                    if (canSwitch && crashed && c.engine === 'agy' && !healed) {
+                        healed = true;
+                        aiRouter.logDecision({ source: 'chat', prompt: params.prompt, decision, event: 'crash-heal', extra: { from: tried[tried.length - 1], stderr: stderrTail.slice(0, 300) } });
+                        onChunk('stdout', `\n\n> 🩹 ${c.label} แครชตอนเปิดโปรแกรม (ไฟล์ใน RAM cache เสีย) — ล้าง cache แล้ว กำลังลองใหม่...\n\n`);
+                        return aiRouter.healBinaryCache(aiRouter.AGY_BIN).then(() => runAttempt(idx, `ลองใหม่หลังล้าง cache`));
+                    }
+                    if (canSwitch && (crashed || aiRouter.isRetryableFailure(err, body))) {
+                        deadGroups.add(aiRouter.failureGroup(c, crashed));
+                        const next = nextIndex(idx + 1);
+                        if (next !== -1) {
+                            aiRouter.logDecision({ source: 'chat', prompt: params.prompt, decision, event: 'failover', extra: { from: tried[tried.length - 1], error: errText.slice(0, 200), crashed } });
                             const nc = decision.candidates[next];
-                            onChunk('stdout', `\n\n> ⚠️ ${c.label} · ${c.accountLabel} ใช้ไม่ได้ (${String(err || body).slice(0, 80)}) — สลับไป ${nc.label} · ${nc.accountLabel}\n\n`);
+                            onChunk('stdout', `\n\n> ⚠️ ${c.label} · ${c.accountLabel} ใช้ไม่ได้ (${errText.slice(0, 80)}) — สลับไป ${nc.label} · ${nc.accountLabel}\n\n`);
                             return runAttempt(next, `สลับจาก ${c.label} (${c.accountLabel})`);
                         }
-                        if (maxSteps > 0 && job) {
-                            const msg = `\n\n> ⚠️ ${c.label} หยุดกลางทางหลังใช้เครื่องมือไปแล้ว ${maxSteps} ขั้น — ไม่สลับโมเดลให้อัตโนมัติ เพื่อกันการแก้ไฟล์ซ้ำ กรุณาตรวจผลแล้วสั่งต่อ`;
-                            job.output += msg;
-                            onChunk('stdout', msg);
-                        }
                     }
-                    if (failed && job && err && !body.trim()) {
-                        job.output += `❌ ${err}`;
+                    if (failed && maxSteps > 0 && job) {
+                        const msg = `\n\n> ⚠️ ${c.label} หยุดกลางทางหลังใช้เครื่องมือไปแล้ว ${maxSteps} ขั้น — ไม่สลับโมเดลให้อัตโนมัติ เพื่อกันการแก้ไฟล์ซ้ำ กรุณาตรวจผลแล้วสั่งต่อ`;
+                        job.output += msg;
+                        onChunk('stdout', msg);
+                    }
+                    if (failed && job && !body.trim()) {
+                        job.output += `❌ ${errText}${tried.length > 1 ? ` (ลองแล้ว ${tried.length} ตัว: ${tried.join(', ')})` : ''}`;
                     }
                     finish(code, err, job || placeholder);
                 });
             } catch (err) {
-                const next = idx + 1;
-                if (next < decision.candidates.length && tried.length < AUTO_MAX_ATTEMPTS) {
+                deadGroups.add(aiRouter.failureGroup(c, true));
+                const next = nextIndex(idx + 1);
+                if (next !== -1 && tried.length < AUTO_MAX_ATTEMPTS) {
                     return runAttempt(next, `สลับจาก ${c.label} (${err.message.slice(0, 60)})`);
                 }
                 finish(1, err.message, lastJobs.get(sid) || placeholder);

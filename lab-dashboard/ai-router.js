@@ -73,7 +73,33 @@ const MODEL_LABELS = {
 };
 
 const CODE_HINT_RE = /code|โค้ด|bug|บั๊ก|แก้|fix|script|สคริปต์|deploy|config|\.js|\.py|function|error|api|sql|docker|pm2|git/i;
+// Go runtime crash before the CLI even starts — on this host that means a RAM bit flip in the
+// page-cached binary (see homelab RAM notes). Evicting the file from page cache reloads it from disk.
+const CRASH_RE = /unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)|illegal instruction/i;
 const RETRYABLE_ERR_RE = /\b429\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|overloaded|capacity|insufficient.?balance|credit|please sign in|unauthori[sz]ed|\b401\b|usage limit|limit reached|โควตา/i;
+
+function isBinaryCrash(text) {
+    return CRASH_RE.test(String(text || ''));
+}
+
+let lastHealAt = 0;
+/** Drop a binary from page cache (posix_fadvise DONTNEED) so the next exec re-reads it from disk. */
+function healBinaryCache(file = AGY_BIN) {
+    lastHealAt = Date.now();
+    return new Promise((resolve) => {
+        const code = 'import os,sys\nfd=os.open(sys.argv[1],os.O_RDONLY)\nos.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)\nos.close(fd)';
+        execFile('python3', ['-c', code, file], { timeout: 15000 }, (err) => {
+            logDecision({ source: 'heal', prompt: file, decision: null, event: 'heal', extra: { ok: !err, error: err ? err.message : undefined } });
+            resolve(!err);
+        });
+    });
+}
+
+/** Failures in the same group share a cause, so failover skips the rest of that group. */
+function failureGroup(candidate, crashed) {
+    if (candidate.engine !== 'agy') return candidate.engine;
+    return crashed ? `agy@${candidate.account}` : `agy@${candidate.account}:${agyPoolId(candidate.model)}`;
+}
 
 function engineOf(model) {
     if (model.startsWith('claude-code-')) return 'claude-code';
@@ -252,7 +278,7 @@ function parseClassification(text) {
     }
 }
 
-function runClassifier(prompt, account) {
+function runClassifierOnce(prompt, account) {
     return new Promise((resolve) => {
         try { fs.mkdirSync(CLASSIFY_CWD, { recursive: true }); } catch (_) {}
         const args = ['-p', buildClassifierPrompt(prompt), '--model', CLASSIFIER_MODEL, '--disable-slash-commands', '--print-timeout', '40s'];
@@ -260,10 +286,21 @@ function runClassifier(prompt, account) {
             cwd: CLASSIFY_CWD,
             timeout: 50000,
             env: { ...process.env, HOME: account.home, FORCE_COLOR: '0' }
-        }, (err, stdout) => {
-            resolve(err ? null : parseClassification(stdout));
+        }, (err, stdout, stderr) => {
+            if (err) {
+                console.error(`[AiRouter] classifier failed on ${account.label}: ${String(stderr || err.message).slice(0, 200)}`);
+                return resolve({ result: null, crashed: isBinaryCrash(stderr) });
+            }
+            resolve({ result: parseClassification(stdout), crashed: false });
         });
     });
+}
+
+async function runClassifier(prompt, account) {
+    const first = await runClassifierOnce(prompt, account);
+    if (!first.crashed) return first.result;
+    await healBinaryCache(AGY_BIN);
+    return (await runClassifierOnce(prompt, account)).result;
 }
 
 async function classifyTask(prompt) {
@@ -372,6 +409,10 @@ module.exports = {
     buildCandidates,
     formatBanner,
     isRetryableFailure,
+    isBinaryCrash,
+    healBinaryCache,
+    failureGroup,
+    AGY_BIN,
     logDecision,
     readLog,
     listAgyAccounts,

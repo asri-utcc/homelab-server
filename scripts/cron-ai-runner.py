@@ -17,7 +17,21 @@ CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "/home/dev/.local/bin/claude")
 ROUTER_URL = os.environ.get("AI_ROUTER_URL", "http://172.17.0.1:8090/api/ai-router/route")
 GEMINI_ENV_FILE = "/home/dev/.gemini/.env"
 AUTO_MODEL = "auto"
-AUTO_MAX_ATTEMPTS = 3
+AUTO_MAX_ATTEMPTS = 4
+# Go runtime crash before agy starts = RAM bit flip in the page-cached binary on this host
+CRASH_RE = re.compile(r"unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)", re.I)
+
+
+def evict_page_cache(path: str) -> None:
+    """Drop a file from page cache so the next exec re-reads the intact copy from disk."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        print(f"[AUTO] page-cache evict failed: {exc}", file=sys.stderr)
 NOTIFY_SCRIPT = "/home/dev/projects/notify-telegram.py"
 DEFAULT_MODEL = "gemini-3.8-flash-low"
 DEFAULT_TIMEOUT = 180
@@ -150,8 +164,17 @@ def run_model(prompt: str, model: str, timeout: int, route_prompt: str = "", min
     cands, why = route_auto(route_prompt or prompt, min_level)
     print(f"[AUTO] {why} -> " + ", ".join(f"{c.get('model')}@{c.get('account', 'g1')}" for c in cands[:5]))
     errors = []
-    for c in cands[:AUTO_MAX_ATTEMPTS]:
+    dead = set()      # engine@account groups that already failed (skip their other models)
+    healed = False
+    attempts = 0
+    queue = list(cands)
+    while queue and attempts < AUTO_MAX_ATTEMPTS:
+        c = queue.pop(0)
         engine, cmodel = c.get("engine"), c.get("model")
+        group = f"{engine}@{c.get('account', '')}"
+        if group in dead:
+            continue
+        attempts += 1
         label = f"{c.get('label', cmodel)} · {c.get('accountLabel', '')}".strip(" ·")
         try:
             if engine == "claude-code":
@@ -160,8 +183,17 @@ def run_model(prompt: str, model: str, timeout: int, route_prompt: str = "", min
                 return run_deepseek(prompt, cmodel, timeout=timeout), label
             return run_agy(prompt, cmodel, timeout=timeout, home=c.get("home")), label
         except Exception as exc:
-            print(f"[AUTO] {label} failed: {str(exc)[:200]}", file=sys.stderr)
-            errors.append(f"{label}: {str(exc)[:120]}")
+            msg = str(exc)
+            print(f"[AUTO] {label} failed: {msg[:200]}", file=sys.stderr)
+            errors.append(f"{label}: {msg[:120]}")
+            if engine == "agy" and CRASH_RE.search(msg):
+                if not healed:
+                    healed = True
+                    evict_page_cache(AGY_BIN)
+                    print(f"[AUTO] agy crashed at startup; evicted page cache, retrying {label}", file=sys.stderr)
+                    queue.insert(0, c)
+                    continue
+                dead.add(group)
     raise RuntimeError("all auto candidates failed: " + " | ".join(errors))
 
 

@@ -303,7 +303,7 @@ html, body {
 .d-rot {
     transform-origin: 150px 150px;
     will-change: transform;
-    transition: transform 1s cubic-bezier(.12, .8, .2, 1.02);
+    transition: transform .24s cubic-bezier(.2, .9, .3, 1.25);
 }
 .d-rot.is-dragging { transition: none !important; }
 .dial.is-unlocking .d-rot {
@@ -315,7 +315,7 @@ html, body {
 .d-gyro {
     transform-origin: 150px 150px;
     will-change: transform;
-    transition: transform 1.15s cubic-bezier(.15, .8, .25, 1);
+    transition: transform .32s cubic-bezier(.2, .9, .3, 1.15);
 }
 .d-gyro.is-dragging { transition: none !important; }
 .dial.is-unlocking .d-gyro {
@@ -931,7 +931,7 @@ html, body {
   // Everything feeds mainIn → (bus → compressor → make-up gain) + a short steel-room
   // reverb, so clicks sound like a big safe dial instead of tiny UI ticks
   var sfxOn = localStorage.getItem('login_sfx') !== '0';
-  var actx = null, mainIn = null, noiseBuf = null, runGain = null;
+  var actx = null, mainIn = null, dryIn = null, noiseBuf = null, lastKrak = null;
 
   function makeImpulse(c, seconds, decay) {
     var len = Math.floor(c.sampleRate * seconds);
@@ -964,12 +964,18 @@ html, body {
         bus.connect(comp);
         mainIn = actx.createGain();
         mainIn.connect(bus);
+        dryIn = actx.createGain();
+        dryIn.connect(bus);
         if (actx.createConvolver) {
           var conv = actx.createConvolver();
           conv.buffer = makeImpulse(actx, 1.8, 2.6);
+          conv.connect(comp);
           var wet = actx.createGain();
           wet.gain.value = 0.32;
-          mainIn.connect(wet).connect(conv).connect(comp);
+          mainIn.connect(wet).connect(conv);
+          var dryWet = actx.createGain();
+          dryWet.gain.value = 0.05;
+          dryIn.connect(dryWet).connect(conv);
         }
       }
       if (actx.state === 'suspended') actx.resume();
@@ -1025,9 +1031,27 @@ html, body {
     noiseHit(c, t, 'highpass', 5200, 5200, 0.7, vol * 0.55, 0.001, 0.03, dest);
     var base = (heavy ? 520 : 760) * p;
     [1, 2.76, 5.4].forEach(function (k, i) {
-      tone(c, t, 'sine', base * k, base * k * 0.995, vol * 0.2 / (i + 1), 0.002, (heavy ? 0.38 : 0.22) / (1 + i * 0.4), dest);
+      tone(c, t, 'sine', base * k, base * k * 0.995, vol * 0.07 / (i + 1), 0.002, (heavy ? 0.16 : 0.09) / (1 + i * 0.4), dest);
     });
     tone(c, t, 'sine', (heavy ? 150 : 190) * p, 50, vol * (heavy ? 1.0 : 0.75), 0.003, heavy ? 0.2 : 0.11, dest);
+  }
+
+  // One dry safe-dial detent: the pawl scraping over a gear tooth ("แกรก").
+  // ~65 ms long and chokes the previous detent, so fast typing never smears.
+  function krak(c, t, vol, pitch, dest) {
+    var p = (pitch || 1) * (0.93 + Math.random() * 0.14);
+    var v = c.createGain();
+    v.connect(dest || dryIn);
+    if (lastKrak) lastKrak.gain.setTargetAtTime(0.0001, t, 0.004);
+    lastKrak = v;
+    // three micro-impacts a few ms apart = the "แกร-" grit
+    [[0, 3000, 0.7], [0.007, 2500, 1], [0.015, 2000, 0.55]].forEach(function (m) {
+      noiseHit(c, t + m[0], 'bandpass', m[1] * p, 0, 1.8, vol * m[2], 0.0008, 0.012, v);
+    });
+    // short scrape tail = the "-ก"
+    noiseHit(c, t + 0.012, 'bandpass', 1400 * p, 900 * p, 0.9, vol * 0.35, 0.004, 0.045, v);
+    // small knock from the dial body
+    tone(c, t, 'sine', 170 * p, 80, vol * 0.45, 0.002, 0.035, v);
   }
 
   // Gear-teeth friction under a spin ("ครืดดด")
@@ -1067,7 +1091,8 @@ html, body {
     var start = t;
     for (var i = 0; i < steps; i++) {
       var last = i === steps - 1;
-      clank(c, t, last ? vol * 1.25 : vol * (1 - (i / steps) * 0.3), (pitch || 1) * (0.95 + Math.random() * 0.1), last, dest);
+      if (last) clank(c, t, vol, pitch || 1, true, dest);
+      else krak(c, t, vol * (1.2 - (i / steps) * 0.3), pitch || 1, dest);
       if (!last) { t += gap; gap *= 1.17; }
     }
     grind(c, start, t - start + 0.05, vol * 0.35, 950 * (pitch || 1), dest);
@@ -1076,26 +1101,21 @@ html, body {
   }
 
   var sfx = {
-    ratchet: function (degDelta) {
+    // One keystroke = one detent ("แกรก")
+    ratchet: function () {
       var c = audio();
       if (!c) return;
-      // Fade the previous run so fast typing doesn't pile up into noise
-      if (runGain) runGain.gain.setTargetAtTime(0.0001, c.currentTime, 0.05);
-      runGain = c.createGain();
-      runGain.connect(mainIn);
-      var steps = Math.max(6, Math.min(11, Math.round(Math.abs(degDelta) / 22)));
-      ratchetRun(c, c.currentTime + 0.005, steps, 0.6, 1, runGain);
+      krak(c, c.currentTime, 0.95, 1);
     },
     dialStep: function (speed) {
       var c = audio();
       if (!c) return;
-      clank(c, c.currentTime, 0.5, 0.9 + Math.min(0.2, (speed || 0) * 0.02) + (Math.random() - 0.5) * 0.08, false);
+      krak(c, c.currentTime, 0.8, 0.95 + Math.min(0.15, (speed || 0) * 0.015));
     },
     back: function () {
       var c = audio();
       if (!c) return;
-      clank(c, c.currentTime, 0.55, 0.8, true);
-      clank(c, c.currentTime + 0.12, 0.35, 1.1, false);
+      krak(c, c.currentTime, 0.85, 0.75);
     },
     toggle: function () {
       var c = audio();
@@ -1145,7 +1165,7 @@ html, body {
       // Low room tone swelling while the camera pushes in
       noiseHit(c, at(0), 'lowpass', 120, 260, 0.7, 0.35, 0.8, T.wheel + T.wheelDur);
       // Big handle wheel: slow heavy gear ratchet
-      ratchetRun(c, at(T.wheel), 12, 0.75, 0.6);
+      ratchetRun(c, at(T.wheel), 9, 0.75, 0.6);
       grind(c, at(T.wheel), T.wheelDur, 0.35, 420);
       // 12 rim bolts retract in three volleys
       for (var v = 0; v < 3; v++) {
@@ -1203,7 +1223,7 @@ html, body {
     sfxOn = !sfxOn;
     localStorage.setItem('login_sfx', sfxOn ? '1' : '0');
     renderSfx();
-    if (sfxOn) sfx.ratchet(120);
+    if (sfxOn) sfx.ratchet();
   });
   renderSfx();
 
@@ -1345,9 +1365,8 @@ html, body {
     saved.textContent = len ? '● unsaved' : '● ready';
     saved.className = 'editor__saved' + (len ? ' dirty' : '');
     if (len > lastLen) {
-      var delta = (Math.random() < 0.5 ? -1 : 1) * (85 + Math.random() * 145);
-      spinTo(delta);
-      sfx.ratchet(delta);
+      spinTo(Math.random() < 0.5 ? -36 : 36);
+      sfx.ratchet();
       galaxy.kick(0.38);
       galaxy.pulse(0.28);
     } else if (len < lastLen) {
@@ -1469,7 +1488,7 @@ html, body {
     setTimeout(function () {
       log('› opening vault door…', 'warn');
       openVault(go);
-    }, 1400);
+    }, 1000);
   }
 
   // ══ Vault door sequence ═══════════════════════════════════════════════════
@@ -1513,7 +1532,7 @@ html, body {
       go();
     };
     // Seconds; shared with sfx.vaultOpen so picture and sound stay in sync
-    var T = { push: 1.1, wheel: 1.1, wheelDur: 1.4, bolts: 2.4, crack: 3.0, swing: 3.45, swingDur: 1.9, flood: 4.7, end: 5.9 };
+    var T = { push: 0.8, wheel: 0.75, wheelDur: 1.0, bolts: 1.65, crack: 2.05, swing: 2.35, swingDur: 1.35, flood: 3.25, end: 4.15 };
     var ms = function (s) { return Math.round(s * 1000); };
 
     vault.hidden = false;

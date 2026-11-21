@@ -47,6 +47,7 @@ const UPLOADS_DIR = path.join(GEMINI_DIR, 'uploads');
 const SESSIONS_INDEX_FILE = path.join(GEMINI_DIR, 'webui-sessions.json');
 const SESSIONS_DIR = path.join(GEMINI_DIR, 'sessions');
 const BRAIN_DIR = path.join(GEMINI_DIR, 'antigravity-cli/brain');
+const PREFS_FILE = path.join(GEMINI_DIR, 'webui-prefs.json');
 
 let activeChild = null;
 let shouldResetSession = false;
@@ -546,14 +547,33 @@ function listSessions() {
     };
 }
 
-function createSession({ title = 'แชทใหม่', model = 'gemini-4-hydrogen-high', cwd = PROJECTS_BASE, mode = 'exec' } = {}) {
+// ── Default model for every NEW chat (server-side, shared across devices) ──
+// Default = 'auto' (🧠 สมองกลางเลือกโมเดลให้) unless user picked another in Settings.
+function readPrefs() {
+    try { return JSON.parse(fs.readFileSync(PREFS_FILE, 'utf8')) || {}; } catch (_) { return {}; }
+}
+function getDefaultModel() {
+    const m = String(readPrefs().defaultModel || '').trim();
+    return m || aiRouter.AUTO_MODEL_ID;
+}
+function setDefaultModel(modelId) {
+    const id = String(modelId || '').trim();
+    if (!/^[A-Za-z0-9._:\/-]{1,80}$/.test(id)) return { ok: false, error: 'invalid model id' };
+    const prefs = readPrefs();
+    prefs.defaultModel = id;
+    prefs.updatedAt = Date.now();
+    fs.writeFileSync(PREFS_FILE, JSON.stringify(prefs, null, 2), { mode: 0o600 });
+    return { ok: true, defaultModel: id };
+}
+
+function createSession({ title = 'แชทใหม่', model = null, cwd = PROJECTS_BASE, mode = 'exec' } = {}) {
     const list = ensureSessionsStoreSync();
     const id = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const now = Date.now();
     const sess = {
         id,
         title: String(title || 'แชทใหม่').trim().slice(0, 60) || 'แชทใหม่',
-        model: model || 'gemini-4-hydrogen-high',
+        model: model || getDefaultModel(),
         cwd: cwd || PROJECTS_BASE,
         mode: mode || 'exec',
         pinned: false,
@@ -836,6 +856,7 @@ async function getStatus() {
         projects,
         activeRunning: activeChild !== null,
         agyAccounts,
+        defaultModel: getDefaultModel(),
         models
     };
 }
@@ -2452,6 +2473,8 @@ async function getClaudeWebQuota(opts) {
 aiRouter.setQuotaProvider(getQuotaSummary);
 
 module.exports = {
+    getDefaultModel,
+    setDefaultModel,
     getStatus,
     setApiKey,
     executePrompt,

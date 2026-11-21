@@ -1921,6 +1921,14 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 200, await geminiManager.setClaudeSessionKey(body.sessionKey || ''));
         }
         // ── Gemini AI Assistant Endpoints ────────────────────────────
+        if (p === '/api/gemini/default-model') {
+            if (req.method === 'POST') {
+                const body = await readJsonBody(req);
+                const r = geminiManager.setDefaultModel(body.model);
+                return sendJson(res, r.ok ? 200 : 400, r);
+            }
+            return sendJson(res, 200, { ok: true, defaultModel: geminiManager.getDefaultModel() });
+        }
         if (p === '/api/gemini/status') {
             return sendJson(res, 200, await geminiManager.getStatus());
         }
@@ -2166,6 +2174,7 @@ const server = http.createServer(async (req, res) => {
                         mode: body.mode || 'chat',
                         cwd: body.cwd,
                         model: body.model,
+                        agyAccount: /^g\d{1,2}$/.test(String(body.agyAccount || '')) ? String(body.agyAccount) : null,
                         resetSession: Boolean(body.resetSession)
                     },
                     (type, text) => {

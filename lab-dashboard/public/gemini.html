@@ -2022,6 +2022,15 @@ body::before {
   height: 100%; border-radius: 999px; transition: width 0.3s ease;
 }
 
+.agy-hidden { display: none !important; }
+.agy-account-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 4px 0; }
+.agy-account-bar__label { font-family: var(--mono); font-size: 10.5px; color: var(--ink-muted); margin-right: 2px; }
+.agy-chip {
+  font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  background: rgba(5, 25, 36, 0.78); border: 1px solid var(--border); color: var(--ink-1); transition: all 0.2s ease;
+}
+.agy-chip:hover { border-color: var(--cyan); }
+.agy-chip.is-active { background: rgba(0, 229, 255, 0.16); border-color: var(--cyan); color: var(--cyan); font-weight: 700; }
 .desktop-only { display: inline-flex; }
 .mobile-controls { display: none; }
 
@@ -2172,6 +2181,7 @@ body::before {
   .chat-topic-title { font-size: 13px; }
 }
 </style>
+<script>window.agyState = window.agyState || { accounts: [], chosen: (function(){ try { return localStorage.getItem('agy_account') || ''; } catch (_) { return ''; } })(), quotas: {} };</script>
 </head>
 <body>
 <canvas id="galaxy-canvas"></canvas>
@@ -2189,7 +2199,8 @@ body::before {
     <div id="badge-key" class="badge badge--warn" style="display:none;">AUTH: CHECKING...</div>
 
     <select id="sel-model" style="display:none;" title="เลือก Model AI">
-      <option value="gemini-4-hydrogen-high" selected>Gemini 4 Hydrogen (High)</option>
+      <option value="auto" selected>🧠 Auto · สมองกลางเลือกให้</option>
+        <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
       <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
       <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
       <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
@@ -2202,6 +2213,7 @@ body::before {
       <span class="model-picker-trigger__quota" id="trigger-model-quota">--%</span>
       <span class="model-picker-trigger__chev">▾</span>
     </button>
+    <select id="sel-agy-account" class="select-box desktop-only agy-hidden" title="เลือกบัญชี Google ที่ใช้ตอบ (มีผลกับโมเดล Gemini/Claude ที่เลือกเอง — โหมด 🧠 Auto สมองกลางเลือกบัญชีให้เอง)"></select>
 
     <select id="sel-cwd" class="select-box" style="display:none;" title="เลือก Working Directory บนเซิร์ฟเวอร์">
       <option value="/home/dev/projects">📁 /home/dev/projects (Root)</option>
@@ -2531,7 +2543,8 @@ body::before {
     <div class="settings-section">
       <div class="settings-label">🤖 เลือกโมเดล AI (Model)</div>
       <select id="modal-sel-model" style="display:none;">
-        <option value="gemini-4-hydrogen-high" selected>Gemini 4 Hydrogen (High)</option>
+        <option value="auto" selected>🧠 Auto · สมองกลางเลือกให้</option>
+        <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
         <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
         <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
         <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
@@ -2654,6 +2667,7 @@ body::before {
       </div>
       <input type="text" id="model-search-input" name="ds_model_query_x" class="model-search-input" placeholder="ค้นหาโมเดล..." autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onpointerdown="this.removeAttribute('readonly');" onfocus="this.removeAttribute('readonly');" />
     </div>
+    <div class="agy-account-bar agy-hidden" id="agy-account-bar" style="padding:8px 18px 0;"></div>
     <div class="model-picker-body">
       <div class="model-picker-grid" id="model-picker-grid"></div>
     </div>
@@ -2754,7 +2768,7 @@ body::before {
   let coreEngineInfo = 'Google DeepMind Agentic Engine (agy 1.5.3)';
 
   function getCoreIdentity() {
-    const rawId = (selModel && selModel.value) ? selModel.value : 'gemini-4-hydrogen-high';
+    const rawId = (selModel && selModel.value) ? selModel.value : 'auto';
     const id = String(rawId).toLowerCase();
     const optText = (selModel && selModel.selectedIndex >= 0) ? selModel.options[selModel.selectedIndex].text : '';
     const baseName = optText.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
@@ -3964,8 +3978,8 @@ body::before {
       const pill = document.getElementById('ai-hud-quota-pill');
       if (!g5h || !r5h || !gWk || !rWk) return;
 
-      const modelId = (selModel ? selModel.value : 'gemini-4-hydrogen-high').toLowerCase();
-      const pools = liveQuota?.pools || [];
+      const modelId = (selModel ? selModel.value : 'auto').toLowerCase();
+      const pools = quotaSourceFor()?.pools || [];
       const geminiPool = pools.find(p => p.id === 'gemini');
       const claudePool = pools.find(p => p.id === 'claude');
       const argonPool = pools.find(p => p.id === 'argon');
@@ -4182,7 +4196,13 @@ body::before {
       return `รีเซ็ต ${m}น.`;
     }
 
-    function getModelQuotaInfo(id) {
+    function quotaSourceFor(accId) {
+      const a = accId || (window.agyState && window.agyState.chosen) || '';
+      const extra = a && a !== 'g1' && window.agyState && window.agyState.quotas[a];
+      return (extra && extra.ok) ? extra : liveQuota;
+    }
+
+    function getModelQuotaInfo(id, accId) {
       const s = (id || '').toLowerCase();
       if (s === 'auto') {
         return { isAuto: true, remainingPct: null, resetTime: null, fiveHour: null, weekly: null };
@@ -4222,8 +4242,9 @@ body::before {
           weekly: null
         };
       }
-      const pools = liveQuota?.pools || [];
-      const models = liveQuota?.models || [];
+      const qSrc = quotaSourceFor(accId);
+      const pools = qSrc?.pools || [];
+      const models = qSrc?.models || [];
       const exact = models.find(m => m.id.toLowerCase() === s);
       const isClaudeOrGpt = s.includes('claude') || s.includes('gpt');
       const pool = isClaudeOrGpt
@@ -4242,7 +4263,7 @@ body::before {
 
     function syncModelTriggerUI() {
       if (!selModel) return;
-      const curId = selModel.value || 'gemini-4-hydrogen-high';
+      const curId = selModel.value || 'auto';
       const curName = selModel.selectedIndex >= 0 ? selModel.options[selModel.selectedIndex].text : curId;
       const vis = getModelVisual(curId);
       const q = getModelQuotaInfo(curId);
@@ -4293,7 +4314,19 @@ body::before {
           const cw = liveQuota.claudeWeb;
           parts.push(`Claude Sub: 5H ${cw.fiveHour?.remainingPct ?? '--'}% / Wk ${cw.weekly?.remainingPct ?? '--'}%`);
         }
-        subEl.textContent = `บัญชี ${liveQuota.email} · ${parts.join(' | ')}`;
+        const readyA = (window.agyState?.accounts || []).filter(a => a.ready);
+        if (readyA.length > 1) {
+          const accParts = readyA.map(a => {
+            const src = quotaSourceFor(a.id);
+            const g = (src?.pools || []).find(p => p.id === 'gemini');
+            const c = (src?.pools || []).find(p => p.id === 'claude');
+            return `${a.label}: Gemini ${g ? g.remainingPct + '%' : '--'} · Claude/GPT ${c ? c.remainingPct + '%' : '--'}`;
+          });
+          if (liveQuota.deepseek?.ok) accParts.push(`DeepSeek: $${liveQuota.deepseek.totalBalance} ${liveQuota.deepseek.currency || 'USD'}`);
+          subEl.textContent = accParts.join(' | ');
+        } else {
+          subEl.textContent = `บัญชี ${liveQuota.email} · ${parts.join(' | ')}`;
+        }
       }
 
       const filtered = opts.filter(m => {
@@ -4328,6 +4361,35 @@ body::before {
               ? `5H ${q.fiveHour.remainingPct}% · Wk ${q.weekly.remainingPct}%`
               : `คงเหลือ ${q.remainingPct !== null ? pct + '%' : 'ไม่ทราบ'}`));
 
+        const readyAccs = (window.agyState?.accounts || []).filter(a => a.ready);
+        const multiAcc = readyAccs.length > 1 && !q.isAuto && !q.isDeepSeek && !q.isClaudeSub;
+        const chosenAcc = window.agyState?.chosen || '';
+        const quotaBlockHtml = multiAcc
+          ? readyAccs.map(a => {
+              const qa = getModelQuotaInfo(m.id, a.id);
+              const p = qa.remainingPct !== null ? qa.remainingPct : 100;
+              const c = qa.remainingPct !== null ? thermalColor(p) : '#64748b';
+              const mark = (chosenAcc === a.id) ? ' ✓' : '';
+              const txt = qa.remainingPct !== null ? `${a.label}${mark} · ${qa.remainingPct}%` : `${a.label}${mark} · --`;
+              return `<div class="model-quota-wrap">
+                <div class="model-quota-meta">
+                  <span style="color:${c}; font-weight:700;">${txt}</span>
+                  <span style="color:var(--ink-muted);">${fmtResetShort(qa.resetTime) || 'พร้อมใช้งาน'}</span>
+                </div>
+                <div class="model-quota-track"><div class="model-quota-fill" style="width:${Math.max(2, p)}%; background:${c}; box-shadow:0 0 8px ${c}66;"></div></div>
+              </div>`;
+            }).join('')
+          : `          <div class="model-quota-wrap">
+            <div class="model-quota-meta">
+              <span style="color:${barCol}; font-weight:700;">${extraWindow}</span>
+              <span style="color:var(--ink-muted);">${resetTxt || 'พร้อมใช้งาน'}</span>
+            </div>
+            <div class="model-quota-track">
+              <div class="model-quota-fill" style="width:${Math.max(2, pct)}%; background:${barCol}; box-shadow:0 0 8px ${barCol}66;"></div>
+            </div>
+          </div>
+`;
+
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `model-card ${isSelected ? 'is-selected' : ''}`;
@@ -4347,15 +4409,7 @@ body::before {
               </div>
             </div>
           </div>
-          <div class="model-quota-wrap">
-            <div class="model-quota-meta">
-              <span style="color:${barCol}; font-weight:700;">${extraWindow}</span>
-              <span style="color:var(--ink-muted);">${resetTxt || 'พร้อมใช้งาน'}</span>
-            </div>
-            <div class="model-quota-track">
-              <div class="model-quota-fill" style="width:${Math.max(2, pct)}%; background:${barCol}; box-shadow:0 0 8px ${barCol}66;"></div>
-            </div>
-          </div>
+          ${quotaBlockHtml}
         `;
         btn.addEventListener('click', () => {
           selModel.value = m.id;
@@ -4431,7 +4485,19 @@ body::before {
         else if (sRes?.energy) liveEnergy = sRes.energy;
         if (qRes && qRes.ok) {
           liveQuota = qRes;
+        }
+        const st = window.agyState;
+        if (st) {
+          const extras = (st.accounts || []).filter(a => a.ready && a.id !== 'g1');
+          await Promise.all(extras.map(async a => {
+            const d = await fetch('/api/gemini/quota?account=' + encodeURIComponent(a.id)).then(r => r.ok ? r.json() : null).catch(() => null);
+            if (d && d.ok) st.quotas[a.id] = d;
+          }));
+        }
+        if (liveQuota) {
           updateQuotaRings();
+          syncModelTriggerUI();
+          if (modalModelPicker && modalModelPicker.classList.contains('is-open')) renderModelPickerList();
         }
         if (activePopoverDef && popoverEl.classList.contains('is-open')) {
           openPlanetPopover(activePopoverDef);
@@ -4440,6 +4506,12 @@ body::before {
     }
     refreshTelemetry();
     setInterval(refreshTelemetry, 10000);
+    window.addEventListener('agy-changed', () => {
+      syncModelTriggerUI();
+      updateQuotaRings();
+      if (modalModelPicker && modalModelPicker.classList.contains('is-open')) renderModelPickerList();
+      refreshTelemetry();
+    });
 
     function findPm2(name) {
       const list = liveSummary?.pm2?.items || [];
@@ -5056,6 +5128,53 @@ body::before {
     });
   });
 
+  function chooseAgyAccount(v) {
+    const st = window.agyState;
+    st.chosen = v || '';
+    try { localStorage.setItem('agy_account', st.chosen); } catch (_) {}
+    renderAgyAccountUI();
+    window.dispatchEvent(new Event('agy-changed'));
+  }
+
+  function renderAgyAccountUI() {
+    const st = window.agyState;
+    const ready = (st.accounts || []).filter(a => a.ready);
+    const show = ready.length > 1;
+    const sel = document.getElementById('sel-agy-account');
+    const bar = document.getElementById('agy-account-bar');
+    [sel, bar].forEach(el => { if (el) el.classList.toggle('agy-hidden', !show); });
+    if (!show) return;
+    if (sel) {
+      sel.innerHTML = '<option value="">🔄 บัญชี: ตามระบบ</option>' +
+        ready.map(a => `<option value="${a.id}">👤 ${a.label}${a.email ? ' · ' + a.email : ''}</option>`).join('');
+      sel.value = st.chosen;
+    }
+    if (bar) {
+      const chips = [{ id: '', text: '🔄 ตามระบบ' }].concat(ready.map(a => ({ id: a.id, text: `👤 ${a.label}${a.email ? ' · ' + a.email.split('@')[0] : ''}` })));
+      bar.innerHTML = '<span class="agy-account-bar__label">บัญชี Google:</span>';
+      chips.forEach(c => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'agy-chip' + (st.chosen === c.id ? ' is-active' : '');
+        b.textContent = c.text;
+        b.addEventListener('click', () => chooseAgyAccount(c.id));
+        bar.appendChild(b);
+      });
+    }
+  }
+
+  function setupAgyAccounts(list) {
+    const st = window.agyState;
+    st.accounts = Array.isArray(list) ? list : [];
+    if (st.chosen && !st.accounts.some(a => a.ready && a.id === st.chosen)) st.chosen = '';
+    renderAgyAccountUI();
+    window.dispatchEvent(new Event('agy-changed'));
+  }
+  (function () {
+    const sel = document.getElementById('sel-agy-account');
+    if (sel) sel.addEventListener('change', () => chooseAgyAccount(sel.value));
+  })();
+
   async function loadStatus() {
     try {
       const res = await fetch('/api/gemini/status');
@@ -5076,6 +5195,9 @@ body::before {
         badgeKey.textContent = 'AUTH: NOT CONFIGURED';
       }
 
+      if (typeof setupAgyAccounts === 'function') setupAgyAccounts(data.agyAccounts || []);
+
+      if (data.defaultModel) localStorage.setItem('core_default_model', data.defaultModel);
       if (data.models && data.models.length) {
         [selModel, modalSelModel].forEach((sel) => {
           if (!sel) return;
@@ -5085,7 +5207,7 @@ body::before {
             const opt = document.createElement('option');
             opt.value = m.id;
             opt.textContent = m.name;
-            if (m.id === cur || (!cur && m.id === 'gemini-4-hydrogen-high')) opt.selected = true;
+            if (m.id === cur || (!cur && m.id === (data.defaultModel || 'auto'))) opt.selected = true;
             sel.appendChild(opt);
           });
         });
@@ -5410,6 +5532,7 @@ body::before {
         if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
           selModel.value = data.session.model;
           if (modalSelModel) modalSelModel.value = data.session.model;
+          if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
           applyCoreBranding();
         }
         if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
@@ -5461,6 +5584,7 @@ body::before {
       if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
         selModel.value = data.session.model;
         if (modalSelModel) modalSelModel.value = data.session.model;
+        if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
         applyCoreBranding();
       }
       if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
@@ -5496,7 +5620,7 @@ body::before {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: 'แชทใหม่',
-          model: selModel ? selModel.value : 'gemini-4-hydrogen-high',
+          // โมเดลของแชทใหม่ = โมเดลเริ่มต้นจากหน้าตั้งค่าบน server (ค่าเริ่มต้น = auto สมองกลาง)
           cwd: selCwd ? selCwd.value : '/home/dev/projects',
           mode: currentMode || 'exec'
         })
@@ -6742,7 +6866,7 @@ body::before {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: activeStreamAbortController.signal,
-        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, resetSession: needNewSession })
+        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -6841,9 +6965,11 @@ body::before {
 
   // Sync settings updated from /settings.html in real time
   (function applyStoredDefaults() {
-    const defModel = localStorage.getItem('core_default_model');
+    const defModel = localStorage.getItem('core_default_model') || 'auto';
     if (defModel && selModel && [...selModel.options].some(o => o.value === defModel)) {
       selModel.value = defModel;
+      if (modalSelModel && [...modalSelModel.options].some(o => o.value === defModel)) modalSelModel.value = defModel;
+      if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
     }
     const defCwd = localStorage.getItem('core_default_cwd');
     if (defCwd && selCwd && [...selCwd.options].some(o => o.value === defCwd)) {
@@ -6869,6 +6995,7 @@ body::before {
       if ([...selModel.options].some(o => o.value === ev.newValue)) {
         selModel.value = ev.newValue;
         if (modalSelModel) modalSelModel.value = ev.newValue;
+        if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
         applyCoreBranding();
       }
     } else if (ev.key === 'core_default_cwd' && ev.newValue && selCwd) {

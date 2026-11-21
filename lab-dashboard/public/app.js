@@ -3342,7 +3342,7 @@ function loadSettingsView() {
 
     if (!settingsInitialized) {
         settingsInitialized = true;
-        selModel.value = localStorage.getItem('core_default_model') || 'gemini-4-hydrogen-high';
+        selModel.value = localStorage.getItem('core_default_model') || 'auto';
         selStt.value = localStorage.getItem('stt_engine') || 'whisper';
         if (selVoiceStyle) selVoiceStyle.value = localStorage.getItem('core_tts_style') || 'natural';
         chkAutoTts.checked = localStorage.getItem('core_auto_tts') === '1';
@@ -3350,8 +3350,12 @@ function loadSettingsView() {
         chkHud.checked = localStorage.getItem('core_hud_hidden') !== '1';
 
         selModel.addEventListener('change', () => {
-            localStorage.setItem('core_default_model', selModel.value);
-            notify('✅ บันทึกโมเดลเริ่มต้นแล้ว');
+            const v = selModel.value;
+            localStorage.setItem('core_default_model', v);
+            fetch('/api/gemini/default-model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: v }) })
+                .then(r => r.json())
+                .then(r => notify(r && r.ok ? '✅ บันทึกโมเดลเริ่มต้นแล้ว (ใช้กับแชทใหม่ทุกห้อง)' : '⚠️ บันทึกไม่สำเร็จ'))
+                .catch(() => notify('⚠️ บันทึกลงเครื่องแล้ว แต่ซิงก์ขึ้น server ไม่สำเร็จ'));
         });
         selCwd.addEventListener('change', () => {
             localStorage.setItem('core_default_cwd', selCwd.value);
@@ -3440,9 +3444,17 @@ function loadSettingsView() {
     if (typeof window._syncPrayerSettingsUI === 'function') window._syncPrayerSettingsUI();
 
     fetch('/api/gemini/status').then(r => r.json()).then(d => {
+        // เติมรายชื่อโมเดลจริงทั้งหมด (Auto + ทุกค่าย) และตั้งค่าตามที่บันทึกไว้บน server
+        if (Array.isArray(d.models) && d.models.length) {
+            selModel.innerHTML = '';
+            d.models.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; selModel.appendChild(o); });
+        }
+        const wantModel = d.defaultModel || localStorage.getItem('core_default_model') || 'auto';
+        if (d.defaultModel) localStorage.setItem('core_default_model', d.defaultModel);
+        if ([...selModel.options].some(o => o.value === wantModel)) selModel.value = wantModel;
         if (authBadge) {
-            if (d.hasApiKey || d.loggedIn) {
-                authBadge.textContent = d.loggedIn ? 'AUTH: ANTIGRAVITY OK' : 'AUTH: API KEY OK';
+            if (d.hasAuth || d.hasKey) {
+                authBadge.textContent = d.authType !== 'api-key' ? 'AUTH: ANTIGRAVITY OK' : 'AUTH: API KEY OK';
                 authBadge.className = 'badge badge--ok';
             } else {
                 authBadge.textContent = 'AUTH: NOT CONFIGURED';

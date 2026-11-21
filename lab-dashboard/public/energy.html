@@ -89,8 +89,23 @@
   .flow-node-value { font-size: 21px; fill: var(--ink-1); font-weight: 800; font-family: var(--mono); }
   .flow-node-sub { font-size: 11.5px; fill: var(--ink-muted); font-family: var(--mono); }
   .flow-node.is-off { opacity: .38; }
-  .flow-line-bg { stroke: var(--grid); stroke-linecap: round; fill: none; }
-  .flow-line { stroke-linecap: round; fill: none; opacity: .55; transition: stroke-width .6s; }
+  .flow-node.is-idle > g { opacity: .45; transition: opacity .8s; }
+  .flow-track { stroke: rgba(255, 255, 255, .045); stroke-width: 9; stroke-linecap: round; fill: none; }
+  .flow-line { stroke-linecap: round; fill: none; opacity: 0; transition: stroke-width .8s, opacity .8s; }
+  .flow-current { stroke-linecap: round; fill: none; stroke-width: 1.6; stroke-dasharray: 1.5 13; opacity: 0; transition: opacity .8s; pointer-events: none; }
+  .flow-ring-track { fill: none; stroke: rgba(255, 255, 255, .07); stroke-width: 3.5; }
+  .flow-aura { transform-box: fill-box; transform-origin: center; transition: opacity 1s; animation: fl-breathe 5s ease-in-out infinite; pointer-events: none; }
+  @keyframes fl-breathe { 50% { transform: scale(1.1); } }
+  .flow-ripple { opacity: 0; transform-box: fill-box; transform-origin: center; pointer-events: none; }
+  .flow-node.is-live .flow-ripple { animation: fl-ripple 2.6s cubic-bezier(.2, .6, .3, 1) infinite; }
+  @keyframes fl-ripple { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(1.75); opacity: 0; } }
+  .flow-node [opacity], .flow-node circle { transition: opacity .8s; }
+  .batt-fill { transition: y .8s, height .8s, fill .8s; }
+  .batt-bolt.on { animation: fl-blink 1.4s ease-in-out infinite; }
+  @keyframes fl-blink { 50% { opacity: .2; } }
+  .flow-hub-value { font-size: 24px; font-weight: 800; fill: var(--ink-1); font-family: var(--mono); }
+  .flow-hub-label { font-size: 10.5px; fill: var(--ink-muted); }
+  .flow-hub-tag { font-size: 8.5px; letter-spacing: 1.8px; fill: var(--ink-muted); font-family: var(--mono); }
   .flow-clock { font-size: 13px; fill: var(--ink-muted); font-family: var(--mono); }
 
   /* KPI tiles */
@@ -181,8 +196,11 @@
     .flow-node-value { font-size: 34px; }
     .flow-node-value.is-off { font-size: 22px; }
     .flow-node-sub, .flow-clock { font-size: 19px; }
+    .flow-hub-value { font-size: 30px; }
+    .flow-hub-label { font-size: 13px; }
+    .flow-hub-tag { display: none; }
   }
-  @media (prefers-reduced-motion: reduce) { .dot.ok { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .dot.ok, .flow-aura, .flow-ripple, .batt-bolt { animation: none !important; } }
 </style>
 </head>
 <body>
@@ -230,20 +248,21 @@
       <svg id="flow" viewBox="0 0 900 470" role="img" aria-labelledby="flow-desc">
         <desc id="flow-desc">แผนภาพการไหลของพลังงานระหว่างโซลาร์ แบตเตอรี่ การไฟฟ้า และบ้าน</desc>
         <defs>
-          <radialGradient id="fg-hub" cx="50%" cy="40%" r="65%"><stop offset="0" stop-color="#3a3f46"/><stop offset="1" stop-color="#191c20"/></radialGradient>
-          <radialGradient id="fg-node" cx="50%" cy="35%" r="70%"><stop offset="0" stop-color="#262a30"/><stop offset="1" stop-color="#121417"/></radialGradient>
-          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <linearGradient id="fg-house" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5d0fe"/><stop offset="1" stop-color="#c084fc"/></linearGradient>
+          <radialGradient id="fg-hub" cx="50%" cy="35%" r="70%"><stop offset="0" stop-color="#363b43"/><stop offset="1" stop-color="#14171b"/></radialGradient>
+          <radialGradient id="fg-hub-halo"><stop offset=".6" stop-color="#000" stop-opacity=".55"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+          <radialGradient id="fg-node" cx="50%" cy="30%" r="75%"><stop offset="0" stop-color="#2a2f36"/><stop offset="1" stop-color="#0f1114"/></radialGradient>
+          <linearGradient id="fg-self" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#34d399"/></linearGradient>
+          <filter id="fg-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="fg-glow-sm" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <pattern id="fg-dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="10" cy="10" r="1" fill="#fff" fill-opacity=".07"/></pattern>
+          <radialGradient id="fg-fade"><stop offset="0" stop-color="#fff"/><stop offset=".75" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+          <mask id="fg-mask"><rect width="900" height="470" fill="url(#fg-fade)"/></mask>
         </defs>
+        <rect width="900" height="470" fill="url(#fg-dots)" mask="url(#fg-mask)"/>
+        <g id="flow-auras"></g>
         <g id="flow-lines"></g>
         <g id="flow-dots"></g>
-        <!-- hub / inverter -->
-        <g transform="translate(450 245)">
-          <rect x="-46" y="-40" width="92" height="80" rx="18" fill="url(#fg-hub)" stroke="var(--border-str)"/>
-          <path d="M-18 -8h36M-18 6h36" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
-          <path d="M-20 -22 q5 -7 10 0 t10 0 t10 0 t10 0" fill="none" stroke="#9ca3af" stroke-width="2"/>
-          <text y="26" text-anchor="middle" class="flow-node-sub">INVERTER</text>
-        </g>
+        <g id="flow-hub"></g>
         <g id="flow-nodes"></g>
         <text id="flow-clock" class="flow-clock" x="890" y="462" text-anchor="end"></text>
       </svg>
@@ -399,119 +418,293 @@ const NODES = {
   load:    { x: 780, y: 245, label: 'บ้าน (โหลด)', icon: 'house' },
   battery: { x: 450, y: 405, label: 'แบตเตอรี่', icon: 'battery' },
 };
-const R = 50;
+// เส้นทางพลังงานจริงระหว่างแหล่งจ่ายกับผู้ใช้ (ค่า + = a → b; grid-battery ติดลบ = แบตขายคืน)
+const LINKS = [['solar', 'load'], ['solar', 'battery'], ['solar', 'grid'], ['grid', 'load'], ['grid', 'battery'], ['battery', 'load']];
+const R = 46, MAX_COMETS = 5, TAIL = 10, TAIL_GAP = 3.2;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ICONS = {
   sun: (g, c) => {
-    el('circle', { r: 13, fill: c }, g);
-    for (let i = 0; i < 8; i++) {
-      const a = i * Math.PI / 4;
-      el('line', { x1: Math.cos(a) * 19, y1: Math.sin(a) * 19, x2: Math.cos(a) * 25, y2: Math.sin(a) * 25, stroke: c, 'stroke-width': 3, 'stroke-linecap': 'round' }, g);
+    el('circle', { r: 12, fill: c, filter: 'url(#fg-glow-sm)' }, g);
+    el('circle', { r: 7, fill: '#fff7d6', opacity: .55 }, g);
+    const rays = el('g', { class: 'sun-rays' }, g);
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6, r1 = i % 2 ? 18 : 17, r2 = i % 2 ? 22 : 26;
+      el('line', { x1: Math.cos(a) * r1, y1: Math.sin(a) * r1, x2: Math.cos(a) * r2, y2: Math.sin(a) * r2, stroke: c, 'stroke-width': i % 2 ? 2 : 3, 'stroke-linecap': 'round' }, rays);
     }
   },
   pylon: (g, c) => {
     el('path', { d: 'M-14 26 L-4 -24 L4 -24 L14 26 M-9 2 H9 M-12 14 H12 M-20 -14 H20 M-16 -6 H16 M-7 -10 L7 2 M7 -10 L-7 2', fill: 'none', stroke: c, 'stroke-width': 2.6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g);
+    for (const x of [-20, 20]) el('circle', { class: 'pylon-tip', cx: x, cy: -14, r: 2.6, fill: c }, g);
   },
   house: (g, c) => {
-    el('path', { d: 'M-22 -2 L0 -22 L22 -2 M-16 -7 V22 H16 V-7', fill: 'none', stroke: c, 'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g);
-    el('path', { d: 'M2 -2 L-5 9 H1 L-2 18 L6 6 H0 Z', fill: c }, g);
+    el('path', { d: 'M-24 -2 L0 -24 L24 -2', fill: 'none', stroke: c, 'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g);
+    el('path', { d: 'M-17 -8 V22 H17 V-8', fill: 'none', stroke: c, 'stroke-width': 3, 'stroke-linejoin': 'round' }, g);
+    for (const [x, y] of [[-11, -2], [3, -2], [-11, 9], [3, 9]]) el('rect', { class: 'win', x, y, width: 8, height: 7, rx: 1.5, fill: c, opacity: .15 }, g);
   },
   battery: (g, c) => {
-    el('rect', { x: -14, y: -22, width: 28, height: 44, rx: 5, fill: 'none', stroke: c, 'stroke-width': 3 }, g);
-    el('rect', { x: -6, y: -27, width: 12, height: 5, rx: 1.5, fill: c }, g);
-    el('rect', { class: 'batt-fill', x: -9, y: 17, width: 18, height: 0, rx: 2, fill: c }, g);
+    el('rect', { x: -15, y: -22, width: 30, height: 46, rx: 6, fill: 'none', stroke: c, 'stroke-width': 3 }, g);
+    el('rect', { x: -6, y: -28, width: 12, height: 5, rx: 1.5, fill: c }, g);
+    el('rect', { class: 'batt-fill', x: -10, y: 19, width: 20, height: 0, rx: 2.5, fill: c }, g);
+    el('path', { class: 'batt-bolt', d: 'M3 -14 L-6 3 H0 L-3 15 L7 -2 H1 Z', fill: '#fff', opacity: 0 }, g);
   },
 };
-const flow = { links: {}, nodes: {}, last: performance.now() };
+const flow = { links: {}, nodes: {}, hub: null, last: performance.now() };
+
+function flowPath(a, b) {
+  const A = NODES[a], B = NODES[b];
+  const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+  const C = { x: HUB.x + (mx - HUB.x) * .3, y: HUB.y + (my - HUB.y) * .3 };
+  const trim = (P) => { const dx = C.x - P.x, dy = C.y - P.y, L = Math.hypot(dx, dy); return [P.x + dx / L * (R + 13), P.y + dy / L * (R + 13)]; };
+  const [sx, sy] = trim(A), [ex, ey] = trim(B);
+  return `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${C.x.toFixed(1)} ${C.y.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+}
+
+// ตารางจุดบนเส้นโค้ง — ไม่ต้องเรียก getPointAtLength ทุกเฟรม
+function sampler(path) {
+  const len = path.getTotalLength(), N = Math.max(60, Math.round(len / 2.5)), pts = new Float32Array((N + 1) * 2);
+  for (let i = 0; i <= N; i++) { const p = path.getPointAtLength(len * i / N); pts[i * 2] = p.x; pts[i * 2 + 1] = p.y; }
+  return { len, at(u) { const f = Math.max(0, Math.min(1, u)) * N, i = Math.min(N - 1, Math.floor(f)), r = f - i;
+    return [pts[i * 2] + (pts[i * 2 + 2] - pts[i * 2]) * r, pts[i * 2 + 1] + (pts[i * 2 + 3] - pts[i * 2 + 1]) * r]; } };
+}
 
 function buildFlow() {
-  const lines = $('#flow-lines'), dots = $('#flow-dots'), nodes = $('#flow-nodes');
-  for (const [k, n] of Object.entries(NODES)) {
-    // เส้นจากโหนดไปศูนย์กลาง (ตัดที่ขอบวงกลม / กล่อง inverter)
-    const dx = HUB.x - n.x, dy = HUB.y - n.y, L = Math.hypot(dx, dy);
-    const ux = dx / L, uy = dy / L;
-    const hubGap = Math.abs(ux) > Math.abs(uy) ? 48 : 42;
-    const x1 = n.x + ux * (R + 6), y1 = n.y + uy * (R + 6), x2 = HUB.x - ux * hubGap, y2 = HUB.y - uy * hubGap;
-    const d = `M${x1} ${y1} L${x2} ${y2}`;
-    el('path', { d, class: 'flow-line-bg', 'stroke-width': 10 }, lines);
-    const line = el('path', { d, class: 'flow-line', stroke: COLORS[k], 'stroke-width': 2 }, lines);
-    const len = Math.hypot(x2 - x1, y2 - y1);
-    const dg = el('g', { filter: 'url(#glow)' }, dots);
-    const dl = [];
-    for (let i = 0; i < 6; i++) dl.push(el('circle', { r: 4.5, fill: GLOW[k], opacity: 0 }, dg));
-    flow.links[k] = { x1, y1, x2, y2, len, line, dots: dl, phase: Math.random(), speed: 0, dir: 0, n: 0 };
+  const svg = $('#flow'), defs = $('defs', svg);
+  const lines = $('#flow-lines'), dots = $('#flow-dots'), nodes = $('#flow-nodes'), auras = $('#flow-auras');
+  for (const k of Object.keys(NODES)) {
+    const rg = el('radialGradient', { id: `fg-aura-${k}` }, defs);
+    el('stop', { offset: 0, 'stop-color': GLOW[k], 'stop-opacity': .32 }, rg);
+    el('stop', { offset: .45, 'stop-color': GLOW[k], 'stop-opacity': .1 }, rg);
+    el('stop', { offset: 1, 'stop-color': GLOW[k], 'stop-opacity': 0 }, rg);
+  }
+  for (const [a, b] of LINKS) {
+    const k = a + '-' + b, d = flowPath(a, b);
+    el('path', { d, class: 'flow-track' }, lines);
+    const line = el('path', { d, class: 'flow-line', stroke: COLORS[a] }, lines);
+    const current = el('path', { d, class: 'flow-current', stroke: GLOW[a] }, lines);
+    const g = el('g', { filter: 'url(#fg-glow)' }, dots);
+    const comets = [];
+    for (let i = 0; i < MAX_COMETS; i++) {
+      const parts = [];
+      for (let j = TAIL - 1; j >= 0; j--) parts[j] = el('circle', { r: (1 + 3.6 * Math.pow(1 - j / TAIL, 1.4)).toFixed(2), fill: GLOW[a], opacity: 0 }, g);
+      const core = el('circle', { r: 1.8, fill: '#fff', opacity: 0 }, g);
+      comets.push({ parts, core });
+    }
+    flow.links[k] = { a, b, s: sampler(line), line, current, comets, g, phase: Math.random(), px: 0, dir: 0, n: 0, dash: 0, src: a };
+  }
 
+  for (const [k, n] of Object.entries(NODES)) {
+    const aura = el('circle', { cx: n.x, cy: n.y, r: 125, fill: `url(#fg-aura-${k})`, class: 'flow-aura', opacity: 0 }, auras);
     const g = el('g', { class: 'flow-node', transform: `translate(${n.x} ${n.y})` }, nodes);
-    el('circle', { r: R + 7, fill: 'none', stroke: COLORS[k], 'stroke-opacity': .18, 'stroke-width': 1 }, g);
-    const ring = el('circle', { r: R, fill: 'url(#fg-node)', stroke: COLORS[k], 'stroke-width': 2.5 }, g);
-    const arc = el('circle', { r: R + 7, fill: 'none', stroke: GLOW[k], 'stroke-width': 3, 'stroke-linecap': 'round',
-      'stroke-dasharray': `0 ${2 * Math.PI * (R + 7)}`, transform: 'rotate(-90)' }, g);
+    const ripple = el('circle', { r: R, fill: 'none', stroke: GLOW[k], 'stroke-width': 1.5, class: 'flow-ripple' }, g);
+    const orbit = el('circle', { r: R + 17, fill: 'none', stroke: GLOW[k], 'stroke-width': 1.3, 'stroke-dasharray': '1.5 8.5', 'stroke-linecap': 'round', opacity: 0 }, g);
+    el('circle', { r: R + 9, class: 'flow-ring-track' }, g);
+    // วงแหวนกำลังไฟ — บ้านแสดงสัดส่วนแหล่งจ่าย (โซลาร์/แบต/การไฟฟ้า)
+    const arcs = (k === 'load' ? ['solar', 'battery', 'grid'] : [k]).map((c) => ({ c, el: el('circle', { r: R + 9, fill: 'none', stroke: GLOW[c], 'stroke-width': 3.5,
+      'stroke-linecap': 'round', 'stroke-dasharray': `0 999`, transform: 'rotate(-90)', filter: 'url(#fg-glow-sm)' }, g) }));
+    el('circle', { r: R, fill: 'url(#fg-node)', stroke: COLORS[k], 'stroke-width': 2, 'stroke-opacity': .9 }, g);
+    el('circle', { r: R - 5, fill: 'none', stroke: 'rgba(255,255,255,.06)' }, g);
+    el('path', { d: `M${-R + 10} -14 A${R - 4} ${R - 4} 0 0 1 ${R - 10} -14`, fill: 'none', stroke: 'rgba(255,255,255,.07)', 'stroke-width': 6, 'stroke-linecap': 'round' }, g);
     const ig = el('g', {}, g);
     ICONS[n.icon](ig, GLOW[k]);
-    // labels: ด้านนอกโหนด
     let lx = 0, ly, anchor = 'middle';
-    if (k === 'solar') { lx = R + 22; ly = -10; anchor = 'start'; }
-    else if (k === 'battery') { lx = R + 22; ly = -10; anchor = 'start'; }
-    else { ly = R + 26; }
+    if (k === 'solar' || k === 'battery') { lx = R + 26; ly = -10; anchor = 'start'; }
+    else { ly = R + 30; }
     const lab = el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'flow-node-label' }, g); lab.textContent = n.label;
-    const val = el('text', { x: lx, y: ly + 24, 'text-anchor': anchor, class: 'flow-node-value' }, g); val.textContent = '—';
-    const sub = el('text', { x: lx, y: ly + 42, 'text-anchor': anchor, class: 'flow-node-sub' }, g); sub.textContent = '';
-    flow.nodes[k] = { g, ring, arc, val, sub, fill: ig.querySelector('.batt-fill') };
+    const val = el('text', { x: lx, y: ly + 25, 'text-anchor': anchor, class: 'flow-node-value' }, g); val.textContent = '—';
+    const sub = el('text', { x: lx, y: ly + 43, 'text-anchor': anchor, class: 'flow-node-sub' }, g); sub.textContent = '';
+    flow.nodes[k] = { g, aura, orbit, arcs, lab, val, sub, ly, ripple, rays: ig.querySelector('.sun-rays'), fill: ig.querySelector('.batt-fill'),
+      bolt: ig.querySelector('.batt-bolt'), wins: $$('.win', ig), rot: 0, spin: 0, target: null, disp: 0, off: false, shown: '' };
   }
+
+  // ศูนย์กลาง: อินเวอร์เตอร์ + เกจพึ่งพาตนเอง
+  const hg = el('g', { transform: `translate(${HUB.x} ${HUB.y})` }, $('#flow-hub'));
+  el('circle', { r: 66, fill: 'url(#fg-hub-halo)' }, hg);
+  const horbit = el('circle', { r: 60, fill: 'none', stroke: 'rgba(255,255,255,.16)', 'stroke-width': 1, 'stroke-dasharray': '1 7', 'stroke-linecap': 'round' }, hg);
+  el('circle', { r: 51, fill: 'none', stroke: 'rgba(255,255,255,.07)', 'stroke-width': 4 }, hg);
+  const gauge = el('circle', { r: 51, fill: 'none', stroke: 'url(#fg-self)', 'stroke-width': 4, 'stroke-linecap': 'round',
+    'stroke-dasharray': `0 999`, transform: 'rotate(-90)', filter: 'url(#fg-glow-sm)' }, hg);
+  el('circle', { r: 44, fill: 'url(#fg-hub)', stroke: 'var(--border-str)', 'stroke-width': 1.2 }, hg);
+  el('text', { y: -17, 'text-anchor': 'middle', class: 'flow-hub-tag' }, hg).textContent = 'INVERTER';
+  const hval = el('text', { y: 9, 'text-anchor': 'middle', class: 'flow-hub-value' }, hg); hval.textContent = '—';
+  el('text', { y: 25, 'text-anchor': 'middle', class: 'flow-hub-label' }, hg).textContent = 'พึ่งพาตนเอง';
+  flow.hub = { horbit, gauge, hval, rot: 0, spin: 0, target: null, disp: 0, shown: '' };
+  const mq = matchMedia('(max-width: 640px)');
+  layoutFlowLabels(mq.matches); mq.addEventListener('change', (e) => layoutFlowLabels(e.matches));
   requestAnimationFrame(tickFlow);
+}
+
+// จอเล็กใช้ฟอนต์ใหญ่ขึ้น (ดู CSS) — ต้องเว้นบรรทัดให้ห่างตาม
+function layoutFlowLabels(small) {
+  const [dv, ds] = small ? [36, 62] : [25, 43];
+  for (const n of Object.values(flow.nodes)) { n.val.setAttribute('y', n.ly + dv); n.sub.setAttribute('y', n.ly + ds); }
+}
+
+// แยกกำลังไฟออกเป็นเส้นทาง แหล่งจ่าย → ผู้ใช้ (โซลาร์ใช้ก่อน → แบต → การไฟฟ้า)
+function allocateFlow(v) {
+  const on = (k) => !(v.avail && v.avail[k] === false);
+  const S = on('solar') ? Math.max(0, v.solar || 0) : 0;
+  const b = on('battery') ? (v.battery || 0) : 0;
+  const g = v.grid || 0;
+  const L = Math.max(0, v.load != null ? v.load : S + b + g);
+  const D = Math.max(0, b), Cb = Math.max(0, -b), I = Math.max(0, g), E = Math.max(0, -g);
+  const s2l = Math.min(S, L); let rest = L - s2l;
+  const b2l = Math.min(D, rest); rest -= b2l;
+  const g2l = Math.min(I, rest);
+  const s2b = Math.min(S - s2l, Cb);
+  const s2g = Math.min(S - s2l - s2b, E);
+  const g2b = Math.max(0, Math.min(I - g2l, Cb - s2b));
+  const b2g = Math.max(0, Math.min(D - b2l, E - s2g));
+  return { L, S, links: { 'solar-load': s2l, 'solar-battery': s2b, 'solar-grid': s2g, 'grid-load': g2l, 'grid-battery': g2b - b2g, 'battery-load': b2l } };
+}
+
+// ความยาว 0 + linecap round จะเหลือจุดค้าง — ซ่อนแทน
+function setArc(e, len, C) {
+  e.setAttribute('stroke-dasharray', `${len.toFixed(1)} ${C}`);
+  e.style.opacity = len > .5 ? 1 : 0;
 }
 
 /* v = { solar, battery, grid, load } (W; battery + = จ่าย, grid + = ซื้อ), avail, sub, soc */
 function setFlow(v) {
-  const maxW = Math.max(1500, Math.abs(v.load || 0), Math.abs(v.solar || 0), Math.abs(v.grid || 0), Math.abs(v.battery || 0));
-  for (const k of ['solar', 'battery', 'grid', 'load']) {
-    const w = v[k];
-    const link = flow.links[k], node = flow.nodes[k];
-    const off = v.avail && v.avail[k] === false;
-    node.g.classList.toggle('is-off', !!off);
-    node.val.textContent = off ? 'ไม่มีเซนเซอร์' : fmtW(w == null ? null : Math.abs(w));
-    node.val.classList.toggle('is-off', !!off);
-    node.sub.textContent = (v.sub && v.sub[k]) || '';
-    const a = Math.abs(w || 0);
-    // ทิศทาง: +1 = เข้าหาศูนย์กลาง (แหล่งจ่าย), -1 = ออกจากศูนย์กลาง
-    let dir = 0;
-    if (a > 5 && !off) {
-      if (k === 'load') dir = -1;
-      else if (k === 'solar') dir = 1;
-      else dir = w > 0 ? 1 : -1;
+  const al = allocateFlow(v);
+  const maxW = Math.max(1500, al.L, al.S, Math.abs(v.grid || 0), Math.abs(v.battery || 0));
+  const scale = (w) => Math.sqrt(Math.min(1, Math.abs(w) / maxW));
+
+  for (const [k, link] of Object.entries(flow.links)) {
+    const w = al.links[k] || 0, a = Math.abs(w), f = scale(w);
+    const dir = a > 5 ? Math.sign(w) : 0;
+    const src = dir < 0 ? link.b : link.a;
+    if (src !== link.src) {
+      link.src = src;
+      link.line.setAttribute('stroke', COLORS[src]); link.current.setAttribute('stroke', GLOW[src]);
+      link.comets.forEach((c) => c.parts.forEach((p) => p.setAttribute('fill', GLOW[src])));
     }
     link.dir = dir;
-    link.speed = dir ? 0.18 + 0.9 * Math.sqrt(a / maxW) : 0;
-    link.n = dir ? Math.min(6, 2 + Math.round(4 * a / maxW)) : 0;
-    link.line.setAttribute('stroke-width', dir ? (2 + 5 * Math.sqrt(a / maxW)).toFixed(1) : 1.5);
-    link.line.style.opacity = dir ? .7 : .25;
-    const frac = dir ? Math.min(1, a / maxW) : 0;
-    const C = 2 * Math.PI * (R + 7);
-    node.arc.setAttribute('stroke-dasharray', `${(C * frac).toFixed(1)} ${C}`);
+    link.px = dir ? 45 + 150 * f : 0;                       // ความเร็ว px/s ตามกำลังไฟ
+    link.n = dir ? Math.max(1, Math.min(MAX_COMETS, Math.round(link.s.len / 110 * (0.5 + f)))) : 0;
+    link.line.style.strokeWidth = dir ? (1.6 + 4.4 * f).toFixed(1) : 1;
+    link.line.style.opacity = dir ? (.35 + .35 * f).toFixed(2) : 0;
+    link.current.style.opacity = dir ? .5 : 0;
+    link.line.innerHTML = '';
+    el('title', {}, link.line).textContent = `${NAMES[src]} → ${NAMES[src === link.a ? link.b : link.a]}: ${fmtW(a)}`;
   }
-  // SOC fill
-  const bf = flow.nodes.battery.fill;
-  const soc = v.soc;
-  if (bf) {
-    const h = soc == null ? 0 : 36 * Math.max(0, Math.min(1, soc / 100));
-    bf.setAttribute('y', 17 - h + 1); bf.setAttribute('height', Math.max(0, h - 1));
+
+  for (const k of ['solar', 'battery', 'grid', 'load']) {
+    const node = flow.nodes[k], w = v[k];
+    const off = !!(v.avail && v.avail[k] === false);
+    const a = k === 'load' ? al.L : Math.abs(w || 0), f = scale(a);
+    const active = !off && a > 5;
+    node.off = off;
+    node.target = off || w == null && k !== 'load' ? null : a;
+    node.g.classList.toggle('is-off', off);
+    node.g.classList.toggle('is-live', active && !REDUCED);
+    node.g.classList.toggle('is-idle', !off && !active);
+    node.val.classList.toggle('is-off', off);
+    node.sub.textContent = (v.sub && v.sub[k]) || '';
+    node.aura.style.opacity = active ? (.35 + .65 * f).toFixed(2) : 0;
+    node.orbit.style.opacity = active ? .7 : 0;
+    node.spin = active ? 8 + 50 * f : 0;
+    node.ripple.style.animationDuration = (3.4 - 1.6 * f).toFixed(2) + 's';
+    const C = 2 * Math.PI * (R + 9);
+    if (k === 'load') {
+      // สัดส่วนที่บ้านได้รับจากแต่ละแหล่ง
+      const L = al.L || 1, parts = { solar: al.links['solar-load'], battery: al.links['battery-load'], grid: al.links['grid-load'] };
+      const gap = 5;
+      let start = 0;
+      const used = node.arcs.filter((x) => parts[x.c] / L > .005).length;
+      for (const x of node.arcs) {
+        const share = active ? parts[x.c] / L : 0;
+        const len = share > .005 ? Math.max(0, C * share - (used > 1 ? gap : 0)) : 0;
+        setArc(x.el, len, C);
+        x.el.setAttribute('transform', `rotate(${(-90 + start * 360).toFixed(1)})`);
+        start += share;
+      }
+    } else {
+      setArc(node.arcs[0].el, active ? C * f : 0, C);
+    }
   }
+
+  // แบตเตอรี่: ระดับ SOC + สายฟ้าเมื่อกำลังชาร์จ
+  const nb = flow.nodes.battery, soc = v.soc;
+  if (nb.fill) {
+    const h = soc == null ? 0 : 38 * Math.max(0, Math.min(1, soc / 100));
+    nb.fill.setAttribute('y', (19 - h).toFixed(1)); nb.fill.setAttribute('height', Math.max(0, h).toFixed(1));
+    nb.fill.setAttribute('fill', soc != null && soc < 20 ? '#f87171' : GLOW.battery);
+    nb.fill.setAttribute('opacity', .85);
+  }
+  const charging = !nb.off && (v.battery || 0) < -5;
+  nb.bolt.classList.toggle('on', charging && !REDUCED);
+  nb.bolt.setAttribute('opacity', charging ? .95 : 0);
+  // หน้าต่างบ้านสว่างตามโหลด
+  const lf = scale(al.L);
+  flow.nodes.load.wins.forEach((w, i) => w.setAttribute('opacity', (al.L > 5 ? .25 + .7 * Math.min(1, lf * 1.4 - i * .12) : .12).toFixed(2)));
+
+  // ศูนย์กลาง: % พึ่งพาตนเอง
+  const hasLocal = !(v.avail && v.avail.solar === false && v.avail.battery === false);
+  const self = al.L > 5 ? (al.links['solar-load'] + al.links['battery-load']) / al.L * 100 : (al.S > 5 ? 100 : 0);
+  flow.hub.target = hasLocal ? self : null;
+  setArc(flow.hub.gauge, 2 * Math.PI * 51 * (hasLocal ? self : 0) / 100, 999);
+  flow.hub.spin = Object.values(flow.links).some((l) => l.dir) ? 10 + 30 * scale(al.L) : 0;
   $('#flow-clock').textContent = v.clock || '';
 }
 
 function tickFlow(now) {
   const dt = Math.min(0.1, (now - flow.last) / 1000);
   flow.last = now;
+  const ease = Math.min(1, dt * 5);
   for (const link of Object.values(flow.links)) {
-    link.phase = (link.phase + link.speed * dt * (90 / link.len) * 1.6) % 1;
-    link.dots.forEach((d, i) => {
-      if (i >= link.n) { d.setAttribute('opacity', 0); return; }
-      let p = (link.phase + i / link.n) % 1;
-      if (link.dir < 0) p = 1 - p;
-      const x = link.x1 + (link.x2 - link.x1) * p, y = link.y1 + (link.y2 - link.y1) * p;
-      const fade = Math.min(1, Math.min(p, 1 - p) * 8);
-      d.setAttribute('cx', x.toFixed(1)); d.setAttribute('cy', y.toFixed(1)); d.setAttribute('opacity', (0.95 * fade).toFixed(2));
+    const L = link.s.len;
+    link.dash = (link.dash - link.dir * link.px * .55 * dt) % 1000;
+    link.current.style.strokeDashoffset = link.dash.toFixed(1);
+    if (REDUCED) {
+      // ไม่มีอนิเมชั่น: วางจุดนิ่งตามแนวเส้น
+      link.comets.forEach((c, i) => {
+        const vis = i < link.n;
+        const [x, y] = link.s.at((i + .5) / Math.max(1, link.n));
+        c.parts.forEach((p, j) => p.setAttribute('opacity', vis && j === 0 ? .9 : 0));
+        c.parts[0].setAttribute('cx', x); c.parts[0].setAttribute('cy', y);
+        c.core.setAttribute('opacity', 0);
+      });
+      continue;
+    }
+    link.phase = (link.phase + link.px * dt / L) % 1;
+    link.comets.forEach((c, i) => {
+      if (i >= link.n) {
+        if (c.vis) { c.parts.forEach((p) => p.setAttribute('opacity', 0)); c.core.setAttribute('opacity', 0); c.vis = false; }
+        return;
+      }
+      c.vis = true;
+      const u = (link.phase + i / link.n) % 1;
+      for (let j = 0; j < TAIL; j++) {
+        const uj = u - j * TAIL_GAP / L;
+        const p = c.parts[j];
+        if (uj <= 0) { p.setAttribute('opacity', 0); continue; }
+        const q = link.dir < 0 ? 1 - uj : uj;
+        const [x, y] = link.s.at(q);
+        const edge = Math.min(1, Math.min(uj, 1 - uj) * 9);
+        p.setAttribute('cx', x.toFixed(1)); p.setAttribute('cy', y.toFixed(1));
+        p.setAttribute('opacity', (edge * .95 * Math.pow(1 - j / TAIL, 1.6)).toFixed(2));
+        if (j === 0) { c.core.setAttribute('cx', x.toFixed(1)); c.core.setAttribute('cy', y.toFixed(1)); c.core.setAttribute('opacity', (edge * .9).toFixed(2)); }
+      }
     });
   }
+  for (const node of Object.values(flow.nodes)) {
+    if (!REDUCED && node.spin) {
+      node.rot = (node.rot + node.spin * dt) % 360;
+      node.orbit.setAttribute('transform', `rotate(${node.rot.toFixed(1)})`);
+      if (node.rays) node.rays.setAttribute('transform', `rotate(${(node.rot * .5).toFixed(1)})`);
+    }
+    // ตัวเลขนับขึ้น/ลงแบบนุ่มนวล
+    let txt;
+    if (node.off) txt = 'ไม่มีเซนเซอร์';
+    else if (node.target == null) txt = '—';
+    else { node.disp += (node.target - node.disp) * (REDUCED ? 1 : ease); txt = fmtW(node.disp); }
+    if (txt !== node.shown) { node.val.textContent = txt; node.shown = txt; }
+  }
+  const hub = flow.hub;
+  if (!REDUCED && hub.spin) { hub.rot = (hub.rot - hub.spin * dt) % 360; hub.horbit.setAttribute('transform', `rotate(${hub.rot.toFixed(1)})`); }
+  let ht = '—';
+  if (hub.target != null) { hub.disp += (hub.target - hub.disp) * (REDUCED ? 1 : ease); ht = Math.round(hub.disp) + '%'; }
+  if (ht !== hub.shown) { hub.hval.textContent = ht; hub.shown = ht; }
   requestAnimationFrame(tickFlow);
 }
 

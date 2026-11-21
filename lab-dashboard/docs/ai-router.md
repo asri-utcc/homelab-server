@@ -51,11 +51,18 @@
   (agy / claude CLI / DeepSeek API แบบไม่ใช้เครื่องมือ); ถ้า router ล่ม → ใช้ `gemini-3.8-flash-low`
 
 ## หลายบัญชี Google
-- บัญชีหลัก = `$HOME` ปกติ
+- บัญชีหลัก (Google#1) = `$HOME` ปกติ
 - บัญชีเพิ่ม = โฟลเดอร์ใน `~/.agy-profiles/<ชื่อ>/` (เรียงตามชื่อ = Google#2, #3 …)
-  ล็อกอิน: `mkdir -p ~/.agy-profiles/acc2 && HOME=~/.agy-profiles/acc2 ~/.local/bin/agy`
-- ระบบเห็นบัญชีเมื่อมีไฟล์ `.gemini/antigravity-cli/antigravity-oauth-token`
+- ระบบเห็นบัญชีเมื่อมีไฟล์ `.gemini/antigravity-cli/antigravity-oauth-token` — อ่านรายชื่อสดทุกครั้ง **ไม่ต้อง restart dashboard**
 - `agy` ถูก spawn ด้วย `HOME=<บัญชี>`; ห้องแชทที่สลับบัญชีจะเริ่ม conversation ใหม่พร้อมสรุปบริบท 6 ข้อความล่าสุด
+- จัดการด้วยคำสั่ง `agy-account`:
+  - `agy-account login [ชื่อ]` — ล็อกอินบัญชีใหม่ลง `~/.agy-profiles/<ชื่อ>` (ไม่แตะบัญชีหลัก, ปฏิเสธอีเมลซ้ำ)
+  - `agy-account list` — ดูบัญชีที่ router เห็น (g1, g2, …)
+  - `agy-account use <ชื่อ>` — สลับ token กับบัญชีหลัก (ให้บัญชีนั้นถูกใช้ก่อน)
+  - `agy-account remove <ชื่อ>` — ถอดออกจาก router (ย้ายไปเก็บแบบซ่อน ไม่ลบทิ้ง)
+  - `agy-account doctor` — ตรวจสิทธิ์ไฟล์ + อีเมลซ้ำ
+- ปัจจุบัน: Google#1 = asri.utcc@gmail.com · Google#2 = j.hudajuma@gmail.com (`acc2`)
+- ลำดับผู้สมัครเป็นแบบ "Google#1 ก่อน": โมเดลเดียวกันจะใช้ g1 จนเหลือ ≤ 20% แล้วเลื่อนไป g2 (และข้ามบัญชีที่เหลือ ≤ 5%)
 
 ## สิ่งที่ผู้ใช้เห็น
 - คำตอบทุกครั้งขึ้นต้นด้วยป้าย เช่น

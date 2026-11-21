@@ -740,7 +740,7 @@ function buildSubagentDirective(plan) {
 
 // ── ⑤ แผนทีมข้ามค่าย (Architect: Claude Opus → Workers: Gemini G1/G2 → Reviewer: Claude Opus) ──
 // Fallback หลักเมื่อ Claude Opus ไม่พร้อม/โควตาวิกฤติ: เปลี่ยนเป็น Gemini 4 Neon (ไม่ใช่ Hydrogen)
-const CROSS_TEAM_MIN_COMPLEXITY = 70;
+const CROSS_TEAM_MIN_COMPLEXITY = 65;
 const WORKER_FAMILY_CHAINS = {
     neon: ['gemini-neon', 'gemini-hydrogen', 'gemini-argon', 'gemini-flash', 'claude-sonnet', 'claude-code-sonnet'],
     hydrogen: ['gemini-hydrogen', 'gemini-neon', 'gemini-flash', 'gemini-argon', 'claude-sonnet', 'claude-code-sonnet'],
@@ -809,7 +809,7 @@ function pickCrossRoleQueue(candidates, { tier = 'high' } = {}) {
 }
 
 /**
- * สร้างแผนทีมข้ามค่าย: เปิดใช้เมื่อเป็นงาน chat ที่ซับซ้อนสูง (>= 70 หรือแบ่งงานได้ >= 65)
+ * สร้างแผนทีมข้ามค่าย: เปิดใช้เมื่อเป็นงาน chat ที่ซับซ้อน >= 65
  * หรือเมื่อบังยีระบุแท็ก #ทีมข้ามค่าย (และปิดเมื่อระบุ #เดี่ยว)
  */
 function planTeamPipeline(cls, candidates, overrides = {}, source = 'chat') {
@@ -836,7 +836,7 @@ function planTeamPipeline(cls, candidates, overrides = {}, source = 'chat') {
         && overrides.mode !== 'critical'
         && workerAccounts.length > 0
         && hasHealthyWorkerAcc
-        && ((cls.complexity || 0) >= CROSS_TEAM_MIN_COMPLEXITY || (cls.parallelizable && (cls.complexity || 0) >= 65 && (cls.subtasks || 0) >= 2));
+        && (cls.complexity || 0) >= CROSS_TEAM_MIN_COMPLEXITY;
 
     const enabled = Boolean((overrides.team || autoEligible) && roleQueue.length > 0);
     if (!enabled) {

@@ -2995,7 +2995,7 @@ body::before {
     btnQueueClear.addEventListener('click', async () => {
       if (!confirm('ต้องการล้างคำสั่งที่รออยู่ในคิวทั้งหมดใช่หรือไม่?')) return;
       try {
-        const res = await fetch('/api/gemini/queue/clear', { method: 'POST' });
+        const res = await fetch('/api/gemini/queue/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentSessionId }) });
         const data = await res.json();
         if (data.ok) renderQueue([]);
       } catch (err) {
@@ -3039,7 +3039,7 @@ body::before {
 
   async function fetchQueue() {
     try {
-      const res = await fetch('/api/gemini/queue');
+      const res = await fetch('/api/gemini/queue?sessionId=' + encodeURIComponent(currentSessionId || ''));
       if (res.ok) {
         const data = await res.json();
         if (data.queue) renderQueue(data.queue);
@@ -5543,6 +5543,7 @@ body::before {
         if (data.job && data.job.runningSessionIds) {
           updateRunningSessionsBadge(data.job.runningSessionIds);
         }
+        fetchQueue();
         if (!Array.isArray(cachedSessions) || cachedSessions.length === 0) {
           fetch('/api/gemini/sessions').then(r => r.json()).then(d => {
             if (d && d.ok && Array.isArray(d.sessions)) {
@@ -5576,6 +5577,7 @@ body::before {
     currentSessionId = sid;
     localStorage.setItem('core_active_session', sid);
     if (modalSessions) modalSessions.classList.remove('is-open');
+    renderQueue([]); // คิวแยกตามห้อง: ล้างของห้องเก่าออกก่อน แล้วโหลดคิวของห้องใหม่
 
     try {
       const res = await fetch('/api/gemini/session?id=' + encodeURIComponent(sid));
@@ -5595,6 +5597,8 @@ body::before {
       if (data.job && data.job.runningSessionIds) {
         updateRunningSessionsBadge(data.job.runningSessionIds);
       }
+      renderQueue(data.job && Array.isArray(data.job.queue) ? data.job.queue : []);
+      fetchQueue();
       if (data.job && data.job.status === 'running') {
         currentTurnJobId = data.job.id;
         const allMsgs = msgList.querySelectorAll('.msg');
@@ -6821,6 +6825,7 @@ body::before {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            sessionId: currentSessionId,
             prompt,
             images: attachedImages,
             mode: currentMode,
@@ -6926,7 +6931,7 @@ body::before {
 
       // Check if queue has more items waiting on server:
       try {
-        const qRes = await fetch('/api/gemini/queue').then(r => r.json()).catch(() => ({ queue: [] }));
+        const qRes = await fetch('/api/gemini/queue?sessionId=' + encodeURIComponent(currentSessionId || '')).then(r => r.json()).catch(() => ({ queue: [] }));
         if (qRes.queue && qRes.queue.length > 0) {
           renderQueue(qRes.queue);
           isSseActive = false;

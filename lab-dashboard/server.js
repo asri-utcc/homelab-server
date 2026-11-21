@@ -2018,7 +2018,7 @@ const server = http.createServer(async (req, res) => {
         // ── Autonomous Task Queue Endpoints ─────────────────────────
         if (p === '/api/gemini/queue') {
             if (req.method === 'GET') {
-                return sendJson(res, 200, { queue: geminiManager.getQueue() });
+                return sendJson(res, 200, { queue: geminiManager.getQueue(url.searchParams.get('sessionId') || null) });
             }
             if (req.method === 'POST') {
                 const body = await readJsonBody(req);
@@ -2054,7 +2054,8 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 200, result);
         }
         if (req.method === 'POST' && p === '/api/gemini/queue/clear') {
-            const result = await geminiManager.clearQueue();
+            const body = await readJsonBody(req).catch(() => ({}));
+            const result = await geminiManager.clearQueue((body && body.sessionId) || null);
             return sendJson(res, 200, result);
         }
 

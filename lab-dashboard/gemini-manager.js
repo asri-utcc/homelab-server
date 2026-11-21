@@ -56,7 +56,8 @@ const activeRuns = new Map(); // sessionId -> { child, job }
 const lastJobs = new Map();   // sessionId -> last job object
 
 let taskQueue = [];
-let isProcessingQueue = false;
+// คิวงานแยกตามห้องแชท: ทุกรายการมี sessionId, แต่ละห้องรันคิวของตัวเองอิสระ
+const queueStarting = new Set(); // sessionId ที่กำลังดึงงานจากคิวขึ้นมารัน (กันเริ่มซ้ำ)
 
 function loadQueueSync() {
     try {
@@ -80,8 +81,10 @@ async function saveQueue() {
     }
 }
 
-function getQueue() {
-    return taskQueue.map((item, idx) => ({ ...item, order: idx + 1 }));
+// getQueue(sessionId) → คิวเฉพาะห้องนั้น (เรียงลำดับ #1.. ต่อห้อง); ไม่ส่ง sessionId = คิวทุกห้อง
+function getQueue(sessionId = null) {
+    const items = sessionId ? taskQueue.filter((t) => t.sessionId === sessionId) : taskQueue;
+    return items.map((item, idx) => ({ ...item, order: idx + 1 }));
 }
 
 async function saveUploadedImage(dataUrl, originalName = 'image.png') {
@@ -108,30 +111,33 @@ async function saveUploadedImage(dataUrl, originalName = 'image.png') {
     };
 }
 
-async function enqueueTask({ prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high' }) {
+async function enqueueTask({ sessionId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = null }) {
     const cleanImages = Array.isArray(images) ? images : [];
     const cleanPrompt = (prompt || '').trim() || (cleanImages.length > 0 ? 'ช่วยดูและวิเคราะห์รูปภาพที่แนบมานี้หน่อย' : '');
     if (!cleanPrompt) throw new Error('ข้อความคำสั่งว่างเปล่า ไม่สามารถเพิ่มเข้าคิวได้');
 
+    const sid = resolveSessionId(sessionId);
+    const sessMeta = getSessionMetaSync(sid);
     const item = {
         id: 'task_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        sessionId: sid,
         prompt: cleanPrompt,
         images: cleanImages,
         mode: mode || 'exec',
         cwd: cwd || PROJECTS_BASE,
-        model: model || 'gemini-4-hydrogen-high',
+        model: model || (sessMeta && sessMeta.model) || getDefaultModel(),
         createdAt: Date.now()
     };
 
     taskQueue.push(item);
     await saveQueue();
 
-    // If AI is currently idle, trigger execution of this queued task immediately
-    if (!activeChild && (!activeJob || activeJob.status !== 'running')) {
-        setImmediate(processNextInQueue);
+    // ถ้าห้องนี้ว่างอยู่ ให้เริ่มรันงานจากคิวของห้องนี้ทันที (ไม่สนว่าห้องอื่นกำลังรันอยู่หรือไม่)
+    if (!activeRuns.has(sid)) {
+        setImmediate(() => processNextInQueue(sid));
     }
 
-    return { ok: true, task: item, queue: getQueue() };
+    return { ok: true, task: item, queue: getQueue(sid) };
 }
 
 async function updateQueueTask(id, updates = {}) {
@@ -149,73 +155,99 @@ async function updateQueueTask(id, updates = {}) {
     taskQueue[idx].updatedAt = Date.now();
 
     await saveQueue();
-    return { ok: true, task: taskQueue[idx], queue: getQueue() };
+    return { ok: true, task: taskQueue[idx], queue: getQueue(taskQueue[idx].sessionId) };
 }
 
 async function removeQueueTask(id) {
+    const task = taskQueue.find(t => t.id === id);
+    const sid = task ? task.sessionId : null;
     const prevLen = taskQueue.length;
     taskQueue = taskQueue.filter(t => t.id !== id);
     if (taskQueue.length !== prevLen) {
         await saveQueue();
     }
-    return { ok: true, queue: getQueue() };
+    return { ok: true, queue: getQueue(sid) };
 }
 
-async function clearQueue() {
-    taskQueue = [];
+// ล้างคิว: ส่ง sessionId = ล้างเฉพาะห้องนั้น, ไม่ส่ง = ล้างทุกห้อง
+async function clearQueue(sessionId = null) {
+    if (sessionId) {
+        taskQueue = taskQueue.filter(t => t.sessionId !== sessionId);
+    } else {
+        taskQueue = [];
+    }
     await saveQueue();
-    return { ok: true, queue: [] };
+    return { ok: true, queue: sessionId ? getQueue(sessionId) : [] };
 }
 
+// สลับลำดับภายในห้องเดียวกันเท่านั้น
 async function reorderQueue(id, direction) {
-    const idx = taskQueue.findIndex(t => t.id === id);
-    if (idx === -1) return { ok: false, error: 'ไม่พบงานในคิว' };
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= taskQueue.length) return { ok: false, error: 'ไม่สามารถย้ายลำดับได้' };
-    const temp = taskQueue[idx];
-    taskQueue[idx] = taskQueue[targetIdx];
-    taskQueue[targetIdx] = temp;
+    const task = taskQueue.find(t => t.id === id);
+    if (!task) return { ok: false, error: 'ไม่พบงานในคิว' };
+    const sameIdx = [];
+    taskQueue.forEach((t, i) => { if (t.sessionId === task.sessionId) sameIdx.push(i); });
+    const pos = sameIdx.findIndex(i => taskQueue[i].id === id);
+    const tpos = direction === 'up' ? pos - 1 : pos + 1;
+    if (tpos < 0 || tpos >= sameIdx.length) return { ok: false, error: 'ไม่สามารถย้ายลำดับได้' };
+    const a = sameIdx[pos], b = sameIdx[tpos];
+    const temp = taskQueue[a];
+    taskQueue[a] = taskQueue[b];
+    taskQueue[b] = temp;
     await saveQueue();
-    return { ok: true, queue: getQueue() };
+    return { ok: true, queue: getQueue(task.sessionId) };
 }
 
-async function processNextInQueue() {
-    if (activeChild || (activeJob && activeJob.status === 'running')) {
-        return; // Process currently busy
-    }
-    if (taskQueue.length === 0) {
-        return; // No tasks in queue
-    }
-    if (isProcessingQueue) return;
-    isProcessingQueue = true;
+// ดึงงานถัดไปจากคิว "ของแต่ละห้อง" ขึ้นมารัน
+//  - ห้องที่ว่าง (ไม่มี run ค้างอยู่) และมีงานในคิว จะเริ่มรันได้ทันที โดยไม่รอห้องอื่น
+//  - onlySid = จำกัดเฉพาะห้องนั้น, ไม่ส่ง = ไล่ดูทุกห้องที่มีงานค้าง
+async function processNextInQueue(onlySid = null) {
+    if (taskQueue.length === 0) return;
 
-    const nextTask = taskQueue.shift();
-    await saveQueue();
+    // งานเก่าที่ยังไม่มี sessionId (ก่อนอัปเกรด) → ผูกกับห้องล่าสุด
+    let legacyFixed = false;
+    for (const t of taskQueue) {
+        if (!t.sessionId) { t.sessionId = resolveSessionId(null); legacyFixed = true; }
+    }
+    if (legacyFixed) await saveQueue();
 
-    try {
-        console.log(`[GeminiManager] Running next task from queue (${nextTask.id}): "${nextTask.prompt.substring(0, 45)}..." (Remaining: ${taskQueue.length})`);
-        executePrompt(
-            {
-                prompt: nextTask.prompt,
-                images: Array.isArray(nextTask.images) ? nextTask.images : [],
-                mode: nextTask.mode,
-                cwd: nextTask.cwd,
-                model: nextTask.model,
-                resetSession: false
-            },
-            (type, text) => {
-                // Stream chunks internally stored in activeJob.output
-            },
-            (exitCode, error) => {
-                isProcessingQueue = false;
+    const sids = [...new Set(taskQueue.map((t) => t.sessionId))];
+    for (const sid of sids) {
+        if (onlySid && sid !== onlySid) continue;
+        if (activeRuns.has(sid) || queueStarting.has(sid)) continue; // ห้องนี้ยังไม่ว่าง
+        const idx = taskQueue.findIndex((t) => t.sessionId === sid);
+        if (idx === -1) continue;
+
+        queueStarting.add(sid);
+        const safetyRelease = setTimeout(() => queueStarting.delete(sid), 20000);
+        const nextTask = taskQueue.splice(idx, 1)[0];
+        await saveQueue();
+
+        const release = () => { clearTimeout(safetyRelease); queueStarting.delete(sid); };
+        try {
+            console.log(`[GeminiManager] Running next task from queue [${sid}] (${nextTask.id}): "${nextTask.prompt.substring(0, 45)}..." (Remaining in room: ${getQueue(sid).length}, total: ${taskQueue.length})`);
+            executePrompt(
+                {
+                    sessionId: sid,
+                    prompt: nextTask.prompt,
+                    images: Array.isArray(nextTask.images) ? nextTask.images : [],
+                    mode: nextTask.mode,
+                    cwd: nextTask.cwd,
+                    model: nextTask.model || getDefaultModel(),
+                    resetSession: false
+                },
+                () => { /* output เก็บอยู่ใน job ของห้องนั้น */ },
+                () => { release(); }
+            );
+        } catch (err) {
+            release();
+            console.error(`[GeminiManager] Error executing queued task [${sid}]:`, err.message);
+            if (/กำลังประมวลผลอยู่/.test(err.message)) {
+                // ห้องยังไม่ว่างจริง → คืนงานกลับหัวคิว แล้วรอให้รอบที่จบเรียกต่อเอง
+                taskQueue.unshift(nextTask);
+                await saveQueue();
             }
-        );
-    } catch (err) {
-        console.error('[GeminiManager] Error executing queued task:', err.message);
-        isProcessingQueue = false;
-        setTimeout(() => {
-            processNextInQueue();
-        }, 1000);
+            // error อื่น (เช่น ยังไม่ล็อกอิน) → ทิ้งงานนั้น ไม่วนซ้ำไม่รู้จบ; ไปห้องถัดไปต่อ
+        }
     }
 }
 
@@ -365,7 +397,7 @@ function getActiveJob(sessionId = null) {
             sessionId,
             activeRunning: !!run,
             runningSessionIds,
-            queue: getQueue(),
+            queue: getQueue(sessionId),
             liveThought: resolveJobLiveThought(job, sess)
         };
     }
@@ -378,7 +410,7 @@ function getActiveJob(sessionId = null) {
         sessionId: job.sessionId || latestSid,
         activeRunning: activeRuns.size > 0,
         runningSessionIds,
-        queue: getQueue(),
+        queue: latestSid ? getQueue(latestSid) : [],
         liveThought: resolveJobLiveThought(job, sess)
     };
 }
@@ -635,6 +667,10 @@ function deleteSession(sessionId) {
         abortActive(sessionId);
     }
     lastJobs.delete(sessionId);
+    if (taskQueue.some((t) => t.sessionId === sessionId)) {
+        taskQueue = taskQueue.filter((t) => t.sessionId !== sessionId);
+        saveQueue();
+    }
     list.splice(idx, 1);
     const file = path.join(SESSIONS_DIR, `${path.basename(sessionId)}.json`);
     try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}

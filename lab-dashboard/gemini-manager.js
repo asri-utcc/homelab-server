@@ -27,6 +27,7 @@ const os = require('os');
 const crypto = require('crypto');
 const deepseekAgent = require('./deepseek-agent');
 const aiRouter = require('./ai-router');
+const crossTeam = require('./cross-team-orchestrator');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
@@ -1102,6 +1103,100 @@ function executeAuto(params, onChunk, onDone) {
                 finish(1, err.message, lastJobs.get(sid) || placeholder);
             }
         };
+
+        // 🤝 Cross-Provider Multi-Agent Pipeline (Architect Opus/Neon → Workers Gemini G1+G2 → Reviewer Opus/Neon)
+        if (decision.teamPlan && decision.teamPlan.enabled) {
+            let safeCwd = PROJECTS_BASE;
+            if (params.cwd && fs.existsSync(params.cwd)) {
+                safeCwd = params.cwd;
+            } else if (params.cwd && fs.existsSync(path.join(PROJECTS_BASE, params.cwd))) {
+                safeCwd = path.join(PROJECTS_BASE, params.cwd);
+            }
+            const imagePaths = images
+                .map((img) => (typeof img === 'string' ? img : img && img.path))
+                .filter((p) => p && fs.existsSync(p));
+
+            // Pre-save user prompt and snapshot prior history before Stage 1
+            let priorHistory = [];
+            try {
+                const hist = loadSessionMessagesSync(sid);
+                const last = hist[hist.length - 1];
+                if (!last || last.role !== 'user' || last.content !== params.prompt) {
+                    priorHistory = hist.slice(-6);
+                    const entry = { role: 'user', content: params.prompt, timestamp: placeholder.startedAt };
+                    if (images.length > 0) entry.images = images;
+                    hist.push(entry);
+                    saveSessionMessagesSync(sid, hist);
+                } else {
+                    priorHistory = hist.slice(0, -1).slice(-6);
+                }
+            } catch (e) {
+                console.error('[GeminiManager] Failed to pre-save cross-team prompt:', e.message);
+            }
+
+            const sessMeta = getSessionMetaSync(sid);
+            if (sessMeta) {
+                sessMeta.cwd = safeCwd;
+                sessMeta.mode = params.mode || sessMeta.mode;
+                if (params.resetSession) {
+                    sessMeta.agyConversationId = null;
+                    sessMeta.claudeSessionId = null;
+                    priorHistory = [];
+                }
+                sessMeta.needsAgyBridge = true;
+                sessMeta.needsClaudeBridge = true;
+                saveSessionsIndexSync();
+            }
+
+            const teamJob = {
+                id: jobId,
+                sessionId: sid,
+                status: 'running',
+                prompt: params.prompt,
+                images,
+                output: '',
+                startedAt: placeholder.startedAt,
+                finishedAt: null,
+                error: null,
+                exitCode: null,
+                mode: params.mode || 'exec',
+                cwd: safeCwd,
+                model: aiRouter.AUTO_MODEL_ID,
+                liveThought: placeholder.liveThought
+            };
+            activeJob = teamJob;
+            lastJobs.set(sid, teamJob);
+
+            const teamHandle = crossTeam.runCrossTeamPipeline({
+                decision,
+                prompt: params.prompt,
+                imagePaths,
+                mode: params.mode || 'exec',
+                cwd: safeCwd,
+                history: priorHistory,
+                job: teamJob,
+                onChunk,
+                onDone: (code, err, meta) => {
+                    activeRuns.delete(sid);
+                    teamJob.liveThought = null;
+                    teamJob.exitCode = code;
+                    teamJob.finishedAt = Date.now();
+                    if (code !== 0 && !aborted && meta && meta.canFallbackSingle && decision.candidates.length > 0) {
+                        const warn = `\n\n> ⚠️ ทีมข้ามค่ายเริ่มด่านวางแผนไม่สำเร็จ (${String(err || '').slice(0, 90)}) — สลับไปรันแบบเอเยนต์เดี่ยวอัตโนมัติ...\n\n`;
+                        onChunk('stdout', warn);
+                        return runAttempt(0, 'สลับเป็นโหมดเดี่ยว (ทีมข้ามค่ายไม่พร้อม)');
+                    }
+                    teamJob.status = code === 130 ? 'aborted' : (code === 0 ? 'completed' : 'error');
+                    teamJob.error = code === 0 ? null : (err || `Exit code ${code}`);
+                    lastJobs.set(sid, teamJob);
+                    finish(code, teamJob.error, teamJob);
+                }
+            });
+            innerHandle = teamHandle;
+            activeRuns.set(sid, { abort, job: teamJob });
+            return;
+        }
+
         runAttempt(0, '');
     })().catch((err) => {
         console.error('[GeminiManager] Auto routing crashed:', err);
@@ -1504,11 +1599,12 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
             activeRuns.delete(sid);
             job.liveThought = null;
-            job.exitCode = code;
+            const effectiveCode = (code === 0 && job.error) ? 1 : code;
+            job.exitCode = effectiveCode;
             if (job.status !== 'aborted') {
-                job.status = (code === 0) ? 'completed' : 'error';
-                if (code !== 0 && !job.error) {
-                    job.error = claudeStderrTail.trim() || `Exit code ${code}`;
+                job.status = (effectiveCode === 0) ? 'completed' : 'error';
+                if (effectiveCode !== 0 && !job.error) {
+                    job.error = claudeStderrTail.trim() || `Exit code ${effectiveCode}`;
                 }
             }
             job.finishedAt = Date.now();
@@ -1516,7 +1612,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist Claude job:', err.message);
             });
-            onDone(code, job.error);
+            onDone(effectiveCode, job.error);
             setTimeout(() => { processNextInQueue(); }, 600);
         });
 

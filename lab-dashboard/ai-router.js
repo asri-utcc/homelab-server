@@ -551,6 +551,8 @@ const CLASSIFIER_VERSION = 'v2';
 const GREETING_RE = /^(สวัสดี|หวัดดี|hello|hi|hey|ขอบคุณ|thanks?|thank you|ok|โอเค|ครับ|ค่ะ|ดีมาก|เยี่ยม)/i;
 const TIER_TAG_RE = /#(สูงมาก|สูง|กลาง|ต่ำ|xhigh|high|medium|low)(?![\p{L}\p{M}\p{N}_])/iu;
 const MODE_TAG_RE = /#(ประหยัดสุด|ประหยัด|ถนอม|เต็มที่|ฟุ่มเฟือย|critical|conserve|boost|surge)(?![\p{L}\p{M}\p{N}_])/iu;
+const TEAM_TAG_RE = /#(ทีมข้ามค่าย|ข้ามค่าย|cross-team|team)(?![\p{L}\p{M}\p{N}_])/iu;
+const SINGLE_TAG_RE = /#(เดี่ยว|single)(?![\p{L}\p{M}\p{N}_])/iu;
 const TIER_FROM_TAG = { 'สูงมาก': 'xhigh', 'สูง': 'high', 'กลาง': 'medium', 'ต่ำ': 'low', xhigh: 'xhigh', high: 'high', medium: 'medium', low: 'low' };
 const MODE_FROM_TAG = { 'ประหยัดสุด': 'critical', critical: 'critical', 'ประหยัด': 'conserve', 'ถนอม': 'conserve', conserve: 'conserve', 'ฟุ่มเฟือย': 'boost', boost: 'boost', 'เต็มที่': 'surge', surge: 'surge' };
 
@@ -736,6 +738,210 @@ function buildSubagentDirective(plan) {
     return '';
 }
 
+// ── ⑤ แผนทีมข้ามค่าย (Architect: Claude Opus → Workers: Gemini G1/G2 → Reviewer: Claude Opus) ──
+// Fallback หลักเมื่อ Claude Opus ไม่พร้อม/โควตาวิกฤติ: เปลี่ยนเป็น Gemini 4 Neon (ไม่ใช่ Hydrogen)
+const CROSS_TEAM_MIN_COMPLEXITY = 70;
+const WORKER_FAMILY_CHAINS = {
+    neon: ['gemini-neon', 'gemini-hydrogen', 'gemini-argon', 'gemini-flash', 'claude-sonnet', 'claude-code-sonnet'],
+    hydrogen: ['gemini-hydrogen', 'gemini-neon', 'gemini-flash', 'gemini-argon', 'claude-sonnet', 'claude-code-sonnet'],
+    flash: ['gemini-flash', 'gemini-hydrogen', 'gemini-neon', 'claude-code-haiku'],
+    argon: ['gemini-argon', 'gemini-neon', 'gemini-hydrogen', 'gemini-flash']
+};
+const WORKER_DEFAULT_TIER = { flash: 'low', hydrogen: 'medium', argon: 'medium', neon: 'high' };
+
+function normalizeWorkerFamily(raw) {
+    const s = String(raw || '').trim().toLowerCase();
+    if (/neon/.test(s)) return 'neon';
+    if (/hydrogen/.test(s)) return 'hydrogen';
+    if (/flash/.test(s)) return 'flash';
+    if (/argon/.test(s)) return 'argon';
+    return 'neon';
+}
+
+function upgradeNeonRoleCandidate(cand, tier = 'high') {
+    if (!cand || cand.family !== 'gemini-neon') return cand;
+    const mode = (cand.budget && cand.budget.mode) || 'normal';
+    let targetEffort = cand.effort || 'high';
+    if (mode === 'critical') {
+        targetEffort = targetEffort === 'low' ? 'medium' : targetEffort;
+    } else if (mode === 'conserve') {
+        targetEffort = TIERS.indexOf(targetEffort) < TIERS.indexOf('medium') ? 'medium' : targetEffort;
+    } else {
+        const minEffort = (tier === 'xhigh' || mode === 'surge' || mode === 'boost') ? 'xhigh' : 'high';
+        if (TIERS.indexOf(targetEffort) < TIERS.indexOf(minEffort)) targetEffort = minEffort;
+    }
+    const model = `gemini-4-neon-${targetEffort}`;
+    if (model === cand.model) return cand;
+    return { ...cand, effort: targetEffort, model, label: modelLabel(model) };
+}
+
+/**
+ * จัดลำดับผู้สมัครสำหรับบทบาท Architect / Reviewer:
+ *   1. Claude Opus (Claude Code หรือ Antigravity) ที่ไม่ติด critical
+ *   2. Fallback หลัก: Gemini 4 Neon (High/XHigh) ที่ไม่ติด critical (ตามที่บังยีระบุ)
+ *   3. Claude Sonnet / Gemini Hydrogen ที่ไม่ติด critical
+ *   4. Claude Opus / Gemini 4 Neon ที่ติด critical (ยังคงลำดับ Opus → Neon)
+ *   5. อื่นๆ (ไม่รวม paid) → DeepSeek เป็นอันดับสุดท้าย
+ */
+function pickCrossRoleQueue(candidates, { tier = 'high' } = {}) {
+    const list = (candidates || []).filter((c) => !c.nativeTeam);
+    const isOpus = (c) => c.family === 'claude-code-opus' || c.family === 'claude-opus' || /opus/i.test(c.model || '');
+    const isNeon = (c) => c.family === 'gemini-neon' || /neon/i.test(c.model || '');
+    const isCritical = (c) => (c.budget && c.budget.mode === 'critical') || (typeof c.remainingPct === 'number' && c.remainingPct < 10);
+
+    const tierOf = (c) => {
+        if (c.paid) return 7;
+        if (isOpus(c) && !isCritical(c)) return 1;
+        if (isNeon(c) && !isCritical(c)) return 2;
+        if ((c.family === 'claude-code-sonnet' || c.family === 'claude-sonnet' || c.family === 'gemini-hydrogen') && !isCritical(c)) return 3;
+        if (isOpus(c)) return 4;
+        if (isNeon(c)) return 5;
+        return 6;
+    };
+
+    return list
+        .map((c, idx) => {
+            const adj = isNeon(c) ? upgradeNeonRoleCandidate(c, tier) : c;
+            return { c: adj, tier: tierOf(adj), idx };
+        })
+        .sort((a, b) => (a.tier - b.tier) || ((b.c.score || 0) - (a.c.score || 0)) || (a.idx - b.idx))
+        .map((x) => x.c);
+}
+
+/**
+ * สร้างแผนทีมข้ามค่าย: เปิดใช้เมื่อเป็นงาน chat ที่ซับซ้อนสูง (>= 70 หรือแบ่งงานได้ >= 65)
+ * หรือเมื่อบังยีระบุแท็ก #ทีมข้ามค่าย (และปิดเมื่อระบุ #เดี่ยว)
+ */
+function planTeamPipeline(cls, candidates, overrides = {}, source = 'chat') {
+    const hasSub = (candidates || []).some((c) => !c.paid);
+    if (!hasSub || overrides.single) {
+        return { enabled: false, reason: overrides.single ? 'ผู้ใช้ระบุ #เดี่ยว' : 'ไม่มีบัญชีรายเดือนพร้อมใช้', architects: [], reviewers: [], workerAccounts: [], maxParallelWorkers: 1 };
+    }
+    const tier = (overrides && overrides.tier) || cls.tier || 'medium';
+    const roleQueue = pickCrossRoleQueue(candidates, { tier });
+    // บัญชี Google ที่ pool gemini พร้อมใช้ เรียงตาม score สูงสุด (ใช้กระจายโหลด Worker G1/G2)
+    const workerAccounts = [];
+    const seenAcc = new Set();
+    for (const c of (candidates || [])) {
+        if (c.engine !== 'agy' || c.nativeTeam || agyPoolId(c.model) !== 'gemini' || seenAcc.has(c.account)) continue;
+        seenAcc.add(c.account);
+        workerAccounts.push({ account: c.account, accountLabel: c.accountLabel, home: c.home, remainingPct: c.remainingPct, budget: c.budget, score: c.score });
+    }
+    const hasHealthyWorkerAcc = workerAccounts.some((w) => !w.budget || w.budget.mode !== 'critical');
+
+    const isDeepWork = cls.type === 'code' || cls.type === 'analysis';
+    const autoEligible = source === 'chat'
+        && isDeepWork
+        && !['low', 'medium'].includes(tier)
+        && overrides.mode !== 'critical'
+        && workerAccounts.length > 0
+        && hasHealthyWorkerAcc
+        && ((cls.complexity || 0) >= CROSS_TEAM_MIN_COMPLEXITY || (cls.parallelizable && (cls.complexity || 0) >= 65 && (cls.subtasks || 0) >= 2));
+
+    const enabled = Boolean((overrides.team || autoEligible) && roleQueue.length > 0);
+    if (!enabled) {
+        return { enabled: false, reason: 'งานไม่ถึงเกณฑ์ทีมข้ามค่าย (รันตัวเดียวเพื่อความเร็ว)', architects: [], reviewers: [], workerAccounts, maxParallelWorkers: 1 };
+    }
+
+    return {
+        enabled: true,
+        reason: overrides.team ? 'เปิดใช้ตามแท็ก #ทีมข้ามค่าย' : `งานซับซ้อน (${cls.complexity}/100 · ${TIER_TH[tier] || tier})`,
+        architects: roleQueue,
+        reviewers: roleQueue,
+        workerAccounts,
+        maxParallelWorkers: Math.min(2, Math.max(1, workerAccounts.length))
+    };
+}
+
+/**
+ * จัดลำดับผู้สมัครสำหรับ Worker ย่อยใน Stage 2 (Neon / Hydrogen / Flash / Argon)
+ * เรียงตามลำดับตระกูลที่ Architect ร้องขอก่อน (รุ่นที่ขอไม่โดนคะแนนรุ่นอื่นแซง)
+ * ภายในตระกูลเดียวกันกระจายไปยัง preferredAccount (G1/G2) ที่ไม่ติด critical ก่อน
+ */
+async function buildWorkerCandidates(requestedFamily = 'neon', { preferredAccount = null, tier = null, qType = 'code', hasImages = false, modeOverride = null } = {}) {
+    const reqKey = normalizeWorkerFamily(requestedFamily);
+    const effTier = tier || WORKER_DEFAULT_TIER[reqKey] || 'high';
+    const chain = WORKER_FAMILY_CHAINS[reqKey];
+    const accounts = listAgyAccounts().filter((a) => a.ready);
+    const quotas = {};
+    const [, provQuotas] = await Promise.all([
+        Promise.all(accounts.map(async (a) => { quotas[a.id] = await getAccountQuota(a.id); })),
+        getProviderQuotas()
+    ]);
+    const deepseekInfo = (quotas.g1 && quotas.g1.deepseek) || (provQuotas && provQuotas.deepseek) || null;
+    const claudeWebInfo = (quotas.g1 && quotas.g1.claudeWeb) || (provQuotas && provQuotas.claudeWeb) || null;
+
+    const subs = [];
+    for (let rank = 0; rank < chain.length; rank++) {
+        const family = MODEL_FAMILIES.find((f) => f.id === chain[rank]);
+        if (!family) continue;
+        if (family.engine === 'agy') {
+            for (const acc of accounts) {
+                const probeModel = family.model || `${family.prefix}${family.variants[0]}`;
+                let budget = agyPoolBudget(quotas[acc.id], probeModel);
+                if (!budget || budget.remainingPct <= MIN_THRESHOLD) continue;
+                if (modeOverride) budget = { ...budget, mode: modeOverride };
+                const effort = pickEffort(family, effTier, budget.mode);
+                const model = family.model || `${family.prefix}${effort}`;
+                const cand = { model, engine: family.engine, account: acc.id, accountLabel: acc.label, home: acc.home };
+                if (isInCooldown(cand)) continue;
+                const sc = scoreCandidate({
+                    family, effort, budget, qType, tier: effTier,
+                    sticky: Boolean(preferredAccount && acc.id === preferredAccount),
+                    load: recentLoad(poolKey(cand))
+                });
+                const isCrit = budget.mode === 'critical' || budget.remainingPct < 10;
+                const prefMatch = Boolean(preferredAccount && acc.id === preferredAccount && !isCrit);
+                subs.push({
+                    ...cand,
+                    family: family.id,
+                    effort,
+                    remainingPct: budget.remainingPct,
+                    budget,
+                    score: sc.total,
+                    _crit: isCrit ? 1 : 0,
+                    _rank: rank,
+                    _pref: prefMatch ? 0 : 1
+                });
+            }
+        } else {
+            let budget = claudeProBudget(claudeWebInfo);
+            if (!budget || budget.remainingPct <= MIN_THRESHOLD) continue;
+            if (modeOverride) budget = { ...budget, mode: modeOverride };
+            const effort = pickEffort(family, effTier, budget.mode);
+            const model = family.model || `${family.prefix}${effort}`;
+            const cand = { model, engine: family.engine, account: 'claude-pro', accountLabel: 'Claude Pro' };
+            if (isInCooldown(cand)) continue;
+            const sc = scoreCandidate({ family, effort, budget, qType, tier: effTier, sticky: false, load: recentLoad(poolKey(cand)) });
+            const isCrit = budget.mode === 'critical' || budget.remainingPct < 10;
+            subs.push({
+                ...cand,
+                family: family.id,
+                effort,
+                remainingPct: budget.remainingPct,
+                budget,
+                score: sc.total,
+                _crit: isCrit ? 1 : 0,
+                _rank: rank,
+                _pref: 1
+            });
+        }
+    }
+
+    // เรียง: ไม่ critical ก่อน → ตระกูลที่ Architect ขอมาก่อน → บัญชีที่จัดสรร (G1/G2) → คะแนนรวม
+    subs.sort((a, b) => (a._crit - b._crit) || (a._rank - b._rank) || (a._pref - b._pref) || (b.score - a.score));
+    const out = subs.map(({ _crit, _rank, _pref, ...rest }) => rest);
+
+    if (deepseekUsable(deepseekInfo)) {
+        const order = hasImages ? DEEPSEEK_MODELS.filter((d) => d.vision) : DEEPSEEK_MODELS;
+        for (const d of order) {
+            const dsCand = { model: d.model, engine: 'deepseek', account: 'deepseek', accountLabel: 'DeepSeek (จ่ายตามใช้)', balance: deepseekInfo.totalBalance, paid: true };
+            if (!isInCooldown(dsCand)) out.push(dsCand);
+        }
+    }
+    return out.map((c) => ({ ...c, label: modelLabel(c.model) }));
+}
+
 // ── รวมทุกขั้น ────────────────────────────────────────────────────────────────
 /**
  * @param {object} opts
@@ -757,20 +963,25 @@ async function routeTask({ prompt, hasImages = false, source = 'chat', minLevel 
         const type = cls.type === 'quick' ? 'chat' : cls.type;
         cls = { ...cls, type, complexity, level: levelFromComplexity(complexity), tier: tierFromScores(type, complexity, cls.risk, cls.needs_tools) };
     }
-    // แท็กกำหนดเองในข้อความ เช่น #สูงมาก #ประหยัด
+    // แท็กกำหนดเองในข้อความ เช่น #สูงมาก #ประหยัด #ทีมข้ามค่าย #เดี่ยว
     const tierTag = text.match(TIER_TAG_RE);
     const modeTag = text.match(MODE_TAG_RE);
+    const teamTag = text.match(TEAM_TAG_RE);
+    const singleTag = text.match(SINGLE_TAG_RE);
     const overrides = {};
     if (tierTag) {
         overrides.tier = TIER_FROM_TAG[tierTag[1].toLowerCase()];
         cls = { ...cls, tier: overrides.tier, type: cls.type === 'quick' ? 'chat' : cls.type };
     }
     if (modeTag) overrides.mode = MODE_FROM_TAG[modeTag[1].toLowerCase()];
+    if (teamTag) overrides.team = true;
+    if (singleTag) overrides.single = true;
 
     const candidates = await buildCandidates(cls, { hasImages, sessionAccount, modeOverride: overrides.mode || null });
+    const teamPlan = planTeamPipeline(cls, candidates, overrides, source);
     const chosen = candidates[0] || null;
-    const subagents = planSubagents(cls, chosen);
-    notePick(chosen);
+    const subagents = teamPlan.enabled ? null : planSubagents(cls, chosen);
+    if (!teamPlan.enabled) notePick(chosen);
     const decision = {
         ok: candidates.length > 0,
         routeKey: `${cls.type}:${cls.tier}`,
@@ -779,6 +990,7 @@ async function routeTask({ prompt, hasImages = false, source = 'chat', minLevel 
         candidates,
         chosen,
         subagents,
+        teamPlan,
         tookMs: Date.now() - startedAt
     };
     logDecision({ source, prompt, decision });
@@ -826,7 +1038,26 @@ function isRetryableFailure(errorText, outputText, stderrText = '') {
     return RETRYABLE_ERR_RE.test(err) || RETRYABLE_ERR_RE.test(out) || RETRYABLE_ERR_RE.test(stderr) || (!out && !!(err || stderr));
 }
 
+function formatTeamBanner(decision, { architect, workersLabel, reviewer } = {}) {
+    const cls = (decision && decision.classification) || {};
+    const tp = (decision && decision.teamPlan) || {};
+    const arch = architect || (tp.architects && tp.architects[0]) || decision.chosen;
+    const rev = reviewer || (tp.reviewers && tp.reviewers[0]) || arch;
+    const archTxt = arch ? `**${arch.label}** (${arch.accountLabel})` : 'Claude Opus';
+    const revTxt = rev ? `**${rev.label}** (${rev.accountLabel})` : archTxt;
+    const workTxt = workersLabel || 'Gemini Neon / Hydrogen / Flash (G1+G2)';
+    const tags = [];
+    if (decision && decision.overrides) {
+        if (decision.overrides.tier) tags.push(`#${TIER_TH[decision.overrides.tier]}`);
+        if (decision.overrides.mode) tags.push({ surge: '#เต็มที่', boost: '#ฟุ่มเฟือย', conserve: '#ประหยัด', critical: '#ประหยัดสุด' }[decision.overrides.mode] || '');
+        if (decision.overrides.team) tags.push('#ทีมข้ามค่าย');
+    }
+    const why = cls.reason ? `: ${cls.reason}` : '';
+    return `> 🧠 Auto [Cross-Team] → 🏗️ วางแผน: ${archTxt} · ⚡ ทำ: **${workTxt}** · 🔍 ตรวจ: ${revTxt} — ${cls.type || 'code'} · ยาก ${cls.complexity || 75}/100 · ระดับ ${TIER_TH[cls.tier] || cls.tier || 'สูง'}${tags.filter(Boolean).length ? ' · ' + tags.filter(Boolean).join(' ') : ''}${why}\n\n`;
+}
+
 function logDecision({ source, prompt, decision, event = 'route', extra = {} }) {
+    const tp = decision && decision.teamPlan;
     const entry = {
         ts: new Date().toISOString(),
         event,
@@ -837,6 +1068,7 @@ function logDecision({ source, prompt, decision, event = 'route', extra = {} }) 
         chosen: decision && decision.chosen ? { model: decision.chosen.model, account: decision.chosen.account, remainingPct: decision.chosen.remainingPct, budget: decision.chosen.budget && decision.chosen.budget.mode, score: decision.chosen.score } : null,
         candidates: decision && Array.isArray(decision.candidates) ? decision.candidates.slice(0, 8).map((c) => `${c.model}@${c.account}${c.score !== undefined ? '=' + c.score : ''}`) : undefined,
         subagents: decision && decision.subagents ? decision.subagents : undefined,
+        teamPlan: tp && tp.enabled ? { enabled: true, reason: tp.reason, architect: tp.architects[0] && `${tp.architects[0].model}@${tp.architects[0].account}`, reviewer: tp.reviewers[0] && `${tp.reviewers[0].model}@${tp.reviewers[0].account}` } : undefined,
         overrides: decision && decision.overrides && Object.keys(decision.overrides).length ? decision.overrides : undefined,
         tookMs: decision && decision.tookMs,
         ...extra
@@ -857,11 +1089,19 @@ async function readLog(limit = 100) {
 
 module.exports = {
     AUTO_MODEL_ID,
+    CROSS_TEAM_MIN_COMPLEXITY,
     ROUTES,
     routeTask,
     classifyTask,
     buildCandidates,
+    buildWorkerCandidates,
+    normalizeWorkerFamily,
+    planTeamPipeline,
+    pickCrossRoleQueue,
+    notePick,
+    agyPoolId,
     formatBanner,
+    formatTeamBanner,
     directiveFor,
     TIER_TH,
     isRetryableFailure,

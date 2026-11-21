@@ -164,8 +164,10 @@ def _has_paid_claude_sub() -> bool:
         return False
 
 
-def build_local_fallback_candidates() -> list[dict]:
-    """Local failover list if the dashboard AI Router API is unreachable."""
+def build_local_fallback_candidates(min_level: int = 1) -> list[dict]:
+    """Local failover list if the dashboard AI Router API is unreachable.
+    Uses Gemini 4 Neon as primary quality fallback (per user preference, replacing Hydrogen).
+    """
     cands = []
     homes = []
     if os.path.exists(os.path.join("/home/dev", MAIN_TOKEN_REL)):
@@ -175,14 +177,21 @@ def build_local_fallback_candidates() -> list[dict]:
             p = os.path.join(PROFILES_DIR, name)
             if os.path.exists(os.path.join(p, MAIN_TOKEN_REL)):
                 homes.append((f"g{idx}", f"Google#{idx}", p))
-    for acc_id, acc_label, home in homes:
-        cands.append({"model": DEFAULT_MODEL, "engine": "agy", "account": acc_id, "home": home, "label": DEFAULT_MODEL, "accountLabel": acc_label})
-        cands.append({"model": "gemini-4-hydrogen-medium", "engine": "agy", "account": acc_id, "home": home, "label": "Gemini 4 Hydrogen (Medium)", "accountLabel": acc_label})
+    if min_level >= 2:
+        for acc_id, acc_label, home in homes:
+            cands.append({"model": "gemini-4-neon-high", "engine": "agy", "account": acc_id, "home": home, "label": "Gemini 4 Neon (High)", "accountLabel": acc_label})
+            cands.append({"model": "gemini-3.8-flash-medium", "engine": "agy", "account": acc_id, "home": home, "label": "Gemini 3.8 Flash (Medium)", "accountLabel": acc_label})
+    else:
+        for acc_id, acc_label, home in homes:
+            cands.append({"model": DEFAULT_MODEL, "engine": "agy", "account": acc_id, "home": home, "label": DEFAULT_MODEL, "accountLabel": acc_label})
+            cands.append({"model": "gemini-4-neon-medium", "engine": "agy", "account": acc_id, "home": home, "label": "Gemini 4 Neon (Medium)", "accountLabel": acc_label})
     if os.path.exists(CLAUDE_BIN) and _has_paid_claude_sub():
         cands.append({"model": "claude-code-sonnet", "engine": "claude-code", "account": "claude-pro", "label": "Claude Code · Sonnet", "accountLabel": "Claude Pro"})
     if read_env_value("DEEPSEEK_API_KEY"):
-        cands.append({"model": "deepseek-flash", "engine": "deepseek", "account": "deepseek", "label": "DeepSeek V4.1 Flash", "accountLabel": "DeepSeek"})
-    return cands or [{"model": DEFAULT_MODEL, "engine": "agy", "account": "g1", "home": None, "label": DEFAULT_MODEL, "accountLabel": "Google#1"}]
+        ds_model = "deepseek-v4-pro" if min_level >= 2 else "deepseek-flash"
+        ds_label = "DeepSeek V4 Pro" if min_level >= 2 else "DeepSeek V4.1 Flash"
+        cands.append({"model": ds_model, "engine": "deepseek", "account": "deepseek", "label": ds_label, "accountLabel": "DeepSeek"})
+    return cands or [{"model": "gemini-4-neon-medium", "engine": "agy", "account": "g1", "home": None, "label": "Gemini 4 Neon (Medium)", "accountLabel": "Google#1"}]
 
 
 def route_auto(route_prompt: str, min_level: int = 1) -> tuple[list[dict], str]:
@@ -194,11 +203,11 @@ def route_auto(route_prompt: str, min_level: int = 1) -> tuple[list[dict], str]:
             data = json.loads(resp.read().decode("utf-8"))
         cands = data.get("candidates") or []
         if not cands:
-            return build_local_fallback_candidates(), "router: no candidates (local fallback)"
+            return build_local_fallback_candidates(min_level), "router: no candidates (local fallback)"
         cls = data.get("classification") or {}
         return cands, f"router: {data.get('routeKey')} ({cls.get('source', '?')}) {cls.get('reason', '')}"
     except Exception as exc:
-        return build_local_fallback_candidates(), f"router unavailable ({exc})"
+        return build_local_fallback_candidates(min_level), f"router unavailable ({exc})"
 
 
 def _run_candidate(prompt: str, c: dict, timeout: int) -> str:

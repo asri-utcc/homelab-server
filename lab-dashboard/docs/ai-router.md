@@ -126,3 +126,39 @@ effort ปรับคุณภาพ (low −6, high +4, xhigh +7) และต
 - แท็กโหมดเพิ่ม: `#ประหยัดสุด` (🔴) · `#ฟุ่มเฟือย` (🟢) · `#เต็มที่` (🟣)
 - **pool Claude & GPT ในบัญชี Google** (pool เล็ก): Claude Opus/Sonnet 5.5 + GPT-OSS 120B ใช้ก้อนเดียวกัน · GPT-OSS กินโควตาน้อยมาก จึงขึ้นมาก่อน Claude ใน pool นี้เมื่องานเบา
 - ทดสอบ `assessBudget` 9 สถานการณ์ผ่านทั้งหมด (2026-11-21)
+
+## v4 (2026-11-21): ทีม AI ข้ามค่าย (Cross-Provider 3-Stage Pipeline) + Fallback เป็น Gemini 4 Neon
+ไฟล์หลัก: `cross-team-orchestrator.js` + `ai-router.js` (`planTeamPipeline`, `pickCrossRoleQueue`, `buildWorkerCandidates`) + `gemini-manager.js` (`executeAuto`) + `cron-ai-runner.py`
+
+### เกณฑ์เปิดใช้งานอัตโนมัติ
+- **งานง่าย–กลาง (< 70):** รัน **เอเยนต์เดี่ยว (Single Smart Pick)** เพื่อความเร็วสูงสุด (ไม่เสีย overhead 3 ด่าน)
+- **งานใหญ่ / ซับซ้อน:** เปิดใช้ **ทีม AI ข้ามค่าย** อัตโนมัติในหน้าแชท (`🧠 Auto`) เมื่อครบเงื่อนไข:
+  - ประเภท `code` หรือ `analysis` และระดับ `สูง` หรือ `สูงมาก`
+  - ความยาก ≥ 70 (หรือแบ่งงานได้ `parallelizable` + ยาก ≥ 65 + ≥ 2 ส่วนย่อย)
+  - มีบัญชี Google pool `gemini` ที่ไม่ติด `critical` อย่างน้อย 1 บัญชี (และผู้ใช้ไม่ได้ติด `#ประหยัดสุด` / `#เดี่ยว`)
+- **แท็กสั่งบังคับ:**
+  - `#ทีมข้ามค่าย` / `#ข้ามค่าย` / `#cross-team` / `#team` — บังคับเปิดทีม 3 ด่านแม้คะแนน < 70
+  - `#เดี่ยว` / `#single` — บังคับรันตัวเดียวแม้คะแนน ≥ 70
+
+### สายพาน 3 ด่าน
+1. **🏗️ ด่าน 1: Architect (Strict Read-Only)**
+   - **ตัวหลัก:** Claude Opus (`claude-code-opus` หรือ `claude-opus-5-5-*` ที่ไม่ติด critical)
+   - **Fallback หลัก (ตามคำสั่งบังยี):** **Gemini 4 Neon (High/XHigh)** (ไม่ใช้ Hydrogen เป็น fallback หลักแล้ว)
+   - Claude Code บังคับ `--permission-mode plan --disallowed-tools Edit,Write,NotebookEdit --no-session-persistence`
+   - สำรวจโค้ดแล้วส่งพิมพ์เขียว JSON (1–4 ข้อย่อย พร้อม `model`, `access: read|write`, `files`, `depends_on`, `instructions`)
+   - หากเป็นคำถามที่ไม่ต้องให้ Worker ลงมือ (`direct_answer: true`) ตอบจบได้ทันทีโดยไม่เสียรอบ Stage 2–3
+2. **⚡ ด่าน 2: Workers (Gemini `Neon / Hydrogen / Flash / Argon` กระจายข้าม G1 + G2)**
+   - จัดลำดับผู้สมัครตามรุ่นที่ Architect ขอ (`buildWorkerCandidates`) โดยกระจายโหลดข้ามบัญชี Google#1 และ Google#2 อัตโนมัติ
+   - **Conflict-Free Scheduler (`tasksConflict` + `runWorkerWave`):**
+     - งาน `read` ทั้งคู่ หรือ `write` ที่อยู่ **คนละไฟล์ชัดเจน** (canonical path ไม่ซ้อนทับกัน) → **รันขนานพร้อมกันข้าม G1 + G2**
+     - งาน `write` ที่แตะไฟล์/โฟลเดอร์เดียวกัน, งาน `write` ที่ไม่ระบุรายชื่อไฟล์ (`files: []`), หรือ `read` ที่ทับไฟล์ที่กำลัง `write` → **ล็อกรันเรียงตามคิว 100%** กันไฟล์ตีกันพัง
+     - ตัดวงจร dependency อัตโนมัติ (`breakDependencyCycles`) กัน deadlock
+   - หาก Worker ขัดข้องก่อนใช้เครื่องมือ (`stepsCount === 0`) หรือเป็นงาน read-only → สลับบัญชี/รุ่นอัตโนมัติ (พร้อม crash-heal `agy`); ถ้าแก้ไฟล์ไปแล้วกลางทางจะหยุดปลอดภัยแล้วส่ง diff ให้ Reviewer ตัดสิน
+3. **🔍 ด่าน 3: Reviewer (Strict Read-Only + รอบแก้ไขสูงสุด 1 รอบ)**
+   - **ตัวหลัก:** Claude Opus · **Fallback หลัก:** **Gemini 4 Neon (High/XHigh)**
+   - ตรวจรายงานจาก Workers + `git diff` (หรือรายการไฟล์ที่เปลี่ยนแปลงบนดิสก์นอก git repo) + อ่านไฟล์จริงเทียบเกณฑ์ผ่านงาน
+   - ถ้าพบบั๊กร้ายแรงในโหมด `exec` → ส่ง `[[VERDICT:REWORK]]` เพื่อสั่งทีม Gemini แก้ไขได้สูงสุด **1 รอบ** แล้วตรวจปิดงานรอบสุดท้าย
+   - ถ้าผ่าน (`[[VERDICT:PASS]]`) → สรุปคำตอบฉบับสมบูรณ์ภาษาไทยส่งถึงบังยีโดยตรง
+
+### Fallback ใน `cron-ai-runner.py`
+- หาก Dashboard AI Router API ติดต่อไม่ได้ `build_local_fallback_candidates(min_level)` ใช้ **Gemini 4 Neon** (`gemini-4-neon-medium` สำหรับงานปกติ, `gemini-4-neon-high` สำหรับ hard alert `min_level >= 2`) เป็นตัวสำรองหลักแทน Hydrogen แล้วเช่นกัน

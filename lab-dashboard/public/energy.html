@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Energy Monitor — Homelab Control</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --page: #0b0d10;
+    --surface-1: #15171a;
+    --surface-2: #1c1f23;
+    --surface-3: #24282d;
+    --ink-1: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-muted: #898781;
+    --grid: #2a2d31;
+    --baseline: #3a3e43;
+    --border: rgba(255, 255, 255, .09);
+    --border-str: rgba(255, 255, 255, .18);
+    /* series — validated (dark, all-pairs PASS): solar / battery / grid; load = ink line */
+    --solar: #c98500;
+    --battery: #199e70;
+    --grid-c: #3987e5;
+    --load: #f0efec;
+    /* glow accents for the flow diagram only */
+    --solar-glow: #fbbf24;
+    --battery-glow: #34d399;
+    --grid-glow: #60a5fa;
+    --load-glow: #f0abfc;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --radius: 14px;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--page); }
+  body {
+    color: var(--ink-1);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 18px;
+    background:
+      radial-gradient(1200px 500px at 15% -10%, rgba(201, 133, 0, .10), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(57, 135, 229, .10), transparent 60%),
+      var(--page);
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* header */
+  header.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  .title h1 { font-size: 20px; font-weight: 800; letter-spacing: .2px; display: flex; gap: 10px; align-items: center; }
+  .title h1 .bolt { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+    background: linear-gradient(135deg, #fde047, #ea580c); box-shadow: 0 0 18px rgba(250, 204, 21, .35); }
+  .title .sub { color: var(--ink-muted); font-size: 12px; margin-top: 4px; font-family: var(--mono); }
+  .seg { display: inline-flex; background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px; padding: 3px; gap: 2px; }
+  .seg button { all: unset; cursor: pointer; padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .seg button:hover { color: var(--ink-1); }
+  .seg button.is-on { background: var(--surface-3); color: var(--ink-1); box-shadow: inset 0 0 0 1px var(--border-str); }
+  .seg button:focus-visible { outline: 2px solid var(--grid-glow); outline-offset: 1px; }
+  .seg.sm button { padding: 5px 11px; font-size: 12px; }
+  .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); }
+  .dot.ok { background: var(--good); box-shadow: 0 0 0 3px rgba(12, 163, 12, .18); animation: pulse 2s infinite; }
+  .dot.bad { background: var(--critical); }
+  .dot.sim { background: #a78bfa; box-shadow: 0 0 0 3px rgba(167, 139, 250, .2); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(12, 163, 12, 0); } }
+
+  .card { background: linear-gradient(180deg, rgba(255,255,255,.02), transparent 40%), var(--surface-1);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; position: relative; }
+  .card h2 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .card .hint { color: var(--ink-muted); font-size: 12px; font-weight: 400; }
+  .card-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+
+  .notice { display: flex; gap: 10px; align-items: flex-start; font-size: 12.5px; color: var(--ink-2);
+    background: rgba(57, 135, 229, .08); border: 1px solid rgba(57, 135, 229, .28); border-radius: 10px; padding: 10px 12px; }
+  .notice code { font-family: var(--mono); color: var(--ink-1); background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; }
+  .notice.sim { background: rgba(167, 139, 250, .08); border-color: rgba(167, 139, 250, .3); }
+
+  /* flow layout */
+  .flow-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 16px; }
+  @media (max-width: 980px) { .flow-grid { grid-template-columns: 1fr; } }
+  #flow { width: 100%; height: auto; display: block; }
+  .flow-node-label { font-size: 13px; fill: var(--ink-2); font-weight: 600; }
+  .flow-node-value { font-size: 21px; fill: var(--ink-1); font-weight: 800; font-family: var(--mono); }
+  .flow-node-sub { font-size: 11.5px; fill: var(--ink-muted); font-family: var(--mono); }
+  .flow-node.is-off { opacity: .38; }
+  .flow-line-bg { stroke: var(--grid); stroke-linecap: round; fill: none; }
+  .flow-line { stroke-linecap: round; fill: none; opacity: .55; transition: stroke-width .6s; }
+  .flow-clock { font-size: 13px; fill: var(--ink-muted); font-family: var(--mono); }
+
+  /* KPI tiles */
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 11px 12px; min-width: 0; }
+  .tile .k { font-size: 11.5px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; }
+  .tile .v { font-size: 20px; font-weight: 800; margin-top: 4px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .v small { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-left: 3px; }
+  .tile .s { font-size: 11.5px; color: var(--ink-2); margin-top: 3px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile.wide { grid-column: span 2; }
+  .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+  .meter-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+  .meter-row div { background: var(--surface-1); border-radius: 8px; padding: 6px 8px; text-align: center; }
+  .meter-row b { display: block; font-family: var(--mono); font-size: 14px; }
+  .meter-row span { font-size: 10.5px; color: var(--ink-muted); }
+  .bar-track { height: 6px; background: var(--surface-1); border-radius: 4px; overflow: hidden; margin-top: 7px; display: flex; gap: 2px; }
+  .bar-track i { display: block; height: 100%; border-radius: 4px; }
+
+  /* charts */
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .chart .ax text { fill: var(--ink-muted); font-size: 11px; font-family: var(--mono); }
+  .chart .gridline { stroke: var(--grid); stroke-width: 1; }
+  .chart .baseline { stroke: var(--baseline); stroke-width: 1; }
+  .chart .xhair { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+  .chart .cursor { stroke: #a78bfa; stroke-width: 2; pointer-events: none; }
+  .tip { position: absolute; pointer-events: none; z-index: 5; background: rgba(21, 23, 26, .96); border: 1px solid var(--border-str);
+    border-radius: 9px; padding: 8px 10px; font-size: 12px; min-width: 170px; box-shadow: 0 8px 24px rgba(0,0,0,.45); display: none; }
+  .tip .tt { color: var(--ink-muted); font-family: var(--mono); font-size: 11px; margin-bottom: 5px; }
+  .tip .row { display: flex; align-items: center; gap: 7px; justify-content: space-between; padding: 1px 0; }
+  .tip .row span:first-child { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+  .tip .row b { font-family: var(--mono); font-weight: 700; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .ln { width: 16px; height: 2px; background: var(--load); border-radius: 2px; }
+  .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+  .ctrls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input[type=date], select, input[type=number] { background: var(--surface-2); color: var(--ink-1); border: 1px solid var(--border-str);
+    border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 12.5px; color-scheme: dark; }
+  .btn { all: unset; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--ink-1); padding: 6px 12px; border-radius: 8px;
+    background: var(--surface-3); border: 1px solid var(--border-str); display: inline-flex; gap: 6px; align-items: center; }
+  .btn:hover { background: #2d3238; }
+  .btn:focus-visible { outline: 2px solid var(--grid-glow); }
+  .btn.primary { background: linear-gradient(135deg, #7c3aed, #4f46e5); border-color: transparent; }
+  details.table-view { margin-top: 12px; }
+  details.table-view summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); }
+  .tbl-wrap { max-height: 280px; overflow: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--border); font-family: var(--mono); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { position: sticky; top: 0; background: var(--surface-2); color: var(--ink-2); font-weight: 600; font-family: var(--sans); }
+  .empty { padding: 40px 0; text-align: center; color: var(--ink-muted); font-size: 13px; }
+
+  /* simulation */
+  .sim-grid { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 980px) { .sim-grid { grid-template-columns: 1fr; } }
+  .form { display: flex; flex-direction: column; gap: 12px; }
+  .fgroup { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 11px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .fgroup h3 { font-size: 12px; color: var(--ink-2); font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .field label { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); margin-bottom: 5px; }
+  .field label b { font-family: var(--mono); color: var(--ink-1); }
+  input[type=range] { width: 100%; accent-color: #a78bfa; }
+  .field select { width: 100%; }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .presets .btn { font-size: 11.5px; padding: 5px 9px; }
+  .player { display: flex; align-items: center; gap: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 8px 12px; margin-bottom: 12px; }
+  .player input[type=range] { flex: 1; }
+  .player .clock { font-family: var(--mono); font-size: 18px; font-weight: 800; min-width: 58px; }
+  .res-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .tile.good .v { color: #4ade80; }
+  .compare { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+  .cmp-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 110px; gap: 10px; align-items: center; font-size: 12px; color: var(--ink-2); }
+  .cmp-row .track { height: 16px; display: flex; gap: 2px; }
+  .cmp-row .track i { display: block; height: 100%; }
+  .cmp-row .track i:first-child { border-radius: 4px 0 0 4px; }
+  .cmp-row .track i:last-child { border-radius: 0 4px 4px 0; }
+  .cmp-row b { font-family: var(--mono); color: var(--ink-1); text-align: right; }
+  [hidden] { display: none !important; }
+  @media (max-width: 640px) {
+    body { padding: 10px; }
+    .tiles { grid-template-columns: 1fr 1fr; }
+    .cmp-row { grid-template-columns: 90px minmax(0, 1fr) 90px; }
+  }
+  .flow-node-value.is-off { font-size: 14px; }
+  @media (max-width: 640px) {
+    .flow-node-label { font-size: 24px; }
+    .flow-node-value { font-size: 34px; }
+    .flow-node-value.is-off { font-size: 22px; }
+    .flow-node-sub, .flow-clock { font-size: 19px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .dot.ok { animation: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="title">
+      <h1><span class="bolt" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path d="M13.4 2.8L5.6 13.4h5.2l-1.4 7.8 8-10.8h-5.3z" fill="#1c1917"/></svg>
+      </span>Energy Monitor</h1>
+      <div class="sub" id="sub">โซลาร์ · แบตเตอรี่ · การไฟฟ้า · โหลด — Home Assistant</div>
+    </div>
+    <div class="ctrls">
+      <span class="status" id="status"><span class="dot" id="status-dot"></span><span id="status-text">กำลังเชื่อมต่อ…</span></span>
+      <div class="seg" role="tablist" aria-label="โหมด">
+        <button type="button" class="is-on" data-mode="live" role="tab">● Live</button>
+        <button type="button" data-mode="sim" role="tab">▶ Simulation</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="notice" id="notice-sensors" hidden>
+    <span aria-hidden="true">ℹ️</span>
+    <div>ตอนนี้ระบบพบเฉพาะมิเตอร์ <b>PZEM-01</b> (ไฟจากการไฟฟ้า) — โซลาร์และแบตเตอรี่ยังไม่มีเซนเซอร์ จึงแสดงเป็นสีจาง
+      และโหลด = ไฟที่ดึงจากการไฟฟ้า. เมื่อติดตั้งอินเวอร์เตอร์ ให้ใส่ entity ของ Home Assistant ใน <code>lab-dashboard/energy-config.json</code> แล้วหน้านี้จะแสดงผลจริงอัตโนมัติ —
+      ระหว่างนี้ลองโหมด <b>▶ Simulation</b> เพื่อดูว่าถ้าติดโซลาร์/แบตจะประหยัดได้เท่าไหร่</div>
+  </div>
+  <div class="notice sim" id="notice-sim" hidden>
+    <span aria-hidden="true">🧪</span>
+    <div><b>โหมดจำลอง</b> — ค่าทั้งหมดในแผนภาพเป็นค่าจำลอง โดยใช้รูปแบบโหลดจริงของบ้าน (ค่าเฉลี่ยรายชั่วโมง 7 วันจาก PZEM-01) กับระบบโซลาร์/แบตเตอรี่ที่ตั้งค่าไว้ด้านล่าง</div>
+  </div>
+
+  <!-- ── Power flow + live tiles ─────────────────────────────── -->
+  <section class="flow-grid">
+    <div class="card">
+      <div class="card-head">
+        <h2>⚡ การไหลของพลังงาน <span class="hint" id="flow-hint">เรียลไทม์</span></h2>
+        <div class="legend" aria-hidden="true">
+          <span><i class="sw" style="background:var(--solar)"></i>โซลาร์</span>
+          <span><i class="sw" style="background:var(--battery)"></i>แบตเตอรี่</span>
+          <span><i class="sw" style="background:var(--grid-c)"></i>การไฟฟ้า</span>
+          <span><i class="ln"></i>โหลด</span>
+        </div>
+      </div>
+      <svg id="flow" viewBox="0 0 900 470" role="img" aria-labelledby="flow-desc">
+        <desc id="flow-desc">แผนภาพการไหลของพลังงานระหว่างโซลาร์ แบตเตอรี่ การไฟฟ้า และบ้าน</desc>
+        <defs>
+          <radialGradient id="fg-hub" cx="50%" cy="40%" r="65%"><stop offset="0" stop-color="#3a3f46"/><stop offset="1" stop-color="#191c20"/></radialGradient>
+          <radialGradient id="fg-node" cx="50%" cy="35%" r="70%"><stop offset="0" stop-color="#262a30"/><stop offset="1" stop-color="#121417"/></radialGradient>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <linearGradient id="fg-house" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5d0fe"/><stop offset="1" stop-color="#c084fc"/></linearGradient>
+        </defs>
+        <g id="flow-lines"></g>
+        <g id="flow-dots"></g>
+        <!-- hub / inverter -->
+        <g transform="translate(450 245)">
+          <rect x="-46" y="-40" width="92" height="80" rx="18" fill="url(#fg-hub)" stroke="var(--border-str)"/>
+          <path d="M-18 -8h36M-18 6h36" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+          <path d="M-20 -22 q5 -7 10 0 t10 0 t10 0 t10 0" fill="none" stroke="#9ca3af" stroke-width="2"/>
+          <text y="26" text-anchor="middle" class="flow-node-sub">INVERTER</text>
+        </g>
+        <g id="flow-nodes"></g>
+        <text id="flow-clock" class="flow-clock" x="890" y="462" text-anchor="end"></text>
+      </svg>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>📊 สรุป <span class="hint" id="tiles-hint">ข้อมูลจริง · วันนี้ / รอบบิล</span></h2></div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+  </section>
+
+  <!-- ── History (live mode) ─────────────────────────────── -->
+  <section class="card" id="history-card">
+    <div class="card-head">
+      <h2>📈 ประวัติการใช้พลังงาน <span class="hint" id="hist-hint"></span></h2>
+      <div class="ctrls">
+        <div class="seg sm" id="range-seg">
+          <button type="button" data-range="24h" class="is-on">24 ชม.</button>
+          <button type="button" data-range="48h">48 ชม.</button>
+          <button type="button" data-range="7d">7 วัน</button>
+          <button type="button" data-range="30d">30 วัน</button>
+          <button type="button" data-range="90d">90 วัน</button>
+        </div>
+        <input type="date" id="hist-day" aria-label="เลือกวันที่ย้อนหลัง" title="ดูรายวัน">
+        <button type="button" class="btn" id="btn-csv">⬇ CSV</button>
+      </div>
+    </div>
+    <div class="legend" style="margin-bottom:6px">
+      <span><i class="sw" style="background:var(--solar)"></i>โซลาร์</span>
+      <span><i class="sw" style="background:var(--battery)"></i>แบตเตอรี่ (บวก=จ่าย, ลบ=ชาร์จ)</span>
+      <span><i class="sw" style="background:var(--grid-c)"></i>การไฟฟ้า (บวก=ซื้อ, ลบ=ขายคืน)</span>
+      <span><i class="ln"></i>โหลดรวม</span>
+    </div>
+    <div class="chart" id="chart-power" style="height:300px"></div>
+    <h2 style="margin:16px 0 8px; font-size:13px">🔋 พลังงานต่อ<span id="bucket-label">ชั่วโมง</span> (kWh)</h2>
+    <div class="chart" id="chart-bars" style="height:200px"></div>
+    <div class="totals" id="hist-totals"></div>
+    <details class="table-view"><summary>ดูเป็นตาราง</summary><div class="tbl-wrap" id="hist-table"></div></details>
+  </section>
+
+  <!-- ── Simulation ─────────────────────────────── -->
+  <section class="card" id="sim-card" hidden>
+    <div class="card-head">
+      <h2>🧪 จำลองระบบโซลาร์ + แบตเตอรี่ <span class="hint">คำนวณทุก 5 นาที ตลอด 24 ชม.</span></h2>
+      <div class="presets" id="presets">
+        <button type="button" class="btn" data-preset="none">บ้านปัจจุบัน</button>
+        <button type="button" class="btn" data-preset="pv3">โซลาร์ 3 kW</button>
+        <button type="button" class="btn" data-preset="pv5">โซลาร์ 5 kW</button>
+        <button type="button" class="btn" data-preset="pv5b10">5 kW + แบต 10 kWh</button>
+        <button type="button" class="btn" data-preset="pv10b15">10 kW + แบต 15 kWh</button>
+      </div>
+    </div>
+    <div class="sim-grid">
+      <form class="form" id="sim-form" onsubmit="return false">
+        <div class="fgroup">
+          <h3>☀️ แผงโซลาร์</h3>
+          <div class="field"><label>ขนาดแผง <b id="o-pv"></b></label><input type="range" name="pv" min="0" max="20" step="0.5" value="5"></div>
+          <div class="field"><label>อินเวอร์เตอร์ <b id="o-inv"></b></label><input type="range" name="inv" min="1" max="20" step="0.5" value="5"></div>
+          <div class="field"><label>เดือน</label><select name="month"></select></div>
+          <div class="field"><label>สภาพอากาศ</label>
+            <select name="weather">
+              <option value="sunny">☀️ แดดจัด</option>
+              <option value="partly" selected>⛅ มีเมฆบางส่วน</option>
+              <option value="cloudy">☁️ เมฆมาก</option>
+              <option value="rainy">🌧️ ฝนตก</option>
+            </select></div>
+        </div>
+        <div class="fgroup">
+          <h3>🔋 แบตเตอรี่</h3>
+          <div class="field"><label>ความจุ <b id="o-bat"></b></label><input type="range" name="bat" min="0" max="30" step="0.5" value="0"></div>
+          <div class="field"><label>กำลังชาร์จ/จ่ายสูงสุด <b id="o-batp"></b></label><input type="range" name="batp" min="1" max="10" step="0.5" value="5"></div>
+          <div class="field"><label>SOC เริ่มต้น / ต่ำสุด <b id="o-soc"></b></label>
+            <div style="display:flex; gap:8px"><input type="range" name="soc0" min="0" max="100" step="5" value="50"><input type="range" name="socmin" min="0" max="50" step="5" value="10"></div></div>
+        </div>
+        <div class="fgroup">
+          <h3>🏠 โหลด & ค่าไฟ</h3>
+          <div class="field"><label>รูปแบบโหลด</label>
+            <select name="profile">
+              <option value="real" selected>ข้อมูลจริงจาก PZEM (เฉลี่ย 7 วัน)</option>
+              <option value="home">บ้านทั่วไป (ใช้ไฟเย็น-กลางคืน)</option>
+              <option value="office">ทำงานกลางวัน / WFH</option>
+            </select></div>
+          <div class="field"><label>ปรับขนาดโหลด <b id="o-scale"></b></label><input type="range" name="scale" min="50" max="200" step="5" value="100"></div>
+          <div class="field"><label>ค่าไฟซื้อ / ขายคืน (บาท/kWh)</label>
+            <div style="display:flex; gap:8px"><input type="number" name="tariff" step="0.01" min="0" value="4.42" style="width:50%"><input type="number" name="export" step="0.01" min="0" value="2.20" style="width:50%"></div></div>
+          <label class="chk"><input type="checkbox" name="allowExport" checked> ขายไฟส่วนเกินคืนการไฟฟ้า</label>
+        </div>
+        <div class="fgroup">
+          <h3>💰 ต้นทุนติดตั้ง</h3>
+          <div class="field"><label>โซลาร์ (บาท/kWp) / แบต (บาท/kWh)</label>
+            <div style="display:flex; gap:8px"><input type="number" name="pvCost" step="1000" min="0" value="25000" style="width:50%"><input type="number" name="batCost" step="1000" min="0" value="9000" style="width:50%"></div></div>
+        </div>
+      </form>
+
+      <div>
+        <div class="player">
+          <button type="button" class="btn primary" id="sim-play" aria-label="เล่น/หยุด">▶ เล่น</button>
+          <span class="clock" id="sim-clock">12:00</span>
+          <input type="range" id="sim-time" min="0" max="287" value="144" aria-label="เวลาจำลอง">
+          <select id="sim-speed" aria-label="ความเร็ว">
+            <option value="30">1 วัน / 30 วิ</option>
+            <option value="60" selected>1 วัน / 1 นาที</option>
+            <option value="180">1 วัน / 3 นาที</option>
+          </select>
+        </div>
+        <div class="res-tiles" id="sim-results"></div>
+        <div class="chart" id="chart-sim" style="height:290px"></div>
+        <div class="compare" id="sim-compare"></div>
+        <details class="table-view"><summary>ดูผลจำลองเป็นตาราง (รายชั่วโมง)</summary><div class="tbl-wrap" id="sim-table"></div></details>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const SVGNS = 'http://www.w3.org/2000/svg';
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const COLORS = { solar: css('--solar'), battery: css('--battery'), grid: css('--grid-c'), load: css('--load') };
+const GLOW = { solar: css('--solar-glow'), battery: css('--battery-glow'), grid: css('--grid-glow'), load: css('--load-glow') };
+const NAMES = { solar: 'โซลาร์', battery: 'แบตเตอรี่', grid: 'การไฟฟ้า', load: 'โหลด' };
+const MONTHS_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const GRID_CO2 = 0.4999; // kgCO2e/kWh — Thailand grid emission factor (TGO)
+
+const fmtW = (w) => {
+  if (w == null || isNaN(w)) return '—';
+  const a = Math.abs(w);
+  return a >= 1000 ? (w / 1000).toFixed(a >= 10000 ? 1 : 2) + ' kW' : Math.round(w) + ' W';
+};
+const fmtKwh = (k, d = 2) => (k == null || isNaN(k)) ? '—' : (+k).toFixed(d);
+const fmtThb = (b, d = 0) => (b == null || isNaN(b)) ? '—' : '฿' + (+b).toLocaleString('th-TH', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pad = (n) => String(n).padStart(2, '0');
+const hhmm = (d) => pad(d.getHours()) + ':' + pad(d.getMinutes());
+const dayTh = (d) => d.getDate() + ' ' + MONTHS_TH[d.getMonth()];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+const state = { mode: 'live', live: null, hist: null, range: '24h', day: null, sim: null, simIdx: 144, playing: false, profile7d: null };
+
+/* ═══════════════════════ Power-flow diagram ═══════════════════════ */
+const HUB = { x: 450, y: 245 };
+const NODES = {
+  solar:   { x: 450, y: 78,  label: 'โซลาร์เซลล์', icon: 'sun' },
+  grid:    { x: 120, y: 245, label: 'การไฟฟ้า', icon: 'pylon' },
+  load:    { x: 780, y: 245, label: 'บ้าน (โหลด)', icon: 'house' },
+  battery: { x: 450, y: 405, label: 'แบตเตอรี่', icon: 'battery' },
+};
+const R = 50;
+const ICONS = {
+  sun: (g, c) => {
+    el('circle', { r: 13, fill: c }, g);
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      el('line', { x1: Math.cos(a) * 19, y1: Math.sin(a) * 19, x2: Math.cos(a) * 25, y2: Math.sin(a) * 25, stroke: c, 'stroke-width': 3, 'stroke-linecap': 'round' }, g);
+    }
+  },
+  pylon: (g, c) => {
+    el('path', { d: 'M-14 26 L-4 -24 L4 -24 L14 26 M-9 2 H9 M-12 14 H12 M-20 -14 H20 M-16 -6 H16 M-7 -10 L7 2 M7 -10 L-7 2', fill: 'none', stroke: c, 'stroke-width': 2.6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g);
+  },
+  house: (g, c) => {
+    el('path', { d: 'M-22 -2 L0 -22 L22 -2 M-16 -7 V22 H16 V-7', fill: 'none', stroke: c, 'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g);
+    el('path', { d: 'M2 -2 L-5 9 H1 L-2 18 L6 6 H0 Z', fill: c }, g);
+  },
+  battery: (g, c) => {
+    el('rect', { x: -14, y: -22, width: 28, height: 44, rx: 5, fill: 'none', stroke: c, 'stroke-width': 3 }, g);
+    el('rect', { x: -6, y: -27, width: 12, height: 5, rx: 1.5, fill: c }, g);
+    el('rect', { class: 'batt-fill', x: -9, y: 17, width: 18, height: 0, rx: 2, fill: c }, g);
+  },
+};
+const flow = { links: {}, nodes: {}, last: performance.now() };
+
+function buildFlow() {
+  const lines = $('#flow-lines'), dots = $('#flow-dots'), nodes = $('#flow-nodes');
+  for (const [k, n] of Object.entries(NODES)) {
+    // เส้นจากโหนดไปศูนย์กลาง (ตัดที่ขอบวงกลม / กล่อง inverter)
+    const dx = HUB.x - n.x, dy = HUB.y - n.y, L = Math.hypot(dx, dy);
+    const ux = dx / L, uy = dy / L;
+    const hubGap = Math.abs(ux) > Math.abs(uy) ? 48 : 42;
+    const x1 = n.x + ux * (R + 6), y1 = n.y + uy * (R + 6), x2 = HUB.x - ux * hubGap, y2 = HUB.y - uy * hubGap;
+    const d = `M${x1} ${y1} L${x2} ${y2}`;
+    el('path', { d, class: 'flow-line-bg', 'stroke-width': 10 }, lines);
+    const line = el('path', { d, class: 'flow-line', stroke: COLORS[k], 'stroke-width': 2 }, lines);
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    const dg = el('g', { filter: 'url(#glow)' }, dots);
+    const dl = [];
+    for (let i = 0; i < 6; i++) dl.push(el('circle', { r: 4.5, fill: GLOW[k], opacity: 0 }, dg));
+    flow.links[k] = { x1, y1, x2, y2, len, line, dots: dl, phase: Math.random(), speed: 0, dir: 0, n: 0 };
+
+    const g = el('g', { class: 'flow-node', transform: `translate(${n.x} ${n.y})` }, nodes);
+    el('circle', { r: R + 7, fill: 'none', stroke: COLORS[k], 'stroke-opacity': .18, 'stroke-width': 1 }, g);
+    const ring = el('circle', { r: R, fill: 'url(#fg-node)', stroke: COLORS[k], 'stroke-width': 2.5 }, g);
+    const arc = el('circle', { r: R + 7, fill: 'none', stroke: GLOW[k], 'stroke-width': 3, 'stroke-linecap': 'round',
+      'stroke-dasharray': `0 ${2 * Math.PI * (R + 7)}`, transform: 'rotate(-90)' }, g);
+    const ig = el('g', {}, g);
+    ICONS[n.icon](ig, GLOW[k]);
+    // labels: ด้านนอกโหนด
+    let lx = 0, ly, anchor = 'middle';
+    if (k === 'solar') { lx = R + 22; ly = -10; anchor = 'start'; }
+    else if (k === 'battery') { lx = R + 22; ly = -10; anchor = 'start'; }
+    else { ly = R + 26; }
+    const lab = el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'flow-node-label' }, g); lab.textContent = n.label;
+    const val = el('text', { x: lx, y: ly + 24, 'text-anchor': anchor, class: 'flow-node-value' }, g); val.textContent = '—';
+    const sub = el('text', { x: lx, y: ly + 42, 'text-anchor': anchor, class: 'flow-node-sub' }, g); sub.textContent = '';
+    flow.nodes[k] = { g, ring, arc, val, sub, fill: ig.querySelector('.batt-fill') };
+  }
+  requestAnimationFrame(tickFlow);
+}
+
+/* v = { solar, battery, grid, load } (W; battery + = จ่าย, grid + = ซื้อ), avail, sub, soc */
+function setFlow(v) {
+  const maxW = Math.max(1500, Math.abs(v.load || 0), Math.abs(v.solar || 0), Math.abs(v.grid || 0), Math.abs(v.battery || 0));
+  for (const k of ['solar', 'battery', 'grid', 'load']) {
+    const w = v[k];
+    const link = flow.links[k], node = flow.nodes[k];
+    const off = v.avail && v.avail[k] === false;
+    node.g.classList.toggle('is-off', !!off);
+    node.val.textContent = off ? 'ไม่มีเซนเซอร์' : fmtW(w == null ? null : Math.abs(w));
+    node.val.classList.toggle('is-off', !!off);
+    node.sub.textContent = (v.sub && v.sub[k]) || '';
+    const a = Math.abs(w || 0);
+    // ทิศทาง: +1 = เข้าหาศูนย์กลาง (แหล่งจ่าย), -1 = ออกจากศูนย์กลาง
+    let dir = 0;
+    if (a > 5 && !off) {
+      if (k === 'load') dir = -1;
+      else if (k === 'solar') dir = 1;
+      else dir = w > 0 ? 1 : -1;
+    }
+    link.dir = dir;
+    link.speed = dir ? 0.18 + 0.9 * Math.sqrt(a / maxW) : 0;
+    link.n = dir ? Math.min(6, 2 + Math.round(4 * a / maxW)) : 0;
+    link.line.setAttribute('stroke-width', dir ? (2 + 5 * Math.sqrt(a / maxW)).toFixed(1) : 1.5);
+    link.line.style.opacity = dir ? .7 : .25;
+    const frac = dir ? Math.min(1, a / maxW) : 0;
+    const C = 2 * Math.PI * (R + 7);
+    node.arc.setAttribute('stroke-dasharray', `${(C * frac).toFixed(1)} ${C}`);
+  }
+  // SOC fill
+  const bf = flow.nodes.battery.fill;
+  const soc = v.soc;
+  if (bf) {
+    const h = soc == null ? 0 : 36 * Math.max(0, Math.min(1, soc / 100));
+    bf.setAttribute('y', 17 - h + 1); bf.setAttribute('height', Math.max(0, h - 1));
+  }
+  $('#flow-clock').textContent = v.clock || '';
+}
+
+function tickFlow(now) {
+  const dt = Math.min(0.1, (now - flow.last) / 1000);
+  flow.last = now;
+  for (const link of Object.values(flow.links)) {
+    link.phase = (link.phase + link.speed * dt * (90 / link.len) * 1.6) % 1;
+    link.dots.forEach((d, i) => {
+      if (i >= link.n) { d.setAttribute('opacity', 0); return; }
+      let p = (link.phase + i / link.n) % 1;
+      if (link.dir < 0) p = 1 - p;
+      const x = link.x1 + (link.x2 - link.x1) * p, y = link.y1 + (link.y2 - link.y1) * p;
+      const fade = Math.min(1, Math.min(p, 1 - p) * 8);
+      d.setAttribute('cx', x.toFixed(1)); d.setAttribute('cy', y.toFixed(1)); d.setAttribute('opacity', (0.95 * fade).toFixed(2));
+    });
+  }
+  requestAnimationFrame(tickFlow);
+}
+
+/* ═══════════════════════ Tiles ═══════════════════════ */
+function tile(k, v, s, opts = {}) {
+  return `<div class="tile ${opts.cls || ''}"><div class="k">${opts.sw ? `<i class="sw" style="background:${opts.sw}"></i>` : ''}${k}</div>
+    <div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ''}${opts.extra || ''}</div>`;
+}
+
+function renderLiveTiles() {
+  const d = state.live;
+  if (!d || !d.ok) return;
+  const p = d.power, e = d.energy, m = d.meter || {};
+  const t = e.today, c = e.cycle;
+  const solarT = t.solar, battOut = t.battery_energy_out;
+  const consumed = (t.grid || 0) + (solarT || 0) + (battOut || 0) - (t.battery_energy_in || 0);
+  const selfSuff = consumed > 0 ? ((consumed - (t.grid || 0)) / consumed) * 100 : null;
+  const share = (x) => consumed > 0 ? Math.max(0, (x || 0) / consumed * 100) : 0;
+  const cycStart = new Date(c.start_ts * 1000);
+  $('#tiles').innerHTML = [
+    tile('โหลดตอนนี้', fmtW(p.load.watts), p.load.computed ? 'คำนวณจาก grid + solar + battery' : 'จากเซนเซอร์โหลด', { sw: COLORS.load }),
+    tile('ซื้อไฟตอนนี้', fmtW(p.grid.watts), p.grid.watts < 0 ? 'กำลังขายคืน' : 'จากการไฟฟ้า', { sw: COLORS.grid }),
+    tile('ใช้ไฟวันนี้', `${fmtKwh(t.grid)}<small>kWh</small>`, `ค่าไฟ ${fmtThb(t.grid_cost_thb, 2)}`, { sw: COLORS.grid }),
+    tile('โซลาร์วันนี้', p.solar.available ? `${fmtKwh(solarT)}<small>kWh</small>` : '—', p.solar.available ? `ประหยัด ${fmtThb((solarT || 0) * d.tariff_thb_per_kwh, 2)}` : 'ยังไม่ติดตั้ง', { sw: COLORS.solar }),
+    tile(`รอบบิล (ตั้งแต่ ${dayTh(cycStart)})`, `${fmtKwh(c.grid, 1)}<small>kWh</small>`, `${fmtThb(c.grid_cost_thb)} · ${c.days_passed.toFixed(1)}/${c.days_total} วัน`, { sw: COLORS.grid }),
+    tile('คาดการณ์ทั้งรอบบิล', `${fmtThb(c.projected_cost_thb)}`, `${fmtKwh(c.projected_kwh, 0)} kWh @ ${d.tariff_thb_per_kwh} ฿/หน่วย`),
+    tile('สัดส่วนแหล่งพลังงานวันนี้', selfSuff == null ? '—' : `${selfSuff.toFixed(0)}<small>% พึ่งตัวเอง</small>`,
+      `การไฟฟ้า ${share(t.grid).toFixed(0)}% · โซลาร์ ${share(solarT).toFixed(0)}% · แบต ${share(battOut).toFixed(0)}%`, { cls: 'wide',
+        extra: `<div class="bar-track">${['solar', 'battery', 'grid'].map((k) => {
+          const val = k === 'solar' ? solarT : k === 'battery' ? battOut : t.grid;
+          const w = share(val); return w > 0 ? `<i style="width:${w}%;background:${COLORS[k]}"></i>` : '';
+        }).join('')}</div>` }),
+    tile('มิเตอร์ PZEM-01', `${m.voltage != null ? m.voltage.toFixed(1) : '—'}<small>V</small>`, '', { cls: 'wide',
+      extra: `<div class="meter-row">
+        <div><b>${m.current != null ? m.current.toFixed(2) : '—'}</b><span>A</span></div>
+        <div><b>${m.power_factor != null ? m.power_factor.toFixed(2) : '—'}</b><span>PF</span></div>
+        <div><b>${m.frequency != null ? m.frequency.toFixed(1) : '—'}</b><span>Hz</span></div>
+        <div><b>${m.apparent_va != null ? Math.round(m.apparent_va) : '—'}</b><span>VA</span></div></div>` }),
+  ].join('');
+}
+
+/* ═══════════════════════ Charts (SVG) ═══════════════════════ */
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / e;
+  return [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => f <= s + 1e-9) * e;
+}
+function ticks(min, max, n = 4) {
+  const raw = (max - min) / n, e = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / e;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
+  const out = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+function ensureTip(box) {
+  let t = box.querySelector('.tip');
+  if (!t) { t = document.createElement('div'); t.className = 'tip'; box.appendChild(t); }
+  return t;
+}
+function placeTip(box, tip, x, y) {
+  tip.style.display = 'block';
+  const bw = box.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+  let left = x + 14; if (left + tw > bw) left = x - tw - 14;
+  tip.style.left = Math.max(0, left) + 'px';
+  tip.style.top = Math.max(0, Math.min(y - th / 2, box.clientHeight - th)) + 'px';
+}
+const tipRow = (color, name, val, line) => `<div class="row"><span>${line ? `<i class="ln" style="width:12px;height:2px;background:${color};display:inline-block"></i>` : `<i class="sw" style="background:${color}"></i>`}${name}</span><b>${val}</b></div>`;
+
+/* power chart: points [{t, solar, battery, grid, load}] (W) — stacked areas + load line */
+function renderPowerChart(box, points, opt = {}) {
+  box.innerHTML = '';
+  if (!points || !points.length) { box.innerHTML = '<div class="empty">ไม่มีข้อมูลในช่วงนี้</div>'; return; }
+  const W = box.clientWidth || 800, H = box.clientHeight || 300;
+  const m = { l: 52, r: 12, t: 10, b: 26 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const t0 = opt.t0 ?? points[0].t, t1 = opt.t1 ?? points[points.length - 1].t;
+  const step = opt.step || 300;
+  // stacks: บวก = solar, battery+, grid+ ; ลบ = battery-, grid-
+  const rows = points.map((p) => {
+    const s = Math.max(0, p.solar || 0), b = p.battery || 0, g = p.grid || 0;
+    const bp = Math.max(0, b), gp = Math.max(0, g), bn = Math.min(0, b), gn = Math.min(0, g);
+    return { t: p.t, ok: p.grid != null || p.solar != null || p.battery != null, s, bp, gp, bn, gn, load: p.load };
+  });
+  let ymax = 0, ymin = 0;
+  rows.forEach((r) => { ymax = Math.max(ymax, r.s + r.bp + r.gp, r.load || 0); ymin = Math.min(ymin, r.bn + r.gn); });
+  ymax = niceMax(ymax * 1.05); if (ymin < 0) ymin = -niceMax(-ymin * 1.05);
+  const X = (t) => m.l + (t - t0) / Math.max(1, t1 - t0) * iw;
+  const Y = (v) => m.t + (ymax - v) / (ymax - ymin) * ih;
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H });
+  box.appendChild(svg);
+  const ax = el('g', { class: 'ax' }, svg);
+  ticks(ymin, ymax).forEach((v) => {
+    el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: v === 0 ? 'baseline' : 'gridline' }, ax);
+    const tx = el('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, ax);
+    tx.textContent = Math.abs(v) >= 1000 ? (v / 1000) + 'k' : v;
+  });
+  const span = t1 - t0;
+  const tickStep = span <= 86400 * 1.01 ? 3 * 3600 : span <= 2.1 * 86400 ? 6 * 3600 : span <= 8 * 86400 ? 86400 : span <= 31 * 86400 ? 4 * 86400 : 14 * 86400;
+  const tz = new Date().getTimezoneOffset() * 60;
+  for (let t = Math.ceil((t0 - tz) / tickStep) * tickStep + tz; t <= t1; t += tickStep) {
+    const d = new Date(t * 1000);
+    const tx = el('text', { x: X(t), y: H - 6, 'text-anchor': 'middle' }, ax);
+    tx.textContent = tickStep < 86400 ? (d.getHours() === 0 && span > 86400 ? dayTh(d) : hhmm(d)) : dayTh(d);
+  }
+  // segments (ตัดช่วงที่ไม่มีข้อมูล)
+  const segs = []; let cur = [];
+  rows.forEach((r, i) => {
+    const gap = i > 0 && r.t - rows[i - 1].t > step * 2.5;
+    if (!r.ok || gap) { if (cur.length) segs.push(cur); cur = []; }
+    if (r.ok) cur.push(r);
+  });
+  if (cur.length) segs.push(cur);
+  const band = (seg, lo, hi, color) => {
+    if (!seg.some((r) => Math.abs(hi(r) - lo(r)) > 0.5)) return;
+    const top = seg.map((r) => `${X(r.t).toFixed(1)},${Y(hi(r)).toFixed(1)}`);
+    const bot = seg.slice().reverse().map((r) => `${X(r.t).toFixed(1)},${Y(lo(r)).toFixed(1)}`);
+    el('polygon', { points: top.concat(bot).join(' '), fill: color, 'fill-opacity': .82, stroke: css('--surface-1'), 'stroke-width': 1, 'stroke-linejoin': 'round' }, svg);
+  };
+  segs.forEach((seg) => {
+    band(seg, () => 0, (r) => r.s, COLORS.solar);
+    band(seg, (r) => r.s, (r) => r.s + r.bp, COLORS.battery);
+    band(seg, (r) => r.s + r.bp, (r) => r.s + r.bp + r.gp, COLORS.grid);
+    band(seg, (r) => r.bn, () => 0, COLORS.battery);
+    band(seg, (r) => r.bn + r.gn, (r) => r.bn, COLORS.grid);
+    const pts = seg.filter((r) => r.load != null).map((r) => `${X(r.t).toFixed(1)},${Y(r.load).toFixed(1)}`);
+    if (pts.length > 1) el('polyline', { points: pts.join(' '), fill: 'none', stroke: COLORS.load, 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+  });
+  let cursorLine = null;
+  if (opt.cursorT != null) cursorLine = el('line', { x1: X(opt.cursorT), x2: X(opt.cursorT), y1: m.t, y2: m.t + ih, class: 'cursor' }, svg);
+  // hover layer
+  const xh = el('line', { y1: m.t, y2: m.t + ih, class: 'xhair', opacity: 0 }, svg);
+  const mk = el('circle', { r: 4.5, fill: COLORS.load, stroke: css('--surface-1'), 'stroke-width': 2, opacity: 0 }, svg);
+  const hit = el('rect', { x: m.l, y: 0, width: iw, height: H, fill: 'transparent' }, svg);
+  const tip = ensureTip(box);
+  const at = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const x = (ev.clientX - r.left) * (W / r.width);
+    const t = t0 + (x - m.l) / iw * (t1 - t0);
+    let lo = 0, hi = points.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (points[mid].t < t) lo = mid; else hi = mid; }
+    return Math.abs(points[lo].t - t) < Math.abs(points[hi].t - t) ? lo : hi;
+  };
+  const show = (ev) => {
+    const i = at(ev), p = points[i];
+    const x = X(p.t);
+    xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.setAttribute('opacity', 1);
+    if (p.load != null) { mk.setAttribute('cx', x); mk.setAttribute('cy', Y(p.load)); mk.setAttribute('opacity', 1); }
+    const d = new Date(p.t * 1000);
+    const avail = opt.avail || { solar: true, battery: true, grid: true };
+    tip.innerHTML = `<div class="tt">${span > 86400 * 1.01 ? dayTh(d) + ' ' : ''}${hhmm(d)}${opt.stepLabel ? ' · ' + opt.stepLabel : ''}</div>`
+      + tipRow(COLORS.load, 'โหลดรวม', fmtW(p.load), true)
+      + (avail.solar ? tipRow(COLORS.solar, 'โซลาร์', fmtW(p.solar)) : '')
+      + (avail.battery ? tipRow(COLORS.battery, (p.battery || 0) < 0 ? 'แบต (ชาร์จ)' : 'แบต (จ่าย)', fmtW(p.battery == null ? null : Math.abs(p.battery))) : '')
+      + tipRow(COLORS.grid, (p.grid || 0) < 0 ? 'การไฟฟ้า (ขายคืน)' : 'การไฟฟ้า (ซื้อ)', fmtW(p.grid == null ? null : Math.abs(p.grid)))
+      + (p.soc != null ? tipRow('transparent', 'SOC แบต', p.soc.toFixed(0) + '%') : '')
+      + (p.grid_max != null ? `<div class="row"><span>สูงสุดในช่วง</span><b>${fmtW(p.grid_max)}</b></div>` : '');
+    const br = box.getBoundingClientRect();
+    placeTip(box, tip, ev.clientX - br.left, ev.clientY - br.top);
+    if (opt.onHover) opt.onHover(i);
+  };
+  const hide = () => { xh.setAttribute('opacity', 0); mk.setAttribute('opacity', 0); tip.style.display = 'none'; };
+  hit.addEventListener('pointermove', show);
+  hit.addEventListener('pointerdown', (ev) => { show(ev); if (opt.onPick) opt.onPick(at(ev)); });
+  hit.addEventListener('pointerleave', hide);
+  return { setCursor(t) { if (cursorLine) { cursorLine.setAttribute('x1', X(t)); cursorLine.setAttribute('x2', X(t)); } } };
+}
+
+/* stacked energy bars: [{t, solar, battery_energy_out, grid, grid_cost_thb}] */
+function renderBars(box, bars, bucket, avail) {
+  box.innerHTML = '';
+  if (!bars || !bars.length) { box.innerHTML = '<div class="empty">ยังไม่มีสถิติพลังงานในช่วงนี้</div>'; return; }
+  const W = box.clientWidth || 800, H = box.clientHeight || 200;
+  const m = { l: 52, r: 12, t: 10, b: 26 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const keys = [['solar', 'solar'], ['battery', 'battery_energy_out'], ['grid', 'grid']];
+  const tot = (b) => keys.reduce((a, [, f]) => a + (b[f] || 0), 0);
+  const ymax = niceMax(Math.max(...bars.map(tot)) * 1.08);
+  const Y = (v) => m.t + (ymax - v) / ymax * ih;
+  const bw = iw / bars.length, gap = Math.max(2, Math.min(8, bw * 0.25)), w = Math.max(1, bw - gap);
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H });
+  box.appendChild(svg);
+  const ax = el('g', { class: 'ax' }, svg);
+  ticks(0, ymax).forEach((v) => {
+    el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: v === 0 ? 'baseline' : 'gridline' }, ax);
+    el('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, ax).textContent = v;
+  });
+  const every = Math.ceil(bars.length / Math.max(4, Math.floor(iw / 70)));
+  const tip = ensureTip(box);
+  bars.forEach((b, i) => {
+    const x = m.l + i * bw + gap / 2;
+    const d = new Date(b.t * 1000);
+    if (i % every === 0) el('text', { x: x + w / 2, y: H - 6, 'text-anchor': 'middle' }, ax).textContent = bucket === 'day' ? dayTh(d) : hhmm(d);
+    let base = 0;
+    const segs = keys.filter(([, f]) => (b[f] || 0) > 0);
+    segs.forEach(([k, f], j) => {
+      const v = b[f];
+      const y0 = Y(base), y1 = Y(base + v);
+      const h = Math.max(0, y0 - y1 - (j > 0 ? 2 : 0));
+      const top = j === segs.length - 1;
+      const r = top ? Math.min(4, w / 2, h) : 0;
+      // มุมโค้งเฉพาะด้านบนของแท่ง
+      el('path', { d: `M${x} ${y0 - (j > 0 ? 2 : 0)} V${y1 + r} Q${x} ${y1} ${x + r} ${y1} H${x + w - r} Q${x + w} ${y1} ${x + w} ${y1 + r} V${y0 - (j > 0 ? 2 : 0)} Z`, fill: COLORS[k] }, svg);
+      base += v;
+    });
+    const hit = el('rect', { x: m.l + i * bw, y: m.t, width: bw, height: ih, fill: 'transparent' }, svg);
+    hit.addEventListener('pointermove', (ev) => {
+      hit.setAttribute('fill', 'rgba(255,255,255,.04)');
+      tip.innerHTML = `<div class="tt">${bucket === 'day' ? dayTh(d) + ' ' + d.getFullYear() : dayTh(d) + ' ' + hhmm(d) + '–' + hhmm(new Date((b.t + 3600) * 1000))}</div>`
+        + (avail.solar ? tipRow(COLORS.solar, 'โซลาร์', fmtKwh(b.solar) + ' kWh') : '')
+        + (avail.battery ? tipRow(COLORS.battery, 'แบตจ่าย', fmtKwh(b.battery_energy_out) + ' kWh') : '')
+        + tipRow(COLORS.grid, 'การไฟฟ้า', fmtKwh(b.grid) + ' kWh')
+        + `<div class="row"><span>ค่าไฟ</span><b>${fmtThb(b.grid_cost_thb, 2)}</b></div>`;
+      const br = box.getBoundingClientRect();
+      placeTip(box, tip, ev.clientX - br.left, ev.clientY - br.top);
+    });
+    hit.addEventListener('pointerleave', () => { hit.setAttribute('fill', 'transparent'); tip.style.display = 'none'; });
+  });
+}
+
+/* ═══════════════════════ Live data ═══════════════════════ */
+async function getJson(url) {
+  const r = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function pollLive() {
+  try {
+    const d = await getJson('/api/energy/live');
+    if (!d.ok) throw new Error(d.error || 'error');
+    state.live = d;
+    const p = d.power;
+    const age = p.grid.ts ? Date.now() / 1000 - p.grid.ts : 0;
+    const stale = age > 180;
+    if (state.mode === 'live') {
+      $('#status-dot').className = 'dot ' + (stale ? 'bad' : 'ok');
+      $('#status-text').textContent = stale ? `ข้อมูลล่าสุด ${Math.round(age / 60)} นาทีที่แล้ว` : `อัปเดต ${hhmm(new Date())}`;
+    }
+    $('#notice-sensors').hidden = state.mode === 'sim' || p.solar.available || p.battery.available;
+    renderLiveTiles();
+    if (state.mode === 'live') {
+      const t = d.energy.today;
+      setFlow({
+        solar: p.solar.watts, battery: p.battery.watts, grid: p.grid.watts, load: p.load.watts, soc: p.battery.soc,
+        avail: { solar: p.solar.available, battery: p.battery.available, grid: true, load: true },
+        sub: {
+          grid: t.grid != null ? `วันนี้ ${fmtKwh(t.grid, 1)} kWh` : '',
+          solar: p.solar.available && t.solar != null ? `วันนี้ ${fmtKwh(t.solar, 1)} kWh` : (p.solar.available ? '' : 'ดูโหมดจำลอง →'),
+          battery: p.battery.available ? (p.battery.soc != null ? `SOC ${p.battery.soc.toFixed(0)}%` : '') : 'ยังไม่ติดตั้ง',
+          load: d.meter && d.meter.voltage ? `${d.meter.voltage.toFixed(0)} V · ${d.meter.current.toFixed(2)} A` : '',
+        },
+        clock: new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }),
+      });
+    }
+  } catch (e) {
+    if (state.mode === 'live') {
+      $('#status-dot').className = 'dot bad';
+      $('#status-text').textContent = 'เชื่อมต่อไม่ได้: ' + e.message;
+    }
+  }
+}
+
+async function loadHistory() {
+  let url = `/api/energy/history?range=${state.range}`;
+  if (state.day) {
+    const s = new Date(state.day + 'T00:00:00').getTime() / 1000;
+    url = `/api/energy/history?range=24h&start=${s}&end=${s + 86400}`;
+  }
+  $('#hist-hint').textContent = 'กำลังโหลด…';
+  try {
+    const h = await getJson(url);
+    if (!h.ok) throw new Error(h.error || 'error');
+    state.hist = h;
+    drawHistory();
+  } catch (e) {
+    $('#hist-hint').textContent = 'โหลดไม่สำเร็จ: ' + e.message;
+  }
+}
+
+function drawHistory() {
+  const h = state.hist;
+  if (!h) return;
+  const s = new Date(h.start * 1000), e = new Date(h.end * 1000);
+  const stepLabel = h.step === 300 ? 'เฉลี่ย 5 นาที' : 'เฉลี่ยรายชั่วโมง';
+  $('#hist-hint').textContent = `${dayTh(s)} ${hhmm(s)} – ${dayTh(e)} ${hhmm(e)} · ${stepLabel}`;
+  renderPowerChart($('#chart-power'), h.points, { t0: h.start, t1: h.end, step: h.step, avail: h.available, stepLabel });
+  $('#bucket-label').textContent = h.bucket === 'day' ? 'วัน' : 'ชั่วโมง';
+  renderBars($('#chart-bars'), h.bars, h.bucket, h.available);
+  const T = h.totals || {};
+  const days = (h.end - h.start) / 86400;
+  const avgW = h.points.length ? h.points.reduce((a, p) => a + (p.load || 0), 0) / h.points.length : null;
+  $('#hist-totals').innerHTML = [
+    tile('การไฟฟ้า (รวม)', `${fmtKwh(T.grid, 1)}<small>kWh</small>`, fmtThb(T.grid_cost_thb, 2), { sw: COLORS.grid }),
+    h.available.solar ? tile('โซลาร์ (รวม)', `${fmtKwh(T.solar, 1)}<small>kWh</small>`, '', { sw: COLORS.solar }) : '',
+    h.available.battery ? tile('แบตจ่าย/ชาร์จ', `${fmtKwh(T.battery_energy_out, 1)}<small>kWh</small>`, `ชาร์จ ${fmtKwh(T.battery_energy_in, 1)} kWh`, { sw: COLORS.battery }) : '',
+    tile('โหลดเฉลี่ย', fmtW(avgW), days > 1.5 ? `เฉลี่ย ${fmtKwh((T.grid || 0) / days, 1)} kWh/วัน` : '', { sw: COLORS.load }),
+    tile('พีคสูงสุด', fmtW(h.peak && h.peak.watts), h.peak ? `${dayTh(new Date(h.peak.t * 1000))} ${hhmm(new Date(h.peak.t * 1000))}` : ''),
+  ].join('');
+  // table
+  const rows = h.bars.map((b) => {
+    const d = new Date(b.t * 1000);
+    return `<tr><td>${h.bucket === 'day' ? dayTh(d) + ' ' + d.getFullYear() : dayTh(d) + ' ' + hhmm(d)}</td><td>${fmtKwh(b.grid, 3)}</td>${h.available.solar ? `<td>${fmtKwh(b.solar, 3)}</td>` : ''}${h.available.battery ? `<td>${fmtKwh(b.battery_energy_out, 3)}</td>` : ''}<td>${fmtThb(b.grid_cost_thb, 2)}</td></tr>`;
+  }).reverse().join('');
+  $('#hist-table').innerHTML = `<table><thead><tr><th>ช่วงเวลา</th><th>การไฟฟ้า kWh</th>${h.available.solar ? '<th>โซลาร์ kWh</th>' : ''}${h.available.battery ? '<th>แบตจ่าย kWh</th>' : ''}<th>ค่าไฟ</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function exportCsv() {
+  const h = state.hist; if (!h) return;
+  const lines = ['time,load_w,grid_w,solar_w,battery_w,soc_pct'];
+  h.points.forEach((p) => lines.push([new Date(p.t * 1000).toISOString(), p.load ?? '', p.grid ?? '', p.solar ?? '', p.battery ?? '', p.soc ?? ''].join(',')));
+  lines.push('', 'bucket_start,grid_kwh,solar_kwh,battery_out_kwh,grid_cost_thb');
+  h.bars.forEach((b) => lines.push([new Date(b.t * 1000).toISOString(), b.grid ?? '', b.solar ?? '', b.battery_energy_out ?? '', b.grid_cost_thb ?? ''].join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = `energy-${state.day || state.range}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ═══════════════════════ Simulation ═══════════════════════ */
+const STEPS = 288, DT = 5 / 60; // 5 นาที (ชม.)
+// กรุงเทพฯ ~13.7°N: ความยาวกลางวัน & ความเข้มแสงตามฤดู (ค่าโดยประมาณ)
+const MONTH_SUN = [ // [sunrise, sunset, irradiance factor, typical cloud]
+  [6.70, 18.05, 0.92, 'sunny'], [6.65, 18.30, 0.98, 'sunny'], [6.40, 18.40, 1.00, 'partly'], [6.10, 18.45, 1.00, 'partly'],
+  [5.90, 18.60, 0.92, 'partly'], [5.85, 18.75, 0.85, 'cloudy'], [5.95, 18.75, 0.84, 'cloudy'], [6.05, 18.60, 0.85, 'cloudy'],
+  [6.10, 18.30, 0.83, 'rainy'], [6.15, 18.00, 0.86, 'cloudy'], [6.30, 17.85, 0.90, 'partly'], [6.55, 17.90, 0.90, 'sunny'],
+];
+const WEATHER = { sunny: { f: 1.0, var: 0.05 }, partly: { f: 0.82, var: 0.28 }, cloudy: { f: 0.55, var: 0.35 }, rainy: { f: 0.28, var: 0.3 } };
+const PROFILES = { // W ต่อชั่วโมง 0..23
+  home: [520, 480, 460, 450, 450, 520, 780, 900, 650, 480, 450, 480, 560, 520, 480, 500, 620, 900, 1400, 1700, 1800, 1650, 1300, 800],
+  office: [380, 360, 350, 350, 360, 420, 700, 900, 1300, 1500, 1600, 1700, 1650, 1700, 1750, 1700, 1500, 1200, 1100, 1100, 1000, 850, 600, 450],
+};
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+
+function loadProfile(kind, scale) {
+  let hourly = PROFILES[kind];
+  if (kind === 'real') hourly = state.profile7d || PROFILES.home;
+  const out = new Float64Array(STEPS);
+  for (let i = 0; i < STEPS; i++) {
+    const h = i * DT, h0 = Math.floor(h) % 24, h1 = (h0 + 1) % 24, f = h - Math.floor(h);
+    out[i] = (hourly[h0] * (1 - f) + hourly[h1] * f) * scale;
+  }
+  return out;
+}
+
+function pvProfile(kwp, invKw, month, weather, seed = 7) {
+  const [sr, ss, irr] = MONTH_SUN[month];
+  const w = WEATHER[weather];
+  const rand = rng(seed + month * 31 + weather.length * 7);
+  const out = new Float64Array(STEPS);
+  let cloud = 1;
+  for (let i = 0; i < STEPS; i++) {
+    const h = i * DT + DT / 2;
+    let p = 0;
+    if (h > sr && h < ss) {
+      const x = (h - sr) / (ss - sr);
+      p = Math.pow(Math.sin(Math.PI * x), 1.25);
+    }
+    // เมฆ: random walk แบบนุ่ม ๆ
+    cloud += (rand() - 0.5) * w.var * 0.9 + (1 - cloud) * 0.12;
+    cloud = Math.max(0.15, Math.min(1.08, cloud));
+    const c = w.var > 0.1 ? cloud : 1;
+    out[i] = Math.min(invKw * 1000, kwp * 1000 * 0.80 * irr * w.f * c * p);
+  }
+  return out;
+}
+
+function simulate(cfg, month, weather) {
+  const load = loadProfile(cfg.profile, cfg.scale);
+  const pv = pvProfile(cfg.pv, cfg.inv, month, weather);
+  const cap = cfg.bat * 1000, maxP = cfg.batp * 1000, eff = 0.95; // ประสิทธิภาพชาร์จ/จ่ายทางเดียว
+  let e = cap * cfg.soc0 / 100;
+  const emin = cap * cfg.socmin / 100;
+  const pts = [];
+  const acc = { load: 0, pv: 0, pvSelf: 0, batIn: 0, batOut: 0, gridIn: 0, gridOut: 0, curtail: 0 };
+  const base = new Date(); base.setHours(0, 0, 0, 0);
+  for (let i = 0; i < STEPS; i++) {
+    const L = load[i], P = pv[i];
+    let bat = 0, grid = 0, curt = 0;
+    const net = P - L;
+    if (net >= 0) {
+      const ch = cap > 0 ? Math.min(net, maxP, (cap - e) / (eff * DT)) : 0;
+      e += ch * eff * DT; bat = -ch;
+      const rest = net - ch;
+      if (cfg.allowExport) grid = -rest; else curt = rest;
+    } else {
+      const need = -net;
+      const dis = cap > 0 ? Math.min(need, maxP, Math.max(0, (e - emin) * eff / DT), Math.max(0, cfg.inv * 1000 - P)) : 0;
+      e -= dis / eff * DT; bat = dis;
+      grid = need - dis;
+    }
+    const pvUsed = P - curt;
+    acc.load += L * DT; acc.pv += pvUsed * DT; acc.curtail += curt * DT;
+    acc.pvSelf += Math.min(P, L) * DT;
+    if (bat < 0) acc.batIn += -bat * DT; else acc.batOut += bat * DT;
+    if (grid > 0) acc.gridIn += grid * DT; else acc.gridOut += -grid * DT;
+    pts.push({ t: base.getTime() / 1000 + i * 300, solar: pvUsed, battery: bat, grid, load: L, soc: cap > 0 ? e / cap * 100 : null });
+  }
+  for (const k in acc) acc[k] /= 1000; // kWh
+  const costBase = acc.load * cfg.tariff;
+  const cost = acc.gridIn * cfg.tariff - (cfg.allowExport ? acc.gridOut * cfg.export : 0);
+  return { pts, acc, costBase, cost, saving: costBase - cost, selfSuff: acc.load > 0 ? (1 - acc.gridIn / acc.load) * 100 : 0 };
+}
+
+function readForm() {
+  const f = $('#sim-form');
+  const g = (n) => f.elements[n];
+  const num = (n) => parseFloat(g(n).value) || 0;
+  return {
+    pv: num('pv'), inv: num('inv'), month: parseInt(g('month').value, 10), weather: g('weather').value,
+    bat: num('bat'), batp: num('batp'), soc0: num('soc0'), socmin: num('socmin'),
+    profile: g('profile').value, scale: num('scale') / 100, tariff: num('tariff'), export: num('export'),
+    allowExport: g('allowExport').checked, pvCost: num('pvCost'), batCost: num('batCost'),
+  };
+}
+
+function runSim() {
+  const cfg = readForm();
+  $('#o-pv').textContent = cfg.pv.toFixed(1) + ' kWp';
+  $('#o-inv').textContent = cfg.inv.toFixed(1) + ' kW';
+  $('#o-bat').textContent = cfg.bat.toFixed(1) + ' kWh';
+  $('#o-batp').textContent = cfg.batp.toFixed(1) + ' kW';
+  $('#o-soc').textContent = `${cfg.soc0}% / ${cfg.socmin}%`;
+  $('#o-scale').textContent = Math.round(cfg.scale * 100) + '%';
+  const day = simulate(cfg, cfg.month, cfg.weather);
+  // ทั้งปี: จำลอง 12 เดือนด้วยสภาพอากาศปกติของแต่ละเดือน
+  const dim = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let ySave = 0, yPv = 0, yLoad = 0, yGrid = 0;
+  MONTH_SUN.forEach((ms, mi) => {
+    const r = simulate(cfg, mi, ms[3]);
+    ySave += r.saving * dim[mi]; yPv += r.acc.pv * dim[mi]; yLoad += r.acc.load * dim[mi]; yGrid += r.acc.gridIn * dim[mi];
+  });
+  const capex = cfg.pv * cfg.pvCost + cfg.bat * cfg.batCost;
+  const payback = ySave > 0 && capex > 0 ? capex / ySave : null;
+  state.sim = { cfg, day, year: { ySave, yPv, yLoad, yGrid, capex, payback } };
+  drawSim();
+}
+
+function drawSim() {
+  const { cfg, day, year } = state.sim;
+  const a = day.acc;
+  $('#sim-results').innerHTML = [
+    tile('ค่าไฟ/วัน (เดิม → ใหม่)', `${fmtThb(day.cost, 0)}`, `เดิม ${fmtThb(day.costBase, 0)} · ${MONTHS_TH[cfg.month]}`, { sw: COLORS.grid }),
+    tile('ประหยัด/เดือน', `${fmtThb(day.saving * 30)}`, `ทั้งปี ~${fmtThb(year.ySave)}`, { cls: day.saving > 0 ? 'good' : '' }),
+    tile('คืนทุน', year.payback ? `${year.payback.toFixed(1)}<small>ปี</small>` : '—', capex(year.capex), {}),
+    tile('พึ่งพาตัวเอง', `${day.selfSuff.toFixed(0)}<small>%</small>`, `ซื้อไฟ ${fmtKwh(a.gridIn, 1)} / ${fmtKwh(a.load, 1)} kWh`, { sw: COLORS.solar }),
+    tile('โซลาร์ผลิต/วัน', `${fmtKwh(a.pv, 1)}<small>kWh</small>`, a.curtail > 0.05 ? `ทิ้ง ${fmtKwh(a.curtail, 1)} kWh (ไม่ขายคืน)` : `ขายคืน ${fmtKwh(a.gridOut, 1)} kWh`, { sw: COLORS.solar }),
+    tile('ลด CO₂/ปี', `${fmtKwh((year.yLoad - year.yGrid) * GRID_CO2 / 1000, 2)}<small>ตัน</small>`, `≈ ปลูกต้นไม้ ${Math.round((year.yLoad - year.yGrid) * GRID_CO2 / 21)} ต้น`),
+  ].join('');
+  const startT = day.pts[0].t;
+  state.simChart = renderPowerChart($('#chart-sim'), day.pts, {
+    t0: startT, t1: startT + 86400 - 300, step: 300, cursorT: startT + state.simIdx * 300,
+    avail: { solar: true, battery: cfg.bat > 0, grid: true }, stepLabel: 'จำลอง',
+    onPick: (i) => setSimIdx(i),
+  });
+  // เปรียบเทียบ ก่อน/หลัง (kWh/วัน ตามแหล่งที่จ่ายโหลด)
+  const fromPv = Math.max(0, a.pvSelf), fromBat = a.batOut, fromGrid = a.gridIn;
+  const mx = Math.max(a.load, fromPv + fromBat + fromGrid) || 1;
+  const seg = (v, c) => v > 0.01 ? `<i style="width:${(v / mx * 100).toFixed(2)}%;background:${c}" title="${fmtKwh(v, 1)} kWh"></i>` : '';
+  $('#sim-compare').innerHTML = `
+    <div class="cmp-row"><span>ก่อนติดตั้ง</span><div class="track">${seg(a.load, COLORS.grid)}</div><b>${fmtKwh(a.load, 1)} kWh · ${fmtThb(day.costBase)}</b></div>
+    <div class="cmp-row"><span>หลังติดตั้ง</span><div class="track">${seg(fromPv, COLORS.solar)}${seg(fromBat, COLORS.battery)}${seg(fromGrid, COLORS.grid)}</div><b>${fmtKwh(fromGrid, 1)} kWh · ${fmtThb(day.cost)}</b></div>
+    <div class="legend" style="margin-left:130px"><span><i class="sw" style="background:var(--solar)"></i>โซลาร์ตรง ${fmtKwh(fromPv, 1)}</span><span><i class="sw" style="background:var(--battery)"></i>จากแบต ${fmtKwh(fromBat, 1)}</span><span><i class="sw" style="background:var(--grid-c)"></i>ซื้อไฟ ${fmtKwh(fromGrid, 1)} kWh</span></div>`;
+  // ตารางรายชั่วโมง
+  let rows = '';
+  for (let hr = 0; hr < 24; hr++) {
+    const sl = day.pts.slice(hr * 12, hr * 12 + 12);
+    const s = (k, f = (x) => x) => sl.reduce((acc, p) => acc + f(p[k] || 0), 0) * DT / 1000;
+    const soc = sl[sl.length - 1].soc;
+    rows += `<tr><td>${pad(hr)}:00</td><td>${fmtKwh(s('load'))}</td><td>${fmtKwh(s('solar'))}</td><td>${fmtKwh(s('battery', (x) => Math.max(0, x)))}</td><td>${fmtKwh(s('battery', (x) => Math.max(0, -x)))}</td><td>${fmtKwh(s('grid', (x) => Math.max(0, x)))}</td><td>${fmtKwh(s('grid', (x) => Math.max(0, -x)))}</td><td>${soc == null ? '—' : soc.toFixed(0) + '%'}</td></tr>`;
+  }
+  $('#sim-table').innerHTML = `<table><thead><tr><th>ชั่วโมง</th><th>โหลด</th><th>โซลาร์</th><th>แบตจ่าย</th><th>แบตชาร์จ</th><th>ซื้อไฟ</th><th>ขายคืน</th><th>SOC</th></tr></thead><tbody>${rows}</tbody></table>`;
+  setSimIdx(state.simIdx);
+}
+function capex(v) { return v > 0 ? `ลงทุน ${fmtThb(v)}` : 'ยังไม่มีอุปกรณ์'; }
+
+function setSimIdx(i) {
+  state.simIdx = Math.max(0, Math.min(STEPS - 1, i | 0));
+  $('#sim-time').value = state.simIdx;
+  if (!state.sim || state.mode !== 'sim') return;
+  const p = state.sim.day.pts[state.simIdx];
+  const cfg = state.sim.cfg;
+  const d = new Date(p.t * 1000);
+  $('#sim-clock').textContent = hhmm(d);
+  if (state.simChart) state.simChart.setCursor(p.t);
+  setFlow({
+    solar: p.solar, battery: p.battery, grid: p.grid, load: p.load, soc: p.soc,
+    avail: { solar: cfg.pv > 0, battery: cfg.bat > 0, grid: true, load: true },
+    sub: {
+      solar: cfg.pv > 0 ? `${cfg.pv} kWp` : 'ไม่มี',
+      battery: cfg.bat > 0 ? `SOC ${p.soc.toFixed(0)}% · ${cfg.bat} kWh` : 'ไม่มี',
+      grid: p.grid < -5 ? 'กำลังขายคืน' : p.grid > 5 ? 'กำลังซื้อไฟ' : 'ไม่ใช้ไฟการไฟฟ้า',
+      load: 'จำลอง',
+    },
+    clock: `จำลอง · ${MONTHS_TH[cfg.month]} · ${hhmm(d)} น.`,
+  });
+}
+
+let playTimer = null, playLast = 0, playAcc = 0;
+function togglePlay(force) {
+  state.playing = force ?? !state.playing;
+  $('#sim-play').textContent = state.playing ? '⏸ หยุด' : '▶ เล่น';
+  if (state.playing) {
+    playLast = performance.now(); playAcc = 0;
+    const loop = (now) => {
+      if (!state.playing) return;
+      const secPerDay = parseFloat($('#sim-speed').value);
+      playAcc += (now - playLast) / 1000 * (STEPS / secPerDay);
+      playLast = now;
+      if (playAcc >= 1) { const n = Math.floor(playAcc); playAcc -= n; setSimIdx((state.simIdx + n) % STEPS); }
+      playTimer = requestAnimationFrame(loop);
+    };
+    playTimer = requestAnimationFrame(loop);
+  } else if (playTimer) cancelAnimationFrame(playTimer);
+}
+
+const PRESETS = {
+  none:    { pv: 0, inv: 5, bat: 0 },
+  pv3:     { pv: 3, inv: 3, bat: 0 },
+  pv5:     { pv: 5, inv: 5, bat: 0 },
+  pv5b10:  { pv: 5, inv: 5, bat: 10, batp: 5 },
+  pv10b15: { pv: 10, inv: 10, bat: 15, batp: 7.5 },
+};
+function applyPreset(k) {
+  const f = $('#sim-form');
+  for (const [n, v] of Object.entries(PRESETS[k])) f.elements[n].value = v;
+  runSim();
+}
+
+/* โปรไฟล์โหลดจริง: ค่าเฉลี่ยรายชั่วโมงของ 7 วันล่าสุด */
+async function loadRealProfile() {
+  try {
+    const h = await getJson('/api/energy/history?range=7d');
+    const sum = new Array(24).fill(0), n = new Array(24).fill(0);
+    (h.points || []).forEach((p) => {
+      if (p.load == null) return;
+      const hr = new Date(p.t * 1000).getHours();
+      sum[hr] += p.load; n[hr]++;
+    });
+    if (n.filter(Boolean).length >= 20) {
+      const avg = sum.map((s, i) => n[i] ? s / n[i] : null);
+      state.profile7d = avg.map((v, i) => v ?? avg[(i + 23) % 24] ?? 600);
+    }
+  } catch (_) { /* ใช้โปรไฟล์ตัวอย่างแทน */ }
+}
+
+/* ═══════════════════════ Mode / wiring ═══════════════════════ */
+function setMode(mode) {
+  state.mode = mode;
+  $$('.seg [data-mode]').forEach((b) => { b.classList.toggle('is-on', b.dataset.mode === mode); b.setAttribute('aria-selected', b.dataset.mode === mode); });
+  const sim = mode === 'sim';
+  $('#sim-card').hidden = !sim;
+  $('#history-card').hidden = sim;
+  $('#notice-sim').hidden = !sim;
+  $('#flow-hint').textContent = sim ? 'จำลอง — ลากแถบเวลาหรือกดเล่น' : 'เรียลไทม์ (อัปเดตทุก 5 วินาที)';
+  if (sim) {
+    $('#notice-sensors').hidden = true;
+    $('#status-dot').className = 'dot sim';
+    $('#status-text').textContent = 'โหมดจำลอง';
+    if (!state.sim) runSim(); else drawSim();
+  } else {
+    togglePlay(false);
+    pollLive();
+    drawHistory();
+  }
+  try { history.replaceState(null, '', sim ? '#sim' : location.pathname); } catch (_) {}
+}
+
+function init() {
+  buildFlow();
+  const ms = $('#sim-form').elements.month;
+  MONTHS_TH.forEach((m, i) => ms.add(new Option(m + (MONTH_SUN[i][3] === 'rainy' || MONTH_SUN[i][3] === 'cloudy' ? ' (ฤดูฝน)' : i <= 1 || i >= 10 ? ' (ฤดูหนาว)' : ' (ฤดูร้อน)'), i)));
+  ms.value = new Date().getMonth();
+  const today = new Date();
+  $('#hist-day').max = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+  $$('.seg [data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  $$('#range-seg button').forEach((b) => b.addEventListener('click', () => {
+    $$('#range-seg button').forEach((x) => x.classList.toggle('is-on', x === b));
+    state.range = b.dataset.range; state.day = null; $('#hist-day').value = '';
+    loadHistory();
+  }));
+  $('#hist-day').addEventListener('change', (e) => {
+    state.day = e.target.value || null;
+    $$('#range-seg button').forEach((x) => x.classList.toggle('is-on', !state.day && x.dataset.range === state.range));
+    loadHistory();
+  });
+  $('#btn-csv').addEventListener('click', exportCsv);
+  $('#sim-form').addEventListener('input', () => runSim());
+  $('#sim-time').addEventListener('input', (e) => { togglePlay(false); setSimIdx(+e.target.value); });
+  $('#sim-play').addEventListener('click', () => togglePlay());
+  $$('#presets [data-preset]').forEach((b) => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+  let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (state.mode === 'sim') drawSim(); else drawHistory(); }, 150); });
+
+  pollLive();
+  setInterval(() => { if (state.mode === 'live' && !document.hidden) pollLive(); }, 5000);
+  loadHistory();
+  setInterval(() => { if (state.mode === 'live' && !state.day && !document.hidden && (state.range === '24h' || state.range === '48h')) loadHistory(); }, 60000);
+  loadRealProfile().then(() => { if (state.sim) runSim(); });
+  if (location.hash === '#sim') setMode('sim');
+}
+init();
+</script>
+</body>
+</html>

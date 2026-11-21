@@ -1204,6 +1204,16 @@ async function energyMetrics() {
     }
 }
 
+const ENERGY_RANGES = ['24h', '48h', '7d', '30d', '90d'];
+async function energyHistoryCmd(args) {
+    try {
+        const out = await sh('python3', [path.join(__dirname, 'energy-history.py'), ...args], { timeout: 8000 });
+        return JSON.parse(out);
+    } catch (e) {
+        return { ok: false, error: String(e.message || e) };
+    }
+}
+
 async function buildSummary() {
     const [host, containers, pm2, kuma, mongo, probes, tailscale, wireguard, emqx, ports, energy] = await Promise.all([
         cached('host', 2000, hostMetrics),
@@ -1665,6 +1675,19 @@ const server = http.createServer(async (req, res) => {
         }
         if (p === '/api/energy') {
             return sendJson(res, 200, await cached('energy', 6000, energyMetrics));
+        }
+        if (p === '/api/energy/live') {
+            return sendJson(res, 200, await cached('energy-live', 4000, () => energyHistoryCmd(['live'])));
+        }
+        if (p === '/api/energy/history') {
+            const rng = ENERGY_RANGES.includes(url.searchParams.get('range')) ? url.searchParams.get('range') : '24h';
+            const args = ['history', '--range', rng];
+            const st = parseInt(url.searchParams.get('start'), 10), en = parseInt(url.searchParams.get('end'), 10);
+            if (st > 0 && en > st && en - st <= 120 * 86400) args.push('--start', String(st), '--end', String(en));
+            return sendJson(res, 200, await cached('energy-hist:' + args.join(' '), 60000, () => energyHistoryCmd(args)));
+        }
+        if (p === '/energy' || p === '/energy/') {
+            return await serveStatic(req, res, '/energy.html');
         }
         if (p === '/api/health') {
             return sendJson(res, 200, { ok: true, uptimeSec: Math.round(process.uptime()) });

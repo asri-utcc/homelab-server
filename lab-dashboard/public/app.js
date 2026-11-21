@@ -755,6 +755,7 @@ const VIEW_TITLES = {
     terminal: { icon: '🤖', text: 'Gemini AI Assistant &amp; Tactical Terminal' },
     gemini:   { icon: '🤖', text: 'Gemini AI Assistant &amp; Project Builder' },
     settings: { icon: '⚙️', text: 'ตั้งค่าระบบ &amp; AI (System Settings)' },
+    energy:   { icon: '⚡', text: 'Energy Monitor — โซลาร์ · แบตเตอรี่ · การไฟฟ้า · โหลด' },
 };
 
 function switchTerminalSubtab(subtab) {
@@ -854,7 +855,7 @@ function switchView(viewName, updateHash = true) {
     }
 
     const prevView = state.activeView;
-    const validViews = ['overview', 'services', 'ports', 'terminal', 'settings'];
+    const validViews = ['overview', 'services', 'ports', 'terminal', 'settings', 'energy'];
     const target = validViews.includes(viewName) ? viewName : 'overview';
 
     if (state.isReady && prevView === target && !state.warp) {
@@ -863,6 +864,12 @@ function switchView(viewName, updateHash = true) {
 
     if (target === 'settings' && typeof loadSettingsView === 'function') {
         loadSettingsView();
+    }
+
+    if (target === 'energy') {
+        // โหลด iframe เฉพาะตอนเปิดครั้งแรก (หน้า energy มี polling ของตัวเอง)
+        const ef = document.getElementById('energy-frame');
+        if (ef && !ef.getAttribute('src')) ef.setAttribute('src', ef.dataset.src);
     }
 
     const performNavUpdates = () => {
@@ -2308,7 +2315,7 @@ function bindEvents() {
         if (anchor) {
             const href = anchor.getAttribute('href') || '';
             // If it's an external link or normal page URL, do NOT intercept
-            if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('/os/') || href.startsWith('/portainer') || href.startsWith('/mongo') || href.startsWith('/terminal') || anchor.target === '_blank') {
+            if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('/os/') || href.startsWith('/portainer') || href.startsWith('/mongo') || href.startsWith('/terminal') || href.startsWith('/energy') || anchor.target === '_blank') {
                 return;
             }
         }
@@ -2858,7 +2865,7 @@ initMagneticPhysics();
 // Restore view from URL hash or path
 const initHash = location.hash.replace('#', '');
 const initPath = location.pathname.replace('/', '');
-const validViews = ['overview', 'services', 'ports', 'vpn', 'terminal', 'gemini'];
+const validViews = ['overview', 'services', 'ports', 'vpn', 'terminal', 'gemini', 'energy'];
 const startView = validViews.includes(initHash) ? initHash : (validViews.includes(initPath) ? initPath : 'overview');
 switchView(startView, false);
 state.isReady = true;

@@ -1,0 +1,20 @@
+{
+  "_comment": "แหล่งพลังงานของหน้า Energy — ใส่ entity_id ของ Home Assistant เมื่อติดตั้งอินเวอร์เตอร์/แบตเตอรี่ (null = ยังไม่มี). battery.power: บวก=คายประจุ ลบ=ชาร์จ. load.power null = คำนวณจาก grid+solar+battery",
+  "tariff_thb_per_kwh": 4.42,
+  "billing_cycle_day": 17,
+  "grid_label": "การไฟฟ้า (PEA)",
+  "sources": {
+    "grid": { "power": "sensor.pezem01_power", "energy": "sensor.pezem01_energy" },
+    "solar": { "power": null, "energy": null },
+    "battery": { "power": null, "soc": null, "energy_in": null, "energy_out": null },
+    "load": { "power": null }
+  },
+  "grid_meter": {
+    "voltage": "sensor.pezem01_volt",
+    "current": "sensor.pezem01_current",
+    "power_factor": "sensor.pezem01_power_factor",
+    "frequency": "sensor.pezem01_frequency",
+    "apparent_va": "sensor.pezem01_va_value",
+    "reactive_var": "sensor.pezem01_power_reaction"
+  }
+}

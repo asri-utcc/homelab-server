@@ -460,9 +460,9 @@
         };
       }
     },
-    // Tier 4 (r=278): 3 Primary Cosmic Stations & Energy Comet
+    // Tier 4 (r=278): Cosmic Stations, Energy Comet, BG Studio Star & Host Asteroid
     {
-      id: 'trends', label: 'TRENDS', keywords: 'trends chart graph กราฟ ย้อนหลัง', icon: '🛰️', kind: 'station', ring: 278, speed: 0.0020, angle: 0.85, size: 32, color: '#00e5ff',
+      id: 'trends', label: 'TRENDS', keywords: 'trends chart graph กราฟ ย้อนหลัง', icon: '🛰️', kind: 'station', ring: 278, speed: 0.0020, angle: 0.55, size: 32, color: '#00e5ff',
       getTag: () => '🛰️ TRENDS',
       getInfo: () => {
         const cpuNow = Math.round(latestSummary?.host?.cpu?.pct || 0);
@@ -485,7 +485,7 @@
       }
     },
     {
-      id: 'energy', label: 'ENERGY', keywords: 'energy pzem electricity cost ค่าไฟ พลังงาน', icon: '☄️', kind: 'meteor', ring: 278, speed: 0.0020, angle: 2.95, size: 30, color: '#facc15',
+      id: 'energy', label: 'ENERGY', keywords: 'energy pzem electricity cost ค่าไฟ พลังงาน', icon: '☄️', kind: 'meteor', ring: 278, speed: 0.0020, angle: 2.12, size: 30, color: '#facc15',
       getTag: () => latestSummary?.energy?.today?.cost_thb != null ? `☄️ ${latestSummary.energy.today.cost_thb.toFixed(0)}฿` : '☄️ ENERGY',
       getInfo: () => {
         const en = latestSummary?.energy || {};
@@ -510,7 +510,23 @@
       }
     },
     {
-      id: 'hostdb', label: 'HOST/DB', keywords: 'host db disk sensor core os รายละเอียด', icon: '🪨', kind: 'asteroid', ring: 278, speed: 0.0020, angle: 5.05, size: 30, color: '#94a3b8',
+      id: 'bg-remove', label: 'BG STUDIO', keywords: 'bg remove background remover cutout studio star ลบพื้นหลัง ตัดพื้นหลัง พื้นหลังใส อัพโหลดรูป', icon: '✦', kind: 'star', ring: 278, speed: 0.0020, angle: 3.69, size: 32, color: '#fbbf24',
+      getTag: () => '✦ ลบพื้นหลัง',
+      getInfo: () => ({
+        title: 'ดาว Studio ลบพื้นหลังภาพ (Offline AI)',
+        status: 'LOCAL AI',
+        body: `
+          อัพโหลดรูปภาพเพื่อตัดพื้นหลังได้ด้วยตัวเองบนเครื่อง Homelab 100% (ไม่ส่งรูปออกนอกเซิร์ฟเวอร์)<br>
+          <span style="color:#94a3b8; font-size:11.5px;">ควบคุมได้ 4 ระดับ: โหมดความละเอียด · แก้ขอบ/Matting/วาดกรอบเก็บ-ลบ &amp; พู่กันแต่งมือ · เปลี่ยนสีพื้นหลัง/ครอป · เทียบหลายโมเดล</span>
+        `,
+        actions: [
+          { label: '✦ เปิดหน้าลบพื้นหลัง', href: '/bg-remove', sameTab: true },
+          { label: '↗ เปิดในแท็บใหม่', href: '/bg-remove' }
+        ]
+      })
+    },
+    {
+      id: 'hostdb', label: 'HOST/DB', keywords: 'host db disk sensor core os รายละเอียด', icon: '🪨', kind: 'asteroid', ring: 278, speed: 0.0020, angle: 5.26, size: 30, color: '#94a3b8',
       getTag: () => '🪨 HOST/DB',
       getInfo: () => {
         const h = latestSummary?.host || {};
@@ -537,7 +553,8 @@
     const kindClass = def.kind === 'station' ? 'ov-cosmic-station'
       : (def.kind === 'meteor' ? 'ov-cosmic-meteor'
         : (def.kind === 'asteroid' ? 'ov-cosmic-asteroid'
-          : (def.kind === 'relay' ? 'ov-cosmic-relay' : '')));
+          : (def.kind === 'star' ? 'ov-cosmic-star'
+            : (def.kind === 'relay' ? 'ov-cosmic-relay' : ''))));
     el.className = `orbit-planet ov-orbit-planet ${kindClass}`.trim();
     el.style.width = `${def.size}px`;
     el.style.height = `${def.size}px`;
@@ -588,6 +605,12 @@
       el.classList.remove('is-grabbed');
       if (st.dragDist < 6) focusAndOpenCosmic(st);
     };
+    el.addEventListener('dblclick', (e) => {
+      if (def.id === 'bg-remove') {
+        e.stopPropagation();
+        window.location.href = '/bg-remove';
+      }
+    });
     el.addEventListener('pointerup', onDrop);
     el.addEventListener('pointercancel', onDrop);
     planetStates.push(st);
@@ -608,6 +631,7 @@
       { kind: 'meteor', icon: '☄️', color: '#f5d061' }
     ];
     links.forEach((l, idx) => {
+      if (l.id === 'bg-remove') return; // Dedicated star node already orbits in Tier 4
       const label = String(l.label || l.name || 'Service').replace('เวอร์ชันเดิม', 'Legacy');
       const shortTag = label.length > 14 ? label.slice(0, 13) + '…' : label;
       const k = kinds[idx % kinds.length];
@@ -659,7 +683,8 @@
     const info = def.getInfo();
     const actionsHtml = (info.actions || []).map((a, idx) => {
       if (a.href) {
-        return `<a class="planet-pop__btn" href="${a.href}" target="_blank" rel="noopener noreferrer">${a.label}</a>`;
+        const targetAttrs = a.sameTab ? '' : ' target="_blank" rel="noopener noreferrer"';
+        return `<a class="planet-pop__btn" href="${a.href}"${targetAttrs}>${a.label}</a>`;
       }
       return `<button type="button" class="planet-pop__btn" data-ov-act="${idx}">${a.label}</button>`;
     }).join('');

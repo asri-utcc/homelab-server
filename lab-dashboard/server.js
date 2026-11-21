@@ -32,6 +32,7 @@ const crypto = require('crypto');
 const wgManager = require('./wireguard-manager');
 const geminiManager = require('./gemini-manager');
 const aiRouter = require('./ai-router');
+const bgRemoveManager = require('./bg-remove-manager');
 
 // ── config ────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.DASHBOARD_PORT || '8090', 10);
@@ -1179,6 +1180,7 @@ async function terminalExec(body = {}) {
 // ── summary assembly ─────────────────────────────────────────────────────────
 const LINKS = [
     { id: 'terminal', label: 'Web Terminal (Cockpit)', icon: 'terminal', url: '/terminal' },
+    { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
     { id: 'ports', label: 'Port & Firewall Manager', icon: 'shield', url: '#sec-ports' },
     { id: 'wireguard', label: 'WireGuard VPN UI', icon: 'shield', url: `https://${TAIL_HOST}:51821/` },
     { id: 'emqx', label: 'EMQX Dashboard', icon: 'activity', url: `https://${TAIL_HOST}:18083/` },
@@ -1732,6 +1734,50 @@ const server = http.createServer(async (req, res) => {
         }
         if (p === '/settings' || p === '/settings/') {
             return await serveStatic(req, res, '/settings.html');
+        }
+        if (p === '/bg-remove' || p === '/bg-remove/') {
+            return await serveStatic(req, res, '/bg-remove.html');
+        }
+        if (req.method === 'GET' && p === '/api/bg-remove/status') {
+            return sendJson(res, 200, await bgRemoveManager.getStatus());
+        }
+        if (req.method === 'POST' && p === '/api/bg-remove/upload') {
+            const body = await readJsonBody(req, 24 * 1024 * 1024);
+            try {
+                const r = await bgRemoveManager.saveUpload(body.dataUrl, body.filename);
+                return sendJson(res, 200, r);
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/bg-remove/process') {
+            const body = await readJsonBody(req, 256 * 1024);
+            try {
+                const r = await bgRemoveManager.runJob(body);
+                return sendJson(res, 200, r);
+            } catch (err) {
+                const status = err.statusCode || 400;
+                return sendJson(res, status, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/bg-remove/abort') {
+            return sendJson(res, 200, bgRemoveManager.abortActive());
+        }
+        if (req.method === 'GET' && p.startsWith('/api/bg-remove/file/')) {
+            const rel = p.slice('/api/bg-remove/file/'.length);
+            const info = await bgRemoveManager.resolveSafeFile(rel);
+            if (!info) return sendJson(res, 404, { error: 'File not found' });
+            const data = await fsp.readFile(info.filePath);
+            const headers = {
+                'Content-Type': info.mime,
+                'Cache-Control': 'private, max-age=3600',
+            };
+            if (url.searchParams.get('download') === '1') {
+                headers['Content-Disposition'] = `attachment; filename="${info.filename.replace(/"/g, '')}"`;
+            }
+            res.writeHead(200, headers);
+            res.end(data);
+            return;
         }
         if (req.method === 'POST' && p === '/api/settings/telegram-test') {
             return new Promise((resolve) => {

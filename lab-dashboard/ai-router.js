@@ -323,6 +323,7 @@ const BOOST_SURPLUS = 0.2;
 const CONSERVE_SURPLUS = -0.15;
 const NEAR_RESET_FRAC = 0.2;
 const NEAR_RESET_MIN_PCT = 30;
+const FIVE_HOUR_CONSERVE_PCT = 15; // รอบ 5 ชม. ทำให้ถนอมเฉพาะตอนเหลือน้อยกว่านี้
 const BUDGET_TH = { boost: '🟢 ฟุ่มเฟือยได้', normal: '🔵 ปกติ', conserve: '🟡 ถนอม', unknown: '⚪ ไม่ทราบโควตา' };
 
 function windowPace(name, w) {
@@ -345,11 +346,13 @@ function windowPace(name, w) {
 function assessBudget(windows) {
     const paces = windows.map(([n, w]) => windowPace(n, w)).filter(Boolean);
     if (!paces.length) return { mode: 'normal', surplus: 0, remainingPct: 100, windows: [] };
-    const binding = paces.reduce((a, b) => (b.surplus < a.surplus ? b : a));
     const remainingPct = Math.min(...paces.map((p) => p.remainingPct));
-    // แต่ละหน้าต่างตัดสินโหมดของตัวเอง: หน้าต่างไหนใช้เกินงบ → ถนอมทั้ง pool
-    // ไม่มีหน้าต่างไหนเกินงบ + มีหน้าต่างที่เหลือเฟือ/ใกล้รีเซ็ตแต่ยังเหลือเยอะ → ฟุ่มเฟือยได้
+    // รอบ 5 ชม. สั้นและรีเซ็ตเร็ว: ถ้าใช้เร็วกว่างบแต่ยังเหลือ ≥ 15% ไม่นับเป็นข้อจำกัด
+    // (ให้รอบรายสัปดาห์เป็นตัวตัดสิน) — ถนอมเพราะ 5 ชม. เฉพาะตอนเหลือ < 15% จริงๆ
+    const relaxed = (p) => p.name === '5h' && p.remainingPct >= FIVE_HOUR_CONSERVE_PCT && p.surplus < 0;
     const modeOf = (p) => {
+        if (p.name === '5h' && p.remainingPct < FIVE_HOUR_CONSERVE_PCT) return 'conserve';
+        if (relaxed(p)) return 'normal';
         if (p.surplus < CONSERVE_SURPLUS) return 'conserve';
         if (p.surplus >= BOOST_SURPLUS) return 'boost';
         if (p.timeLeftFrac < NEAR_RESET_FRAC && p.remainingPct >= NEAR_RESET_MIN_PCT) return 'boost';
@@ -359,8 +362,11 @@ function assessBudget(windows) {
     let mode = 'normal';
     if (modes.includes('conserve')) mode = 'conserve';
     else if (modes.includes('boost')) mode = 'boost';
+    // surplus ที่ใช้ให้คะแนน: ไม่นับรอบ 5 ชม. ที่ผ่อนปรน (ถ้ายังมีหน้าต่างอื่นให้ดู)
+    const scored = paces.filter((p) => !relaxed(p));
+    const pool = scored.length ? scored : paces.map((p) => (relaxed(p) ? { ...p, surplus: 0 } : p));
+    const binding = pool.reduce((a, b) => (b.surplus < a.surplus ? b : a));
     const boostWin = paces.find((p, i) => modes[i] === 'boost');
-    // โหมด boost ใช้ surplus ของหน้าต่างที่เหลือเฟือ (ไม่ให้ 5h ที่เพิ่งเริ่มกดคะแนนลง)
     const surplus = mode === 'boost' && boostWin ? Math.max(binding.surplus, Math.min(boostWin.surplus, BOOST_SURPLUS)) : binding.surplus;
     return { mode, surplus: Number(surplus.toFixed(3)), remainingPct, binding: binding.name, windows: paces };
 }

@@ -2382,8 +2382,11 @@ html.vault-entering .app-layout {
     display: none;
 }
 
-/* ── Responsive Mobile Optimizations (<= 768px) ────────────────────────── */
-@media (max-width: 768px) {
+/* ── Mobile bottom nav (<= 900px: portrait phones AND landscape phones) ─────
+   NOTE: the nav is switched on at <=900px elsewhere, so its layout MUST live in
+   the same breakpoint — otherwise landscape phones (769-900px wide) get an
+   unstyled, stacked nav that covers the whole screen. */
+@media (max-width: 900px) {
     .subnav {
         display: none !important;
     }
@@ -2464,9 +2467,45 @@ html.vault-entering .app-layout {
 
     /* Prevent mobile bottom nav from covering content */
     .wrap {
-        padding-bottom: 84px !important;
+        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
     }
+}
 
+/* ── Landscape phones: short viewport → compact one-row nav + notch safe areas ── */
+@media (max-width: 900px) and (orientation: landscape) {
+    .mobile-bottom-nav {
+        grid-template-columns: repeat(5, 1fr);
+        padding-top: 2px;
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
+        padding-bottom: max(2px, env(safe-area-inset-bottom, 0px));
+    }
+    .mobile-nav-btn {
+        flex-direction: row;
+        gap: 8px;
+        min-height: 38px;
+        padding: 4px 6px;
+        font-size: 12px;
+    }
+    .mobile-nav-btn .mob-ico3d { width: 20px; height: 20px; }
+    .mobile-nav-btn .mob-ico3d .ico3d-svg { width: 18px; height: 18px; }
+    .mobile-nav-btn.is-active .mob-ico3d { transform: scale(1.08); }
+    .wrap {
+        padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px)) !important;
+        padding-left: max(12px, env(safe-area-inset-left, 0px));
+        padding-right: max(12px, env(safe-area-inset-right, 0px));
+    }
+    .topbar {
+        padding-left: max(12px, env(safe-area-inset-left, 0px));
+        padding-right: max(12px, env(safe-area-inset-right, 0px));
+    }
+    #term-subpanel-gemini {
+        height: calc(100vh - 120px) !important;
+        min-height: 0 !important;
+    }
+}
+
+@media (max-width: 768px) {
     /* Topbar mobile optimization: keep on 1 line without wrapping */
     .topbar {
         padding: 8px 12px;

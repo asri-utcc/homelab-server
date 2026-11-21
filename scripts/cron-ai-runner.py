@@ -17,9 +17,12 @@ CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "/home/dev/.local/bin/claude")
 ROUTER_URL = os.environ.get("AI_ROUTER_URL", "http://172.17.0.1:8090/api/ai-router/route")
 GEMINI_ENV_FILE = "/home/dev/.gemini/.env"
 AUTO_MODEL = "auto"
-AUTO_MAX_ATTEMPTS = 4
+AUTO_MAX_ATTEMPTS = 8
 # Go runtime crash before agy starts = RAM bit flip in the page-cached binary on this host
 CRASH_RE = re.compile(r"unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)", re.I)
+PROFILES_DIR = "/home/dev/.agy-profiles"
+MAIN_TOKEN_REL = ".gemini/antigravity-cli/antigravity-oauth-token"
+CLAUDE_CREDS_FILE = "/home/dev/.claude/.credentials.json"
 
 
 def evict_page_cache(path: str) -> None:
@@ -139,9 +142,51 @@ def run_deepseek(prompt: str, model: str, timeout: int = DEFAULT_TIMEOUT) -> str
     return text.strip()
 
 
+def agy_pool(model: str) -> str:
+    m = (model or "").lower()
+    if "argon" in m:
+        return "argon"
+    if m.startswith(("claude", "gpt")):
+        return "claude"
+    return "gemini"
+
+
+def _has_paid_claude_sub() -> bool:
+    try:
+        with open(CLAUDE_CREDS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        oauth = data.get("claudeAiOauth") or data
+        if not oauth.get("accessToken"):
+            return False
+        sub = str(oauth.get("subscriptionType") or "").strip().lower()
+        return sub.startswith(("pro", "max", "team", "enterprise"))
+    except Exception:
+        return False
+
+
+def build_local_fallback_candidates() -> list[dict]:
+    """Local failover list if the dashboard AI Router API is unreachable."""
+    cands = []
+    homes = []
+    if os.path.exists(os.path.join("/home/dev", MAIN_TOKEN_REL)):
+        homes.append(("g1", "Google#1", None))
+    if os.path.isdir(PROFILES_DIR):
+        for idx, name in enumerate(sorted(d for d in os.listdir(PROFILES_DIR) if not d.startswith(".")), start=2):
+            p = os.path.join(PROFILES_DIR, name)
+            if os.path.exists(os.path.join(p, MAIN_TOKEN_REL)):
+                homes.append((f"g{idx}", f"Google#{idx}", p))
+    for acc_id, acc_label, home in homes:
+        cands.append({"model": DEFAULT_MODEL, "engine": "agy", "account": acc_id, "home": home, "label": DEFAULT_MODEL, "accountLabel": acc_label})
+        cands.append({"model": "gemini-4-hydrogen-medium", "engine": "agy", "account": acc_id, "home": home, "label": "Gemini 4 Hydrogen (Medium)", "accountLabel": acc_label})
+    if os.path.exists(CLAUDE_BIN) and _has_paid_claude_sub():
+        cands.append({"model": "claude-code-sonnet", "engine": "claude-code", "account": "claude-pro", "label": "Claude Code · Sonnet", "accountLabel": "Claude Pro"})
+    if read_env_value("DEEPSEEK_API_KEY"):
+        cands.append({"model": "deepseek-flash", "engine": "deepseek", "account": "deepseek", "label": "DeepSeek V4.1 Flash", "accountLabel": "DeepSeek"})
+    return cands or [{"model": DEFAULT_MODEL, "engine": "agy", "account": "g1", "home": None, "label": DEFAULT_MODEL, "accountLabel": "Google#1"}]
+
+
 def route_auto(route_prompt: str, min_level: int = 1) -> tuple[list[dict], str]:
-    """Ask the dashboard's AI Router for ordered candidates. Falls back to DEFAULT_MODEL."""
-    fallback = [{"model": DEFAULT_MODEL, "engine": "agy", "home": None, "label": DEFAULT_MODEL, "accountLabel": "Google#1"}]
+    """Ask the dashboard's AI Router for ordered candidates. Falls back locally if unavailable."""
     try:
         body = json.dumps({"prompt": route_prompt, "source": "cron", "minLevel": min_level}).encode("utf-8")
         req = urllib.request.Request(ROUTER_URL, data=body, headers={"Content-Type": "application/json"})
@@ -149,39 +194,40 @@ def route_auto(route_prompt: str, min_level: int = 1) -> tuple[list[dict], str]:
             data = json.loads(resp.read().decode("utf-8"))
         cands = data.get("candidates") or []
         if not cands:
-            return fallback, "router: no candidates"
+            return build_local_fallback_candidates(), "router: no candidates (local fallback)"
         cls = data.get("classification") or {}
         return cands, f"router: {data.get('routeKey')} ({cls.get('source', '?')}) {cls.get('reason', '')}"
     except Exception as exc:
-        return fallback, f"router unavailable ({exc})"
+        return build_local_fallback_candidates(), f"router unavailable ({exc})"
 
 
-def run_model(prompt: str, model: str, timeout: int, route_prompt: str = "", min_level: int = 1) -> tuple[str, str]:
-    """Run a prompt on a fixed model, or on 'auto' via the AI Router with failover. Returns (reply, used_label)."""
-    if model != AUTO_MODEL:
-        return run_agy(prompt, model, timeout=timeout), model
+def _run_candidate(prompt: str, c: dict, timeout: int) -> str:
+    engine, cmodel = c.get("engine"), c.get("model")
+    if engine == "claude-code":
+        return run_claude(prompt, cmodel, timeout=timeout)
+    if engine == "deepseek":
+        return run_deepseek(prompt, cmodel, timeout=timeout)
+    return run_agy(prompt, cmodel, timeout=timeout, home=c.get("home"))
 
-    cands, why = route_auto(route_prompt or prompt, min_level)
-    print(f"[AUTO] {why} -> " + ", ".join(f"{c.get('model')}@{c.get('account', 'g1')}" for c in cands[:5]))
+
+def _run_auto_queue(prompt: str, cands: list[dict], timeout: int) -> tuple[str, str]:
     errors = []
-    dead = set()      # engine@account groups that already failed (skip their other models)
+    dead = set()      # engine@account(:pool) groups that already failed
     healed = False
     attempts = 0
     queue = list(cands)
     while queue and attempts < AUTO_MAX_ATTEMPTS:
         c = queue.pop(0)
         engine, cmodel = c.get("engine"), c.get("model")
-        group = f"{engine}@{c.get('account', '')}"
-        if group in dead:
+        acc = c.get("account", "")
+        crash_group = f"{engine}@{acc}"
+        pool_group = f"{engine}@{acc}:{agy_pool(cmodel)}" if engine == "agy" else crash_group
+        if crash_group in dead or pool_group in dead:
             continue
         attempts += 1
         label = f"{c.get('label', cmodel)} · {c.get('accountLabel', '')}".strip(" ·")
         try:
-            if engine == "claude-code":
-                return run_claude(prompt, cmodel, timeout=timeout), label
-            if engine == "deepseek":
-                return run_deepseek(prompt, cmodel, timeout=timeout), label
-            return run_agy(prompt, cmodel, timeout=timeout, home=c.get("home")), label
+            return _run_candidate(prompt, c, timeout=timeout), label
         except Exception as exc:
             msg = str(exc)
             print(f"[AUTO] {label} failed: {msg[:200]}", file=sys.stderr)
@@ -193,8 +239,38 @@ def run_model(prompt: str, model: str, timeout: int, route_prompt: str = "", min
                     print(f"[AUTO] agy crashed at startup; evicted page cache, retrying {label}", file=sys.stderr)
                     queue.insert(0, c)
                     continue
-                dead.add(group)
+                dead.add(crash_group)
+            else:
+                dead.add(pool_group)
     raise RuntimeError("all auto candidates failed: " + " | ".join(errors))
+
+
+def run_model(prompt: str, model: str, timeout: int, route_prompt: str = "", min_level: int = 1) -> tuple[str, str]:
+    """Run a prompt on a fixed model (with crash-heal + auto failover), or on 'auto' via the AI Router."""
+    if model != AUTO_MODEL:
+        try:
+            if model.startswith("claude-code-"):
+                return run_claude(prompt, model, timeout=timeout), model
+            if model.startswith("deepseek-"):
+                return run_deepseek(prompt, model, timeout=timeout), model
+            try:
+                return run_agy(prompt, model, timeout=timeout), model
+            except Exception as exc:
+                if CRASH_RE.search(str(exc)):
+                    evict_page_cache(AGY_BIN)
+                    print(f"[FIXED] agy crashed at startup; evicted page cache, retrying {model}", file=sys.stderr)
+                    return run_agy(prompt, model, timeout=timeout), model
+                raise
+        except Exception as fixed_exc:
+            print(f"[FIXED-MODEL FALLBACK] {model} failed ({str(fixed_exc)[:160]}); switching to AI Router auto failover", file=sys.stderr)
+            cands, why = route_auto(route_prompt or prompt, min_level)
+            cands = [c for c in cands if c.get("model") != model or c.get("account") != "g1"] or cands
+            print(f"[AUTO-FALLBACK] {why} -> " + ", ".join(f"{c.get('model')}@{c.get('account', 'g1')}" for c in cands[:5]))
+            return _run_auto_queue(prompt, cands, timeout)
+
+    cands, why = route_auto(route_prompt or prompt, min_level)
+    print(f"[AUTO] {why} -> " + ", ".join(f"{c.get('model')}@{c.get('account', 'g1')}" for c in cands[:5]))
+    return _run_auto_queue(prompt, cands, timeout)
 
 
 def format_for_telegram(text: str) -> str:

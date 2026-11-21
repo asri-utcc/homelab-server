@@ -426,15 +426,23 @@ async function streamDeepSeekTurn({ apiKey, model, messages, tools, signal, onCo
 
     if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        let msg = `DeepSeek API HTTP ${res.status}`;
+        let detail = '';
         try {
             const parsed = JSON.parse(errText);
-            if (parsed.error && parsed.error.message) msg += `: ${parsed.error.message}`;
-            else if (errText) msg += `: ${errText.slice(0, 300)}`;
+            if (parsed.error && parsed.error.message) detail = parsed.error.message;
+            else if (errText) detail = errText.slice(0, 300);
         } catch (_) {
-            if (errText) msg += `: ${errText.slice(0, 300)}`;
+            if (errText) detail = errText.slice(0, 300);
         }
-        throw new Error(msg);
+        if (res.status === 402 || /insufficient.?balance/i.test(detail)) {
+            clearBalanceCache();
+            throw new Error(`เครดิต DeepSeek หมด (DeepSeek API HTTP 402: Insufficient Balance) — กรุณาเติมเครดิตหรือสลับไปใช้โหมด 🧠 Auto / โมเดล Google แทน`);
+        }
+        if (res.status === 401) {
+            clearBalanceCache();
+            throw new Error(`DEEPSEEK_API_KEY ไม่ถูกต้องหรือถูกเพิกถอน (DeepSeek API HTTP 401: ${detail || 'Unauthorized'})`);
+        }
+        throw new Error(`DeepSeek API HTTP ${res.status}${detail ? ': ' + detail : ''}`);
     }
 
     const reader = res.body.getReader();
@@ -766,21 +774,43 @@ function runDeepSeekPrompt({ job, prompt, imagePaths = [], mode = 'exec', cwd, m
     return { abort };
 }
 
-async function getDeepSeekBalance() {
+const DS_BALANCE_OK_TTL_MS = 3 * 60 * 1000;
+const DS_BALANCE_ERR_TTL_MS = 30 * 1000;
+let balanceCache = null; // { at, ok, data }
+
+function clearBalanceCache() {
+    balanceCache = null;
+}
+
+async function getDeepSeekBalance(opts = {}) {
     const apiKey = getApiKey();
-    if (!apiKey) return null;
+    if (!apiKey) {
+        balanceCache = null;
+        return null;
+    }
+    const force = Boolean(opts && opts.force);
+    const timeoutMs = Number(opts && opts.timeoutMs) || 6000;
+    const now = Date.now();
+    if (!force && balanceCache) {
+        const ttl = balanceCache.ok ? DS_BALANCE_OK_TTL_MS : DS_BALANCE_ERR_TTL_MS;
+        if (now - balanceCache.at < ttl) {
+            return balanceCache.data;
+        }
+    }
     try {
         const res = await fetch(`${DEEPSEEK_BASE_URL}/user/balance`, {
             headers: { 'Authorization': `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(8000)
+            signal: AbortSignal.timeout(timeoutMs)
         });
         if (!res.ok) {
-            return { ok: false, error: `HTTP ${res.status}` };
+            const errData = { ok: false, error: `HTTP ${res.status}`, authError: res.status === 401 || res.status === 403 };
+            balanceCache = { at: Date.now(), ok: false, data: errData };
+            return errData;
         }
         const data = await res.json();
         const infos = Array.isArray(data.balance_infos) ? data.balance_infos : [];
         const primary = infos.find(b => b.currency === 'USD') || infos[0] || {};
-        return {
+        const okData = {
             ok: true,
             isAvailable: Boolean(data.is_available),
             currency: primary.currency || 'USD',
@@ -790,8 +820,15 @@ async function getDeepSeekBalance() {
             balanceInfos: infos,
             models: DEEPSEEK_MODELS
         };
+        balanceCache = { at: Date.now(), ok: true, data: okData };
+        return okData;
     } catch (err) {
-        return { ok: false, error: err.message };
+        if (balanceCache && balanceCache.ok && Date.now() - balanceCache.at < 15 * 60 * 1000) {
+            return { ...balanceCache.data, stale: true, warning: err.message };
+        }
+        const errData = { ok: false, error: err.message };
+        balanceCache = { at: Date.now(), ok: false, data: errData };
+        return errData;
     }
 }
 
@@ -801,5 +838,6 @@ module.exports = {
     supportsVision,
     getApiKey,
     getDeepSeekBalance,
+    clearBalanceCache,
     runDeepSeekPrompt
 };

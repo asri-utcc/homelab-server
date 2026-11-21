@@ -91,6 +91,37 @@
       border-color: rgba(34, 211, 238, 0.34);
       background: linear-gradient(90deg, rgba(34, 211, 238, 0.14), rgba(124, 58, 237, 0.12) 60%, rgba(15, 23, 42, 0.55));
     }
+    .router-readiness {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      border-radius: 12px;
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      background: rgba(13, 21, 34, 0.72);
+      font-family: var(--mono);
+      font-size: 11.5px;
+    }
+    .router-readiness__title {
+      color: var(--cyan);
+      font-weight: 700;
+      margin-right: 4px;
+    }
+    .rr-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.75);
+      color: var(--muted);
+    }
+    .rr-pill.is-ok { border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.12); color: #6ee7b7; }
+    .rr-pill.is-warn { border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.12); color: #fcd34d; }
+    .rr-pill.is-skip { border-color: rgba(148, 163, 184, 0.28); background: rgba(148, 163, 184, 0.08); color: #94a3b8; }
     .provider-title {
       display: flex;
       align-items: center;
@@ -507,6 +538,11 @@
       </div>
     </header>
 
+    <div class="router-readiness" id="router-readiness">
+      <span class="router-readiness__title">🧠 AI Router (สมองกลาง):</span>
+      <span class="rr-pill">⏳ กำลังตรวจความพร้อม...</span>
+    </div>
+
     <div class="err-box" id="err-box"></div>
 
     <!-- ── ฝั่งที่ 1: Google Antigravity (Gemini / Claude) ── -->
@@ -515,12 +551,15 @@
         <div class="provider-title">
           <span class="provider-logo">💎</span>
           <span>Google Antigravity</span>
-          <span class="provider-sub">· Gemini / Claude · รีเซ็ต 5 ชม. &amp; 7 วัน</span>
+          <span class="provider-sub" id="ag-sub">· Google#1 · Gemini / Claude · รีเซ็ต 5 ชม. &amp; 7 วัน</span>
         </div>
         <span class="provider-tag" id="ag-status">⏳ กำลังโหลด</span>
       </div>
       <div class="pool-grid" id="pool-grid"></div>
     </section>
+
+    <!-- บัญชี Google เพิ่มเติม (Google#2, ...) เรนเดอร์ด้วย JS -->
+    <div id="extra-accounts"></div>
 
     <!-- ── ฝั่งที่ 2: DeepSeek Platform (API Credit / Pay-As-You-Go) ── -->
     <section class="provider-section" data-provider="deepseek">
@@ -683,13 +722,86 @@
     }
 
     let lastData = null;
+    let lastExtraState = [];
+
+    function escHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function updateReadinessBar(primaryData, extrasList = lastExtraState) {
+      const bar = document.getElementById('router-readiness');
+      if (!bar) return;
+      const pills = [];
+      const addPill = (cls, text) => pills.push(`<span class="rr-pill ${cls}">${escHtml(text)}</span>`);
+
+      if (primaryData && primaryData.ok) {
+        const ps = primaryData.pools || [];
+        const hasAvail = ps.some(p => p.remainingPct > 5);
+        addPill(hasAvail ? 'is-ok' : 'is-warn', `💎 Google#1: ${hasAvail ? 'พร้อมใช้' : 'ใกล้หมด'}`);
+      } else {
+        addPill('is-skip', '💎 Google#1: ข้ามอัตโนมัติ');
+      }
+
+      for (const ex of (extrasList || [])) {
+        if (ex.data && ex.data.ok) {
+          const ps = ex.data.pools || [];
+          const hasAvail = ps.some(p => p.remainingPct > 5);
+          addPill(hasAvail ? 'is-ok' : 'is-warn', `💎 ${ex.label}: ${hasAvail ? 'พร้อมใช้' : 'ใกล้หมด'}`);
+        } else {
+          addPill('is-skip', `💎 ${ex.label}: ข้ามอัตโนมัติ`);
+        }
+      }
+
+      const cw = primaryData && primaryData.claudeWeb;
+      if (cw && cw.ok) {
+        const minRem = Math.min(cw.fiveHour?.remainingPct ?? 100, cw.weekly?.remainingPct ?? 100);
+        addPill(minRem > 5 ? 'is-ok' : 'is-warn', `🟠 Claude Pro: ${minRem > 5 ? 'พร้อมใช้' : 'โควตาหมด'}`);
+      } else {
+        addPill('is-skip', '🟠 Claude Pro: ไม่ได้ใช้ (ข้ามอัตโนมัติ)');
+      }
+
+      const ds = primaryData && primaryData.deepseek;
+      if (ds && ds.ok && ds.isAvailable && parseFloat(ds.totalBalance || '0') > 0.1) {
+        addPill('is-ok', `🐳 DeepSeek: สำรอง ($${ds.totalBalance})`);
+      } else if (ds && ds.ok) {
+        addPill('is-skip', '🐳 DeepSeek: เครดิตหมด (ข้ามอัตโนมัติ)');
+      } else {
+        addPill('is-skip', '🐳 DeepSeek: ไม่ได้ตั้งค่า (ข้ามอัตโนมัติ)');
+      }
+
+      const activeCount = pills.filter(p => p.includes('is-ok')).length;
+      const summaryTxt = activeCount > 0
+        ? `พร้อมทำงานต่อเนื่อง (${activeCount} ช่องทาง)`
+        : 'ไม่มีช่องทางพร้อมใช้';
+      bar.innerHTML = `<span class="router-readiness__title">🧠 สมองกลาง · ${escHtml(summaryTxt)}:</span>` + pills.join('');
+    }
 
     function renderQuota(data) {
-      lastData = data;
+      lastData = data || {};
       const errBox = document.getElementById('err-box');
+      const poolGrid = document.getElementById('pool-grid');
       if (!data || !data.ok) {
-        errBox.style.display = 'block';
-        errBox.textContent = '❌ ไม่สามารถดึงข้อมูลโควตาได้: ' + (data?.error || 'Unknown error');
+        errBox.style.display = 'none';
+        document.getElementById('sub-info').textContent =
+          `อัปเดตล่าสุด: ${new Date().toLocaleTimeString('th-TH')} · Google#1 ไม่พร้อมใช้งาน (ระบบยังคงแสดงช่องทางอื่นและข้ามให้อัตโนมัติ)`;
+        if (poolGrid) {
+          poolGrid.innerHTML = `<div class="pool-card" style="grid-column:1/-1; border-color:rgba(251,191,36,0.35);">
+            <div class="pool-head">
+              <div class="pool-name" style="color:#fbbf24">💎 Google#1 ไม่พร้อมใช้งาน</div>
+              <span class="pace-badge pace-warn">ข้ามอัตโนมัติ</span>
+            </div>
+            <div class="pool-meta" style="display:block; line-height:1.5; color:var(--muted);">
+              ${escHtml(data?.error || 'ไม่พบโทเค็นหรือติดต่อ API ไม่ได้')} — หากมี Google#2, Claude Pro หรือ DeepSeek ระบบยังทำงานต่อได้ทันที
+            </div>
+          </div>`;
+        }
+        const agTag = document.getElementById('ag-status');
+        if (agTag) {
+          agTag.textContent = '○ ข้ามอัตโนมัติ';
+          agTag.style.color = 'var(--amber)';
+        }
+        renderQuotaTail(lastData);
+        updateReadinessBar(lastData);
         return;
       }
       errBox.style.display = 'none';
@@ -697,7 +809,12 @@
       document.getElementById('sub-info').textContent =
         `บัญชี: ${data.email}${data.tier ? ' (' + data.tier + ')' : ''} · อัปเดตล่าสุด: ${new Date(data.updatedAt).toLocaleTimeString('th-TH')}`;
 
-      const poolGrid = document.getElementById('pool-grid');
+      renderPoolCards(poolGrid, data);
+      renderQuotaTail(data);
+      updateReadinessBar(data);
+    }
+
+    function renderPoolCards(poolGrid, data) {
       poolGrid.innerHTML = '';
       // Find weekly reset (> 12h away) from pool.weekly or pool.resetTime
       const weeklyPool = (data.pools || []).find(x =>
@@ -750,9 +867,15 @@
         poolGrid.appendChild(card);
       });
 
+    }
+
+    function renderQuotaTail(data) {
+      data = data || {};
+      const agSub = document.getElementById('ag-sub');
+      if (agSub) agSub.textContent = `· Google#1${data.email ? ' · ' + data.email : ''}${data.tier ? ' (' + data.tier + ')' : ''} · Gemini / Claude · รีเซ็ต 5 ชม. & 7 วัน`;
       // ── Provider status tags (หัวแต่ละฝั่ง) ──
       const agTag = document.getElementById('ag-status');
-      if (agTag) {
+      if (agTag && data.ok) {
         const agPools = data.pools || [];
         const exhausted = agPools.filter(p => p.remainingPct <= 0).length;
         agTag.textContent = !agPools.length
@@ -769,24 +892,26 @@
         const totalNum = parseFloat(ds.totalBalance || '0');
         const isLow = ds.ok && totalNum <= 0.5;
         if (dsTag) {
-          dsTag.textContent = !ds.ok ? '⚠️ เชื่อมต่อไม่ได้'
-            : (!ds.isAvailable ? '⚡ เครดิตหมด' : (isLow ? '⚠️ เครดิตใกล้หมด' : '● พร้อมใช้งาน'));
+          dsTag.textContent = !ds.ok ? '⚠️ เชื่อมต่อไม่ได้ (ข้ามอัตโนมัติ)'
+            : (!ds.isAvailable || totalNum <= 0.1 ? '○ เครดิตหมด (Auto ข้ามอัตโนมัติ)' : (isLow ? '⚠️ เครดิตใกล้หมด' : '● พร้อมใช้งาน'));
+          dsTag.style.color = !ds.ok ? 'var(--amber)' : (!ds.isAvailable || totalNum <= 0.1 ? 'var(--muted)' : (isLow ? 'var(--amber)' : 'var(--cyan)'));
         }
         if (ds.ok) {
-          const badgeCls = !ds.isAvailable ? 'pace-crit' : (isLow ? 'pace-warn' : 'pace-ok');
-          const badgeText = !ds.isAvailable ? '⚡ เครดิตหมด' : (isLow ? '⚠️ เครดิตใกล้หมด' : '● พร้อมใช้งาน');
-          const valColor = !ds.isAvailable ? '#ef4444' : (isLow ? '#f59e0b' : '#22d3ee');
+          const isEmpty = !ds.isAvailable || totalNum <= 0.1;
+          const badgeCls = isEmpty ? 'pace-warn' : (isLow ? 'pace-warn' : 'pace-ok');
+          const badgeText = isEmpty ? '○ เครดิตหมด (ข้ามอัตโนมัติ)' : (isLow ? '⚠️ เครดิตใกล้หมด' : '● พร้อมใช้งาน');
+          const valColor = isEmpty ? '#94a3b8' : (isLow ? '#f59e0b' : '#22d3ee');
 
           // การ์ดที่ 1 — ยอดเครดิตคงเหลือ
           const creditCard = document.createElement('div');
-          creditCard.className = `pool-card ${ds.isAvailable ? '' : 'limit-hit'}`;
+          creditCard.className = 'pool-card';
           creditCard.innerHTML = `
             <div class="pool-head">
               <div class="pool-name" style="color:#22d3ee">💳 API Credit Balance</div>
               <span class="pace-badge ${badgeCls}">${badgeText}</span>
             </div>
             <div class="pool-pct" style="color:${valColor}">$${ds.totalBalance} <span>${ds.currency || 'USD'} คงเหลือ</span></div>
-            <div class="bar-track"><div class="bar-fill" style="width:${ds.isAvailable ? 100 : 0}%; background:linear-gradient(90deg, #06b6d4, ${valColor});"></div></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${isEmpty ? 0 : 100}%; background:linear-gradient(90deg, #06b6d4, ${valColor});"></div></div>
             <div class="pool-meta">
               <span>เติมเอง (ไม่หมดอายุ)</span>
               <span><strong style="color:#67e8f9">$${ds.toppedUpBalance}</strong></span>
@@ -795,7 +920,9 @@
               <span>โบนัส (Granted)</span>
               <span><strong style="color:#67e8f9">$${ds.grantedBalance}</strong></span>
             </div>
-            <div class="pace-summary pace-ok" style="margin-top:auto;">Pay-As-You-Go · หักตาม Token จริง · ไม่มีวันหมดอายุ</div>
+            <div class="pace-summary ${isEmpty ? '' : 'pace-ok'}" style="margin-top:auto;">
+              ${isEmpty ? 'ไม่ได้เติมเครดิต — สมองกลาง 🧠 Auto ข้าม DeepSeek อัตโนมัติ ไม่มีผลกระทบต่อระบบหลัก' : 'Pay-As-You-Go · หักตาม Token จริง · ไม่มีวันหมดอายุ'}
+            </div>
           `;
           dsGrid.appendChild(creditCard);
 
@@ -829,16 +956,34 @@
           dsGrid.appendChild(modelsCard);
         } else {
           const errCard = document.createElement('div');
-          errCard.className = 'pool-card limit-hit';
+          errCard.className = 'pool-card';
           errCard.innerHTML = `
             <div class="pool-head">
               <div class="pool-name" style="color:#22d3ee">💳 API Credit Balance</div>
-              <span class="pace-badge pace-crit">⚠️ เชื่อมต่อไม่ได้</span>
+              <span class="pace-badge pace-warn">⚠️ เชื่อมต่อไม่ได้ (ข้ามอัตโนมัติ)</span>
             </div>
-            <div class="pool-meta" style="margin-top:10px; color:#fca5a5;">${ds.error || 'ไม่สามารถดึงยอดเครดิตได้'}</div>
+            <div class="pool-meta" style="margin-top:10px; color:#fca5a5;">${escHtml(ds.error || 'ไม่สามารถดึงยอดเครดิตได้')} — ระบบ Auto Router ข้ามให้อัตโนมัติ</div>
           `;
           dsGrid.appendChild(errCard);
         }
+      } else {
+        if (dsTag) {
+          dsTag.textContent = '○ ไม่ได้ตั้งค่า (ข้ามอัตโนมัติ)';
+          dsTag.style.color = 'var(--muted)';
+        }
+        const emptyCard = document.createElement('div');
+        emptyCard.className = 'pool-card';
+        emptyCard.style.gridColumn = '1 / -1';
+        emptyCard.innerHTML = `
+          <div class="pool-head">
+            <div class="pool-name" style="color:#94a3b8">🐳 DeepSeek API (ไม่ได้ตั้งค่า)</div>
+            <span class="pace-badge">ข้ามอัตโนมัติ</span>
+          </div>
+          <div class="pool-meta" style="display:block; color:var(--muted); line-height:1.5;">
+            ยังไม่ได้ตั้งค่า <code>DEEPSEEK_API_KEY</code> — สมองกลาง 🧠 Auto ใช้บัญชีรายเดือน (Google / Claude Pro) ตามปกติโดยไม่พึ่ง DeepSeek
+          </div>
+        `;
+        dsGrid.appendChild(emptyCard);
       }
 
       // ── Section 3: Claude.ai (Anthropic) ──
@@ -898,30 +1043,41 @@
           `;
           claudeGrid.appendChild(wkCard);
         } else {
-          const isCfg = cw && cw.configured;
+          const isCfg = Boolean(cw && cw.configured && !cw.unsubscribed);
+          const isAuthErr = Boolean(cw && cw.authError);
           if (claudeStatus) {
-            claudeStatus.textContent = isCfg ? '⚠️ เชื่อมต่อไม่ได้' : '⚙️ ยังไม่ได้เชื่อมต่อ';
-            claudeStatus.style.color = isCfg ? 'var(--amber)' : 'var(--muted)';
+            claudeStatus.textContent = isCfg
+              ? (isAuthErr ? '○ หมดสิทธิ์/หมดอายุ (ข้ามอัตโนมัติ)' : '⚠️ เชื่อมต่อไม่ได้ชั่วคราว')
+              : '○ ไม่ได้สมัคร/ใช้งาน (ข้ามอัตโนมัติ)';
+            claudeStatus.style.color = isCfg && !isAuthErr ? 'var(--amber)' : 'var(--muted)';
           }
           const setupCard = document.createElement('div');
           setupCard.className = 'pool-card';
           setupCard.style.gridColumn = '1 / -1';
           setupCard.innerHTML = `
             <div class="pool-head">
-              <div class="pool-name" style="color:#fb923c">🔑 เชื่อมต่อโควตา Claude.ai (sessionKey)</div>
-              <span class="pace-badge ${isCfg ? 'pace-warn' : 'pace-ok'}">${isCfg ? (cw.error || 'Auth / Cloudflare') : 'พร้อมตั้งค่า'}</span>
+              <div class="pool-name" style="color:#fb923c">🟠 สถานะ Claude Pro (Claude Code Subscription)</div>
+              <span class="pace-badge ${isCfg && !isAuthErr ? 'pace-warn' : ''}">${isCfg ? (isAuthErr ? 'ข้ามอัตโนมัติ' : 'ชั่วคราว') : 'ไม่ได้ใช้งาน'}</span>
             </div>
-            <div class="pool-meta" style="margin-bottom:10px; line-height:1.5; display:block;">
-              ${isCfg ? `<div style="color:#fca5a5; margin-bottom:6px;">⚠️ สถานะล่าสุด: ${cw.error}</div>` : ''}
-              เปิด <a href="https://claude.ai" target="_blank" style="color:#fb923c;">claude.ai</a> → กด F12 (Application → Cookies) → คัดลอกค่า <code>sessionKey</code> มาวางด้านล่างเพื่อดึงโควตา 5 ชม. &amp; รายสัปดาห์
+            <div class="pool-meta" style="margin-bottom:8px; line-height:1.55; display:block; color:var(--muted);">
+              ${cw && cw.error ? `<div style="color:#fcd34d; margin-bottom:4px;">ℹ️ ${escHtml(cw.error)}</div>` : ''}
+              ไม่ได้ใช้หรือยกเลิกแพ็กเกจ Claude Pro — <strong>ระบบ Auto Router ข้าม Claude Code CLI อัตโนมัติ</strong> และยังคงใช้โมเดล Claude / Gemini ผ่าน Google Antigravity ได้ตามปกติ
             </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <input type="password" id="claude-session-input" placeholder="วาง sessionKey (เช่น sk-ant-sid01-...)" style="flex:1; min-width:220px; background:rgba(15,23,42,0.8); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:8px 10px; font-family:var(--mono); font-size:12px;" />
-              <button type="button" id="btn-save-claude-key" class="btn" style="background:rgba(251,146,60,0.18); border-color:rgba(251,146,60,0.45); color:#fdba74;">💾 บันทึก &amp; ดึงโควตา</button>
-            </div>
+            <details style="margin-top:4px;">
+              <summary style="cursor:pointer; font-size:11.5px; color:#fb923c; font-family:var(--mono);">🔑 ตั้งค่า / ล้าง sessionKey ของ Claude.ai (กรณีมีแพ็กเกจ Pro)</summary>
+              <div style="margin-top:10px; font-size:12px; color:var(--muted); margin-bottom:8px;">
+                เปิด <a href="https://claude.ai" target="_blank" style="color:#fb923c;">claude.ai</a> → F12 (Application → Cookies) → คัดลอก <code>sessionKey</code>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <input type="password" id="claude-session-input" autocomplete="off" data-lpignore="true" placeholder="วาง sessionKey (เช่น sk-ant-sid01-...)" style="flex:1; min-width:220px; background:rgba(15,23,42,0.8); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:8px 10px; font-family:var(--mono); font-size:12px;" />
+                <button type="button" id="btn-save-claude-key" class="btn" style="background:rgba(251,146,60,0.18); border-color:rgba(251,146,60,0.45); color:#fdba74;">💾 บันทึก</button>
+                <button type="button" id="btn-clear-claude-key" class="btn" title="ล้าง sessionKey ที่บันทึกไว้">🗑️ ล้าง Key</button>
+              </div>
+            </details>
           `;
           claudeGrid.appendChild(setupCard);
           const saveBtn = document.getElementById('btn-save-claude-key');
+          const clearBtn = document.getElementById('btn-clear-claude-key');
           const keyInput = document.getElementById('claude-session-input');
           if (saveBtn && keyInput) {
             saveBtn.addEventListener('click', async () => {
@@ -939,7 +1095,22 @@
               } catch (e) {
                 alert('❌ ' + e.message);
                 saveBtn.disabled = false;
-                saveBtn.textContent = '💾 บันทึก & ดึงโควตา';
+                saveBtn.textContent = '💾 บันทึก';
+              }
+            });
+          }
+          if (clearBtn) {
+            clearBtn.addEventListener('click', async () => {
+              clearBtn.disabled = true;
+              try {
+                await fetch('/api/gemini/claude-key', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sessionKey: '' })
+                });
+                await loadQuota();
+              } catch (_) {
+                clearBtn.disabled = false;
               }
             });
           }
@@ -996,6 +1167,72 @@
       });
     }
 
+    async function loadExtraAccounts() {
+      let accts = [];
+      try {
+        const r = await fetch('/api/ai-router/accounts');
+        accts = ((await r.json()).accounts || []).filter(a => a.id !== 'g1' && a.ready);
+      } catch (_) {}
+      const host = document.getElementById('extra-accounts');
+      if (!host) return;
+      const activeIds = new Set(accts.map(a => 'ag-sec-' + a.id));
+      host.querySelectorAll('section[id^="ag-sec-"]').forEach(el => {
+        if (!activeIds.has(el.id)) el.remove();
+      });
+      accts.forEach(a => {
+        if (document.getElementById('ag-sec-' + a.id)) return;
+        const sec = document.createElement('section');
+        sec.className = 'provider-section';
+        sec.setAttribute('data-provider', 'antigravity');
+        sec.id = 'ag-sec-' + a.id;
+        sec.innerHTML = `
+          <div class="provider-head">
+            <div class="provider-title">
+              <span class="provider-logo">💎</span>
+              <span>Google Antigravity</span>
+              <span class="provider-sub" id="ag-sub-${a.id}">· ${a.label}${a.email ? ' · ' + a.email : ''}</span>
+            </div>
+            <span class="provider-tag" id="ag-status-${a.id}">⏳ กำลังโหลด</span>
+          </div>
+          <div class="pool-grid" id="pool-grid-${a.id}"></div>`;
+        host.appendChild(sec);
+      });
+      const extraResults = await Promise.all(accts.map(async a => {
+        let d;
+        try { d = await (await fetch('/api/gemini/quota?account=' + encodeURIComponent(a.id))).json(); }
+        catch (err) { d = { ok: false, error: err.message }; }
+        const grid = document.getElementById('pool-grid-' + a.id);
+        const tag = document.getElementById('ag-status-' + a.id);
+        const sub = document.getElementById('ag-sub-' + a.id);
+        if (!grid) return { id: a.id, label: a.label, data: d };
+        if (!d || !d.ok) {
+          grid.innerHTML = `<div class="pool-card" style="grid-column:1/-1; border-color:rgba(251,191,36,0.35);">
+            <div class="pool-head">
+              <div class="pool-name" style="color:#fbbf24">💎 ${escHtml(a.label)} ไม่พร้อมใช้งาน</div>
+              <span class="pace-badge pace-warn">ข้ามอัตโนมัติ</span>
+            </div>
+            <div class="pool-meta" style="display:block; color:var(--muted);">${escHtml((d && d.error) || 'ดึงโควตาไม่ได้')} — ระบบ Auto Router ข้ามบัญชีนี้ให้อัตโนมัติ</div>
+          </div>`;
+          if (tag) {
+            tag.textContent = '○ ข้ามอัตโนมัติ';
+            tag.style.color = 'var(--amber)';
+          }
+          return { id: a.id, label: a.label, data: d };
+        }
+        if (sub) sub.textContent = `· ${a.label} · ${d.email || a.email || ''}${d.tier ? ' (' + d.tier + ')' : ''} · Gemini / Claude · รีเซ็ต 5 ชม. & 7 วัน`;
+        renderPoolCards(grid, d);
+        if (tag) {
+          const ps = d.pools || [];
+          const ex = ps.filter(p => p.remainingPct <= 0).length;
+          tag.textContent = !ps.length ? '— ไม่มีข้อมูล' : (ex ? `⚡ หมดโควตา ${ex} pool` : `● ${ps.length} pool พร้อมใช้งาน`);
+          tag.style.color = ex ? 'var(--red)' : 'var(--cyan)';
+        }
+        return { id: a.id, label: a.label, data: d };
+      }));
+      lastExtraState = extraResults;
+      updateReadinessBar(lastData, lastExtraState);
+    }
+
     async function loadQuota() {
       try {
         const res = await fetch('/api/gemini/quota');
@@ -1004,6 +1241,7 @@
       } catch (err) {
         renderQuota({ ok: false, error: err.message });
       }
+      loadExtraAccounts();
     }
 
     document.getElementById('btn-refresh').addEventListener('click', loadQuota);

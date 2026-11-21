@@ -76,7 +76,14 @@ const CODE_HINT_RE = /code|โค้ด|bug|บั๊ก|แก้|fix|script|�
 // Go runtime crash before the CLI even starts — on this host that means a RAM bit flip in the
 // page-cached binary (see homelab RAM notes). Evicting the file from page cache reloads it from disk.
 const CRASH_RE = /unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)|illegal instruction/i;
-const RETRYABLE_ERR_RE = /\b429\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|overloaded|capacity|insufficient.?balance|credit|please sign in|unauthori[sz]ed|\b401\b|usage limit|limit reached|โควตา/i;
+const AUTH_OR_BILLING_RE = /\b401\b|\b402\b|\b403\b|invalid_grant|please sign in|not logged in|run \/login|unauthori[sz]ed|forbidden|invalid.?api.?key|insufficient.?balance|payment.?required|subscription|upgrade|ineligible|credit balance/i;
+const QUOTA_OR_LIMIT_RE = /\b429\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|hit your limit|usage limit|limit reached|โควตา/i;
+const RETRYABLE_ERR_RE = /\b429\b|\b402\b|\b403\b|\b401\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|overloaded|capacity|insufficient.?balance|payment.?required|credit|please sign in|not logged in|run \/login|unauthori[sz]ed|forbidden|invalid.?api.?key|invalid_grant|subscription|upgrade|hit your limit|usage limit|limit reached|expired|model.?not.?found|not.?available|ineligible|โควตา/i;
+
+const AUTH_COOLDOWN_MS = 15 * 60 * 1000;
+const QUOTA_COOLDOWN_MS = 3 * 60 * 1000;
+const TRANSIENT_COOLDOWN_MS = 90 * 1000;
+const failureCooldowns = new Map(); // groupKey -> { until, kind, reason }
 
 function isBinaryCrash(text) {
     return CRASH_RE.test(String(text || ''));
@@ -99,6 +106,56 @@ function healBinaryCache(file = AGY_BIN) {
 function failureGroup(candidate, crashed) {
     if (candidate.engine !== 'agy') return candidate.engine;
     return crashed ? `agy@${candidate.account}` : `agy@${candidate.account}:${agyPoolId(candidate.model)}`;
+}
+
+function recordFailure(candidate, { crashed = false, errorText = '', outputText = '', stderrText = '' } = {}) {
+    if (!candidate) return;
+    const combined = [errorText, outputText, stderrText].filter(Boolean).join('\n');
+    let kind = 'transient';
+    let ttl = TRANSIENT_COOLDOWN_MS;
+    if (AUTH_OR_BILLING_RE.test(combined)) {
+        kind = 'auth';
+        ttl = AUTH_COOLDOWN_MS;
+    } else if (QUOTA_OR_LIMIT_RE.test(combined)) {
+        kind = 'quota';
+        ttl = QUOTA_COOLDOWN_MS;
+    }
+    const key = failureGroup(candidate, crashed);
+    failureCooldowns.set(key, { until: Date.now() + ttl, kind, reason: combined.slice(0, 160) });
+    if (candidate.engine === 'agy' && candidate.account) {
+        quotaCache.delete(candidate.account);
+    } else if (candidate.engine === 'claude-code' || candidate.engine === 'deepseek') {
+        providerQuotaCache = null;
+        quotaCache.delete('g1');
+    }
+}
+
+function isInCooldown(candidate) {
+    if (!candidate) return false;
+    const now = Date.now();
+    for (const key of [failureGroup(candidate, false), failureGroup(candidate, true)]) {
+        const rec = failureCooldowns.get(key);
+        if (!rec) continue;
+        if (rec.until > now) return true;
+        failureCooldowns.delete(key);
+    }
+    return false;
+}
+
+function clearCooldowns() {
+    failureCooldowns.clear();
+    quotaCache.clear();
+    providerQuotaCache = null;
+}
+
+function getCooldowns() {
+    const now = Date.now();
+    const out = {};
+    for (const [k, rec] of failureCooldowns.entries()) {
+        if (rec.until > now) out[k] = { ...rec, remainingSec: Math.ceil((rec.until - now) / 1000) };
+        else failureCooldowns.delete(k);
+    }
+    return out;
 }
 
 function engineOf(model) {
@@ -140,9 +197,17 @@ function listAgyAccounts() {
     });
 }
 
-function getAgyAccount(id) {
+function getAgyAccountExact(id) {
     const all = listAgyAccounts();
     return all.find((a) => a.id === id) || all[0];
+}
+
+function getAgyAccount(id) {
+    const all = listAgyAccounts();
+    return all.find((a) => a.id === id && a.ready)
+        || all.find((a) => a.ready)
+        || all.find((a) => a.id === id)
+        || all[0];
 }
 
 function agyTokenFile(account) {
@@ -154,11 +219,17 @@ function agyBrainDir(account) {
 }
 
 // ── ③ โควตา ───────────────────────────────────────────────────────────────────
-let quotaProvider = null;   // injected: async ({ accountId }) => getQuotaSummary result
-const quotaCache = new Map(); // accountId -> { at, data }
+let quotaProvider = null;         // injected: async ({ accountId }) => getQuotaSummary result
+let providerQuotaProvider = null; // injected: async () => ({ deepseek, claudeWeb }) independent of g1
+const quotaCache = new Map();     // accountId -> { at, data }
+let providerQuotaCache = null;    // { at, data }
 
 function setQuotaProvider(fn) {
     quotaProvider = fn;
+}
+
+function setProviderQuotaProvider(fn) {
+    providerQuotaProvider = fn;
 }
 
 async function getAccountQuota(accountId) {
@@ -174,26 +245,64 @@ async function getAccountQuota(accountId) {
     return data;
 }
 
+async function getProviderQuotas(primaryAccountQuota = null) {
+    if (providerQuotaCache && Date.now() - providerQuotaCache.at < QUOTA_TTL_MS) {
+        return providerQuotaCache.data;
+    }
+    let data = null;
+    if (providerQuotaProvider) {
+        try {
+            data = await providerQuotaProvider();
+        } catch (_) {
+            data = null;
+        }
+    }
+    if (!data && primaryAccountQuota && (primaryAccountQuota.deepseek !== undefined || primaryAccountQuota.claudeWeb !== undefined)) {
+        data = { deepseek: primaryAccountQuota.deepseek || null, claudeWeb: primaryAccountQuota.claudeWeb || null };
+    }
+    if (!data) {
+        const g1q = await getAccountQuota('g1');
+        data = {
+            deepseek: (g1q && g1q.deepseek) || null,
+            claudeWeb: (g1q && g1q.claudeWeb) || null
+        };
+    }
+    providerQuotaCache = { at: Date.now(), data };
+    return data;
+}
+
 function agyPoolId(model) {
     if (/argon/i.test(model)) return 'argon';
     if (/^(claude|gpt)/i.test(model)) return 'claude';
     return 'gemini';
 }
 
-/** % ที่เหลือของโมเดล agy ในบัญชีนี้; null = โมเดลนี้ไม่มีในบัญชี */
+const FALLBACK_UNKNOWN_PCT = 15; // ใช้เป็นตัวสำรอง tier 2 ไม่แซงหน้าบัญชีที่โควตาดี > 20%
+
+/** % ที่เหลือของโมเดล agy ในบัญชีนี้; null = โมเดล/บัญชีนี้ใช้ไม่ได้ (ควรถูกข้าม) */
 function agyRemainingPct(quota, model) {
-    if (!quota || !quota.ok) return UNKNOWN_QUOTA_PCT;
+    if (!quota || !quota.ok) {
+        if (quota && quota.authError) return null;
+        return FALLBACK_UNKNOWN_PCT;
+    }
     const poolId = agyPoolId(model);
     const pool = (quota.pools || []).find((p) => p.id === poolId);
     if (pool) return pool.remainingPct;
     if ((quota.unavailablePools || []).some((p) => p.id === poolId)) return null;
-    return UNKNOWN_QUOTA_PCT;
+    return FALLBACK_UNKNOWN_PCT;
 }
 
+/** % ที่เหลือของ Claude Pro (Claude Code CLI); null = ไม่ได้สมัคร / หมดสิทธิ์ / ยังไม่ได้ตั้งค่า */
 function claudeProRemainingPct(cw) {
-    if (!cw || !cw.ok) return UNKNOWN_QUOTA_PCT;
+    if (!cw) return null;
+    if (!cw.ok) {
+        if (cw.configured === false || cw.unsubscribed || cw.authError) return null;
+        if (cw.configured && cw.transient) return FALLBACK_UNKNOWN_PCT;
+        return null;
+    }
+    if (cw.plan && /^(free|none)$/i.test(String(cw.plan).trim())) return null;
     const vals = [cw.fiveHour, cw.weekly].filter(Boolean).map((w) => w.remainingPct);
-    return vals.length ? Math.min(...vals) : UNKNOWN_QUOTA_PCT;
+    return vals.length ? Math.min(...vals) : FALLBACK_UNKNOWN_PCT;
 }
 
 function deepseekUsable(ds) {
@@ -209,8 +318,12 @@ async function buildCandidates(routeKey, { hasImages = false } = {}) {
     const row = ROUTES[routeKey] || ROUTES['chat:2'];
     const accounts = listAgyAccounts().filter((a) => a.ready);
     const quotas = {};
-    await Promise.all(accounts.map(async (a) => { quotas[a.id] = await getAccountQuota(a.id); }));
-    const primaryQuota = quotas.g1 || (await getAccountQuota('g1'));
+    const [, provQuotas] = await Promise.all([
+        Promise.all(accounts.map(async (a) => { quotas[a.id] = await getAccountQuota(a.id); })),
+        getProviderQuotas()
+    ]);
+    const deepseekInfo = (quotas.g1 && quotas.g1.deepseek) || (provQuotas && provQuotas.deepseek) || null;
+    const claudeWebInfo = (quotas.g1 && quotas.g1.claudeWeb) || (provQuotas && provQuotas.claudeWeb) || null;
 
     const subs = [];
     const paid = [];
@@ -218,12 +331,18 @@ async function buildCandidates(routeKey, { hasImages = false } = {}) {
         const engine = engineOf(model);
         if (engine === 'agy') {
             for (const acc of accounts) {
+                const cand = { model, engine, account: acc.id, accountLabel: acc.label, home: acc.home };
+                if (isInCooldown(cand)) continue;
                 const pct = agyRemainingPct(quotas[acc.id], model);
                 if (pct === null) continue;
-                subs.push({ model, engine, account: acc.id, accountLabel: acc.label, home: acc.home, remainingPct: pct });
+                subs.push({ ...cand, remainingPct: pct });
             }
         } else if (engine === 'claude-code') {
-            subs.push({ model, engine, account: 'claude-pro', accountLabel: 'Claude Pro', remainingPct: claudeProRemainingPct(primaryQuota && primaryQuota.claudeWeb) });
+            const cand = { model, engine, account: 'claude-pro', accountLabel: 'Claude Pro' };
+            if (isInCooldown(cand)) continue;
+            const pct = claudeProRemainingPct(claudeWebInfo);
+            if (pct === null) continue;
+            subs.push({ ...cand, remainingPct: pct });
         } else {
             paid.push(hasImages ? 'deepseek-flash' : model);
         }
@@ -233,10 +352,12 @@ async function buildCandidates(routeKey, { hasImages = false } = {}) {
     const tier2 = subs.filter((c) => c.remainingPct > MIN_THRESHOLD && c.remainingPct <= PRIMARY_THRESHOLD);
     const out = [...tier1, ...tier2];
 
-    if (deepseekUsable(primaryQuota && primaryQuota.deepseek)) {
-        const ds = primaryQuota.deepseek;
+    if (deepseekUsable(deepseekInfo)) {
+        const ds = deepseekInfo;
         for (const model of [...new Set(paid.length ? paid : ['deepseek-flash'])]) {
-            out.push({ model, engine: 'deepseek', account: 'deepseek', accountLabel: 'DeepSeek (จ่ายตามใช้)', balance: ds.totalBalance, paid: true });
+            const dsCand = { model, engine: 'deepseek', account: 'deepseek', accountLabel: 'DeepSeek (จ่ายตามใช้)', balance: ds.totalBalance, paid: true };
+            if (isInCooldown(dsCand)) continue;
+            out.push(dsCand);
         }
     }
     return out.map((c) => ({ ...c, label: modelLabel(c.model) }));
@@ -288,19 +409,28 @@ function runClassifierOnce(prompt, account) {
             env: { ...process.env, HOME: account.home, FORCE_COLOR: '0' }
         }, (err, stdout, stderr) => {
             if (err) {
-                console.error(`[AiRouter] classifier failed on ${account.label}: ${String(stderr || err.message).slice(0, 200)}`);
-                return resolve({ result: null, crashed: isBinaryCrash(stderr) });
+                const errText = String(stderr || err.message || '');
+                console.error(`[AiRouter] classifier failed on ${account.label}: ${errText.slice(0, 200)}`);
+                return resolve({ result: null, crashed: isBinaryCrash(stderr), errorText: errText });
             }
-            resolve({ result: parseClassification(stdout), crashed: false });
+            resolve({ result: parseClassification(stdout), crashed: false, errorText: '' });
         });
     });
 }
 
 async function runClassifier(prompt, account) {
-    const first = await runClassifierOnce(prompt, account);
-    if (!first.crashed) return first.result;
-    await healBinaryCache(AGY_BIN);
-    return (await runClassifierOnce(prompt, account)).result;
+    let attempt = await runClassifierOnce(prompt, account);
+    if (attempt.crashed) {
+        await healBinaryCache(AGY_BIN);
+        attempt = await runClassifierOnce(prompt, account);
+    }
+    if (!attempt.result && attempt.errorText) {
+        recordFailure({ engine: 'agy', account: account.id, model: CLASSIFIER_MODEL }, {
+            crashed: attempt.crashed,
+            errorText: attempt.errorText
+        });
+    }
+    return attempt.result;
 }
 
 async function classifyTask(prompt) {
@@ -312,16 +442,18 @@ async function classifyTask(prompt) {
     const hit = classifyCache.get(hash);
     if (hit && Date.now() - hit.at < CLASSIFY_TTL_MS) return { ...hit.result, source: 'cache' };
 
-    // ใช้บัญชี Google ตัวแรกที่ pool gemini ยังไม่หมด
+    // ใช้บัญชี Google ตัวแรกที่พร้อมใช้และ pool gemini ยังไม่หมด
     let result = null;
     for (const acc of listAgyAccounts().filter((a) => a.ready)) {
+        if (isInCooldown({ engine: 'agy', account: acc.id, model: CLASSIFIER_MODEL })) continue;
         const pct = agyRemainingPct(await getAccountQuota(acc.id), CLASSIFIER_MODEL);
-        if (pct !== null && pct <= MIN_THRESHOLD) continue;
+        if (pct === null || pct <= MIN_THRESHOLD) continue;
         result = await runClassifier(text, acc);
         if (result) break;
     }
     if (!result) {
-        return { type: 'chat', level: 2, needs_tools: false, reason: 'ตัวคัดงานไม่ตอบ ใช้ค่าเริ่มต้น', source: 'fallback' };
+        const fbType = CODE_HINT_RE.test(text) ? 'code' : 'chat';
+        return { type: fbType, level: 2, needs_tools: fbType === 'code', reason: 'ตัวคัดงานไม่ตอบ ใช้ค่าเริ่มต้น', source: 'fallback' };
     }
     classifyCache.set(hash, { at: Date.now(), result });
     if (classifyCache.size > 300) classifyCache.delete(classifyCache.keys().next().value);
@@ -367,11 +499,12 @@ function formatBanner(decision, chosen, note = '') {
     return `> ${prefix}**${c.label}** · ${c.accountLabel} (${quota}) — ${cls.type} ระดับ ${cls.level}${why}\n\n`;
 }
 
-function isRetryableFailure(errorText, outputText) {
+function isRetryableFailure(errorText, outputText, stderrText = '') {
     const out = String(outputText || '').trim();
     const err = String(errorText || '');
+    const stderr = String(stderrText || '');
     if (out.length > 400) return false;
-    return RETRYABLE_ERR_RE.test(err) || RETRYABLE_ERR_RE.test(out) || (!out && !!err);
+    return RETRYABLE_ERR_RE.test(err) || RETRYABLE_ERR_RE.test(out) || RETRYABLE_ERR_RE.test(stderr) || (!out && !!(err || stderr));
 }
 
 function logDecision({ source, prompt, decision, event = 'route', extra = {} }) {
@@ -417,8 +550,14 @@ module.exports = {
     readLog,
     listAgyAccounts,
     getAgyAccount,
+    getAgyAccountExact,
     agyTokenFile,
     agyBrainDir,
     setQuotaProvider,
+    setProviderQuotaProvider,
+    recordFailure,
+    isInCooldown,
+    clearCooldowns,
+    getCooldowns,
     modelLabel
 };

@@ -510,9 +510,11 @@ function scheduleAutoTitling(sessionId, userPrompt) {
     if (!cleanPrompt || cleanPrompt.length < 3) return;
 
     setImmediate(() => {
+        const acc = aiRouter.getAgyAccount('g1');
+        if (!acc || !acc.ready || !fs.existsSync(AGY_BIN)) return;
         const promptText = `สรุปเนื้อหาข้อความต่อไปนี้ให้เป็นชื่อหัวข้อแชทภาษาไทยที่กระชับ ชัดเจน ตรงประเด็น (ความยาว 4-8 คำ) พร้อมใส่อีโมจิที่เข้ากับเนื้อหา 1 ตัวข้างหน้าสุด ห้ามใส่เครื่องหมายคำพูด ห้ามมีคำอธิบายอื่น ให้ตอบเฉพาะชื่อหัวข้อเท่านั้น:\n\n${cleanPrompt.slice(0, 400)}`;
         const args = ['-p', promptText, '--model', 'gemini-3.8-flash-low', '--disable-slash-commands', '--print-timeout', '15s'];
-        execFile(AGY_BIN, args, { timeout: 20000 }, (err, stdout) => {
+        execFile(AGY_BIN, args, { timeout: 20000, env: { ...process.env, HOME: acc.home, FORCE_COLOR: '0' } }, (err, stdout) => {
             if (err || !stdout) return;
             const lines = stdout.trim().replace(/["']/g, '').split('\n').map(l => l.trim()).filter(Boolean);
             const title = lines[0];
@@ -746,7 +748,7 @@ function init() {
         console.error('[GeminiManager] Failed to init env:', e.message);
     }
 
-    if (taskQueue.length > 0) {
+    if (process.env.GEMINI_NO_QUEUE_AUTORUN !== '1' && taskQueue.length > 0) {
         console.log(`[GeminiManager] Restoring ${taskQueue.length} pending queued task(s) from disk...`);
         setTimeout(() => {
             processNextInQueue();
@@ -765,34 +767,43 @@ async function getStatus() {
     let hasAuth = false;
     let authType = 'none';
     let authLabel = 'ยังไม่ได้ล็อกอิน';
-    let oauthEmail = 'asri.utcc@gmail.com';
+    let oauthEmail = '';
     let models = [];
 
-    // 1. Check Antigravity CLI (Primary Engine)
-    if (fs.existsSync(AGY_BIN)) {
+    const agyAccounts = aiRouter.listAgyAccounts().map(({ id, label, email, ready, profile }) => ({ id, label, email, ready, profile }));
+    const readyAccounts = aiRouter.listAgyAccounts().filter((a) => a.ready);
+    const primaryAcc = readyAccounts[0] || null;
+
+    // 1. Check Antigravity CLI (Primary Engine — uses first ready Google account, with crash heal)
+    if (fs.existsSync(AGY_BIN) && primaryAcc) {
         try {
-            const verOut = await new Promise((resolve) => {
-                execFile(AGY_BIN, ['--version'], (err, stdout) => {
-                    resolve(err ? '' : stdout.trim());
+            const runAgyProbe = (args, timeout = 8000) => new Promise((resolve) => {
+                execFile(AGY_BIN, args, { timeout, env: { ...process.env, HOME: primaryAcc.home, FORCE_COLOR: '0' } }, (err, stdout, stderr) => {
+                    resolve({ ok: !err, stdout: String(stdout || '').trim(), stderr: String(stderr || '') });
                 });
             });
-
-            if (verOut) {
-                const modelsOut = await new Promise((resolve) => {
-                    execFile(AGY_BIN, ['models'], { timeout: 8000 }, (err, stdout) => {
-                        resolve(err ? '' : stdout.trim());
-                    });
-                });
-
+            let verRes = await runAgyProbe(['--version'], 6000);
+            if (!verRes.ok && aiRouter.isBinaryCrash(verRes.stderr)) {
+                await aiRouter.healBinaryCache(AGY_BIN);
+                verRes = await runAgyProbe(['--version'], 6000);
+            }
+            if (verRes.ok && verRes.stdout) {
+                let modRes = await runAgyProbe(['models'], 8000);
+                if (!modRes.ok && aiRouter.isBinaryCrash(modRes.stderr)) {
+                    await aiRouter.healBinaryCache(AGY_BIN);
+                    modRes = await runAgyProbe(['models'], 8000);
+                }
+                const modelsOut = modRes.ok ? modRes.stdout : '';
                 if (modelsOut && !modelsOut.includes('Please sign in')) {
                     installed = true;
-                    version = verOut;
+                    version = verRes.stdout;
                     binPath = AGY_BIN;
                     engine = 'antigravity';
                     engineLabel = 'Google Antigravity Core (agy)';
                     hasAuth = true;
                     authType = 'antigravity-oauth';
-                    authLabel = 'Google Account (Antigravity · asri.utcc@gmail.com)';
+                    oauthEmail = primaryAcc.email || 'asri.utcc@gmail.com';
+                    authLabel = `Google Account (${primaryAcc.label} · ${oauthEmail})`;
 
                     const lines = modelsOut.split('\n');
                     for (const l of lines) {
@@ -835,12 +846,11 @@ async function getStatus() {
             authType = 'api-key';
             authLabel = 'API Key (' + key.slice(0, 6) + '••••••••' + key.slice(-4) + ')';
             hasAuth = true;
+            models = [
+                { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+                { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' }
+            ];
         }
-
-        models = [
-            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' }
-        ];
     }
 
     const hasDeepSeek = !!deepseekAgent.getApiKey();
@@ -851,7 +861,8 @@ async function getStatus() {
         }
     }
 
-    const hasClaudeCode = fs.existsSync(CLAUDE_BIN);
+    const claudeAvail = getClaudeCodeAvailability();
+    const hasClaudeCode = claudeAvail.ready;
     if (hasClaudeCode) {
         const existingIds = new Set(models.map((m) => m.id));
         for (const cm of CLAUDE_CODE_MODELS) {
@@ -862,7 +873,6 @@ async function getStatus() {
     if (models.length > 0) {
         models.unshift({ id: aiRouter.AUTO_MODEL_ID, name: '🧠 Auto · สมองกลางเลือกให้' });
     }
-    const agyAccounts = aiRouter.listAgyAccounts().map(({ id, label, email, ready, profile }) => ({ id, label, email, ready, profile }));
 
     // List available project folders
     let projects = [];
@@ -883,8 +893,12 @@ async function getStatus() {
         engineLabel,
         hasKey: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10),
         hasDeepSeek,
+        hasClaudeCode,
+        claudeCodeReady: hasClaudeCode,
+        claudeCodeReason: claudeAvail.reason || null,
+        readyAccountsCount: readyAccounts.length,
         hasOAuth: hasAuth,
-        oauthEmail,
+        oauthEmail: oauthEmail || (primaryAcc && primaryAcc.email) || '',
         authType,
         authLabel,
         hasAuth,
@@ -923,7 +937,7 @@ async function setApiKey(key) {
 }
 
 // ── 🧠 Auto model: route via ai-router, then run with failover ───────────────
-const AUTO_MAX_ATTEMPTS = 4;
+const AUTO_MAX_ATTEMPTS = 8;
 
 function executeAuto(params, onChunk, onDone) {
     const sid = resolveSessionId(params.sessionId);
@@ -993,7 +1007,7 @@ function executeAuto(params, onChunk, onDone) {
         }
         if (aborted) return;
         if (!decision.ok || !decision.candidates.length) {
-            placeholder.output = '❌ สมองกลางหาโมเดลที่ใช้ได้ไม่เจอ (โควตาทุกบัญชีใกล้หมด และ DeepSeek ไม่มียอดเงิน)';
+            placeholder.output = '❌ สมองกลางหาโมเดลที่ใช้ได้ไม่เจอในขณะนี้ (ทุกบัญชี Google / Claude Pro / DeepSeek ไม่พร้อมใช้งานหรือโควตา/เครดิตหมด)';
             onChunk('stdout', placeholder.output);
             return finish(1, decision.error || 'no candidates', placeholder);
         }
@@ -1048,7 +1062,10 @@ function executeAuto(params, onChunk, onDone) {
                         onChunk('stdout', `\n\n> 🩹 ${c.label} แครชตอนเปิดโปรแกรม (ไฟล์ใน RAM cache เสีย) — ล้าง cache แล้ว กำลังลองใหม่...\n\n`);
                         return aiRouter.healBinaryCache(aiRouter.AGY_BIN).then(() => runAttempt(idx, `ลองใหม่หลังล้าง cache`));
                     }
-                    if (canSwitch && (crashed || aiRouter.isRetryableFailure(err, body))) {
+                    if (failed && !aborted && maxSteps === 0) {
+                        aiRouter.recordFailure(c, { crashed, errorText: errText, outputText: body, stderrText: stderrTail });
+                    }
+                    if (canSwitch && (crashed || aiRouter.isRetryableFailure(err, body, stderrTail))) {
                         deadGroups.add(aiRouter.failureGroup(c, crashed));
                         const next = nextIndex(idx + 1);
                         if (next !== -1) {
@@ -1069,6 +1086,7 @@ function executeAuto(params, onChunk, onDone) {
                     finish(code, err, job || placeholder);
                 });
             } catch (err) {
+                aiRouter.recordFailure(c, { crashed: true, errorText: err.message });
                 deadGroups.add(aiRouter.failureGroup(c, true));
                 const next = nextIndex(idx + 1);
                 if (next !== -1 && tried.length < AUTO_MAX_ATTEMPTS) {
@@ -1177,8 +1195,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
     // Route to Claude Code CLI (monthly Claude.ai OAuth subscription)
     if (typeof model === 'string' && model.startsWith('claude-code-')) {
-        if (!fs.existsSync(CLAUDE_BIN)) {
-            throw new Error('ไม่พบ Claude Code CLI (/home/dev/.local/bin/claude)');
+        const claudeAvail = getClaudeCodeAvailability();
+        if (!claudeAvail.ready) {
+            throw new Error(claudeAvail.reason || 'Claude Code ยังไม่พร้อมใช้งาน (ไม่ได้ล็อกอินหรือยกเลิกแพ็กเกจ Claude Pro) — แนะนำใช้โหมด 🧠 Auto หรือโมเดล Google');
         }
         const cliModel = model.replace('claude-code-', '').trim() || 'sonnet';
         const claudeProjectsDir = path.join(HOME_DIR, '.claude', 'projects');
@@ -1451,8 +1470,10 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             for (const line of lines) processClaudeLine(line);
         });
 
+        let claudeStderrTail = '';
         child.stderr.on('data', (d) => {
             const str = d.toString('utf8');
+            claudeStderrTail = (claudeStderrTail + str).slice(-4000);
             onChunk('stderr', str);
         });
 
@@ -1478,7 +1499,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             if (job.status !== 'aborted') {
                 job.status = (code === 0) ? 'completed' : 'error';
                 if (code !== 0 && !job.error) {
-                    job.error = `Exit code ${code}`;
+                    job.error = claudeStderrTail.trim() || `Exit code ${code}`;
                 }
             }
             job.finishedAt = Date.now();
@@ -1540,7 +1561,8 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         return handle;
     }
 
-    const hasAgy = fs.existsSync(AGY_BIN);
+    const readyAgyAccs = aiRouter.listAgyAccounts().filter((a) => a.ready);
+    const hasAgy = fs.existsSync(AGY_BIN) && readyAgyAccs.length > 0;
 
     if (hasAgy) {
         // Google account (HOME profile) — conversations live in each account's own brain dir
@@ -1722,7 +1744,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
     }
 
     const args = ['-p', prompt, '--skip-trust'];
-    if (continueSession) {
+    if (!forceNew) {
         args.push('--resume', 'latest');
     }
     if (mode === 'exec') {
@@ -1973,20 +1995,26 @@ function readOAuthTokenFile(tokenFile) {
 async function getValidAccessToken(tokenFile, forceRefresh = false, home = HOME_DIR) {
     let { raw, inner } = readOAuthTokenFile(tokenFile);
     const expiryMs = inner?.expiry ? Date.parse(inner.expiry) : 0;
-    const needsRefresh = forceRefresh || !inner?.access_token || !expiryMs || (expiryMs - Date.now() < 60_000);
+    const isExpired = !expiryMs || (expiryMs - Date.now() < 60_000);
+    const needsRefresh = forceRefresh || !inner?.access_token || isExpired;
+    let refreshFailed = false;
 
     if (needsRefresh && fs.existsSync(AGY_BIN)) {
         try {
             await execFileAsync(AGY_BIN, ['models'], { timeout: 15000, env: { ...process.env, HOME: home } });
             ({ raw, inner } = readOAuthTokenFile(tokenFile));
         } catch (_) {
-            // Fall through and use existing token if refresh failed
+            refreshFailed = true;
         }
     }
 
+    const afterExpiryMs = inner?.expiry ? Date.parse(inner.expiry) : 0;
+    const expired = !afterExpiryMs || afterExpiryMs <= Date.now();
     return {
         accessToken: inner?.access_token || null,
-        email: raw.id_token_email || (home === HOME_DIR ? 'asri.utcc@gmail.com' : null)
+        email: raw.id_token_email || (home === HOME_DIR ? 'asri.utcc@gmail.com' : null),
+        refreshFailed,
+        expired
     };
 }
 
@@ -1997,7 +2025,8 @@ async function postCloudCode(endpoint, accessToken, bodyObj) {
             ...CLOUDCODE_HEADERS_BASE,
             'Authorization': `Bearer ${accessToken}`
         },
-        body: JSON.stringify(bodyObj)
+        body: JSON.stringify(bodyObj),
+        signal: AbortSignal.timeout(10000)
     });
     return res;
 }
@@ -2012,18 +2041,50 @@ function toPctObj(remainingFraction, resetTime = null) {
     };
 }
 
-async function getQuotaSummary({ accountId = 'g1' } = {}) {
-    const account = aiRouter.getAgyAccount(accountId);
-    const isPrimary = account.id === 'g1';
+async function getProviderQuotas({ force = false } = {}) {
+    const [deepseek, claudeWeb] = await Promise.all([
+        deepseekAgent.getDeepSeekBalance({ force, timeoutMs: 4500 }).catch((err) => ({ ok: false, error: err.message })),
+        getClaudeWebQuota({ force }).catch((err) => ({ ok: false, configured: false, error: err.message }))
+    ]);
+    return { deepseek: deepseek || null, claudeWeb: claudeWeb || null };
+}
+
+async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
+    const account = aiRouter.getAgyAccountExact(accountId);
+    const isPrimary = account.id === 'g1' || accountId === 'g1';
+    const provPromise = isPrimary
+        ? getProviderQuotas({ force })
+        : Promise.resolve({ deepseek: null, claudeWeb: null });
+
     const tokenFile = aiRouter.agyTokenFile(account);
     if (!fs.existsSync(tokenFile)) {
-        return { ok: false, account: account.id, error: 'ไม่พบไฟล์ antigravity-oauth-token' };
+        const prov = await provPromise;
+        return {
+            ok: false,
+            account: account.id,
+            accountLabel: account.label,
+            email: account.email || null,
+            authError: true,
+            error: 'ไม่พบไฟล์ antigravity-oauth-token',
+            deepseek: prov.deepseek,
+            claudeWeb: prov.claudeWeb
+        };
     }
     let cachedProjectInfo = cachedProjectInfoByAccount.get(account.id) || { project: null, tier: null, fetchedAt: 0 };
     try {
-        let { accessToken, email } = await getValidAccessToken(tokenFile, false, account.home);
-        if (!accessToken) {
-            return { ok: false, error: 'ไม่พบ access_token ในไฟล์ OAuth' };
+        let { accessToken, email, refreshFailed, expired } = await getValidAccessToken(tokenFile, false, account.home);
+        if (!accessToken || (refreshFailed && expired)) {
+            const prov = await provPromise;
+            return {
+                ok: false,
+                account: account.id,
+                accountLabel: account.label,
+                email: email || account.email || null,
+                authError: true,
+                error: !accessToken ? 'ไม่พบ access_token ในไฟล์ OAuth' : 'OAuth token หมดอายุและต่ออายุไม่สำเร็จ (บัญชีอาจถูกยกเลิกหรือถูกถอดสิทธิ์)',
+                deepseek: prov.deepseek,
+                claudeWeb: prov.claudeWeb
+            };
         }
 
         // Resolve project & tier via loadCodeAssist (cached for 10 minutes)
@@ -2049,11 +2110,10 @@ async function getQuotaSummary({ accountId = 'g1' } = {}) {
         }
         const project = cachedProjectInfo.project || 'aicode-consumers';
 
-        let [modelsRes, summaryRes, deepseekInfo, claudeWebInfo] = await Promise.all([
+        let [modelsRes, summaryRes, prov] = await Promise.all([
             postCloudCode('fetchAvailableModels', accessToken, { project }),
             postCloudCode('retrieveUserQuotaSummary', accessToken, { project }),
-            isPrimary ? deepseekAgent.getDeepSeekBalance() : null,
-            isPrimary ? getClaudeWebQuota() : null
+            provPromise
         ]);
 
         if (modelsRes.status === 401 || summaryRes.status === 401) {
@@ -2066,8 +2126,21 @@ async function getQuotaSummary({ accountId = 'g1' } = {}) {
 
         if (!modelsRes.ok) {
             const errTxt = await modelsRes.text().catch(() => '');
-            return { ok: false, error: `Quota API HTTP ${modelsRes.status}: ${errTxt.slice(0, 120)}` };
+            const authError = modelsRes.status === 401 || modelsRes.status === 403 || /invalid_grant|unauthenticated|permission/i.test(errTxt);
+            return {
+                ok: false,
+                account: account.id,
+                accountLabel: account.label,
+                email: email || account.email || null,
+                authError,
+                error: `Quota API HTTP ${modelsRes.status}: ${errTxt.slice(0, 120)}`,
+                deepseek: prov.deepseek,
+                claudeWeb: prov.claudeWeb
+            };
         }
+
+        const deepseekInfo = prov.deepseek;
+        const claudeWebInfo = prov.claudeWeb;
 
         const data = await modelsRes.json();
         const summaryData = summaryRes.ok ? await summaryRes.json().catch(() => null) : null;
@@ -2212,7 +2285,19 @@ async function getQuotaSummary({ accountId = 'g1' } = {}) {
             models: models.sort((a, b) => a.id.localeCompare(b.id))
         };
     } catch (err) {
-        return { ok: false, error: err.message };
+        const prov = await provPromise.catch(() => ({ deepseek: null, claudeWeb: null }));
+        const errMsg = String(err && err.message ? err.message : err);
+        const authError = /invalid_grant|unauthorized|401|403/i.test(errMsg);
+        return {
+            ok: false,
+            account: account.id,
+            accountLabel: account.label,
+            email: account.email || null,
+            authError,
+            error: errMsg,
+            deepseek: prov.deepseek,
+            claudeWeb: prov.claudeWeb
+        };
     }
 }
 
@@ -2236,6 +2321,11 @@ async function setClaudeSessionKey(key) {
         delete process.env.CLAUDE_SESSION_KEY;
     }
     await fsp.writeFile(GEMINI_ENV_FILE, lines.join('\n') + '\n', { mode: 0o600 });
+    claudeQuotaErrCache = null;
+    if (claudeQuotaCache && claudeQuotaCache.data && claudeQuotaCache.data.source === 'sessionKey') {
+        claudeQuotaCache = null;
+        try { if (fs.existsSync(CLAUDE_QUOTA_CACHE_FILE)) fs.unlinkSync(CLAUDE_QUOTA_CACHE_FILE); } catch (_) {}
+    }
     return { ok: true, configured: !!cleanKey };
 }
 
@@ -2299,6 +2389,7 @@ function parseClaudeUsagePayload(data) {
 const CLAUDE_QUOTA_CACHE_FILE = path.join(GEMINI_DIR, 'claude-quota-cache.json');
 const CLAUDE_QUOTA_OK_TTL_MS = 5 * 60 * 1000;   // reuse a good reading for 5 minutes
 const CLAUDE_QUOTA_ERR_TTL_MS = 60 * 1000;      // back off for 1 minute after a failure
+const CLAUDE_QUOTA_STALE_MAX_MS = 2 * 60 * 60 * 1000; // max 2h stale fallback for transient errors
 let claudeQuotaCache = (() => {
     try {
         if (fs.existsSync(CLAUDE_QUOTA_CACHE_FILE)) {
@@ -2310,23 +2401,78 @@ let claudeQuotaCache = (() => {
 })();
 let claudeQuotaErrCache = null;   // { at, data } last failure (to avoid hammering Anthropic)
 
+function hasPaidClaudePlan(subType) {
+    return /^(pro|max|team|enterprise)/i.test(String(subType || '').trim());
+}
+
+function clearClaudeQuotaCache() {
+    claudeQuotaCache = null;
+    try { if (fs.existsSync(CLAUDE_QUOTA_CACHE_FILE)) fs.unlinkSync(CLAUDE_QUOTA_CACHE_FILE); } catch (_) {}
+}
+
 function readClaudeOAuthCreds() {
     try {
         const credFile = path.join(HOME_DIR, '.claude', '.credentials.json');
         if (!fs.existsSync(credFile)) {
-            return { error: 'ไม่พบ ~/.claude/.credentials.json (ยังไม่ได้ล็อกอิน Claude Code)' };
+            return { configured: false, error: 'ไม่พบ ~/.claude/.credentials.json (ยังไม่ได้ล็อกอิน Claude Code)' };
         }
+        const mtimeMs = fs.statSync(credFile).mtimeMs || 0;
         const creds = JSON.parse(fs.readFileSync(credFile, 'utf8'));
         const oauth = creds.claudeAiOauth || creds;
-        if (!oauth || !oauth.accessToken) return { error: 'ไม่พบ accessToken ใน .credentials.json' };
-        return { oauth, accessToken: oauth.accessToken };
+        if (!oauth || !oauth.accessToken) {
+            return { configured: false, mtimeMs, error: 'ไม่พบ accessToken ใน .credentials.json' };
+        }
+        const subType = oauth.subscriptionType;
+        if (subType !== undefined && !hasPaidClaudePlan(subType)) {
+            return {
+                oauth,
+                mtimeMs,
+                configured: false,
+                unsubscribed: true,
+                subscriptionType: subType || 'free',
+                error: 'บัญชี Claude ไม่ได้สมัครแพ็กเกจ Pro/Max (ระบบข้ามอัตโนมัติ)'
+            };
+        }
+        return { oauth, mtimeMs, accessToken: oauth.accessToken, configured: true };
     } catch (err) {
-        return { error: 'อ่าน Claude credentials ไม่สำเร็จ: ' + err.message };
+        return { configured: false, error: 'อ่าน Claude credentials ไม่สำเร็จ: ' + err.message };
+    }
+}
+
+function getClaudeCodeAvailability() {
+    if (!fs.existsSync(CLAUDE_BIN)) {
+        return { ready: false, reason: 'ไม่พบ Claude Code CLI (/home/dev/.local/bin/claude)' };
+    }
+    const creds = readClaudeOAuthCreds();
+    if (!creds.accessToken) {
+        return { ready: false, reason: creds.error || 'ยังไม่ได้ล็อกอินหรือยกเลิกแพ็กเกจ Claude Pro' };
+    }
+    if (claudeQuotaErrCache && Date.now() - claudeQuotaErrCache.at < 15 * 60 * 1000) {
+        const d = claudeQuotaErrCache.data || {};
+        if (d.authError && claudeQuotaErrCache.at >= (creds.mtimeMs || 0)) {
+            return { ready: false, reason: d.error || 'บัญชี Claude Pro หมดอายุหรือถูกปฏิเสธสิทธิ์' };
+        }
+    }
+    return { ready: true, plan: (creds.oauth && creds.oauth.subscriptionType) || 'pro' };
+}
+
+async function refreshClaudeOAuthIfNeeded(creds, forceRefresh = false) {
+    if (!creds || !creds.oauth || !fs.existsSync(CLAUDE_BIN)) return creds;
+    const exp = Number(creds.oauth.expiresAt || 0);
+    const nearExpiry = exp > 0 && (exp - Date.now() < 60_000);
+    if (!forceRefresh && !nearExpiry) return creds;
+    try {
+        await execFileAsync(CLAUDE_BIN, ['auth', 'status'], { timeout: 8000 });
+        return readClaudeOAuthCreds();
+    } catch (_) {
+        return creds;
     }
 }
 
 async function fetchClaudeOAuthUsage(accessToken) {
     let lastErr = null;
+    let status = 0;
+    let transient = true;
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
             const uRes = await fetch('https://api.anthropic.com/api/oauth/usage', {
@@ -2336,8 +2482,9 @@ async function fetchClaudeOAuthUsage(accessToken) {
                     'Accept': 'application/json',
                     'User-Agent': 'claude-cli/2.1.312 (external, cli)'
                 },
-                signal: AbortSignal.timeout(8000)
+                signal: AbortSignal.timeout(6000)
             });
+            status = uRes.status;
             const bodyText = await uRes.text();
             if (uRes.ok) {
                 let uData = null;
@@ -2345,23 +2492,28 @@ async function fetchClaudeOAuthUsage(accessToken) {
                 const parsed = parseClaudeUsagePayload(uData);
                 if (parsed) return { ok: true, parsed };
                 lastErr = 'Anthropic API ตอบกลับแต่ไม่มีข้อมูล rate limit ที่อ่านได้';
+                transient = false;
                 break;
             }
             if (uRes.status === 429) {
                 lastErr = 'Anthropic API จำกัดความถี่คำขอ (HTTP 429) — จะลองใหม่ใน 1 นาที';
+                transient = true;
                 break;
             }
             if (uRes.status === 401 || uRes.status === 403) {
-                lastErr = 'OAuth token ถูกปฏิเสธ (HTTP ' + uRes.status + ') — รัน "claude auth login --claudeai" ใหม่';
+                lastErr = 'OAuth token ถูกปฏิเสธหรือหมดสิทธิ์แพ็กเกจ (HTTP ' + uRes.status + ')';
+                transient = false;
                 break;
             }
             lastErr = 'Anthropic API HTTP ' + uRes.status;
+            transient = uRes.status >= 500;
         } catch (err) {
-            lastErr = err.name === 'TimeoutError' ? 'เชื่อมต่อ Anthropic API หมดเวลา (8s)' : err.message;
+            lastErr = err.name === 'TimeoutError' ? 'เชื่อมต่อ Anthropic API หมดเวลา (6s)' : err.message;
+            transient = true;
         }
-        if (attempt === 0) await new Promise(r => setTimeout(r, 1200));
+        if (attempt === 0) await new Promise(r => setTimeout(r, 800));
     }
-    return { ok: false, error: lastErr };
+    return { ok: false, status, transient, authError: status === 401 || status === 403, error: lastErr };
 }
 
 async function getClaudeWebQuota(opts) {
@@ -2370,10 +2522,13 @@ async function getClaudeWebQuota(opts) {
 
     // Serve fresh cache first (avoids Anthropic rate limits from UI polling)
     if (!force && claudeQuotaCache && now - claudeQuotaCache.at < CLAUDE_QUOTA_OK_TTL_MS) {
-        return Object.assign({}, claudeQuotaCache.data, {
-            cached: true,
-            ageSec: Math.round((now - claudeQuotaCache.at) / 1000)
-        });
+        const credsNow = readClaudeOAuthCreds();
+        if (!credsNow.unsubscribed) {
+            return Object.assign({}, claudeQuotaCache.data, {
+                cached: true,
+                ageSec: Math.round((now - claudeQuotaCache.at) / 1000)
+            });
+        }
     }
     if (!force && claudeQuotaErrCache && now - claudeQuotaErrCache.at < CLAUDE_QUOTA_ERR_TTL_MS) {
         return claudeQuotaErrCache.data;
@@ -2393,8 +2548,12 @@ async function getClaudeWebQuota(opts) {
         claudeQuotaErrCache = { at: Date.now(), data };
         return data;
     };
-    const staleOr = (error) => {
-        if (claudeQuotaCache) {
+    const staleOr = (error, { allowStale = true, authError = false, transient = false } = {}) => {
+        if (!allowStale || authError) {
+            clearClaudeQuotaCache();
+            return fail({ error, authError, transient: false });
+        }
+        if (claudeQuotaCache && (Date.now() - claudeQuotaCache.at) < CLAUDE_QUOTA_STALE_MAX_MS) {
             return Object.assign({}, claudeQuotaCache.data, {
                 cached: true,
                 stale: true,
@@ -2402,33 +2561,44 @@ async function getClaudeWebQuota(opts) {
                 ageSec: Math.round((Date.now() - claudeQuotaCache.at) / 1000)
             });
         }
-        return fail({ error });
+        return fail({ error, authError: false, transient });
     };
 
     // ── Source 1: Claude Code CLI OAuth (Claude.ai monthly subscription) ──
-    const creds = readClaudeOAuthCreds();
+    let creds = await refreshClaudeOAuthIfNeeded(readClaudeOAuthCreds(), false);
     if (creds.accessToken) {
-        const res = await fetchClaudeOAuthUsage(creds.accessToken);
+        let res = await fetchClaudeOAuthUsage(creds.accessToken);
+        if (!res.ok && res.status === 401) {
+            creds = await refreshClaudeOAuthIfNeeded(creds, true);
+            if (creds.accessToken) {
+                res = await fetchClaudeOAuthUsage(creds.accessToken);
+            }
+        }
         if (res.ok) {
             return succeed({
                 ok: true,
                 configured: true,
                 source: 'oauth',
                 orgName: 'Claude.ai (OAuth · Claude Code)',
-                plan: creds.oauth.subscriptionType || 'Claude Subscription',
+                plan: (creds.oauth && creds.oauth.subscriptionType) || 'pro',
                 fiveHour: res.parsed.fiveHour,
                 weekly: res.parsed.weekly
             });
         }
-        return staleOr(res.error);
+        if (!creds.unsubscribed) {
+            return staleOr(res.error, { allowStale: res.transient, authError: res.authError, transient: res.transient });
+        }
     }
 
     // ── Source 2: manual CLAUDE_SESSION_KEY cookie fallback ──
     const sessionKey = (process.env.CLAUDE_SESSION_KEY || '').trim();
     if (!sessionKey) {
+        clearClaudeQuotaCache();
         const data = {
             ok: false,
             configured: false,
+            unsubscribed: Boolean(creds.unsubscribed),
+            plan: creds.subscriptionType || null,
             error: creds.error || 'ยังไม่ได้เชื่อมต่อ Claude.ai'
         };
         claudeQuotaErrCache = { at: Date.now(), data };
@@ -2446,18 +2616,18 @@ async function getClaudeWebQuota(opts) {
             signal: AbortSignal.timeout(8000)
         });
         if (orgRes.status === 401 || orgRes.status === 403) {
-            return staleOr('Cookie sessionKey หมดอายุหรือถูกปฏิเสธ (HTTP ' + orgRes.status + ')');
+            return staleOr('Cookie sessionKey หมดอายุหรือถูกปฏิเสธ (HTTP ' + orgRes.status + ')', { allowStale: false, authError: true });
         }
         if (!orgRes.ok) {
-            return staleOr('claude.ai HTTP ' + orgRes.status);
+            return staleOr('claude.ai HTTP ' + orgRes.status, { allowStale: orgRes.status >= 500 || orgRes.status === 429, transient: true });
         }
         const orgText = await orgRes.text();
         if (/^\s*<(!doctype|html)/i.test(orgText)) {
-            return staleOr('Cloudflare Block (ดึงจากเซิร์ฟเวอร์ตรงไม่ได้)');
+            return staleOr('Cloudflare Block (ดึงจากเซิร์ฟเวอร์ตรงไม่ได้)', { allowStale: true, transient: true });
         }
         const orgs = JSON.parse(orgText);
         if (!Array.isArray(orgs) || orgs.length === 0) {
-            return staleOr('ไม่พบ Organization ในบัญชี Claude');
+            return staleOr('ไม่พบ Organization ในบัญชี Claude', { allowStale: false });
         }
         const scoreOrg = (org) => {
             let s = 0;
@@ -2500,13 +2670,14 @@ async function getClaudeWebQuota(opts) {
                 });
             }
         }
-        return staleOr(lastErr || 'ไม่พบข้อมูล Usage ในองค์กรนี้');
+        return staleOr(lastErr || 'ไม่พบข้อมูล Usage ในองค์กรนี้', { allowStale: true, transient: true });
     } catch (err) {
-        return staleOr(err.message);
+        return staleOr(err.message, { allowStale: true, transient: true });
     }
 }
 
 aiRouter.setQuotaProvider(getQuotaSummary);
+aiRouter.setProviderQuotaProvider(getProviderQuotas);
 
 module.exports = {
     getDefaultModel,

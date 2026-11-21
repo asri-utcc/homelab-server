@@ -4199,7 +4199,10 @@ body::before {
     function quotaSourceFor(accId) {
       const a = accId || (window.agyState && window.agyState.chosen) || '';
       const extra = a && a !== 'g1' && window.agyState && window.agyState.quotas[a];
-      return (extra && extra.ok) ? extra : liveQuota;
+      if (extra && extra.ok) return extra;
+      if (liveQuota && liveQuota.ok) return liveQuota;
+      const firstReady = window.agyState && Object.values(window.agyState.quotas || {}).find(q => q && q.ok);
+      return firstReady || liveQuota;
     }
 
     function getModelQuotaInfo(id, accId) {
@@ -4354,7 +4357,7 @@ body::before {
           ? 'ไม่มีวันหมดอายุ'
           : (q.isClaudeSub && !q.cwOk ? 'Claude.ai OAuth' : fmtResetShort(q.resetTime));
         const extraWindow = q.isDeepSeek
-          ? (q.dsOk ? `เครดิต $${q.dsTotal} ${q.dsCurrency}` : 'กำลังโหลดเครดิต...')
+          ? (q.dsOk ? (q.dsAvailable ? `เครดิต $${q.dsTotal} ${q.dsCurrency}` : `เครดิตหมด ($${q.dsTotal} · Auto ข้าม)`) : 'กำลังโหลดเครดิต...')
           : (q.isClaudeSub && !q.cwOk
             ? 'Subscription Active'
             : ((q.fiveHour && q.weekly)
@@ -4473,28 +4476,63 @@ body::before {
     syncModelTriggerUI();
     if (modalSelModel) modalSelModel.addEventListener('change', updateQuotaRings);
 
+    let telemetryTick = 0;
     async function refreshTelemetry() {
       try {
-        const [sRes, eRes, qRes] = await Promise.all([
+        telemetryTick++;
+        const syncAccounts = (telemetryTick % 3 === 1);
+        const [sRes, eRes, qRes, aRes] = await Promise.all([
           fetch('/api/summary').then(r => r.ok ? r.json() : null).catch(() => null),
           fetch('/api/energy').then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch('/api/gemini/quota').then(r => r.ok ? r.json() : null).catch(() => null)
+          fetch('/api/gemini/quota').then(r => r.ok ? r.json() : null).catch(() => null),
+          syncAccounts ? fetch('/api/ai-router/accounts').then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null)
         ]);
         if (sRes) liveSummary = sRes;
         if (eRes) liveEnergy = eRes;
         else if (sRes?.energy) liveEnergy = sRes.energy;
-        if (qRes && qRes.ok) {
-          liveQuota = qRes;
+        if (qRes) {
+          if (qRes.ok) {
+            liveQuota = qRes;
+          } else {
+            liveQuota = {
+              ...(liveQuota || {}),
+              ok: false,
+              pools: [],
+              deepseek: qRes.deepseek !== undefined ? qRes.deepseek : (liveQuota && liveQuota.deepseek) || null,
+              claudeWeb: qRes.claudeWeb !== undefined ? qRes.claudeWeb : (liveQuota && liveQuota.claudeWeb) || null
+            };
+          }
         }
         const st = window.agyState;
+        if (st && aRes && aRes.ok && Array.isArray(aRes.accounts)) {
+          const prevSig = (st.accounts || []).map(a => `${a.id}:${a.ready}`).join(',');
+          const nextSig = aRes.accounts.map(a => `${a.id}:${a.ready}`).join(',');
+          if (prevSig !== nextSig) {
+            st.accounts = aRes.accounts;
+            if (st.chosen && !st.accounts.some(a => a.ready && a.id === st.chosen)) {
+              st.chosen = '';
+              try { localStorage.setItem('agy_account', ''); } catch (_) {}
+            }
+            if (typeof renderAgyAccountUI === 'function') renderAgyAccountUI();
+          }
+        }
         if (st) {
           const extras = (st.accounts || []).filter(a => a.ready && a.id !== 'g1');
           await Promise.all(extras.map(async a => {
             const d = await fetch('/api/gemini/quota?account=' + encodeURIComponent(a.id)).then(r => r.ok ? r.json() : null).catch(() => null);
-            if (d && d.ok) st.quotas[a.id] = d;
+            if (d && d.ok) {
+              st.quotas[a.id] = d;
+            } else if (d && d.authError) {
+              delete st.quotas[a.id];
+              if (st.chosen === a.id) {
+                st.chosen = '';
+                try { localStorage.setItem('agy_account', ''); } catch (_) {}
+                if (typeof renderAgyAccountUI === 'function') renderAgyAccountUI();
+              }
+            }
           }));
         }
-        if (liveQuota) {
+        if (liveQuota || (st && Object.keys(st.quotas || {}).length > 0)) {
           updateQuotaRings();
           syncModelTriggerUI();
           if (modalModelPicker && modalModelPicker.classList.contains('is-open')) renderModelPickerList();
@@ -5137,30 +5175,10 @@ body::before {
   }
 
   function renderAgyAccountUI() {
-    const st = window.agyState;
-    const ready = (st.accounts || []).filter(a => a.ready);
-    const show = ready.length > 1;
+    // ซ่อน Dropdown และแถบเลือกบัญชีบนหน้าจอแชท เพื่อความสะอาดตาและปล่อยให้สมองกลาง (Auto Router) จัดการอัตโนมัติ
     const sel = document.getElementById('sel-agy-account');
     const bar = document.getElementById('agy-account-bar');
-    [sel, bar].forEach(el => { if (el) el.classList.toggle('agy-hidden', !show); });
-    if (!show) return;
-    if (sel) {
-      sel.innerHTML = '<option value="">🔄 บัญชี: ตามระบบ</option>' +
-        ready.map(a => `<option value="${a.id}">👤 ${a.label}${a.email ? ' · ' + a.email : ''}</option>`).join('');
-      sel.value = st.chosen;
-    }
-    if (bar) {
-      const chips = [{ id: '', text: '🔄 ตามระบบ' }].concat(ready.map(a => ({ id: a.id, text: `👤 ${a.label}${a.email ? ' · ' + a.email.split('@')[0] : ''}` })));
-      bar.innerHTML = '<span class="agy-account-bar__label">บัญชี Google:</span>';
-      chips.forEach(c => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'agy-chip' + (st.chosen === c.id ? ' is-active' : '');
-        b.textContent = c.text;
-        b.addEventListener('click', () => chooseAgyAccount(c.id));
-        bar.appendChild(b);
-      });
-    }
+    [sel, bar].forEach(el => { if (el) el.classList.add('agy-hidden'); });
   }
 
   function setupAgyAccounts(list) {
@@ -5174,6 +5192,30 @@ body::before {
     const sel = document.getElementById('sel-agy-account');
     if (sel) sel.addEventListener('change', () => chooseAgyAccount(sel.value));
   })();
+
+  function resolveValidModelId(preferredId, fallbackId = 'auto') {
+    if (!selModel || !selModel.options.length) return preferredId || fallbackId;
+    const has = (id) => id && [...selModel.options].some(o => o.value === id);
+    if (has(preferredId)) return preferredId;
+    if (has(fallbackId)) return fallbackId;
+    if (has('auto')) return 'auto';
+    if (has('gemini-4-hydrogen-high')) return 'gemini-4-hydrogen-high';
+    return selModel.options[0].value;
+  }
+
+  function applySelectedModel(modelId) {
+    const resolved = resolveValidModelId(modelId);
+    if (selModel && resolved) {
+      selModel.value = resolved;
+      if (modalSelModel && [...modalSelModel.options].some(o => o.value === resolved)) {
+        modalSelModel.value = resolved;
+      }
+      if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
+      if (typeof updateQuotaRings === 'function') updateQuotaRings();
+      applyCoreBranding();
+    }
+    return resolved;
+  }
 
   async function loadStatus() {
     try {
@@ -5190,6 +5232,9 @@ body::before {
       } else if (data.hasKey) {
         badgeKey.className = 'badge badge--ok';
         badgeKey.textContent = 'API KEY ACTIVE';
+      } else if (data.claudeCodeReady || data.hasDeepSeek) {
+        badgeKey.className = 'badge badge--ok';
+        badgeKey.textContent = data.claudeCodeReady ? 'CLAUDE PRO READY' : 'DEEPSEEK READY';
       } else {
         badgeKey.className = 'badge badge--warn';
         badgeKey.textContent = 'AUTH: NOT CONFIGURED';
@@ -5199,18 +5244,20 @@ body::before {
 
       if (data.defaultModel) localStorage.setItem('core_default_model', data.defaultModel);
       if (data.models && data.models.length) {
+        const prevWanted = (currentSessionMeta && currentSessionMeta.model) || (selModel && selModel.value) || localStorage.getItem('core_default_model') || data.defaultModel || 'auto';
         [selModel, modalSelModel].forEach((sel) => {
           if (!sel) return;
-          const cur = sel.value;
           sel.innerHTML = '';
           data.models.forEach((m) => {
             const opt = document.createElement('option');
             opt.value = m.id;
             opt.textContent = m.name;
-            if (m.id === cur || (!cur && m.id === (data.defaultModel || 'auto'))) opt.selected = true;
             sel.appendChild(opt);
           });
         });
+        const chosenId = resolveValidModelId(prevWanted, data.defaultModel || 'auto');
+        if (selModel) selModel.value = chosenId;
+        if (modalSelModel && [...modalSelModel.options].some(o => o.value === chosenId)) modalSelModel.value = chosenId;
         const modelTag = document.getElementById('ai-hud-model-tag');
         if (modelTag && selModel && selModel.selectedIndex >= 0) {
           modelTag.textContent = selModel.options[selModel.selectedIndex].text;
@@ -5529,11 +5576,8 @@ body::before {
       if (data && data.ok && data.session) {
         currentSessionId = data.session.id;
         localStorage.setItem('core_active_session', currentSessionId);
-        if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
-          selModel.value = data.session.model;
-          if (modalSelModel) modalSelModel.value = data.session.model;
-          if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
-          applyCoreBranding();
+        if (data.session.model && selModel) {
+          applySelectedModel(data.session.model);
         }
         if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
           selCwd.value = data.session.cwd;
@@ -5583,11 +5627,8 @@ body::before {
       const res = await fetch('/api/gemini/session?id=' + encodeURIComponent(sid));
       const data = await res.json();
       if (!data || !data.ok) return;
-      if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
-        selModel.value = data.session.model;
-        if (modalSelModel) modalSelModel.value = data.session.model;
-        if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
-        applyCoreBranding();
+      if (data.session.model && selModel) {
+        applySelectedModel(data.session.model);
       }
       if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
         selCwd.value = data.session.cwd;
@@ -6971,11 +7012,7 @@ body::before {
   // Sync settings updated from /settings.html in real time
   (function applyStoredDefaults() {
     const defModel = localStorage.getItem('core_default_model') || 'auto';
-    if (defModel && selModel && [...selModel.options].some(o => o.value === defModel)) {
-      selModel.value = defModel;
-      if (modalSelModel && [...modalSelModel.options].some(o => o.value === defModel)) modalSelModel.value = defModel;
-      if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
-    }
+    if (selModel) applySelectedModel(defModel);
     const defCwd = localStorage.getItem('core_default_cwd');
     if (defCwd && selCwd && [...selCwd.options].some(o => o.value === defCwd)) {
       selCwd.value = defCwd;

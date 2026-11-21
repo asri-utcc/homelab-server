@@ -1949,6 +1949,22 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, 400, { ok: false, error: err.message });
             }
         }
+        if (req.method === 'POST' && p === '/api/gemini/sessions/autotitle') {
+            const body = await readJsonBody(req);
+            try {
+                const sid = body && body.id;
+                const sess = geminiManager.getSession(sid);
+                if (!sess || !sess.ok) return sendJson(res, 404, { ok: false, error: 'Session not found' });
+                const msgs = sess.messages || [];
+                const firstUser = msgs.find(m => m && m.role === 'user' && m.content);
+                if (firstUser) {
+                    geminiManager.scheduleAutoTitling(sid, firstUser.content);
+                }
+                return sendJson(res, 200, { ok: true, message: 'Auto-titling scheduled' });
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
         if (req.method === 'POST' && p === '/api/gemini/sessions/pin') {
             const body = await readJsonBody(req);
             try {

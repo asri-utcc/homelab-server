@@ -456,6 +456,31 @@ function loadSessionMessagesSync(sessionId) {
     }
 }
 
+function scheduleAutoTitling(sessionId, userPrompt) {
+    if (!sessionId || !userPrompt || typeof userPrompt !== 'string') return;
+    const cleanPrompt = userPrompt.replace(/\s+/g, ' ').trim();
+    if (!cleanPrompt || cleanPrompt.length < 3) return;
+
+    setImmediate(() => {
+        const promptText = `สรุปเนื้อหาข้อความต่อไปนี้ให้เป็นชื่อหัวข้อแชทภาษาไทยที่กระชับ ชัดเจน ตรงประเด็น (ความยาว 4-8 คำ) พร้อมใส่อีโมจิที่เข้ากับเนื้อหา 1 ตัวข้างหน้าสุด ห้ามใส่เครื่องหมายคำพูด ห้ามมีคำอธิบายอื่น ให้ตอบเฉพาะชื่อหัวข้อเท่านั้น:\n\n${cleanPrompt.slice(0, 400)}`;
+        const args = ['-p', promptText, '--model', 'gemini-3.8-flash-low', '--disable-slash-commands', '--print-timeout', '15s'];
+        execFile(AGY_BIN, args, { timeout: 20000 }, (err, stdout) => {
+            if (err || !stdout) return;
+            const lines = stdout.trim().replace(/["']/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+            const title = lines[0];
+            if (title && title.length >= 4 && title.length <= 80) {
+                const meta = getSessionMetaSync(sessionId);
+                if (meta) {
+                    meta.title = title;
+                    meta.autoTitled = true;
+                    saveSessionsIndexSync();
+                    console.log(`[GeminiManager] Auto-titled session ${sessionId}: "${title}"`);
+                }
+            }
+        });
+    });
+}
+
 function saveSessionMessagesSync(sessionId, messages) {
     ensureSessionsStoreSync();
     const slice = (messages || []).slice(-80);
@@ -468,10 +493,16 @@ function saveSessionMessagesSync(sessionId, messages) {
             meta.messageCount = slice.length;
             meta.lastMessage = slice.length ? String(slice[slice.length - 1].content || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
             meta.updatedAt = Date.now();
-            if ((!meta.title || meta.title === 'แชทใหม่' || meta.title === 'New Chat') && slice.length > 0) {
+            if ((!meta.title || meta.title === 'แชทใหม่' || meta.title === 'New Chat' || !meta.autoTitled) && slice.length > 0) {
                 const firstUser = slice.find(m => m && m.role === 'user' && m.content);
                 if (firstUser) {
-                    meta.title = String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 80);
+                    if (!meta.title || meta.title === 'แชทใหม่' || meta.title === 'New Chat') {
+                        meta.title = String(firstUser.content).replace(/\s+/g, ' ').trim().slice(0, 60);
+                    }
+                    if (!meta.autoTitled) {
+                        meta.autoTitled = true;
+                        scheduleAutoTitling(sessionId, firstUser.content);
+                    }
                 }
             }
             saveSessionsIndexSync();
@@ -2433,5 +2464,6 @@ module.exports = {
     getSession,
     renameSession,
     togglePinSession,
-    deleteSession
+    deleteSession,
+    scheduleAutoTitling
 };

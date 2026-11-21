@@ -2027,6 +2027,48 @@ async function getValidAccessToken(tokenFile, forceRefresh = false, home = HOME_
     };
 }
 
+// `agy -p /usage` prints the app's "View Usage" table as TSV: group \t label \t NN% \t resetISO
+const AGY_USAGE_TTL_MS = 60 * 1000;
+const agyUsageCache = new Map(); // accountId -> { at, rows }
+
+function parseAgyUsage(text) {
+    const rows = [];
+    for (const line of String(text || '').split('\n')) {
+        const parts = line.split('\t');
+        if (parts.length < 3) continue;
+        const pct = parseFloat(parts[2]);
+        if (Number.isNaN(pct)) continue;
+        rows.push({
+            group: parts[0].trim(),
+            label: parts[1].trim(),
+            window: /five.?hour|5.?h/i.test(parts[1]) ? '5h' : 'weekly',
+            remainingPct: pct,
+            resetTime: (parts[3] || '').trim() || null
+        });
+    }
+    return rows;
+}
+
+async function getAgyUsage(account) {
+    const hit = agyUsageCache.get(account.id);
+    if (hit && Date.now() - hit.at < AGY_USAGE_TTL_MS) return hit.rows;
+    let rows = null;
+    try {
+        const { stdout } = await execFileAsync(AGY_BIN, ['-p', '/usage', '--print-timeout', '30s'], {
+            timeout: 40000,
+            cwd: path.join(GEMINI_DIR, 'router-tmp'),
+            env: { ...process.env, HOME: account.home, FORCE_COLOR: '0' }
+        });
+        rows = parseAgyUsage(stdout);
+    } catch (err) {
+        console.error(`[GeminiManager] agy /usage failed for ${account.label}: ${String(err.message || err).slice(0, 160)}`);
+    }
+    // Keep the last good reading if this one failed
+    if (!rows || !rows.length) return hit ? hit.rows : null;
+    agyUsageCache.set(account.id, { at: Date.now(), rows });
+    return rows;
+}
+
 async function postCloudCode(endpoint, accessToken, bodyObj) {
     const res = await fetch(`${CLOUDCODE_BASE}:${endpoint}`, {
         method: 'POST',
@@ -2275,6 +2317,41 @@ async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
                     best = poolById.claude || null;
                 }
                 applyBuckets(best, group);
+            }
+        }
+
+        // ── agy /usage: แหล่งเดียวกับหน้า "View Usage" ของแอป (มี Gemini weekly + Argon weekly ที่ API ข้างบนไม่ส่ง) ──
+        const usage = await getAgyUsage(account);
+        if (usage && usage.length) {
+            const poolIdOf = (g) => (/argon/i.test(g) ? 'argon' : (/claude|gpt/i.test(g) ? 'claude' : (/gemini/i.test(g) ? 'gemini' : null)));
+            const byPool = {};
+            for (const row of usage) {
+                const id = poolIdOf(row.group);
+                if (!id) continue;
+                (byPool[id] = byPool[id] || { group: row.group, rows: [] }).rows.push(row);
+            }
+            for (const [id, info] of Object.entries(byPool)) {
+                let pool = pools.find((pl) => pl.id === id);
+                if (!pool) {
+                    pool = { id, name: info.group, color: id === 'argon' ? '#a855f7' : '#94a3b8', remainingPct: 100, usedPct: 0, resetTime: null, modelsCount: 0, models: [] };
+                    pools.push(pool);
+                    const ui = unavailablePools.findIndex((u) => u.id === id);
+                    if (ui !== -1) unavailablePools.splice(ui, 1);
+                }
+                for (const row of info.rows) {
+                    const w = toPctObj(row.remainingPct / 100, row.resetTime);
+                    if (row.window === '5h') pool.fiveHour = w;
+                    else pool.weekly = w;
+                }
+                const wins = [pool.fiveHour, pool.weekly].filter(Boolean);
+                const tight = wins.reduce((x, y) => (!x || y.remainingPct < x.remainingPct ? y : x), null);
+                if (tight) {
+                    pool.remainingPct = tight.remainingPct;
+                    pool.usedPct = tight.usedPct;
+                    pool.resetTime = tight.resetTime;
+                }
+                pool.bucketGroup = info.group;
+                pool.usageSource = 'agy-usage';
             }
         }
 

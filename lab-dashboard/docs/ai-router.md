@@ -31,7 +31,9 @@
 |---|---|---|---|---|
 | Claude Opus 5.5 | agy | low–high | 97 / 94 / 90 | 3 |
 | Claude Sonnet 5.5 | agy | low–high | 91 / 87 / 88 | 2 |
-| Gemini 4 Hydrogen | agy | low–xhigh | 86 / 95 / 89 | 2 |
+| Gemini 4 Neon | agy (pool Gemini) | low–xhigh | 96 / 97 / 91 | 3 |
+| Gemini 4 Hydrogen | agy (pool Gemini) | low–xhigh | 86 / 95 / 89 | 2 |
+| Gemini 4 Argon | agy (pool Argon แยก, weekly อย่างเดียว) | low–high | 83 / 91 / 87 | 1.5 |
 | Gemini 3.8 Flash | agy | low–high | 72 / 74 / 82 | 1 |
 | Claude Code Opus / Sonnet / Haiku | Claude Pro | – | 98/94/90 · 92/87/88 · 72/70/80 | 3 / 2 / 1 |
 | DeepSeek V4 Pro / V4.1 Flash | จ่ายตามใช้ | – | ต่อท้ายเสมอ (มีรูป → Flash) | – |
@@ -40,7 +42,9 @@ effort ปรับคุณภาพ (low −6, high +4, xhigh +7) และต
 
 ### ③ Budget & Pace Engine + ให้คะแนน (`buildCandidates`)
 **pace ต่อหน้าต่างโควตา:** `surplus = %เหลือ − %เวลาที่เหลือก่อนรีเซ็ต`
-- ข้อมูลที่มี: pool `claude` บน agy และ Claude Pro มีทั้ง **5h + weekly**; pool `gemini` มีหน้าต่างเดียว (~5h)
+- **แหล่งโควตา agy = `agy -p /usage`** (ต่อบัญชีด้วย `HOME=…`, cache 60 วินาที, ~4 วินาที) — ตรงกับหน้า "View Usage" ของแอป
+  API `retrieveUserQuotaSummary` / `retrieveUserQuota` ส่งมาแค่กลุ่ม Claude & GPT และ Gemini 5h ไม่มี Gemini weekly กับ Argon (ตรวจ 2026-11-21)
+- pool `gemini` (Flash / Hydrogen / Neon): **5h + weekly** · pool `claude` (Claude/GPT บน agy): **5h + weekly** · pool `argon`: **weekly อย่างเดียว** · Claude Pro: **5h + weekly**
 - **รอบ 5 ชม. เหลือ < 15%** → **🟡 ถนอม** ทั้ง pool (รอบ 5 ชม. ที่ใช้เร็วกว่างบแต่ยังเหลือ ≥ 15% ไม่นับเป็นข้อจำกัด และไม่ถูกนำมาหักคะแนน — ให้รอบรายสัปดาห์ตัดสิน · ปรับ 2026-11-21 ตามที่บังยีขอ)
 - รอบรายสัปดาห์ surplus < −0.15 (ใช้เร็วเกินงบและอีกนานกว่าจะรีเซ็ต) → **🟡 ถนอม** ทั้ง pool
 - ไม่มีหน้าต่างไหนเกินงบ และมีหน้าต่างที่ surplus ≥ +0.2 **หรือ** เหลือเวลา < 20% ของรอบแต่ยังเหลือ ≥ 30% → **🟢 ฟุ่มเฟือยได้**
@@ -97,3 +101,9 @@ effort ปรับคุณภาพ (low −6, high +4, xhigh +7) และต
 - Auto เพิ่มเวลา ~7–8 วินาทีต่อข้อความที่ไม่โดน cache/ทางลัด
 - Subagent กินโควตาเพิ่ม (คุมด้วยจำนวนสูงสุดและรุ่น flash/flash_lite ตามโหมดงบ)
 - DeepSeek ไม่มีแผน subagent; DeepSeek ใน cron ไม่มีเครื่องมือ
+
+## ที่มาของคะแนน Neon / Argon (2026-11-21)
+- Intelligence Index (สูงสุดของแต่ละรุ่น): Neon 61 · Carbon 60 · Hydrogen 54 · Argon 50 — Neon อันดับ 1 Coding Agent Index ใน Antigravity CLI
+- Neon ต้นทุนต่องานประมาณ 2× Hydrogen · Hydrogen ตอบเร็วที่สุด · Argon ดีกว่า Hydrogen ด้าน terminal แต่ด้อยกว่าด้านโค้ด
+- แหล่งเป็นบล็อกบุคคลที่สามเป็นส่วนใหญ่ (ยังไม่ได้ยืนยันกับ Artificial Analysis โดยตรง) → ปรับคะแนนจาก log ได้
+- Gemini 4 Carbon: แอปแสดง Unavailable ในบัญชีนี้ จึงไม่ใส่

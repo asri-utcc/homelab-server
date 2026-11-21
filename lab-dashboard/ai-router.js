@@ -44,7 +44,11 @@ const DEEPSEEK_MIN_BALANCE = 0.1;
 const MODEL_FAMILIES = [
     { id: 'claude-opus', engine: 'agy', label: 'Claude Opus 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-opus-5-5-', q: { code: 97, analysis: 94, chat: 90 }, cost: 3 },
     { id: 'claude-sonnet', engine: 'agy', label: 'Claude Sonnet 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-sonnet-5-5-', q: { code: 91, analysis: 87, chat: 88 }, cost: 2 },
+    // Neon: ตัวท็อปของ Gemini 4 (Intelligence Index 61, อันดับ 1 Coding Agent ใน Antigravity) แต่ ~2× ต้นทุน Hydrogen · ใช้ pool Gemini
+    { id: 'gemini-neon', engine: 'agy', label: 'Gemini 4 Neon', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-neon-', q: { code: 96, analysis: 97, chat: 91 }, cost: 3 },
     { id: 'gemini-hydrogen', engine: 'agy', label: 'Gemini 4 Hydrogen', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-hydrogen-', q: { code: 86, analysis: 95, chat: 89 }, cost: 2 },
+    // Argon: Index ~50 (ใกล้ Hydrogen) ดีกว่า Hydrogen ด้านงาน terminal แต่ด้อยกว่าด้านโค้ด · มี pool แยก (weekly อย่างเดียว ไม่มี 5h)
+    { id: 'gemini-argon', engine: 'agy', label: 'Gemini 4 Argon', variants: ['low', 'medium', 'high'], prefix: 'gemini-4-argon-', q: { code: 83, analysis: 91, chat: 87 }, cost: 1.5 },
     { id: 'gemini-flash', engine: 'agy', label: 'Gemini 3.8 Flash', variants: ['low', 'medium', 'high'], prefix: 'gemini-3.8-flash-', q: { code: 72, analysis: 74, chat: 82 }, cost: 1 },
     { id: 'claude-code-opus', engine: 'claude-code', label: 'Claude Code · Opus', variants: [null], model: 'claude-code-opus', q: { code: 98, analysis: 94, chat: 90 }, cost: 3 },
     { id: 'claude-code-sonnet', engine: 'claude-code', label: 'Claude Code · Sonnet', variants: [null], model: 'claude-code-sonnet', q: { code: 92, analysis: 87, chat: 88 }, cost: 2 },

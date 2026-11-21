@@ -38,21 +38,28 @@ const QUOTA_TTL_MS = 90 * 1000;
 const CLASSIFY_TTL_MS = 2 * 60 * 60 * 1000;
 const DEEPSEEK_MIN_BALANCE = 0.1;
 
-// ── ② แคตตาล็อกโมเดล (v2): คะแนนความเก่งต่อประเภทงาน + ต้นทุนโควตา ─────────────
-// q = คุณภาพที่ effort "medium" (0–100) · cost = น้ำหนักการกินโควตา (1 = เบา)
+// ── ② แคตตาล็อกโมเดล (v3): คะแนนความเก่งต่อประเภทงาน + ต้นทุนโควตา ─────────────
+// q = คุณภาพที่ effort "medium" (0–100)
+// cost = ราคา output ต่อ 1M token ÷ $7.50 (Hydrogen = 1.0) — Google: "Quota is consumed proportionally
+//        to the cost of the tokens" ดังนั้นราคา = อัตรากินโควตาจริง (ตารางราคาที่บังยีให้มา 2026-11-21)
 // Router ให้คะแนนทุก (โมเดล × บัญชี × effort) แล้วเรียงเอง ไม่ใช้ตารางลำดับตายตัวแล้ว
 const MODEL_FAMILIES = [
-    { id: 'claude-opus', engine: 'agy', label: 'Claude Opus 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-opus-5-5-', q: { code: 97, analysis: 94, chat: 90 }, cost: 3 },
-    { id: 'claude-sonnet', engine: 'agy', label: 'Claude Sonnet 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-sonnet-5-5-', q: { code: 91, analysis: 87, chat: 88 }, cost: 2 },
-    // Neon: ตัวท็อปของ Gemini 4 (Intelligence Index 61, อันดับ 1 Coding Agent ใน Antigravity) แต่ ~2× ต้นทุน Hydrogen · ใช้ pool Gemini
-    { id: 'gemini-neon', engine: 'agy', label: 'Gemini 4 Neon', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-neon-', q: { code: 96, analysis: 97, chat: 91 }, cost: 3 },
-    { id: 'gemini-hydrogen', engine: 'agy', label: 'Gemini 4 Hydrogen', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-hydrogen-', q: { code: 86, analysis: 95, chat: 89 }, cost: 2 },
-    // Argon: Index ~50 (ใกล้ Hydrogen) ดีกว่า Hydrogen ด้านงาน terminal แต่ด้อยกว่าด้านโค้ด · มี pool แยก (weekly อย่างเดียว ไม่มี 5h)
-    { id: 'gemini-argon', engine: 'agy', label: 'Gemini 4 Argon', variants: ['low', 'medium', 'high'], prefix: 'gemini-4-argon-', q: { code: 83, analysis: 91, chat: 87 }, cost: 1.5 },
-    { id: 'gemini-flash', engine: 'agy', label: 'Gemini 3.8 Flash', variants: ['low', 'medium', 'high'], prefix: 'gemini-3.8-flash-', q: { code: 72, analysis: 74, chat: 82 }, cost: 1 },
-    { id: 'claude-code-opus', engine: 'claude-code', label: 'Claude Code · Opus', variants: [null], model: 'claude-code-opus', q: { code: 98, analysis: 94, chat: 90 }, cost: 3 },
-    { id: 'claude-code-sonnet', engine: 'claude-code', label: 'Claude Code · Sonnet', variants: [null], model: 'claude-code-sonnet', q: { code: 92, analysis: 87, chat: 88 }, cost: 2 },
-    { id: 'claude-code-haiku', engine: 'claude-code', label: 'Claude Code · Haiku', variants: [null], model: 'claude-code-haiku', q: { code: 72, analysis: 70, chat: 80 }, cost: 1 }
+    { id: 'claude-opus', engine: 'agy', label: 'Claude Opus 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-opus-5-5-', q: { code: 97, analysis: 95, chat: 90 }, cost: 2.67 },
+    { id: 'claude-sonnet', engine: 'agy', label: 'Claude Sonnet 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-sonnet-5-5-', q: { code: 90, analysis: 87, chat: 89 }, cost: 1.33 },
+    // ── Gemini (บทบาทตามตาราง Antigravity ที่บังยีให้มา 2026-11-21) ──
+    // Neon: ตัวหลักที่ฉลาดและคุ้มค่าที่สุด · โค้ดซับซ้อนใกล้รุ่นท็อป · หลอนต่ำสุด · ปรับตามคำสั่งกลางทางได้ดี · pool Gemini
+    { id: 'gemini-neon', engine: 'agy', label: 'Gemini 4 Neon', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-neon-', q: { code: 96, analysis: 96, chat: 92 }, cost: 2 },
+    // Orchestrator (Neon): Neon วางแผน + โมเดลเร็วลงมือ ในแชทเดียว · ใช้เฉพาะงานใหญ่ที่แบ่งได้ (requires: parallel)
+    { id: 'gemini-orchestrator', engine: 'agy', label: 'Orchestrator (Neon)', variants: [null], model: 'gemini-pro-orchestrator-neon', q: { code: 98, analysis: 98, chat: 90 }, cost: 2.4, requires: 'parallel', nativeTeam: true },
+    // Hydrogen: ม้างานประจำวัน แทน Flash · เร็วกว่า Flash 2.5× · ประหยัดโทเคน · หลอนน้อยกว่า 5× · เก่งเทอร์มินัล/แก้โค้ดเร็ว
+    { id: 'gemini-hydrogen', engine: 'agy', label: 'Gemini 4 Hydrogen', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-hydrogen-', q: { code: 87, analysis: 88, chat: 88 }, cost: 1 },
+    // Argon: รุ่นก่อนหน้า (legacy) ราคาเท่า Neon แต่ด้อยกว่า · ประโยชน์เดียวคือ pool แยก (weekly อย่างเดียว) ไว้ระบายโควตาที่จะหมดอายุ
+    { id: 'gemini-argon', engine: 'agy', label: 'Gemini 4 Argon', variants: ['low', 'medium', 'high'], prefix: 'gemini-4-argon-', q: { code: 82, analysis: 84, chat: 84 }, cost: 2 },
+    // Flash 3.8: สายประหยัด · ช้ากว่า Hydrogen 2–2.5× ในงานซับซ้อน · agentic/terminal ต่ำกว่าตระกูล 4
+    { id: 'gemini-flash', engine: 'agy', label: 'Gemini 3.8 Flash', variants: ['low', 'medium', 'high'], prefix: 'gemini-3.8-flash-', q: { code: 70, analysis: 72, chat: 80 }, cost: 0.5 },
+    { id: 'claude-code-opus', engine: 'claude-code', label: 'Claude Code · Opus', variants: [null], model: 'claude-code-opus', q: { code: 98, analysis: 95, chat: 90 }, cost: 2.67 },
+    { id: 'claude-code-sonnet', engine: 'claude-code', label: 'Claude Code · Sonnet', variants: [null], model: 'claude-code-sonnet', q: { code: 91, analysis: 87, chat: 89 }, cost: 1.33 },
+    { id: 'claude-code-haiku', engine: 'claude-code', label: 'Claude Code · Haiku', variants: [null], model: 'claude-code-haiku', q: { code: 68, analysis: 66, chat: 78 }, cost: 0.15 }
 ];
 const DEEPSEEK_MODELS = [
     { model: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', q: 86, vision: false },
@@ -328,7 +335,13 @@ const CONSERVE_SURPLUS = -0.15;
 const NEAR_RESET_FRAC = 0.2;
 const NEAR_RESET_MIN_PCT = 30;
 const FIVE_HOUR_CONSERVE_PCT = 15; // รอบ 5 ชม. ทำให้ถนอมเฉพาะตอนเหลือน้อยกว่านี้
-const BUDGET_TH = { boost: '🟢 ฟุ่มเฟือยได้', normal: '🔵 ปกติ', conserve: '🟡 ถนอม', unknown: '⚪ ไม่ทราบโควตา' };
+const BUDGET_TH = { surge: '🟣 ใช้เต็มที่ (ใกล้รีเซ็ต)', boost: '🟢 ฟุ่มเฟือยได้', normal: '🔵 ปกติ', conserve: '🟡 ถนอม', critical: '🔴 ประหยัดสุด', unknown: '⚪ ไม่ทราบโควตา' };
+// ลำดับความเข้มงวด: ตัวที่เข้มกว่าชนะเสมอ (มีหน้าต่างไหนวิกฤต → ทั้ง pool วิกฤต)
+const MODE_RANK = { critical: 0, conserve: 1, normal: 2, boost: 3, surge: 4 };
+const CRITICAL_SURPLUS = -0.35;
+const FIVE_HOUR_CRITICAL_PCT = 8;
+const SURGE_TIME_FRAC = 0.1;     // เหลือเวลา < 10% ของรอบ
+const SURGE_MIN_PCT = 40;        // แต่ยังเหลือโควตา ≥ 40% → ใช้ให้หมดก่อนทิ้ง
 
 function windowPace(name, w) {
     if (!w || typeof w.remainingPct !== 'number') return null;
@@ -355,24 +368,36 @@ function assessBudget(windows) {
     // (ให้รอบรายสัปดาห์เป็นตัวตัดสิน) — ถนอมเพราะ 5 ชม. เฉพาะตอนเหลือ < 15% จริงๆ
     const relaxed = (p) => p.name === '5h' && p.remainingPct >= FIVE_HOUR_CONSERVE_PCT && p.surplus < 0;
     const modeOf = (p) => {
+        if (p.name === '5h' && p.remainingPct < FIVE_HOUR_CRITICAL_PCT) return 'critical';
         if (p.name === '5h' && p.remainingPct < FIVE_HOUR_CONSERVE_PCT) return 'conserve';
         if (relaxed(p)) return 'normal';
+        if (p.surplus < CRITICAL_SURPLUS || p.remainingPct < 8) return 'critical';
         if (p.surplus < CONSERVE_SURPLUS) return 'conserve';
+        if (p.timeLeftFrac < SURGE_TIME_FRAC && p.remainingPct >= SURGE_MIN_PCT) return 'surge';
         if (p.surplus >= BOOST_SURPLUS) return 'boost';
         if (p.timeLeftFrac < NEAR_RESET_FRAC && p.remainingPct >= NEAR_RESET_MIN_PCT) return 'boost';
         return 'normal';
     };
     const modes = paces.map(modeOf);
-    let mode = 'normal';
-    if (modes.includes('conserve')) mode = 'conserve';
-    else if (modes.includes('boost')) mode = 'boost';
+    // หน้าต่างที่เข้มงวดสุดเป็นตัวกำหนด ยกเว้นไม่มีใครเข้มงวด → ใช้หน้าต่างที่ใจกว้างสุด (boost/surge)
+    let mode = modes.reduce((a, b) => (MODE_RANK[b] < MODE_RANK[a] ? b : a), 'normal');
+    if (mode === 'normal') mode = modes.reduce((a, b) => (MODE_RANK[b] > MODE_RANK[a] ? b : a), 'normal');
     // surplus ที่ใช้ให้คะแนน: ไม่นับรอบ 5 ชม. ที่ผ่อนปรน (ถ้ายังมีหน้าต่างอื่นให้ดู)
     const scored = paces.filter((p) => !relaxed(p));
     const pool = scored.length ? scored : paces.map((p) => (relaxed(p) ? { ...p, surplus: 0 } : p));
     const binding = pool.reduce((a, b) => (b.surplus < a.surplus ? b : a));
-    const boostWin = paces.find((p, i) => modes[i] === 'boost');
-    const surplus = mode === 'boost' && boostWin ? Math.max(binding.surplus, Math.min(boostWin.surplus, BOOST_SURPLUS)) : binding.surplus;
-    return { mode, surplus: Number(surplus.toFixed(3)), remainingPct, binding: binding.name, windows: paces };
+    const boostWin = paces.find((p, i) => modes[i] === mode && (mode === 'boost' || mode === 'surge'));
+    const surplus = (mode === 'boost' || mode === 'surge') && boostWin ? Math.max(binding.surplus, Math.min(boostWin.surplus, BOOST_SURPLUS)) : binding.surplus;
+    // "ใช้หรือทิ้ง": โควตารายสัปดาห์ที่จะหายไปเปล่าๆ ถ้าไม่ใช้ก่อนรีเซ็ต (เฉพาะตอนไม่ได้ถนอม)
+    // = %เหลือ × สัดส่วนของรอบที่ผ่านไปแล้ว → ยิ่งเหลือเยอะและยิ่งใกล้รีเซ็ต ยิ่งควรรีบใช้
+    let expiring = 0;
+    if (mode === 'boost' || mode === 'surge') {
+        for (const p of paces) {
+            if (p.name !== 'weekly') continue;
+            expiring = Math.max(expiring, (p.remainingPct / 100) * (1 - p.timeLeftFrac));
+        }
+    }
+    return { mode, surplus: Number(surplus.toFixed(3)), expiring: Number(expiring.toFixed(3)), remainingPct, binding: binding.name, windows: paces };
 }
 
 /** งบของ pool agy (gemini / claude / argon) ในบัญชีหนึ่ง; null = ใช้ไม่ได้ */
@@ -423,11 +448,14 @@ function notePick(c) {
 }
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
-const MODE_THRIFT = { boost: 0.25, normal: 1, conserve: 2.2, unknown: 1.3 };
+const MODE_THRIFT = { surge: 0.1, boost: 0.25, normal: 1, conserve: 2.2, critical: 4, unknown: 1.3 };
+const MODE_EFFORT_SHIFT = { surge: 2, boost: 1, normal: 0, conserve: -1, critical: -2, unknown: 0 };
+const EXPIRING_WEIGHT = 40; // คะแนนพิเศษต่อสัดส่วนโควตาที่กำลังจะหมดอายุ
+const MODE_SCORE_BONUS = { surge: 8, boost: 0, normal: 0, conserve: 0, critical: -10, unknown: 0 };
 
 function pickEffort(family, tier, mode) {
     if (family.variants.length === 1) return family.variants[0];
-    const shift = mode === 'boost' ? 1 : (mode === 'conserve' ? -1 : 0);
+    const shift = MODE_EFFORT_SHIFT[mode] || 0;
     const want = Math.max(0, Math.min(TIERS.length - 1, TIERS.indexOf(tier) + shift));
     // เลือก variant ที่ใกล้ระดับที่ต้องการที่สุด (ไม่เกินที่มี)
     let best = family.variants[0];
@@ -443,7 +471,8 @@ function scoreCandidate({ family, effort, budget, qType, tier, sticky, load }) {
     const under = Math.max(0, target - q) * 4;                       // อ่อนเกินงาน → โทษหนัก
     const costW = family.cost * (effort ? EFFORT_COST[effort] : 1);
     const over = Math.max(0, q - target) * 0.6 * costW * (MODE_THRIFT[budget.mode] || 1); // เกินงาน → เปลืองโควตา
-    const budgetScore = budget.surplus * 30 + (budget.remainingPct < PRIMARY_THRESHOLD ? -15 : 0);
+    const budgetScore = budget.surplus * 30 + (budget.remainingPct < PRIMARY_THRESHOLD ? -15 : 0) + (MODE_SCORE_BONUS[budget.mode] || 0)
+        + (budget.expiring || 0) * EXPIRING_WEIGHT;
     const loadScore = -4 * Math.min(4, load);
     const stickyScore = sticky ? 6 : 0;
     const total = q * 0.5 + budgetScore + loadScore + stickyScore - under - over;
@@ -481,13 +510,15 @@ async function buildCandidates(cls, { hasImages = false, sessionAccount = null, 
             sticky: family.engine === 'agy' && sessionAccount && base.account === sessionAccount,
             load: recentLoad(poolKey(cand))
         });
-        subs.push({ ...cand, family: family.id, effort, remainingPct: budget.remainingPct, budget, score: score.total, scoreParts: score.parts });
+        subs.push({ ...cand, family: family.id, nativeTeam: Boolean(family.nativeTeam), effort, remainingPct: budget.remainingPct, budget, score: score.total, scoreParts: score.parts });
     };
 
+    const bigParallel = Boolean(cls.parallelizable) && (cls.complexity || 0) >= 70;
     for (const family of MODEL_FAMILIES) {
+        if (family.requires === 'parallel' && !bigParallel) continue;
         if (family.engine === 'agy') {
             for (const acc of accounts) {
-                const probeModel = `${family.prefix}${family.variants[0]}`;
+                const probeModel = family.model || `${family.prefix}${family.variants[0]}`;
                 consider(family, { account: acc.id, accountLabel: acc.label, home: acc.home }, agyPoolBudget(quotas[acc.id], probeModel));
             }
         } else {
@@ -515,9 +546,9 @@ const classifyCache = new Map(); // hash -> { at, result }
 const CLASSIFIER_VERSION = 'v2';
 const GREETING_RE = /^(สวัสดี|หวัดดี|hello|hi|hey|ขอบคุณ|thanks?|thank you|ok|โอเค|ครับ|ค่ะ|ดีมาก|เยี่ยม)/i;
 const TIER_TAG_RE = /#(สูงมาก|สูง|กลาง|ต่ำ|xhigh|high|medium|low)(?![\p{L}\p{M}\p{N}_])/iu;
-const MODE_TAG_RE = /#(ประหยัด|ถนอม|เต็มที่|ฟุ่มเฟือย|conserve|boost)(?![\p{L}\p{M}\p{N}_])/iu;
+const MODE_TAG_RE = /#(ประหยัดสุด|ประหยัด|ถนอม|เต็มที่|ฟุ่มเฟือย|critical|conserve|boost|surge)(?![\p{L}\p{M}\p{N}_])/iu;
 const TIER_FROM_TAG = { 'สูงมาก': 'xhigh', 'สูง': 'high', 'กลาง': 'medium', 'ต่ำ': 'low', xhigh: 'xhigh', high: 'high', medium: 'medium', low: 'low' };
-const MODE_FROM_TAG = { 'ประหยัด': 'conserve', 'ถนอม': 'conserve', conserve: 'conserve', 'เต็มที่': 'boost', 'ฟุ่มเฟือย': 'boost', boost: 'boost' };
+const MODE_FROM_TAG = { 'ประหยัดสุด': 'critical', critical: 'critical', 'ประหยัด': 'conserve', 'ถนอม': 'conserve', conserve: 'conserve', 'ฟุ่มเฟือย': 'boost', boost: 'boost', 'เต็มที่': 'surge', surge: 'surge' };
 
 function buildClassifierPrompt(prompt) {
     return [
@@ -655,22 +686,27 @@ async function classifyTask(prompt) {
 }
 
 // ── ④ แผนแบ่ง Subagent (แนวทางที่ 1: ให้ agy / Claude Code แตกทีมเองภายในงานเดียว) ──
-const SUBAGENT_MAX = { boost: 4, normal: 3, conserve: 2, unknown: 2 };
+const SUBAGENT_MAX = { surge: 5, boost: 4, normal: 3, conserve: 2, critical: 0, unknown: 2 };
 
 function planSubagents(cls, chosen) {
     if (!chosen || chosen.paid || !cls.parallelizable) return null;
     if (cls.type === 'quick' || cls.type === 'chat') return null;
-    if (cls.complexity < 40 && (cls.subtasks || 0) < 3) return null;
     const mode = (chosen.budget && chosen.budget.mode) || 'normal';
-    const count = Math.max(2, Math.min(SUBAGENT_MAX[mode] || 2, cls.subtasks || 2));
+    // Orchestrator แตกทีมเองอยู่แล้ว — ไม่ต้องแนบคำสั่ง
+    if (chosen.nativeTeam) return { native: true, engine: chosen.engine, mode };
+    if (cls.complexity < 40 && (cls.subtasks || 0) < 3) return null;
+    const max = SUBAGENT_MAX[mode] === undefined ? 2 : SUBAGENT_MAX[mode];
+    if (max < 2) return null;
+    const count = Math.max(2, Math.min(max, cls.subtasks || 2));
     let model = 'flash';
     if (mode === 'conserve') model = 'flash_lite';
+    else if (mode === 'surge' && cls.complexity >= 60) model = 'pro';
     else if (mode === 'boost' && cls.complexity >= 80) model = 'pro';
     return { count, model, engine: chosen.engine, mode };
 }
 
 function buildSubagentDirective(plan) {
-    if (!plan) return '';
+    if (!plan || plan.native) return '';
     if (plan.engine === 'agy') {
         return [
             '[คำสั่งจากสมองกลาง (AI Router) — แบ่งงานให้ subagent]',
@@ -687,6 +723,7 @@ function buildSubagentDirective(plan) {
         return [
             '[คำสั่งจากสมองกลาง (AI Router) — แบ่งงานให้ subagent]',
             `งานนี้แบ่งเป็นส่วนอิสระได้ ให้ใช้ Agent/Task tool รัน subagent ขนานกันไม่เกิน ${plan.count} ตัว สำหรับส่วนที่อ่าน/ค้น/ตรวจสอบได้อิสระ`,
+            `- ให้ subagent ใช้ model "${plan.model === 'pro' ? 'sonnet' : 'haiku'}" (ผู้ใช้ขอเพื่อคุมโควตา — Haiku ถูกที่สุด เหมาะกับค้นไฟล์/สรุปโค้ด)`,
             '- การแก้ไฟล์ให้ตัวหลักทำเอง หรือแบ่งคนละไฟล์ ห้ามแก้ไฟล์เดียวกันพร้อมกัน',
             '- รวมผลแล้วสรุปตอบผู้ใช้เป็นภาษาไทย ถ้างานแบ่งไม่ได้จริงให้ทำเองตามปกติ',
             '[จบคำสั่งสมองกลาง]'
@@ -767,10 +804,12 @@ function formatBanner(decision, chosen, note = '') {
     const cls = decision.classification || {};
     const prefix = note ? `↪️ ${note} → ` : '🧠 Auto → ';
     const plan = c === decision.chosen ? decision.subagents : planSubagents(cls, c);
-    const team = plan ? ` · 🤝 แตก subagent ≤${plan.count} ตัว${plan.engine === 'agy' ? ` (${plan.model})` : ''}` : '';
+    const team = !plan ? '' : (plan.native
+        ? ' · 🤝 Orchestrator วางแผน+แตกทีมเอง'
+        : ` · 🤝 แตก subagent ≤${plan.count} ตัว${plan.engine === 'agy' ? ` (${plan.model})` : ''}`);
     const tags = [];
     if (decision.overrides && decision.overrides.tier) tags.push(`#${TIER_TH[decision.overrides.tier]}`);
-    if (decision.overrides && decision.overrides.mode) tags.push(decision.overrides.mode === 'boost' ? '#เต็มที่' : '#ประหยัด');
+    if (decision.overrides && decision.overrides.mode) tags.push({ surge: '#เต็มที่', boost: '#ฟุ่มเฟือย', conserve: '#ประหยัด', critical: '#ประหยัดสุด' }[decision.overrides.mode] || '');
     const why = cls.reason ? `: ${cls.reason}` : '';
     return `> ${prefix}**${c.label}** · ${c.accountLabel} (${formatBudget(c)}) — ${cls.type} · ยาก ${cls.complexity}/100 · ระดับ ${TIER_TH[cls.tier] || cls.tier}${team}${tags.length ? ' · ' + tags.join(' ') : ''}${why}\n\n`;
 }
@@ -825,6 +864,7 @@ module.exports = {
     isBinaryCrash,
     healBinaryCache,
     failureGroup,
+    assessBudget,
     AGY_BIN,
     logDecision,
     readLog,

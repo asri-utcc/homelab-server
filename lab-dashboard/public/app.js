@@ -3386,6 +3386,7 @@ function loadSettingsView() {
             notify(chkHud.checked ? '👁️ แสดงลูกแก้ว 3D HUD' : '🙈 ซ่อนลูกแก้ว 3D HUD');
         });
         initWarpStudio(notify);
+        initThinkSoundPicker(notify);
 
         document.getElementById('btn-set-save-key')?.addEventListener('click', async () => {
             const res = await fetch('/api/gemini/config', {
@@ -3922,4 +3923,49 @@ function initWarpStudio(notify) {
     });
 
     refreshWarpStudio();
+}
+
+// ── AI thinking sound picker (Settings → Voice & UI) ───────────────────────
+function initThinkSoundPicker(notify) {
+    const sel = document.getElementById('set-think-sound');
+    const btn = document.getElementById('btn-set-test-think');
+    const desc = document.getElementById('set-think-sound-desc');
+    const S = window.AiThinkSounds;
+    if (!sel || !btn || !S) return;
+
+    sel.innerHTML = Object.entries(S.themes)
+        .map(([key, th]) => `<option value="${key}">${th.label}</option>`)
+        .join('');
+    sel.value = S.selected();
+    const showDesc = () => { if (desc) desc.textContent = (S.themes[sel.value] || {}).desc || ''; };
+    showDesc();
+
+    let previewTimer = null;
+    const resetBtn = () => {
+        clearTimeout(previewTimer);
+        btn.textContent = '▶ ทดลองฟัง';
+    };
+    const play = () => {
+        const ctx = getAudioContext();
+        if (!ctx || sel.value === 'none') { resetBtn(); return; }
+        S.preview(ctx, sel.value, 5);
+        btn.textContent = '⏹ หยุด';
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(resetBtn, 5300);
+    };
+
+    sel.addEventListener('change', () => {
+        localStorage.setItem(S.KEY, sel.value);
+        showDesc();
+        notify(`🧠 เสียงตอน AI คิด: ${S.themes[sel.value].label}`);
+        if (S.isPlaying()) play();
+    });
+    btn.addEventListener('click', () => {
+        if (S.isPlaying()) {
+            S.stop();
+            resetBtn();
+        } else {
+            play();
+        }
+    });
 }

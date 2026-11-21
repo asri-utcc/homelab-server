@@ -1264,6 +1264,14 @@
               <span>🔊 เสียงเอฟเฟกต์ (Sound FX)</span>
               <input type="checkbox" id="chk-set-sound-fx" style="width:18px;height:18px;" />
             </label>
+            <div>
+              <label for="set-think-sound" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">🧠 เสียงตอน AI กำลังคิด (Thinking Sound)</label>
+              <div style="display:flex;gap:8px;">
+                <select id="set-think-sound" class="input" style="flex:1;"></select>
+                <button type="button" id="btn-set-test-think" class="btn btn--sm">▶ ทดลองฟัง</button>
+              </div>
+              <small id="set-think-sound-desc" style="display:block;margin-top:4px;font-size:11px;color:var(--ink-muted);"></small>
+            </div>
             <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
               <span>👁️ แสดงลูกแก้ว 3D Reactor HUD ในหน้า AI</span>
               <input type="checkbox" id="chk-set-hud" style="width:18px;height:18px;" />
@@ -1649,8 +1657,9 @@
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
+<script src="/ai-think-sounds.js?v=20261121-think"></script>
 <script src="/warp-fx.js?v=20261120-vaultdoor"></script>
-<script src="/app.js?v=20261120-vaultdoor"></script>
+<script src="/app.js?v=20261121-think"></script>
 
 <!-- ── mobile bottom navigation bar ──────────────────────────────────────── -->
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">

@@ -199,6 +199,14 @@
         </div>
         <label class="switch"><input type="checkbox" id="chk-sound-fx"><span class="slider"></span></label>
       </div>
+      <div style="margin-bottom:12px;">
+        <div class="title" style="font-size:13.5px;font-weight:600;margin-bottom:6px;">🧠 เสียงตอน AI กำลังคิด</div>
+        <div style="display:flex;gap:8px;">
+          <select id="set-think-sound" style="flex:1;"></select>
+          <button type="button" id="btn-test-think" class="btn">▶ ทดลองฟัง</button>
+        </div>
+        <div class="sub" id="think-sound-desc" style="margin-top:4px;"></div>
+      </div>
       <div class="toggle-row" style="margin-bottom:0">
         <div>
           <div class="title">👁️ แสดงลูกแก้ว 3D Reactor HUD</div>
@@ -232,6 +240,7 @@
 
 <div id="toast" class="toast"></div>
 
+<script src="/ai-think-sounds.js?v=20261121-think"></script>
 <script>
 (function () {
   const toastEl = document.getElementById('toast');
@@ -242,6 +251,40 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toastEl.classList.remove('is-open'), 2600);
   }
+
+  // AI thinking sound picker (shared themes from /ai-think-sounds.js)
+  (function initThinkSound() {
+    const S = window.AiThinkSounds;
+    const sel = document.getElementById('set-think-sound');
+    const btn = document.getElementById('btn-test-think');
+    const desc = document.getElementById('think-sound-desc');
+    if (!S || !sel || !btn) return;
+    sel.innerHTML = Object.entries(S.themes).map(([k, th]) => `<option value="${k}">${th.label}</option>`).join('');
+    sel.value = S.selected();
+    const showDesc = () => { desc.textContent = (S.themes[sel.value] || {}).desc || ''; };
+    showDesc();
+    let ctx = null;
+    let timer = null;
+    const reset = () => { clearTimeout(timer); btn.textContent = '▶ ทดลองฟัง'; };
+    const play = () => {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC || sel.value === 'none') { reset(); return; }
+      ctx = ctx || new AC();
+      S.preview(ctx, sel.value, 5);
+      btn.textContent = '⏹ หยุด';
+      clearTimeout(timer);
+      timer = setTimeout(reset, 5300);
+    };
+    sel.addEventListener('change', () => {
+      localStorage.setItem(S.KEY, sel.value);
+      showDesc();
+      showToast(`🧠 เสียงตอน AI คิด: ${S.themes[sel.value].label}`);
+      if (S.isPlaying()) play();
+    });
+    btn.addEventListener('click', () => {
+      if (S.isPlaying()) { S.stop(); reset(); } else { play(); }
+    });
+  })();
 
   const selModel = document.getElementById('set-model');
   const selCwd = document.getElementById('set-cwd');

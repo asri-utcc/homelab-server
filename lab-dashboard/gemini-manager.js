@@ -384,8 +384,23 @@ function getActiveJob(sessionId = null) {
 
 // ── Multi-Session Conversation Store ─────────────────────────────────────────
 let sessionsCache = null;
+let sessionsCacheMtime = 0;
 
 function ensureSessionsStoreSync() {
+    try {
+        if (fs.existsSync(SESSIONS_INDEX_FILE)) {
+            const stat = fs.statSync(SESSIONS_INDEX_FILE);
+            if (sessionsCache && stat.mtimeMs <= sessionsCacheMtime) {
+                return sessionsCache;
+            }
+            const parsed = JSON.parse(fs.readFileSync(SESSIONS_INDEX_FILE, 'utf8'));
+            if (Array.isArray(parsed)) {
+                sessionsCache = parsed;
+                sessionsCacheMtime = stat.mtimeMs;
+                return sessionsCache;
+            }
+        }
+    } catch (_) {}
     if (sessionsCache) return sessionsCache;
     try {
         fs.mkdirSync(GEMINI_DIR, { recursive: true });

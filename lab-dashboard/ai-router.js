@@ -46,6 +46,9 @@ const DEEPSEEK_MIN_BALANCE = 0.1;
 const MODEL_FAMILIES = [
     { id: 'claude-opus', engine: 'agy', label: 'Claude Opus 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-opus-5-5-', q: { code: 97, analysis: 95, chat: 90 }, cost: 2.67 },
     { id: 'claude-sonnet', engine: 'agy', label: 'Claude Sonnet 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-sonnet-5-5-', q: { code: 90, analysis: 87, chat: 89 }, cost: 1.33 },
+    // GPT-OSS 120B: อยู่ pool "Claude & GPT" เดียวกับ Claude บน agy (pool เล็ก) · ราคาตลาด ~$0.15/$0.60 (ประมาณการ
+    // ไม่ได้อยู่ในตารางของบังยี) → กินโควตา pool นี้น้อยมาก เหมาะกับงานเบาที่อยากใช้ pool Claude & GPT แบบประหยัด
+    { id: 'gpt-oss', engine: 'agy', label: 'GPT-OSS 120B', variants: ['medium'], prefix: 'gpt-oss-120b-', q: { code: 76, analysis: 78, chat: 80 }, cost: 0.08 },
     // ── Gemini (บทบาทตามตาราง Antigravity ที่บังยีให้มา 2026-11-21) ──
     // Neon: ตัวหลักที่ฉลาดและคุ้มค่าที่สุด · โค้ดซับซ้อนใกล้รุ่นท็อป · หลอนต่ำสุด · ปรับตามคำสั่งกลางทางได้ดี · pool Gemini
     { id: 'gemini-neon', engine: 'agy', label: 'Gemini 4 Neon', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-neon-', q: { code: 96, analysis: 96, chat: 92 }, cost: 2 },
@@ -333,7 +336,8 @@ const WINDOW_MS = { '5h': 5 * 3600 * 1000, weekly: 7 * 24 * 3600 * 1000 };
 const BOOST_SURPLUS = 0.2;
 const CONSERVE_SURPLUS = -0.15;
 const NEAR_RESET_FRAC = 0.2;
-const NEAR_RESET_MIN_PCT = 30;
+const NEAR_RESET_MIN_PCT = 20;
+const EXPIRING_WINDOW_FRAC = 0.35; // โบนัส "ใช้หรือทิ้ง" เฉพาะช่วง 35% สุดท้ายของรอบรายสัปดาห์ (~2.5 วัน)
 const FIVE_HOUR_CONSERVE_PCT = 15; // รอบ 5 ชม. ทำให้ถนอมเฉพาะตอนเหลือน้อยกว่านี้
 const BUDGET_TH = { surge: '🟣 ใช้เต็มที่ (ใกล้รีเซ็ต)', boost: '🟢 ฟุ่มเฟือยได้', normal: '🔵 ปกติ', conserve: '🟡 ถนอม', critical: '🔴 ประหยัดสุด', unknown: '⚪ ไม่ทราบโควตา' };
 // ลำดับความเข้มงวด: ตัวที่เข้มกว่าชนะเสมอ (มีหน้าต่างไหนวิกฤต → ทั้ง pool วิกฤต)
@@ -388,12 +392,12 @@ function assessBudget(windows) {
     const binding = pool.reduce((a, b) => (b.surplus < a.surplus ? b : a));
     const boostWin = paces.find((p, i) => modes[i] === mode && (mode === 'boost' || mode === 'surge'));
     const surplus = (mode === 'boost' || mode === 'surge') && boostWin ? Math.max(binding.surplus, Math.min(boostWin.surplus, BOOST_SURPLUS)) : binding.surplus;
-    // "ใช้หรือทิ้ง": โควตารายสัปดาห์ที่จะหายไปเปล่าๆ ถ้าไม่ใช้ก่อนรีเซ็ต (เฉพาะตอนไม่ได้ถนอม)
+    // "ใช้หรือทิ้ง": โควตารายสัปดาห์ที่จะหายไปเปล่าๆ ถ้าไม่ใช้ก่อนรีเซ็ต (ทุกโหมดยกเว้นถนอม/ประหยัดสุด)
     // = %เหลือ × สัดส่วนของรอบที่ผ่านไปแล้ว → ยิ่งเหลือเยอะและยิ่งใกล้รีเซ็ต ยิ่งควรรีบใช้
     let expiring = 0;
-    if (mode === 'boost' || mode === 'surge') {
+    if (mode !== 'conserve' && mode !== 'critical') {
         for (const p of paces) {
-            if (p.name !== 'weekly') continue;
+            if (p.name !== 'weekly' || p.timeLeftFrac >= EXPIRING_WINDOW_FRAC) continue;
             expiring = Math.max(expiring, (p.remainingPct / 100) * (1 - p.timeLeftFrac));
         }
     }

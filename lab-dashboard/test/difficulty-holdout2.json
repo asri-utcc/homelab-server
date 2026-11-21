@@ -1,0 +1,120 @@
+{
+ "_readme": "holdout2: เขียนและล็อกเฉลยหลังเห็นผลรอบแรกของ v4 แต่ก่อนแก้อะไร — ใช้ตัดสินผลสุดท้ายครั้งเดียว ห้ามจูนตามข้อพวกนี้",
+ "contexts": {
+  "notify": [
+   {
+    "role": "user",
+    "content": "อยากให้ระบบแจ้งเตือน Telegram ส่งซ้ำได้ถ้าล้มเหลว ทำได้ไหม"
+   },
+   {
+    "role": "assistant",
+    "content": "ทำได้ค่ะ มี 2 แบบ แบบที่ 1: เพิ่ม retry 3 ครั้งในไฟล์ notify-telegram.py ไฟล์เดียว (เล็ก ใช้เวลาไม่นาน) แบบที่ 2: ทำระบบคิวส่งซ้ำถาวรพร้อม rate limit ต่อห้อง และหน้าตั้งค่าใน dashboard ต้องแก้ 4 ไฟล์ (notify-telegram.py, server.js, หน้า settings.html, ไฟล์คิว) พร้อมเขียนเอกสารและเทสต์ จะเลือกแบบไหนคะ"
+   }
+  ]
+ },
+ "cases": [
+  {
+   "id": "h01",
+   "prompt": "ช่วยเขียนสคริปต์ bash สำรองโฟลเดอร์ /home/dev/projects ไปไว้ที่ /mnt/backup ทุกคืนตอนตี 3 ด้วย cron และลบของที่เก่ากว่า 14 วัน",
+   "expect": [
+    30,
+    55
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h02",
+   "prompt": "ตรวจสอบว่าทำไมแดชบอร์ดโหลดช้าตอนเปิดหน้า containers แล้วหาทางเร่งให้เร็วขึ้น",
+   "expect": [
+    40,
+    70
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h03",
+   "prompt": "เปลี่ยนชื่อปุ่ม 'ส่ง' เป็น 'ส่งข้อความ' ในหน้าแชท",
+   "expect": [
+    0,
+    25
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h04",
+   "prompt": "สร้างระบบ plugin ให้ dashboard ที่โหลดโมดูลภายนอกได้ มี sandbox จำกัดสิทธิ์ ระบบจัดการเวอร์ชัน และหน้าจัดการ plugin พร้อมเอกสารและเทสต์",
+   "expect": [
+    78,
+    100
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h05",
+   "prompt": "ตรวจโค้ดทั้ง repo หา memory leak ในงานที่รันนานๆ ของ lab-dashboard และ onepercentbot แล้วแก้ให้หมด",
+   "expect": [
+    65,
+    95
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h06",
+   "prompt": "ช่วยอธิบายว่า MQTT retained message คืออะไร",
+   "expect": [
+    0,
+    25
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h07",
+   "prompt": "ติดตั้ง Grafana ผ่าน docker compose ให้ดึงข้อมูลจาก InfluxDB ที่มีอยู่ พร้อมทำ dashboard พื้นฐาน 3 กราฟ",
+   "expect": [
+    40,
+    70
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h08",
+   "prompt": "เอาแบบที่ 2 เลยครับ",
+   "history": "notify",
+   "prior": {
+    "complexity": 40,
+    "risk": 10,
+    "type": "analysis"
+   },
+   "expect": [
+    55,
+    90
+   ],
+   "set": "holdout",
+   "headline": true
+  },
+  {
+   "id": "h09",
+   "prompt": "ขอบคุณ ว่าแต่ตอนนี้อากาศที่เชียงใหม่เป็นยังไงบ้าง",
+   "history": "notify",
+   "prior": {
+    "complexity": 40,
+    "risk": 10,
+    "type": "analysis"
+   },
+   "expect": [
+    0,
+    25
+   ],
+   "set": "holdout"
+  },
+  {
+   "id": "h10",
+   "prompt": "เขียน unit test ให้ฟังก์ชัน parseRubric ใน difficulty-estimator.js ให้ครอบคลุมกรณีขอบ",
+   "expect": [
+    20,
+    50
+   ],
+   "set": "holdout"
+  }
+ ]
+}

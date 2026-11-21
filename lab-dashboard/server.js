@@ -1971,8 +1971,13 @@ const server = http.createServer(async (req, res) => {
                 prompt: String(body.prompt),
                 hasImages: Boolean(body.hasImages),
                 source: String(body.source || 'api').slice(0, 40),
-                minLevel: parseInt(body.minLevel, 10) || 1
+                minLevel: parseInt(body.minLevel, 10) || 1,
+                sessionId: body.sessionId ? String(body.sessionId).slice(0, 80) : null,
+                history: Array.isArray(body.history) ? body.history.slice(-6).map((m) => ({ role: m && m.role, content: String((m && m.content) || '').slice(0, 4000) })) : []
             }));
+        }
+        if (p === '/api/ai-router/calibration') {
+            return sendJson(res, 200, await aiRouter.calibrationReport(parseInt(url.searchParams.get('limit'), 10) || 2000));
         }
         if (p === '/api/ai-router/log') {
             const limit = Math.min(500, parseInt(url.searchParams.get('limit'), 10) || 100);

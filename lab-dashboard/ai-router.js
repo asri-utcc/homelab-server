@@ -21,6 +21,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const est = require('./difficulty-estimator');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
@@ -28,7 +29,8 @@ const PROFILES_DIR = path.join(HOME_DIR, '.agy-profiles');
 const TOKEN_REL = '.gemini/antigravity-cli/antigravity-oauth-token';
 const LOG_FILE = path.join(HOME_DIR, '.gemini/ai-router-log.jsonl');
 const CLASSIFY_CWD = path.join(HOME_DIR, '.gemini/router-tmp');
-const CLASSIFIER_MODEL = 'gemini-3.8-flash-low';
+const CLASSIFIER_MODEL = process.env.AI_ROUTER_CLASSIFIER_MODEL || 'gemini-3.8-flash-low';
+const OUTCOMES_FILE = process.env.AI_ROUTER_OUTCOMES_FILE || path.join(HOME_DIR, '.gemini/ai-router-outcomes.jsonl');
 
 const AUTO_MODEL_ID = 'auto';
 const PRIMARY_THRESHOLD = 20;   // % ที่ต้องเหลือเพื่อเป็นตัวเลือกแรก
@@ -545,9 +547,9 @@ async function buildCandidates(cls, { hasImages = false, sessionAccount = null, 
     return out.map((c) => ({ ...c, label: modelLabel(c.model) }));
 }
 
-// ── ① คัดงาน (v2): ความยาก 0–100 · ความเสี่ยง · แบ่งงานขนานได้ไหม ────────────────
-const classifyCache = new Map(); // hash -> { at, result }
-const CLASSIFIER_VERSION = 'v2';
+// ── ① คัดงาน (v4): rubric แยกมิติ + ตัวช่วยตรวจ + บริบทแชท + วงจรป้อนกลับ ───────────────
+// รายละเอียด: difficulty-estimator.js และ docs/ai-router.md หัวข้อ "ตัวประเมินความยาก v4"
+const classifyCache = new Map(); // hash -> { at, rubric }  (เก็บผลดิบของ AI; คะแนนสุดท้ายคำนวณใหม่ทุกครั้งจากตัวช่วยตรวจ+บริบท)
 const GREETING_RE = /^(สวัสดี|หวัดดี|hello|hi|hey|ขอบคุณ|thanks?|thank you|ok|โอเค|ครับ|ค่ะ|ดีมาก|เยี่ยม)/i;
 const TIER_TAG_RE = /#(สูงมาก|สูง|กลาง|ต่ำ|xhigh|high|medium|low)(?![\p{L}\p{M}\p{N}_])/iu;
 const MODE_TAG_RE = /#(ประหยัดสุด|ประหยัด|ถนอม|เต็มที่|ฟุ่มเฟือย|critical|conserve|boost|surge)(?![\p{L}\p{M}\p{N}_])/iu;
@@ -556,78 +558,34 @@ const SINGLE_TAG_RE = /#(เดี่ยว|single)(?![\p{L}\p{M}\p{N}_])/iu;
 const TIER_FROM_TAG = { 'สูงมาก': 'xhigh', 'สูง': 'high', 'กลาง': 'medium', 'ต่ำ': 'low', xhigh: 'xhigh', high: 'high', medium: 'medium', low: 'low' };
 const MODE_FROM_TAG = { 'ประหยัดสุด': 'critical', critical: 'critical', 'ประหยัด': 'conserve', 'ถนอม': 'conserve', conserve: 'conserve', 'ฟุ่มเฟือย': 'boost', boost: 'boost', 'เต็มที่': 'surge', surge: 'surge' };
 
-function buildClassifierPrompt(prompt) {
-    return [
-        'You are a task router. Do NOT use any tools. Analyse the task below and reply with ONLY one line of JSON:',
-        '{"type":"code|analysis|chat|quick","complexity":0-100,"risk":0-100,"needs_tools":true|false,"parallelizable":true|false,"subtasks":0-6,"reason":"<short Thai reason>"}',
-        'type: code=write/fix/refactor code or edit config files; analysis=plan, design, investigate, compare, research, debug a system;',
-        'chat=general Q&A or explanation; quick=greeting, one-liner, simple status check (e.g. electricity usage today).',
-        'complexity: 0-20 trivial, 21-45 simple, 46-70 moderate/multi-step, 71-90 hard multi-file or deep reasoning, 91-100 very hard/critical.',
-        'risk: how much damage a mistake could do to a running production system (0 none, 100 could break core services or data).',
-        'parallelizable: true only if the work splits into 2+ independent pieces (e.g. investigate several services, read many files, compare several options) that separate agents could do at the same time.',
-        'subtasks: how many independent pieces (0 if not parallelizable).',
-        'TASK:',
-        '"""',
-        String(prompt).slice(0, 4000),
-        '"""'
-    ].join('\n');
-}
+const levelFromComplexity = est.levelFromComplexity;
+const tierFromScores = est.tierFromScores;
 
-function clampInt(v, lo, hi, dflt) {
-    const n = parseInt(v, 10);
-    return Number.isNaN(n) ? dflt : Math.max(lo, Math.min(hi, n));
-}
-
-function levelFromComplexity(c) {
-    return c < 35 ? 1 : (c < 70 ? 2 : 3);
-}
-
-function tierFromScores(type, complexity, risk, needsTools) {
-    if (type === 'quick') return 'low';
-    const s = complexity + risk * 0.25 + (type === 'code' && needsTools ? 5 : 0);
-    if (s < 35) return 'low';
-    if (s < 60) return 'medium';
-    if (s < 82) return 'high';
-    return 'xhigh';
-}
-
+/** ใช้กับทางลัด (quick) — รูปแบบเดิมที่ให้ complexity/risk ตรงๆ */
 function normalizeClassification(obj) {
-    const type = TYPES.includes(obj.type) ? obj.type : null;
-    if (!type) return null;
-    // รองรับผลแบบเก่า (level 1–3) ด้วย
-    const complexity = obj.complexity !== undefined
-        ? clampInt(obj.complexity, 0, 100, 50)
-        : ({ 1: 25, 2: 55, 3: 80 }[clampInt(obj.level, 1, 3, 2)]);
-    const risk = clampInt(obj.risk, 0, 100, 20);
-    const needsTools = Boolean(obj.needs_tools);
-    const parallelizable = Boolean(obj.parallelizable) && type !== 'quick';
+    const rubric = est.normalizeRubric(obj);
+    if (!rubric) return null;
+    const complexity = rubric.legacyComplexity !== undefined ? rubric.legacyComplexity : est.scoreRubric(rubric).llm;
+    const risk = rubric.legacyRisk !== undefined ? rubric.legacyRisk : rubric.risk * 25;
+    const parallelizable = rubric.parallel >= 2 && rubric.type !== 'quick';
     return {
-        type,
-        complexity: type === 'quick' ? Math.min(complexity, 20) : complexity,
+        type: rubric.type,
+        complexity: rubric.type === 'quick' ? Math.min(complexity, 20) : complexity,
         risk,
-        level: type === 'quick' ? 1 : levelFromComplexity(complexity),
-        needs_tools: needsTools,
+        level: rubric.type === 'quick' ? 1 : levelFromComplexity(complexity),
+        needs_tools: rubric.needsTools,
         parallelizable,
-        subtasks: parallelizable ? clampInt(obj.subtasks, 2, 6, 2) : 0,
-        tier: tierFromScores(type, complexity, risk, needsTools),
-        reason: String(obj.reason || '').slice(0, 160)
+        subtasks: parallelizable ? Math.max(2, Math.min(6, rubric.parallel)) : 0,
+        tier: tierFromScores(rubric.type, complexity, risk, rubric.needsTools),
+        reason: rubric.reason,
+        estimator: est.RUBRIC_VERSION
     };
 }
 
-function parseClassification(text) {
-    const m = String(text || '').match(/\{[^{}]*"type"[^{}]*\}/);
-    if (!m) return null;
-    try {
-        return normalizeClassification(JSON.parse(m[0]));
-    } catch (_) {
-        return null;
-    }
-}
-
-function runClassifierOnce(prompt, account) {
+function runClassifierOnce(prompt, account, contextBlock = '') {
     return new Promise((resolve) => {
         try { fs.mkdirSync(CLASSIFY_CWD, { recursive: true }); } catch (_) {}
-        const args = ['-p', buildClassifierPrompt(prompt), '--model', CLASSIFIER_MODEL, '--disable-slash-commands', '--print-timeout', '40s'];
+        const args = ['-p', est.buildRubricPrompt(prompt, contextBlock), '--model', CLASSIFIER_MODEL, '--disable-slash-commands', '--print-timeout', '40s'];
         execFile(AGY_BIN, args, {
             cwd: CLASSIFY_CWD,
             timeout: 50000,
@@ -638,16 +596,16 @@ function runClassifierOnce(prompt, account) {
                 console.error(`[AiRouter] classifier failed on ${account.label}: ${errText.slice(0, 200)}`);
                 return resolve({ result: null, crashed: isBinaryCrash(stderr), errorText: errText });
             }
-            resolve({ result: parseClassification(stdout), crashed: false, errorText: '' });
+            resolve({ result: est.parseRubric(stdout), crashed: false, errorText: '' });
         });
     });
 }
 
-async function runClassifier(prompt, account) {
-    let attempt = await runClassifierOnce(prompt, account);
+async function runClassifier(prompt, account, contextBlock = '') {
+    let attempt = await runClassifierOnce(prompt, account, contextBlock);
     if (attempt.crashed) {
         await healBinaryCache(AGY_BIN);
-        attempt = await runClassifierOnce(prompt, account);
+        attempt = await runClassifierOnce(prompt, account, contextBlock);
     }
     if (!attempt.result && attempt.errorText) {
         recordFailure({ engine: 'agy', account: account.id, model: CLASSIFIER_MODEL }, {
@@ -658,37 +616,107 @@ async function runClassifier(prompt, account) {
     return attempt.result;
 }
 
-async function classifyTask(prompt) {
+/** prior ของห้องแชท: หน่วยความจำก่อน ไม่มีค่อยอ่านย้อนจาก log (รอดการรีสตาร์ต dashboard) */
+function getSessionPrior(sessionId) {
+    if (!sessionId) return null;
+    let prior = est.getPrior(sessionId);
+    if (prior) return prior;
+    try {
+        const stat = fs.statSync(LOG_FILE);
+        const fd = fs.openSync(LOG_FILE, 'r');
+        const size = Math.min(stat.size, 400 * 1024);
+        const buf = Buffer.alloc(size);
+        fs.readSync(fd, buf, 0, size, stat.size - size);
+        fs.closeSync(fd);
+        const now = Date.now();
+        const records = [];
+        for (const line of buf.toString('utf8').split('\n').reverse()) {
+            if (!line.includes(sessionId)) continue;
+            let e;
+            try { e = JSON.parse(line); } catch (_) { continue; }
+            if (e.event !== 'route' || e.sessionId !== sessionId || !e.classification || typeof e.classification.complexity !== 'number') continue;
+            const at = Date.parse(e.ts);
+            if (!(now - at < est.constants.SESSION_TTL_MS)) break;
+            records.push({ at, complexity: e.classification.complexity, risk: e.classification.risk || 0, type: e.classification.type, effective: e.classification.complexity, observed: null });
+            if (records.length >= 3) break;
+        }
+        if (records.length) {
+            est.seedPrior(sessionId, records);
+            prior = est.getPrior(sessionId);
+        }
+    } catch (_) {}
+    return prior;
+}
+
+/**
+ * ข้อความที่ตัดสินได้เลยโดยไม่เรียกตัวคัดงาน
+ * - คำทักทาย/ขอบคุณสั้นๆ: เสมอ
+ * - ข้อความสั้น ≤20 ตัวอักษร: เฉพาะเมื่อห้องแชทยังไม่มีประวัติ — ถ้ามีประวัติ ข้อความสั้นมักตอบ/เลือกต่อจากข้อเสนอก่อนหน้า
+ *   ("เอาแบบที่ 2 เลยครับ" = งานที่ใหญ่ที่สุดของข้อเสนอ) ต้องดูบริบทก่อน (พบจากชุดทดสอบ holdout2 ข้อ h08)
+ */
+function isShortcutText(text, hasHistory = false) {
+    const t = String(text || '').trim();
+    if (CODE_HINT_RE.test(t)) return false;
+    if (t.length <= 40 && GREETING_RE.test(t)) return true;
+    return t.length <= 20 && !hasHistory;
+}
+
+/**
+ * @param {string} prompt
+ * @param {object} [opts]
+ * @param {Array}  [opts.history]    ข้อความก่อนหน้าในห้องแชท [{role, content}]
+ * @param {string} [opts.sessionId]  ใช้หา prior (ความยากของงานก่อนหน้า) สำหรับข้อความต่อเนื่อง
+ * @param {boolean} [opts.hasImages]
+ * @param {boolean} [opts.noCache]   ข้าม cache (ใช้ตอนวัดผล)
+ */
+async function classifyTask(prompt, opts = {}) {
     const text = String(prompt || '').trim();
-    if ((text.length <= 20 && !CODE_HINT_RE.test(text)) || (text.length <= 40 && GREETING_RE.test(text) && !CODE_HINT_RE.test(text))) {
+    const { history = [], sessionId = null, hasImages = false, noCache = false } = opts;
+    const heur = est.heuristics(text, { hasImages });
+    const prior = getSessionPrior(sessionId);
+
+    // 0. "ทำต่อเลย" ล้วนๆ → สืบทอดความยากจากงานก่อนหน้า (ไม่เรียก AI ไม่เสียโควตา ไม่เสียเวลา)
+    if (prior && prior.complexity >= 30 && est.isPureContinuation(text)) {
+        return { ...est.inheritedClassification(prior, heur), source: 'continuation' };
+    }
+
+    // 1. ทางลัด: ข้อความสั้น/ทักทาย
+    if (isShortcutText(text, history.length > 0)) {
         return { ...normalizeClassification({ type: 'quick', complexity: 5, risk: 0 }), reason: 'ข้อความสั้น/ทักทาย (ทางลัด ไม่เรียกตัวคัดงาน)', source: 'shortcut' };
     }
-    const hash = crypto.createHash('sha1').update(CLASSIFIER_VERSION + text).digest('hex');
-    const hit = classifyCache.get(hash);
-    if (hit && Date.now() - hit.at < CLASSIFY_TTL_MS) return { ...hit.result, source: 'cache' };
 
-    // ตัวคัดงานใช้บัญชี Google ที่ pool gemini เหลือมากสุดก่อน (กระจายโหลดด้วย)
-    const accs = listAgyAccounts().filter((a) => a.ready);
-    const ranked = [];
-    for (const acc of accs) {
-        if (isInCooldown({ engine: 'agy', account: acc.id, model: CLASSIFIER_MODEL })) continue;
-        const pct = agyRemainingPct(await getAccountQuota(acc.id), CLASSIFIER_MODEL);
-        if (pct === null || pct <= MIN_THRESHOLD) continue;
-        ranked.push({ acc, pct });
+    // 2. ตัวคัดงาน: ข้อความสั้น (≤300 ตัวอักษร) ส่งบริบทแชทไปด้วย; ข้อความยาวอธิบายตัวเองครบแล้ว
+    const contextBlock = (history.length > 0 && text.length <= 300) ? est.buildContextBlock(history, prior) : '';
+    const hash = crypto.createHash('sha1').update(`${est.RUBRIC_VERSION}|${CLASSIFIER_MODEL}|${text}|${contextBlock}`).digest('hex');
+    const hit = !noCache && classifyCache.get(hash);
+    let rubric = null;
+    let source = 'classifier';
+    if (hit && Date.now() - hit.at < CLASSIFY_TTL_MS) {
+        rubric = hit.rubric;
+        source = 'cache';
+    } else {
+        // ใช้บัญชี Google ที่ pool gemini เหลือมากสุดก่อน (กระจายโหลดด้วย)
+        const accs = listAgyAccounts().filter((a) => a.ready);
+        const ranked = [];
+        for (const acc of accs) {
+            if (isInCooldown({ engine: 'agy', account: acc.id, model: CLASSIFIER_MODEL })) continue;
+            const pct = agyRemainingPct(await getAccountQuota(acc.id), CLASSIFIER_MODEL);
+            if (pct === null || pct <= MIN_THRESHOLD) continue;
+            ranked.push({ acc, pct });
+        }
+        ranked.sort((a, b) => b.pct - a.pct);
+        for (const { acc } of ranked) {
+            rubric = await runClassifier(text, acc, contextBlock);
+            if (rubric) break;
+        }
+        if (rubric && !noCache) {
+            classifyCache.set(hash, { at: Date.now(), rubric });
+            if (classifyCache.size > 300) classifyCache.delete(classifyCache.keys().next().value);
+        }
     }
-    ranked.sort((a, b) => b.pct - a.pct);
-    let result = null;
-    for (const { acc } of ranked) {
-        result = await runClassifier(text, acc);
-        if (result) break;
-    }
-    if (!result) {
-        const fbType = CODE_HINT_RE.test(text) ? 'code' : 'chat';
-        return { ...normalizeClassification({ type: fbType, complexity: 55, risk: 30, needs_tools: fbType === 'code' }), reason: 'ตัวคัดงานไม่ตอบ ใช้ค่าเริ่มต้น', source: 'fallback' };
-    }
-    classifyCache.set(hash, { at: Date.now(), result });
-    if (classifyCache.size > 300) classifyCache.delete(classifyCache.keys().next().value);
-    return { ...result, source: 'classifier' };
+    if (!rubric) source = 'fallback';
+    const cls = est.finalize({ rubric, heur, prior, fallbackType: CODE_HINT_RE.test(text) ? 'code' : 'chat' });
+    return { ...cls, source };
 }
 
 // ── ④ แผนแบ่ง Subagent (แนวทางที่ 1: ให้ agy / Claude Code แตกทีมเองภายในงานเดียว) ──
@@ -951,17 +979,17 @@ async function buildWorkerCandidates(requestedFamily = 'neon', { preferredAccoun
  * @param {number} [opts.minLevel] บังคับระดับความยากขั้นต่ำ (เช่น cron alert จริง)
  * @param {string} [opts.sessionAccount] บัญชี Google ที่ห้องแชทนี้ใช้อยู่ (ลดการสลับบัญชีกลางบทสนทนา)
  */
-async function routeTask({ prompt, hasImages = false, source = 'chat', minLevel = 1, sessionAccount = null } = {}) {
+async function routeTask({ prompt, hasImages = false, source = 'chat', minLevel = 1, sessionAccount = null, history = [], sessionId = null } = {}) {
     const startedAt = Date.now();
     const text = String(prompt || '');
-    let cls = await classifyTask(text);
+    let cls = await classifyTask(text, { history, sessionId, hasImages });
 
     // minLevel (cron alert) → ดันความยากขั้นต่ำ
     const minLv = Math.min(3, minLevel || 1);
     if (minLv > cls.level) {
         const complexity = Math.max(cls.complexity, { 2: 50, 3: 75 }[minLv]);
         const type = cls.type === 'quick' ? 'chat' : cls.type;
-        cls = { ...cls, type, complexity, level: levelFromComplexity(complexity), tier: tierFromScores(type, complexity, cls.risk, cls.needs_tools) };
+        cls = { ...cls, type, complexity, level: levelFromComplexity(complexity), tier: tierFromScores(type, complexity, cls.risk, cls.needs_tools, cls.quality_bar || 0) };
     }
     // แท็กกำหนดเองในข้อความ เช่น #สูงมาก #ประหยัด #ทีมข้ามค่าย #เดี่ยว
     const tierTag = text.match(TIER_TAG_RE);
@@ -991,9 +1019,12 @@ async function routeTask({ prompt, hasImages = false, source = 'chat', minLevel 
         chosen,
         subagents,
         teamPlan,
+        promptSnippet: text.slice(0, 120),
         tookMs: Date.now() - startedAt
     };
-    logDecision({ source, prompt, decision });
+    // จำงานนี้ไว้เป็น prior ของข้อความถัดไปในห้องเดียวกัน (ใช้ความยากสุดท้ายหลังแท็ก/เกณฑ์ขั้นต่ำ)
+    if (sessionId && cls.type !== 'quick') est.noteRouted(sessionId, cls);
+    logDecision({ source, prompt, decision, extra: sessionId ? { sessionId } : {} });
     return decision;
 }
 
@@ -1027,7 +1058,9 @@ function formatBanner(decision, chosen, note = '') {
     if (decision.overrides && decision.overrides.tier) tags.push(`#${TIER_TH[decision.overrides.tier]}`);
     if (decision.overrides && decision.overrides.mode) tags.push({ surge: '#เต็มที่', boost: '#ฟุ่มเฟือย', conserve: '#ประหยัด', critical: '#ประหยัดสุด' }[decision.overrides.mode] || '');
     const why = cls.reason ? `: ${cls.reason}` : '';
-    return `> ${prefix}**${c.label}** · ${c.accountLabel} (${formatBudget(c)}) — ${cls.type} · ยาก ${cls.complexity}/100 · ระดับ ${TIER_TH[cls.tier] || cls.tier}${team}${tags.length ? ' · ' + tags.join(' ') : ''}${why}\n\n`;
+    const hm = est.formatMinutes(cls.humanMinutes);
+    const diff = `ยาก ${cls.complexity}/100${hm ? ` (≈${hm})` : ''}${cls.continuation && (cls.continuation.inherited || cls.continuation.applied) ? ' ↩ต่อเนื่อง' : ''}`;
+    return `> ${prefix}**${c.label}** · ${c.accountLabel} (${formatBudget(c)}) — ${cls.type} · ${diff} · ระดับ ${TIER_TH[cls.tier] || cls.tier}${team}${tags.length ? ' · ' + tags.join(' ') : ''}${why}\n\n`;
 }
 
 function isRetryableFailure(errorText, outputText, stderrText = '') {
@@ -1087,12 +1120,83 @@ async function readLog(limit = 100) {
     }
 }
 
+// ── ④ วงจรป้อนกลับ: บันทึกผลจริงเทียบกับที่ทำนาย ───────────────────────────────────────
+/**
+ * เรียกตอนงานจบ (gemini-manager.finish)
+ * @param {object} o  { sessionId, decision, steps, durationMs, ok, aborted, model, account, team }
+ */
+function noteOutcome({ sessionId = null, decision = null, steps = 0, durationMs = 0, ok = true, aborted = false, model = null, account = null, team = false } = {}) {
+    if (!decision || !decision.classification) return null;
+    const cls = decision.classification;
+    // ไม่นับงานที่ถูกยกเลิก/พังทันที (ไม่ได้ทำงานจริง) เป็นความยากที่สังเกตได้
+    const meaningful = !aborted && (steps > 0 || durationMs >= 15000);
+    const obs = meaningful ? est.observedComplexity(steps, durationMs) : null;
+    if (sessionId && meaningful) est.noteObserved(sessionId, { steps, durationMs });
+    const entry = {
+        ts: new Date().toISOString(),
+        sessionId,
+        source: 'chat',
+        prompt: String(decision.promptSnippet || '').slice(0, 120),
+        predicted: {
+            type: cls.type, tier: cls.tier, complexity: cls.complexity, risk: cls.risk,
+            humanMinutes: cls.humanMinutes || null, llm: cls.llmComplexity === undefined ? null : cls.llmComplexity,
+            heuristic: cls.heuristic ? cls.heuristic.score : null, continuation: Boolean(cls.continuation && (cls.continuation.inherited || cls.continuation.applied)),
+            classifier: cls.source
+        },
+        observed: { steps, durationMs, complexity: obs, counted: meaningful },
+        ok: Boolean(ok), aborted: Boolean(aborted), team: Boolean(team), model, account
+    };
+    fsp.appendFile(OUTCOMES_FILE, JSON.stringify(entry) + '\n').catch(() => {});
+    return entry;
+}
+
+/** สรุปความแม่นของการทำนาย: ต่อระดับที่ทำนาย → ค่าที่สังเกตได้จริง (ใช้ปรับเกณฑ์ด้วยมือ ไม่ปรับอัตโนมัติ) */
+async function calibrationReport(limit = 2000) {
+    let rows = [];
+    try {
+        const raw = await fsp.readFile(OUTCOMES_FILE, 'utf8');
+        rows = raw.trim().split('\n').slice(-limit).map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean);
+    } catch (_) {}
+    const counted = rows.filter((r) => r.observed && r.observed.counted && r.observed.complexity !== null);
+    const median = (a) => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); const m = Math.floor(b.length / 2); return b.length % 2 ? b[m] : Math.round((b[m - 1] + b[m]) / 2); };
+    const mean = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
+    const byTier = {};
+    for (const tier of ['low', 'medium', 'high', 'xhigh']) {
+        const g = counted.filter((r) => r.predicted.tier === tier);
+        byTier[tier] = {
+            n: g.length,
+            medianSteps: median(g.map((r) => r.observed.steps)),
+            medianMinutes: g.length ? Number((median(g.map((r) => r.observed.durationMs)) / 60000).toFixed(1)) : null,
+            meanObservedComplexity: mean(g.map((r) => r.observed.complexity)),
+            meanPredictedComplexity: mean(g.map((r) => r.predicted.complexity))
+        };
+    }
+    const under = counted.filter((r) => r.observed.complexity >= 70 && r.predicted.complexity < 50);
+    const over = counted.filter((r) => r.observed.complexity <= 30 && r.predicted.complexity >= 70);
+    const bySource = {};
+    for (const r of counted) {
+        const k = r.predicted.classifier || 'unknown';
+        (bySource[k] = bySource[k] || []).push(r.observed.complexity - r.predicted.complexity);
+    }
+    return {
+        ok: true,
+        outcomes: rows.length,
+        counted: counted.length,
+        byTier,
+        underEstimated: { n: under.length, rate: counted.length ? Number((under.length / counted.length).toFixed(3)) : null, examples: under.slice(-5).map((r) => ({ prompt: r.prompt, predicted: r.predicted.complexity, observed: r.observed.complexity })) },
+        overEstimated: { n: over.length, rate: counted.length ? Number((over.length / counted.length).toFixed(3)) : null, examples: over.slice(-5).map((r) => ({ prompt: r.prompt, predicted: r.predicted.complexity, observed: r.observed.complexity })) },
+        meanErrorBySource: Object.fromEntries(Object.entries(bySource).map(([k, v]) => [k, { n: v.length, meanObservedMinusPredicted: mean(v) }])),
+        note: 'observed complexity ประมาณจากจำนวนขั้นตอน+เวลา (ไม่ใช่ความยากจริง) — ใช้เป็นแนวโน้ม ต้องมีตัวอย่างหลักสิบขึ้นไปจึงน่าเชื่อถือ'
+    };
+}
+
 module.exports = {
     AUTO_MODEL_ID,
     CROSS_TEAM_MIN_COMPLEXITY,
     ROUTES,
     routeTask,
     classifyTask,
+    isShortcutText,
     buildCandidates,
     buildWorkerCandidates,
     normalizeWorkerFamily,
@@ -1111,6 +1215,8 @@ module.exports = {
     assessBudget,
     AGY_BIN,
     logDecision,
+    noteOutcome,
+    calibrationReport,
     readLog,
     listAgyAccounts,
     getAgyAccount,

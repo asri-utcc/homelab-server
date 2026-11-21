@@ -968,6 +968,8 @@ function executeAuto(params, onChunk, onDone) {
     let aborted = false;
     let innerHandle = null;
     let finished = false;
+    let routedDecision = null;   // ผลการจัดเส้นทาง (ใช้บันทึกผลจริงเทียบกับที่ทำนาย)
+    let observedSteps = 0;       // จำนวนขั้นตอน/เครื่องมือที่ใช้จริง (สูงสุดของทุกความพยายาม)
     const abort = () => {
         aborted = true;
         if (innerHandle) innerHandle.abort();
@@ -995,6 +997,24 @@ function executeAuto(params, onChunk, onDone) {
         persistJobToHistory({ ...job }).catch((e) => {
             console.error('[GeminiManager] Failed to persist auto job:', e.message);
         });
+        if (routedDecision) {
+            try {
+                aiRouter.noteOutcome({
+                    sessionId: sid,
+                    decision: routedDecision,
+                    steps: observedSteps,
+                    durationMs: Date.now() - placeholder.startedAt,
+                    ok: code === 0,
+                    // ผู้ใช้สั่งหยุด = ไม่นับเป็นความยากที่สังเกตได้ (เช็กทั้ง flag, รหัสออก และสถานะงาน — กระบวนการที่ถูก kill ไม่ได้คืน 130 เสมอไป)
+                    aborted: aborted || code === 130 || Boolean(job && job.status === 'aborted'),
+                    model: job && job.model,
+                    account: job && job.agyAccount,
+                    team: Boolean(routedDecision.teamPlan && routedDecision.teamPlan.enabled)
+                });
+            } catch (e) {
+                console.error('[GeminiManager] noteOutcome failed:', e.message);
+            }
+        }
         onDone(code, err);
         setTimeout(() => { processNextInQueue(); }, 600);
     };
@@ -1003,12 +1023,22 @@ function executeAuto(params, onChunk, onDone) {
         let decision;
         try {
             const meta0 = getSessionMetaSync(sid);
+            // บริบทแชทให้ตัวประเมินความยาก (ตัดข้อความปัจจุบันที่อาจถูกบันทึกไว้ก่อนแล้วออก)
+            let routeHistory = [];
+            try {
+                routeHistory = loadSessionMessagesSync(sid);
+                const lastMsg = routeHistory[routeHistory.length - 1];
+                if (lastMsg && lastMsg.role === 'user' && lastMsg.content === params.prompt) routeHistory = routeHistory.slice(0, -1);
+            } catch (_) {}
             decision = await aiRouter.routeTask({
                 prompt: params.prompt,
                 hasImages: images.length > 0,
                 source: 'chat',
-                sessionAccount: (meta0 && meta0.agyAccount) || null
+                sessionAccount: (meta0 && meta0.agyAccount) || null,
+                sessionId: sid,
+                history: routeHistory
             });
+            routedDecision = decision;
         } catch (err) {
             decision = { ok: false, candidates: [], error: err.message };
         }
@@ -1048,6 +1078,7 @@ function executeAuto(params, onChunk, onDone) {
                 }, (type, payload) => {
                     if (type === 'thought' && payload && typeof payload === 'object') {
                         maxSteps = Math.max(maxSteps, payload.stepsCount || 0);
+                        observedSteps = Math.max(observedSteps, maxSteps);
                     }
                     if (type === 'stderr') {
                         stderrTail = (stderrTail + String(payload || '')).slice(-4000);

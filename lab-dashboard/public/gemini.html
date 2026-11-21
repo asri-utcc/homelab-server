@@ -4267,7 +4267,15 @@ body::before {
     function syncModelTriggerUI() {
       if (!selModel) return;
       const curId = selModel.value || 'auto';
-      const curName = selModel.selectedIndex >= 0 ? selModel.options[selModel.selectedIndex].text : curId;
+      let curName = selModel.selectedIndex >= 0 ? selModel.options[selModel.selectedIndex].text : curId;
+      {
+        const l = curId.toLowerCase();
+        const ra = (window.agyState?.accounts || []).filter(a => a.ready);
+        if (ra.length > 1 && l !== 'auto' && !l.startsWith('deepseek-') && !l.startsWith('claude-code-')) {
+          const cur = ra.find(a => a.id === window.agyState.chosen) || ra[0];
+          curName += ' · ' + cur.label;
+        }
+      }
       const vis = getModelVisual(curId);
       const q = getModelQuotaInfo(curId);
       const pctText = q.isAuto ? 'AUTO' : q.isDeepSeek
@@ -4332,7 +4340,23 @@ body::before {
         }
       }
 
-      const filtered = opts.filter(m => {
+      const readyAccsAll = (window.agyState?.accounts || []).filter(a => a.ready);
+      const effChosen = (window.agyState?.chosen) || (readyAccsAll[0] && readyAccsAll[0].id) || '';
+      const isAccountable = (id) => {
+        const l = (id || '').toLowerCase();
+        return l !== 'auto' && !l.startsWith('deepseek-') && !l.startsWith('claude-code-');
+      };
+      // โมเดล Google/Antigravity: แตกการ์ดแยกตามบัญชี (Google#1, Google#2) ให้เลือกเฉลี่ยโทเคนได้
+      const expanded = [];
+      opts.forEach(m => {
+        if (readyAccsAll.length > 1 && isAccountable(m.id)) {
+          readyAccsAll.forEach(a => expanded.push({ id: m.id, baseName: m.name, name: `${m.name} · ${a.label}`, acc: a.id, accLabel: a.label }));
+        } else {
+          expanded.push({ id: m.id, baseName: m.name, name: m.name, acc: '', accLabel: '' });
+        }
+      });
+
+      const filtered = expanded.filter(m => {
         const vis = getModelVisual(m.id);
         if (activeModelFamily !== 'all' && vis.family !== activeModelFamily) return false;
         if (qText && !m.name.toLowerCase().includes(qText) && !m.id.toLowerCase().includes(qText)) return false;
@@ -4347,8 +4371,8 @@ body::before {
       modelPickerGrid.innerHTML = '';
       filtered.forEach(m => {
         const vis = getModelVisual(m.id);
-        const q = getModelQuotaInfo(m.id);
-        const isSelected = m.id === curId;
+        const q = getModelQuotaInfo(m.id, m.acc || undefined);
+        const isSelected = m.id === curId && (!m.acc || m.acc === effChosen);
         const pct = q.remainingPct !== null ? q.remainingPct : 100;
         const barCol = q.isDeepSeek
           ? (q.dsAvailable ? '#22d3ee' : '#ef4444')
@@ -4364,9 +4388,9 @@ body::before {
               ? `5H ${q.fiveHour.remainingPct}% · Wk ${q.weekly.remainingPct}%`
               : `คงเหลือ ${q.remainingPct !== null ? pct + '%' : 'ไม่ทราบ'}`));
 
-        const readyAccs = (window.agyState?.accounts || []).filter(a => a.ready);
-        const multiAcc = readyAccs.length > 1 && !q.isAuto && !q.isDeepSeek && !q.isClaudeSub;
-        const chosenAcc = window.agyState?.chosen || '';
+        const readyAccs = m.acc ? readyAccsAll.filter(a => a.id === m.acc) : [];
+        const multiAcc = readyAccs.length > 0 && !q.isAuto && !q.isDeepSeek && !q.isClaudeSub;
+        const chosenAcc = effChosen;
         const quotaBlockHtml = multiAcc
           ? readyAccs.map(a => {
               const qa = getModelQuotaInfo(m.id, a.id);
@@ -4415,8 +4439,14 @@ body::before {
           ${quotaBlockHtml}
         `;
         btn.addEventListener('click', () => {
+          const st = window.agyState;
+          if (st) {
+            st.chosen = m.acc || '';
+            try { localStorage.setItem('agy_account', st.chosen); } catch (_) {}
+          }
           selModel.value = m.id;
           selModel.dispatchEvent(new Event('change'));
+          window.dispatchEvent(new Event('agy-changed'));
           closeModelPickerModal();
         });
         modelPickerGrid.appendChild(btn);
@@ -5152,6 +5182,13 @@ body::before {
       const modelTag = document.getElementById('ai-hud-model-tag');
       if (modelTag && selModel.selectedIndex >= 0) {
         modelTag.textContent = selModel.options[selModel.selectedIndex].text;
+      }
+      {
+        const l = (selModel.value || '').toLowerCase();
+        if (window.agyState && window.agyState.chosen && (l === 'auto' || l.startsWith('deepseek-') || l.startsWith('claude-code-'))) {
+          window.agyState.chosen = '';
+          try { localStorage.setItem('agy_account', ''); } catch (_) {}
+        }
       }
       applyCoreBranding();
     });

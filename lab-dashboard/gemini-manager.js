@@ -1001,7 +1001,13 @@ function executeAuto(params, onChunk, onDone) {
     (async () => {
         let decision;
         try {
-            decision = await aiRouter.routeTask({ prompt: params.prompt, hasImages: images.length > 0, source: 'chat' });
+            const meta0 = getSessionMetaSync(sid);
+            decision = await aiRouter.routeTask({
+                prompt: params.prompt,
+                hasImages: images.length > 0,
+                source: 'chat',
+                sessionAccount: (meta0 && meta0.agyAccount) || null
+            });
         } catch (err) {
             decision = { ok: false, candidates: [], error: err.message };
         }
@@ -1036,6 +1042,7 @@ function executeAuto(params, onChunk, onDone) {
                     model: c.model,
                     agyAccount: c.engine === 'agy' ? c.account : null,
                     routeBanner: banner,
+                    routerDirective: aiRouter.directiveFor(decision, c),
                     deferPersist: true
                 }, (type, payload) => {
                     if (type === 'thought' && payload && typeof payload === 'object') {
@@ -1105,7 +1112,7 @@ function executeAuto(params, onChunk, onDone) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false }, onChunk, onDone) {
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '' }, onChunk, onDone) {
     if (model === aiRouter.AUTO_MODEL_ID) {
         return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession }, onChunk, onDone);
     }
@@ -1119,9 +1126,11 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         .map((img) => (typeof img === 'string' ? img : img && img.path))
         .filter((p) => p && fs.existsSync(p));
 
+    // routerDirective (AI Router subagent plan) goes to the CLI only — history keeps the user's own prompt
+    const directedPrompt = routerDirective ? `${routerDirective}\n\n${prompt}` : prompt;
     const cliPrompt = imagePaths.length > 0
-        ? `[ผู้ใช้งานแนบรูปภาพมาด้วย กรุณาอ่าน/ดูไฟล์รูปภาพต่อไปนี้ก่อนตอบคำถาม:\n${imagePaths.map((p) => `- ${p}`).join('\n')}\n]\n\n${prompt}`
-        : prompt;
+        ? `[ผู้ใช้งานแนบรูปภาพมาด้วย กรุณาอ่าน/ดูไฟล์รูปภาพต่อไปนี้ก่อนตอบคำถาม:\n${imagePaths.map((p) => `- ${p}`).join('\n')}\n]\n\n${directedPrompt}`
+        : directedPrompt;
 
     // Sanitize cwd
     let safeCwd = PROJECTS_BASE;

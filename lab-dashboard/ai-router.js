@@ -6,9 +6,11 @@
  * 🧠 AI Router (สมองกลาง) — เลือกโมเดล/บัญชีให้อัตโนมัติ
  * Design: docs/ai-router.md
  *
- *  1. classifyTask()    : Gemini 3.8 Flash Low อ่านงาน → {type, level, needs_tools, reason}
- *  2. ROUTES            : type:level → รายชื่อโมเดลเรียงจากเก่งไปหาด้อย
- *  3. buildCandidates() : ขยายเป็นทุกบัญชี + กรองตามโควตา (subscription ก่อน, DeepSeek สุดท้าย)
+ *  1. classifyTask()    : Flash Low → {type, complexity 0–100, risk, parallelizable, subtasks} → tier ต่ำ/กลาง/สูง/สูงมาก
+ *  2. MODEL_FAMILIES    : คะแนนความเก่งต่อประเภทงาน + ต้นทุนโควตา ของแต่ละโมเดล
+ *  3. buildCandidates() : ให้คะแนนทุก (โมเดล × บัญชี × effort) ด้วย pace 5h/weekly, load balance, stickiness
+ *                         (subscription เรียงตามคะแนน, DeepSeek ต่อท้ายเสมอ)
+ *  4. planSubagents()   : งานที่แบ่งขนานได้ → แนบคำสั่งให้ agy/Claude Code แตก subagent เอง
  *
  * Used by gemini-manager.js (chat 'auto' model) and server.js (/api/ai-router/* for cron).
  */
@@ -36,41 +38,43 @@ const QUOTA_TTL_MS = 90 * 1000;
 const CLASSIFY_TTL_MS = 2 * 60 * 60 * 1000;
 const DEEPSEEK_MIN_BALANCE = 0.1;
 
-// ── ② ตารางเส้นทาง: เรียงจากเก่ง → ด้อย (DeepSeek ถูกย้ายไปท้ายสุดเสมอ) ─────────
+// ── ② แคตตาล็อกโมเดล (v2): คะแนนความเก่งต่อประเภทงาน + ต้นทุนโควตา ─────────────
+// q = คุณภาพที่ effort "medium" (0–100) · cost = น้ำหนักการกินโควตา (1 = เบา)
+// Router ให้คะแนนทุก (โมเดล × บัญชี × effort) แล้วเรียงเอง ไม่ใช้ตารางลำดับตายตัวแล้ว
+const MODEL_FAMILIES = [
+    { id: 'claude-opus', engine: 'agy', label: 'Claude Opus 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-opus-5-5-', q: { code: 97, analysis: 94, chat: 90 }, cost: 3 },
+    { id: 'claude-sonnet', engine: 'agy', label: 'Claude Sonnet 5.5', variants: ['low', 'medium', 'high'], prefix: 'claude-sonnet-5-5-', q: { code: 91, analysis: 87, chat: 88 }, cost: 2 },
+    { id: 'gemini-hydrogen', engine: 'agy', label: 'Gemini 4 Hydrogen', variants: ['low', 'medium', 'high', 'xhigh'], prefix: 'gemini-4-hydrogen-', q: { code: 86, analysis: 95, chat: 89 }, cost: 2 },
+    { id: 'gemini-flash', engine: 'agy', label: 'Gemini 3.8 Flash', variants: ['low', 'medium', 'high'], prefix: 'gemini-3.8-flash-', q: { code: 72, analysis: 74, chat: 82 }, cost: 1 },
+    { id: 'claude-code-opus', engine: 'claude-code', label: 'Claude Code · Opus', variants: [null], model: 'claude-code-opus', q: { code: 98, analysis: 94, chat: 90 }, cost: 3 },
+    { id: 'claude-code-sonnet', engine: 'claude-code', label: 'Claude Code · Sonnet', variants: [null], model: 'claude-code-sonnet', q: { code: 92, analysis: 87, chat: 88 }, cost: 2 },
+    { id: 'claude-code-haiku', engine: 'claude-code', label: 'Claude Code · Haiku', variants: [null], model: 'claude-code-haiku', q: { code: 72, analysis: 70, chat: 80 }, cost: 1 }
+];
+const DEEPSEEK_MODELS = [
+    { model: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', q: 86, vision: false },
+    { model: 'deepseek-flash', label: 'DeepSeek V4.1 Flash', q: 74, vision: true }
+];
 const ROUTES = {
-    'code:3': ['claude-opus-5-5-high', 'claude-code-opus', 'gemini-4-hydrogen-high', 'claude-sonnet-5-5-high', 'deepseek-v4-pro'],
-    'code:2': ['claude-sonnet-5-5-high', 'gemini-4-hydrogen-medium', 'claude-code-sonnet', 'claude-opus-5-5-medium', 'deepseek-v4-pro'],
-    'code:1': ['claude-sonnet-5-5-medium', 'gemini-3.8-flash-high', 'claude-code-sonnet', 'deepseek-flash'],
-    'analysis:3': ['gemini-4-hydrogen-xhigh', 'claude-opus-5-5-high', 'claude-code-opus', 'gemini-4-argon-high', 'deepseek-v4-pro'],
-    'analysis:2': ['gemini-4-hydrogen-high', 'claude-sonnet-5-5-high', 'claude-code-sonnet', 'deepseek-v4-pro'],
-    'analysis:1': ['gemini-4-hydrogen-medium', 'gemini-3.8-flash-high', 'claude-code-haiku', 'deepseek-flash'],
-    'chat:3': ['gemini-4-hydrogen-high', 'claude-sonnet-5-5-medium', 'claude-code-sonnet', 'deepseek-v4-pro'],
-    'chat:2': ['gemini-3.8-flash-medium', 'gemini-4-hydrogen-low', 'claude-sonnet-5-5-low', 'claude-code-haiku', 'deepseek-flash'],
-    'chat:1': ['gemini-3.8-flash-low', 'gemini-3.8-flash-medium', 'claude-code-haiku', 'deepseek-flash'],
-    'quick:1': ['gemini-3.8-flash-low', 'gemini-3.8-flash-medium', 'claude-code-haiku', 'deepseek-flash']
+    families: MODEL_FAMILIES.map(({ id, engine, label, variants, q, cost }) => ({ id, engine, label, variants, q, cost })),
+    paid: DEEPSEEK_MODELS.map(({ model, q }) => ({ model, q }))
 };
 const TYPES = ['code', 'analysis', 'chat', 'quick'];
 
-const MODEL_LABELS = {
-    'claude-opus-5-5-high': 'Claude Opus 5.5 (High)',
-    'claude-opus-5-5-medium': 'Claude Opus 5.5 (Medium)',
-    'claude-sonnet-5-5-high': 'Claude Sonnet 5.5 (High)',
-    'claude-sonnet-5-5-medium': 'Claude Sonnet 5.5 (Medium)',
-    'claude-sonnet-5-5-low': 'Claude Sonnet 5.5 (Low)',
-    'gemini-4-hydrogen-xhigh': 'Gemini 4 Hydrogen (XHigh)',
-    'gemini-4-hydrogen-high': 'Gemini 4 Hydrogen (High)',
-    'gemini-4-hydrogen-medium': 'Gemini 4 Hydrogen (Medium)',
-    'gemini-4-hydrogen-low': 'Gemini 4 Hydrogen (Low)',
-    'gemini-4-argon-high': 'Gemini 4 Argon (High)',
-    'gemini-3.8-flash-high': 'Gemini 3.8 Flash (High)',
-    'gemini-3.8-flash-medium': 'Gemini 3.8 Flash (Medium)',
-    'gemini-3.8-flash-low': 'Gemini 3.8 Flash (Low)',
-    'claude-code-opus': 'Claude Code · Opus',
-    'claude-code-sonnet': 'Claude Code · Sonnet',
-    'claude-code-haiku': 'Claude Code · Haiku',
-    'deepseek-v4-pro': 'DeepSeek V4 Pro',
-    'deepseek-flash': 'DeepSeek V4.1 Flash'
-};
+// ระดับความสำคัญ/ความพยายาม 4 ขั้น
+const TIERS = ['low', 'medium', 'high', 'xhigh'];
+const TIER_TH = { low: 'ต่ำ', medium: 'กลาง', high: 'สูง', xhigh: 'สูงมาก' };
+const TIER_TARGET_Q = { low: 72, medium: 84, high: 91, xhigh: 96 };
+const EFFORT_Q = { low: -6, medium: 0, high: 4, xhigh: 7 };
+const EFFORT_COST = { low: 0.6, medium: 1, high: 1.5, xhigh: 2.2 };
+
+const MODEL_LABELS = {};
+for (const f of MODEL_FAMILIES) {
+    for (const v of f.variants) {
+        const id = f.model || `${f.prefix}${v}`;
+        MODEL_LABELS[id] = v ? `${f.label} (${v === 'xhigh' ? 'XHigh' : v[0].toUpperCase() + v.slice(1)})` : f.label;
+    }
+}
+for (const d of DEEPSEEK_MODELS) MODEL_LABELS[d.model] = d.label;
 
 const CODE_HINT_RE = /code|โค้ด|bug|บั๊ก|แก้|fix|script|สคริปต์|deploy|config|\.js|\.py|function|error|api|sql|docker|pm2|git/i;
 // Go runtime crash before the CLI even starts — on this host that means a RAM bit flip in the
@@ -310,12 +314,141 @@ function deepseekUsable(ds) {
     return Boolean(ds.isAvailable) && parseFloat(ds.totalBalance || '0') > DEEPSEEK_MIN_BALANCE;
 }
 
+// ── ③ Budget & Pace Engine ────────────────────────────────────────────────────
+// surplus = (% ที่เหลือ) − (% เวลาที่เหลือก่อนรีเซ็ต)
+//   > 0 → ใช้ช้ากว่างบ (เหลือเฟือ) · < 0 → ใช้เร็วเกินงบ ต้องถนอม
+// ใช้หน้าต่างที่ "ตึงที่สุด" (surplus ต่ำสุด) เป็นตัวตัดสิน
+const WINDOW_MS = { '5h': 5 * 3600 * 1000, weekly: 7 * 24 * 3600 * 1000 };
+const BOOST_SURPLUS = 0.2;
+const CONSERVE_SURPLUS = -0.15;
+const NEAR_RESET_FRAC = 0.2;
+const NEAR_RESET_MIN_PCT = 30;
+const BUDGET_TH = { boost: '🟢 ฟุ่มเฟือยได้', normal: '🔵 ปกติ', conserve: '🟡 ถนอม', unknown: '⚪ ไม่ทราบโควตา' };
+
+function windowPace(name, w) {
+    if (!w || typeof w.remainingPct !== 'number') return null;
+    const R = w.remainingPct;
+    const resetMs = w.resetTime ? Date.parse(w.resetTime) : NaN;
+    // รอบที่ยังไม่เริ่มนับ (ไม่มีเวลารีเซ็ต + เต็ม) ไม่ใช่ข้อจำกัด
+    if (Number.isNaN(resetMs) && R >= 99) return null;
+    const len = WINDOW_MS[name] || WINDOW_MS['5h'];
+    const timeLeftFrac = Number.isNaN(resetMs) ? 0.5 : Math.max(0, Math.min(1, (resetMs - Date.now()) / len));
+    return {
+        name,
+        remainingPct: R,
+        timeLeftFrac: Number(timeLeftFrac.toFixed(3)),
+        hoursLeft: Number.isNaN(resetMs) ? null : Number(((resetMs - Date.now()) / 3600000).toFixed(1)),
+        surplus: Number((R / 100 - timeLeftFrac).toFixed(3))
+    };
+}
+
+function assessBudget(windows) {
+    const paces = windows.map(([n, w]) => windowPace(n, w)).filter(Boolean);
+    if (!paces.length) return { mode: 'normal', surplus: 0, remainingPct: 100, windows: [] };
+    const binding = paces.reduce((a, b) => (b.surplus < a.surplus ? b : a));
+    const remainingPct = Math.min(...paces.map((p) => p.remainingPct));
+    // แต่ละหน้าต่างตัดสินโหมดของตัวเอง: หน้าต่างไหนใช้เกินงบ → ถนอมทั้ง pool
+    // ไม่มีหน้าต่างไหนเกินงบ + มีหน้าต่างที่เหลือเฟือ/ใกล้รีเซ็ตแต่ยังเหลือเยอะ → ฟุ่มเฟือยได้
+    const modeOf = (p) => {
+        if (p.surplus < CONSERVE_SURPLUS) return 'conserve';
+        if (p.surplus >= BOOST_SURPLUS) return 'boost';
+        if (p.timeLeftFrac < NEAR_RESET_FRAC && p.remainingPct >= NEAR_RESET_MIN_PCT) return 'boost';
+        return 'normal';
+    };
+    const modes = paces.map(modeOf);
+    let mode = 'normal';
+    if (modes.includes('conserve')) mode = 'conserve';
+    else if (modes.includes('boost')) mode = 'boost';
+    const boostWin = paces.find((p, i) => modes[i] === 'boost');
+    // โหมด boost ใช้ surplus ของหน้าต่างที่เหลือเฟือ (ไม่ให้ 5h ที่เพิ่งเริ่มกดคะแนนลง)
+    const surplus = mode === 'boost' && boostWin ? Math.max(binding.surplus, Math.min(boostWin.surplus, BOOST_SURPLUS)) : binding.surplus;
+    return { mode, surplus: Number(surplus.toFixed(3)), remainingPct, binding: binding.name, windows: paces };
+}
+
+/** งบของ pool agy (gemini / claude / argon) ในบัญชีหนึ่ง; null = ใช้ไม่ได้ */
+function agyPoolBudget(quota, model) {
+    if (!quota || !quota.ok) {
+        if (quota && quota.authError) return null;
+        return { mode: 'unknown', surplus: -0.1, remainingPct: FALLBACK_UNKNOWN_PCT, windows: [] };
+    }
+    const poolId = agyPoolId(model);
+    const pool = (quota.pools || []).find((p) => p.id === poolId);
+    if (!pool) {
+        if ((quota.unavailablePools || []).some((p) => p.id === poolId)) return null;
+        return { mode: 'unknown', surplus: -0.1, remainingPct: FALLBACK_UNKNOWN_PCT, windows: [] };
+    }
+    const windows = (pool.fiveHour || pool.weekly)
+        ? [['5h', pool.fiveHour], ['weekly', pool.weekly]]
+        : [['5h', { remainingPct: pool.remainingPct, resetTime: pool.resetTime }]];
+    return assessBudget(windows);
+}
+
+function claudeProBudget(cw) {
+    const pct = claudeProRemainingPct(cw);
+    if (pct === null) return null;
+    if (!cw || !cw.ok) return { mode: 'unknown', surplus: -0.1, remainingPct: pct, windows: [] };
+    return assessBudget([['5h', cw.fiveHour], ['weekly', cw.weekly]]);
+}
+
+// ── Load balancer: งานที่เพิ่งส่งไปแต่ละ pool ใน 30 นาทีล่าสุด ────────────────────
+const RECENT_WINDOW_MS = 30 * 60 * 1000;
+const recentPicks = new Map(); // poolKey -> [ts]
+
+function poolKey(c) {
+    return c.engine === 'agy' ? `agy@${c.account}:${agyPoolId(c.model)}` : c.engine;
+}
+
+function recentLoad(key) {
+    const now = Date.now();
+    const list = (recentPicks.get(key) || []).filter((t) => now - t < RECENT_WINDOW_MS);
+    recentPicks.set(key, list);
+    return list.length;
+}
+
+function notePick(c) {
+    if (!c || c.paid) return;
+    const key = poolKey(c);
+    recentLoad(key);
+    recentPicks.get(key).push(Date.now());
+}
+
+// ── Scoring ───────────────────────────────────────────────────────────────────
+const MODE_THRIFT = { boost: 0.25, normal: 1, conserve: 2.2, unknown: 1.3 };
+
+function pickEffort(family, tier, mode) {
+    if (family.variants.length === 1) return family.variants[0];
+    const shift = mode === 'boost' ? 1 : (mode === 'conserve' ? -1 : 0);
+    const want = Math.max(0, Math.min(TIERS.length - 1, TIERS.indexOf(tier) + shift));
+    // เลือก variant ที่ใกล้ระดับที่ต้องการที่สุด (ไม่เกินที่มี)
+    let best = family.variants[0];
+    for (const v of family.variants) {
+        if (TIERS.indexOf(v) <= want) best = v;
+    }
+    return best;
+}
+
+function scoreCandidate({ family, effort, budget, qType, tier, sticky, load }) {
+    const q = family.q[qType] + (effort ? EFFORT_Q[effort] : 0);
+    const target = TIER_TARGET_Q[tier];
+    const under = Math.max(0, target - q) * 4;                       // อ่อนเกินงาน → โทษหนัก
+    const costW = family.cost * (effort ? EFFORT_COST[effort] : 1);
+    const over = Math.max(0, q - target) * 0.6 * costW * (MODE_THRIFT[budget.mode] || 1); // เกินงาน → เปลืองโควตา
+    const budgetScore = budget.surplus * 30 + (budget.remainingPct < PRIMARY_THRESHOLD ? -15 : 0);
+    const loadScore = -4 * Math.min(4, load);
+    const stickyScore = sticky ? 6 : 0;
+    const total = q * 0.5 + budgetScore + loadScore + stickyScore - under - over;
+    return {
+        total: Number(total.toFixed(1)),
+        parts: { q, under: Number(under.toFixed(1)), over: Number(over.toFixed(1)), budget: Number(budgetScore.toFixed(1)), load: loadScore, sticky: stickyScore }
+    };
+}
+
 /**
- * รายชื่อผู้สมัครเรียงตามลำดับที่ควรลอง:
- *   (เหลือ > 20%) → (เหลือ 5–20%) → DeepSeek (ถ้ามียอดเงิน)
+ * ผู้สมัครทุกตัว (โมเดล × บัญชี × effort) เรียงตามคะแนน · DeepSeek ต่อท้ายเสมอ
  */
-async function buildCandidates(routeKey, { hasImages = false } = {}) {
-    const row = ROUTES[routeKey] || ROUTES['chat:2'];
+async function buildCandidates(cls, { hasImages = false, sessionAccount = null, modeOverride = null } = {}) {
+    const tier = cls.tier || 'medium';
+    const qType = cls.type === 'quick' ? 'chat' : cls.type;
     const accounts = listAgyAccounts().filter((a) => a.ready);
     const quotas = {};
     const [, provQuotas] = await Promise.all([
@@ -326,36 +459,40 @@ async function buildCandidates(routeKey, { hasImages = false } = {}) {
     const claudeWebInfo = (quotas.g1 && quotas.g1.claudeWeb) || (provQuotas && provQuotas.claudeWeb) || null;
 
     const subs = [];
-    const paid = [];
-    for (const model of row) {
-        const engine = engineOf(model);
-        if (engine === 'agy') {
+    const consider = (family, base, budget) => {
+        if (!budget || budget.remainingPct <= MIN_THRESHOLD) return;
+        if (modeOverride) budget = { ...budget, mode: modeOverride };
+        const effort = pickEffort(family, tier, budget.mode);
+        const model = family.model || `${family.prefix}${effort}`;
+        const cand = { ...base, model, engine: family.engine };
+        if (isInCooldown(cand)) return;
+        const score = scoreCandidate({
+            family, effort, budget, qType, tier,
+            sticky: family.engine === 'agy' && sessionAccount && base.account === sessionAccount,
+            load: recentLoad(poolKey(cand))
+        });
+        subs.push({ ...cand, family: family.id, effort, remainingPct: budget.remainingPct, budget, score: score.total, scoreParts: score.parts });
+    };
+
+    for (const family of MODEL_FAMILIES) {
+        if (family.engine === 'agy') {
             for (const acc of accounts) {
-                const cand = { model, engine, account: acc.id, accountLabel: acc.label, home: acc.home };
-                if (isInCooldown(cand)) continue;
-                const pct = agyRemainingPct(quotas[acc.id], model);
-                if (pct === null) continue;
-                subs.push({ ...cand, remainingPct: pct });
+                const probeModel = `${family.prefix}${family.variants[0]}`;
+                consider(family, { account: acc.id, accountLabel: acc.label, home: acc.home }, agyPoolBudget(quotas[acc.id], probeModel));
             }
-        } else if (engine === 'claude-code') {
-            const cand = { model, engine, account: 'claude-pro', accountLabel: 'Claude Pro' };
-            if (isInCooldown(cand)) continue;
-            const pct = claudeProRemainingPct(claudeWebInfo);
-            if (pct === null) continue;
-            subs.push({ ...cand, remainingPct: pct });
         } else {
-            paid.push(hasImages ? 'deepseek-flash' : model);
+            consider(family, { account: 'claude-pro', accountLabel: 'Claude Pro' }, claudeProBudget(claudeWebInfo));
         }
     }
-
-    const tier1 = subs.filter((c) => c.remainingPct > PRIMARY_THRESHOLD);
-    const tier2 = subs.filter((c) => c.remainingPct > MIN_THRESHOLD && c.remainingPct <= PRIMARY_THRESHOLD);
-    const out = [...tier1, ...tier2];
+    subs.sort((a, b) => b.score - a.score);
+    const out = [...subs];
 
     if (deepseekUsable(deepseekInfo)) {
-        const ds = deepseekInfo;
-        for (const model of [...new Set(paid.length ? paid : ['deepseek-flash'])]) {
-            const dsCand = { model, engine: 'deepseek', account: 'deepseek', accountLabel: 'DeepSeek (จ่ายตามใช้)', balance: ds.totalBalance, paid: true };
+        const order = hasImages
+            ? DEEPSEEK_MODELS.filter((d) => d.vision)
+            : (TIERS.indexOf(tier) >= 2 ? DEEPSEEK_MODELS : [...DEEPSEEK_MODELS].reverse());
+        for (const d of order) {
+            const dsCand = { model: d.model, engine: 'deepseek', account: 'deepseek', accountLabel: 'DeepSeek (จ่ายตามใช้)', balance: deepseekInfo.totalBalance, paid: true };
             if (isInCooldown(dsCand)) continue;
             out.push(dsCand);
         }
@@ -363,16 +500,25 @@ async function buildCandidates(routeKey, { hasImages = false } = {}) {
     return out.map((c) => ({ ...c, label: modelLabel(c.model) }));
 }
 
-// ── ① คัดงาน ──────────────────────────────────────────────────────────────────
+// ── ① คัดงาน (v2): ความยาก 0–100 · ความเสี่ยง · แบ่งงานขนานได้ไหม ────────────────
 const classifyCache = new Map(); // hash -> { at, result }
+const CLASSIFIER_VERSION = 'v2';
+const GREETING_RE = /^(สวัสดี|หวัดดี|hello|hi|hey|ขอบคุณ|thanks?|thank you|ok|โอเค|ครับ|ค่ะ|ดีมาก|เยี่ยม)/i;
+const TIER_TAG_RE = /#(สูงมาก|สูง|กลาง|ต่ำ|xhigh|high|medium|low)(?![\p{L}\p{M}\p{N}_])/iu;
+const MODE_TAG_RE = /#(ประหยัด|ถนอม|เต็มที่|ฟุ่มเฟือย|conserve|boost)(?![\p{L}\p{M}\p{N}_])/iu;
+const TIER_FROM_TAG = { 'สูงมาก': 'xhigh', 'สูง': 'high', 'กลาง': 'medium', 'ต่ำ': 'low', xhigh: 'xhigh', high: 'high', medium: 'medium', low: 'low' };
+const MODE_FROM_TAG = { 'ประหยัด': 'conserve', 'ถนอม': 'conserve', conserve: 'conserve', 'เต็มที่': 'boost', 'ฟุ่มเฟือย': 'boost', boost: 'boost' };
 
 function buildClassifierPrompt(prompt) {
     return [
-        'You are a task router. Do NOT use any tools. Classify the task below and reply with ONLY one line of JSON:',
-        '{"type":"code|analysis|chat|quick","level":1|2|3,"needs_tools":true|false,"reason":"<short Thai reason>"}',
+        'You are a task router. Do NOT use any tools. Analyse the task below and reply with ONLY one line of JSON:',
+        '{"type":"code|analysis|chat|quick","complexity":0-100,"risk":0-100,"needs_tools":true|false,"parallelizable":true|false,"subtasks":0-6,"reason":"<short Thai reason>"}',
         'type: code=write/fix/refactor code or edit config files; analysis=plan, design, investigate, compare, research, debug a system;',
         'chat=general Q&A or explanation; quick=greeting, one-liner, simple status check (e.g. electricity usage today).',
-        'level: 1=trivial, 2=moderate, 3=hard/multi-step/multi-file.',
+        'complexity: 0-20 trivial, 21-45 simple, 46-70 moderate/multi-step, 71-90 hard multi-file or deep reasoning, 91-100 very hard/critical.',
+        'risk: how much damage a mistake could do to a running production system (0 none, 100 could break core services or data).',
+        'parallelizable: true only if the work splits into 2+ independent pieces (e.g. investigate several services, read many files, compare several options) that separate agents could do at the same time.',
+        'subtasks: how many independent pieces (0 if not parallelizable).',
         'TASK:',
         '"""',
         String(prompt).slice(0, 4000),
@@ -380,20 +526,52 @@ function buildClassifierPrompt(prompt) {
     ].join('\n');
 }
 
+function clampInt(v, lo, hi, dflt) {
+    const n = parseInt(v, 10);
+    return Number.isNaN(n) ? dflt : Math.max(lo, Math.min(hi, n));
+}
+
+function levelFromComplexity(c) {
+    return c < 35 ? 1 : (c < 70 ? 2 : 3);
+}
+
+function tierFromScores(type, complexity, risk, needsTools) {
+    if (type === 'quick') return 'low';
+    const s = complexity + risk * 0.25 + (type === 'code' && needsTools ? 5 : 0);
+    if (s < 35) return 'low';
+    if (s < 60) return 'medium';
+    if (s < 82) return 'high';
+    return 'xhigh';
+}
+
+function normalizeClassification(obj) {
+    const type = TYPES.includes(obj.type) ? obj.type : null;
+    if (!type) return null;
+    // รองรับผลแบบเก่า (level 1–3) ด้วย
+    const complexity = obj.complexity !== undefined
+        ? clampInt(obj.complexity, 0, 100, 50)
+        : ({ 1: 25, 2: 55, 3: 80 }[clampInt(obj.level, 1, 3, 2)]);
+    const risk = clampInt(obj.risk, 0, 100, 20);
+    const needsTools = Boolean(obj.needs_tools);
+    const parallelizable = Boolean(obj.parallelizable) && type !== 'quick';
+    return {
+        type,
+        complexity: type === 'quick' ? Math.min(complexity, 20) : complexity,
+        risk,
+        level: type === 'quick' ? 1 : levelFromComplexity(complexity),
+        needs_tools: needsTools,
+        parallelizable,
+        subtasks: parallelizable ? clampInt(obj.subtasks, 2, 6, 2) : 0,
+        tier: tierFromScores(type, complexity, risk, needsTools),
+        reason: String(obj.reason || '').slice(0, 160)
+    };
+}
+
 function parseClassification(text) {
     const m = String(text || '').match(/\{[^{}]*"type"[^{}]*\}/);
     if (!m) return null;
     try {
-        const obj = JSON.parse(m[0]);
-        const type = TYPES.includes(obj.type) ? obj.type : null;
-        const level = Math.max(1, Math.min(3, parseInt(obj.level, 10) || 0));
-        if (!type || !level) return null;
-        return {
-            type,
-            level: type === 'quick' ? 1 : level,
-            needs_tools: Boolean(obj.needs_tools),
-            reason: String(obj.reason || '').slice(0, 160)
-        };
+        return normalizeClassification(JSON.parse(m[0]));
     } catch (_) {
         return null;
     }
@@ -435,29 +613,76 @@ async function runClassifier(prompt, account) {
 
 async function classifyTask(prompt) {
     const text = String(prompt || '').trim();
-    if (text.length <= 40 && !CODE_HINT_RE.test(text)) {
-        return { type: 'quick', level: 1, needs_tools: false, reason: 'ข้อความสั้น (ทางลัด ไม่เรียกตัวคัดงาน)', source: 'shortcut' };
+    if ((text.length <= 20 && !CODE_HINT_RE.test(text)) || (text.length <= 40 && GREETING_RE.test(text) && !CODE_HINT_RE.test(text))) {
+        return { ...normalizeClassification({ type: 'quick', complexity: 5, risk: 0 }), reason: 'ข้อความสั้น/ทักทาย (ทางลัด ไม่เรียกตัวคัดงาน)', source: 'shortcut' };
     }
-    const hash = crypto.createHash('sha1').update(text).digest('hex');
+    const hash = crypto.createHash('sha1').update(CLASSIFIER_VERSION + text).digest('hex');
     const hit = classifyCache.get(hash);
     if (hit && Date.now() - hit.at < CLASSIFY_TTL_MS) return { ...hit.result, source: 'cache' };
 
-    // ใช้บัญชี Google ตัวแรกที่พร้อมใช้และ pool gemini ยังไม่หมด
-    let result = null;
-    for (const acc of listAgyAccounts().filter((a) => a.ready)) {
+    // ตัวคัดงานใช้บัญชี Google ที่ pool gemini เหลือมากสุดก่อน (กระจายโหลดด้วย)
+    const accs = listAgyAccounts().filter((a) => a.ready);
+    const ranked = [];
+    for (const acc of accs) {
         if (isInCooldown({ engine: 'agy', account: acc.id, model: CLASSIFIER_MODEL })) continue;
         const pct = agyRemainingPct(await getAccountQuota(acc.id), CLASSIFIER_MODEL);
         if (pct === null || pct <= MIN_THRESHOLD) continue;
+        ranked.push({ acc, pct });
+    }
+    ranked.sort((a, b) => b.pct - a.pct);
+    let result = null;
+    for (const { acc } of ranked) {
         result = await runClassifier(text, acc);
         if (result) break;
     }
     if (!result) {
         const fbType = CODE_HINT_RE.test(text) ? 'code' : 'chat';
-        return { type: fbType, level: 2, needs_tools: fbType === 'code', reason: 'ตัวคัดงานไม่ตอบ ใช้ค่าเริ่มต้น', source: 'fallback' };
+        return { ...normalizeClassification({ type: fbType, complexity: 55, risk: 30, needs_tools: fbType === 'code' }), reason: 'ตัวคัดงานไม่ตอบ ใช้ค่าเริ่มต้น', source: 'fallback' };
     }
     classifyCache.set(hash, { at: Date.now(), result });
     if (classifyCache.size > 300) classifyCache.delete(classifyCache.keys().next().value);
     return { ...result, source: 'classifier' };
+}
+
+// ── ④ แผนแบ่ง Subagent (แนวทางที่ 1: ให้ agy / Claude Code แตกทีมเองภายในงานเดียว) ──
+const SUBAGENT_MAX = { boost: 4, normal: 3, conserve: 2, unknown: 2 };
+
+function planSubagents(cls, chosen) {
+    if (!chosen || chosen.paid || !cls.parallelizable) return null;
+    if (cls.type === 'quick' || cls.type === 'chat') return null;
+    if (cls.complexity < 40 && (cls.subtasks || 0) < 3) return null;
+    const mode = (chosen.budget && chosen.budget.mode) || 'normal';
+    const count = Math.max(2, Math.min(SUBAGENT_MAX[mode] || 2, cls.subtasks || 2));
+    let model = 'flash';
+    if (mode === 'conserve') model = 'flash_lite';
+    else if (mode === 'boost' && cls.complexity >= 80) model = 'pro';
+    return { count, model, engine: chosen.engine, mode };
+}
+
+function buildSubagentDirective(plan) {
+    if (!plan) return '';
+    if (plan.engine === 'agy') {
+        return [
+            '[คำสั่งจากสมองกลาง (AI Router) — แบ่งงานให้ subagent]',
+            `งานนี้แบ่งเป็นส่วนอิสระได้ ให้ใช้เครื่องมือ invoke_subagent แตกงานส่วนที่ไม่ขึ้นต่อกันให้ทำพร้อมกัน ไม่เกิน ${plan.count} ตัว`,
+            `- ตั้งค่า Model ของ subagent เป็น "${plan.model}" (ผู้ใช้ขอเพื่อคุมโควตา)${plan.model === 'pro' ? '' : ' — ถ้าส่วนไหนต้องคิดลึกจริงๆ ให้ทำเองแทน'}`,
+            '- subagent ทำงานอ่าน/ค้น/ตรวจสอบ/วิเคราะห์ ถ้าต้องให้ subagent แก้ไฟล์ ต้องแบ่งคนละไฟล์ ห้ามแก้ไฟล์เดียวกัน',
+            '- ตัวหลักเป็นผู้ประสานงาน: รวมผล ตรวจทาน แก้ไขขั้นสุดท้าย แล้วสรุปตอบผู้ใช้',
+            '- ข้อความทุกส่วนที่ผู้ใช้เห็น (รวมถึงสถานะระหว่างรอ subagent) เขียนเป็นภาษาไทย',
+            '- ถ้างานจริงไม่ได้แบ่งได้อย่างที่คิด ให้ทำเองตามปกติ ไม่ต้องฝืนแตก subagent',
+            '[จบคำสั่งสมองกลาง]'
+        ].join('\n');
+    }
+    if (plan.engine === 'claude-code') {
+        return [
+            '[คำสั่งจากสมองกลาง (AI Router) — แบ่งงานให้ subagent]',
+            `งานนี้แบ่งเป็นส่วนอิสระได้ ให้ใช้ Agent/Task tool รัน subagent ขนานกันไม่เกิน ${plan.count} ตัว สำหรับส่วนที่อ่าน/ค้น/ตรวจสอบได้อิสระ`,
+            '- การแก้ไฟล์ให้ตัวหลักทำเอง หรือแบ่งคนละไฟล์ ห้ามแก้ไฟล์เดียวกันพร้อมกัน',
+            '- รวมผลแล้วสรุปตอบผู้ใช้เป็นภาษาไทย ถ้างานแบ่งไม่ได้จริงให้ทำเองตามปกติ',
+            '[จบคำสั่งสมองกลาง]'
+        ].join('\n');
+    }
+    return '';
 }
 
 // ── รวมทุกขั้น ────────────────────────────────────────────────────────────────
@@ -467,36 +692,77 @@ async function classifyTask(prompt) {
  * @param {boolean} [opts.hasImages]
  * @param {string} [opts.source]  'chat' | 'cron' | ...
  * @param {number} [opts.minLevel] บังคับระดับความยากขั้นต่ำ (เช่น cron alert จริง)
+ * @param {string} [opts.sessionAccount] บัญชี Google ที่ห้องแชทนี้ใช้อยู่ (ลดการสลับบัญชีกลางบทสนทนา)
  */
-async function routeTask({ prompt, hasImages = false, source = 'chat', minLevel = 1 } = {}) {
+async function routeTask({ prompt, hasImages = false, source = 'chat', minLevel = 1, sessionAccount = null } = {}) {
     const startedAt = Date.now();
-    const classification = await classifyTask(prompt);
-    const level = Math.max(classification.level, Math.min(3, minLevel || 1));
-    const type = classification.type === 'quick' && level > 1 ? 'chat' : classification.type;
-    const routeKey = `${type}:${type === 'quick' ? 1 : level}`;
-    const candidates = await buildCandidates(routeKey, { hasImages });
+    const text = String(prompt || '');
+    let cls = await classifyTask(text);
+
+    // minLevel (cron alert) → ดันความยากขั้นต่ำ
+    const minLv = Math.min(3, minLevel || 1);
+    if (minLv > cls.level) {
+        const complexity = Math.max(cls.complexity, { 2: 50, 3: 75 }[minLv]);
+        const type = cls.type === 'quick' ? 'chat' : cls.type;
+        cls = { ...cls, type, complexity, level: levelFromComplexity(complexity), tier: tierFromScores(type, complexity, cls.risk, cls.needs_tools) };
+    }
+    // แท็กกำหนดเองในข้อความ เช่น #สูงมาก #ประหยัด
+    const tierTag = text.match(TIER_TAG_RE);
+    const modeTag = text.match(MODE_TAG_RE);
+    const overrides = {};
+    if (tierTag) {
+        overrides.tier = TIER_FROM_TAG[tierTag[1].toLowerCase()];
+        cls = { ...cls, tier: overrides.tier, type: cls.type === 'quick' ? 'chat' : cls.type };
+    }
+    if (modeTag) overrides.mode = MODE_FROM_TAG[modeTag[1].toLowerCase()];
+
+    const candidates = await buildCandidates(cls, { hasImages, sessionAccount, modeOverride: overrides.mode || null });
+    const chosen = candidates[0] || null;
+    const subagents = planSubagents(cls, chosen);
+    notePick(chosen);
     const decision = {
         ok: candidates.length > 0,
-        routeKey,
-        classification: { ...classification, type, level },
+        routeKey: `${cls.type}:${cls.tier}`,
+        classification: cls,
+        overrides,
         candidates,
-        chosen: candidates[0] || null,
+        chosen,
+        subagents,
         tookMs: Date.now() - startedAt
     };
     logDecision({ source, prompt, decision });
     return decision;
 }
 
+/** คำสั่งแนบหน้าพรอมต์ของผู้สมัครตัวนี้ (ไม่ถูกบันทึกลงประวัติแชท) */
+function directiveFor(decision, candidate) {
+    if (!decision || !decision.subagents || !candidate || candidate.paid) return '';
+    const plan = candidate === decision.chosen
+        ? decision.subagents
+        : planSubagents(decision.classification, candidate);
+    return buildSubagentDirective(plan);
+}
+
+function formatBudget(c) {
+    if (c.paid) return `มีค่าใช้จ่าย · ยอด $${c.balance}`;
+    const b = c.budget || {};
+    const ws = (b.windows || []).map((w) => `${w.name === 'weekly' ? 'wk' : '5h'} ${w.remainingPct}%${w.hoursLeft !== null && w.hoursLeft !== undefined ? ` รีเซ็ตอีก ${w.hoursLeft >= 24 ? (w.hoursLeft / 24).toFixed(1) + ' วัน' : w.hoursLeft + ' ชม.'}` : ''}`);
+    const head = ws.length ? ws.join(' · ') : `เหลือ ${c.remainingPct}%`;
+    return `${head} · ${BUDGET_TH[b.mode] || BUDGET_TH.normal}`;
+}
+
 function formatBanner(decision, chosen, note = '') {
     const c = chosen || decision.chosen;
     if (!c) return '';
     const cls = decision.classification || {};
-    const quota = c.paid
-        ? `มีค่าใช้จ่าย · ยอด $${c.balance}`
-        : `เหลือ ${c.remainingPct}%`;
-    const why = cls.reason ? `: ${cls.reason}` : '';
     const prefix = note ? `↪️ ${note} → ` : '🧠 Auto → ';
-    return `> ${prefix}**${c.label}** · ${c.accountLabel} (${quota}) — ${cls.type} ระดับ ${cls.level}${why}\n\n`;
+    const plan = c === decision.chosen ? decision.subagents : planSubagents(cls, c);
+    const team = plan ? ` · 🤝 แตก subagent ≤${plan.count} ตัว${plan.engine === 'agy' ? ` (${plan.model})` : ''}` : '';
+    const tags = [];
+    if (decision.overrides && decision.overrides.tier) tags.push(`#${TIER_TH[decision.overrides.tier]}`);
+    if (decision.overrides && decision.overrides.mode) tags.push(decision.overrides.mode === 'boost' ? '#เต็มที่' : '#ประหยัด');
+    const why = cls.reason ? `: ${cls.reason}` : '';
+    return `> ${prefix}**${c.label}** · ${c.accountLabel} (${formatBudget(c)}) — ${cls.type} · ยาก ${cls.complexity}/100 · ระดับ ${TIER_TH[cls.tier] || cls.tier}${team}${tags.length ? ' · ' + tags.join(' ') : ''}${why}\n\n`;
 }
 
 function isRetryableFailure(errorText, outputText, stderrText = '') {
@@ -515,8 +781,10 @@ function logDecision({ source, prompt, decision, event = 'route', extra = {} }) 
         prompt: String(prompt || '').slice(0, 200),
         routeKey: decision && decision.routeKey,
         classification: decision && decision.classification,
-        chosen: decision && decision.chosen ? { model: decision.chosen.model, account: decision.chosen.account, remainingPct: decision.chosen.remainingPct } : null,
-        candidates: decision && Array.isArray(decision.candidates) ? decision.candidates.map((c) => `${c.model}@${c.account}`) : undefined,
+        chosen: decision && decision.chosen ? { model: decision.chosen.model, account: decision.chosen.account, remainingPct: decision.chosen.remainingPct, budget: decision.chosen.budget && decision.chosen.budget.mode, score: decision.chosen.score } : null,
+        candidates: decision && Array.isArray(decision.candidates) ? decision.candidates.slice(0, 8).map((c) => `${c.model}@${c.account}${c.score !== undefined ? '=' + c.score : ''}`) : undefined,
+        subagents: decision && decision.subagents ? decision.subagents : undefined,
+        overrides: decision && decision.overrides && Object.keys(decision.overrides).length ? decision.overrides : undefined,
         tookMs: decision && decision.tookMs,
         ...extra
     };
@@ -541,6 +809,8 @@ module.exports = {
     classifyTask,
     buildCandidates,
     formatBanner,
+    directiveFor,
+    TIER_TH,
     isRetryableFailure,
     isBinaryCrash,
     healBinaryCache,

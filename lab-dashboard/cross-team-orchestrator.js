@@ -31,11 +31,50 @@ const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
 const CLAUDE_BIN = process.env.CLAUDE_BIN || path.join(HOME_DIR, '.local/bin/claude');
 
+// เพดานรวมสูงสุดต่อด่าน (hard cap) — ปรับจาก 240/360/240 วินาทีเดิม หลังพบว่า Architect (Claude Opus High)
+// ยังสำรวจ/คิดอยู่แต่ถูกตัดที่ 240 วินาที (26 ขั้นตอน, ขั้นเดียวคิดนาน ~2 นาที) แล้วทั้งด่านล้ม
 const STAGE_TIMEOUT_MS = {
+    architect: 720_000,
+    worker: 900_000,
+    reviewer: 480_000
+};
+// ตัดเมื่อ "เงียบนิ่ง" ไม่มีความคืบหน้าเกินนี้ (เท่ากับเพดานเดิมของ Architect/Reviewer จึงไม่ทนต่อโปรเซสค้างนานกว่าเดิม)
+// ถ้ายังคืบหน้าอยู่ ทำต่อได้ถึงเพดานรวมข้างบน
+const STAGE_IDLE_MS = {
     architect: 240_000,
-    worker: 360_000,
+    worker: 300_000,
     reviewer: 240_000
 };
+
+/**
+ * ตัวจับเวลาของด่าน: ยิง onFire เมื่อ (ก) เงียบนิ่งเกิน idleMs นับจาก touch() ครั้งล่าสุด หรือ (ข) รวมเกิน hardMs
+ * touch() เรียกทุกครั้งที่เห็นความคืบหน้า (ข้อมูลออก, เรียกเครื่องมือ, transcript ขยับ)
+ */
+function makeWatchdog({ hardMs, idleMs, onFire }) {
+    let fired = null;
+    let idleTimer = null;
+    let hardTimer = null;
+    const useIdle = Boolean(idleMs) && idleMs < hardMs;
+    const stop = () => { clearTimeout(idleTimer); clearTimeout(hardTimer); };
+    const fire = (kind, ms) => {
+        if (fired) return;
+        fired = { kind, ms };
+        stop();
+        onFire(fired);
+    };
+    const arm = () => {
+        if (fired || !useIdle) return;
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => fire('idle', idleMs), idleMs);
+    };
+    hardTimer = setTimeout(() => fire('hard', hardMs), hardMs);
+    arm();
+    return { touch: arm, stop, get fired() { return fired; } };
+}
+
+function timeoutErrorText(f) {
+    return `timeout (${f.kind} ${Math.round(f.ms / 1000)}s)`;
+}
 const MAX_SUBTASKS = 4;
 const MAX_REWORK_ROUNDS = 1;
 const MAX_FAILOVER_ATTEMPTS = 8;
@@ -393,6 +432,7 @@ function buildArchitectPrompt({ prompt, history, imagePaths, cwd, mode, workerAc
         '   - ถ้าข้อย่อยอิสระต่อกันและอยู่คนละไฟล์ (หรือเป็น read ทั้งคู่) ให้ `depends_on: []` เพื่อรันขนานข้าม G1+G2 ได้ทันที',
         '5. หากคำสั่งเป็นแค่คำถามเชิงวิเคราะห์ที่ไม่จำเป็นต้องให้ Worker ลงมือเลย ให้ตั้ง `"direct_answer": true`, `"tasks": []` และใส่คำตอบภาษาไทยสมบูรณ์ใน `"answer"` (สไตล์อัดสะรีดา เรียกผู้ใช้ว่าบังยี ลงท้ายค่ะ/นะคะ)',
         '6. มองข้ามแท็กสั่งสมองกลางในข้อความผู้ใช้ เช่น #ทีมข้ามค่าย #สูงมาก #ประหยัด #เต็มที่',
+        '7. **งบเวลา (สำคัญ):** ด่านนี้มีเวลาจำกัดราว 5–10 นาที ให้สำรวจเท่าที่จำเป็นต่อการวางแผน (ราว 10–15 ครั้งของการอ่าน/ค้น) อ่านเฉพาะช่วงบรรทัดที่เกี่ยวข้อง **ห้ามอ่านไฟล์ใหญ่ทั้งไฟล์** และอย่าคิดวนซ้ำ — เมื่อรู้ path/ฟังก์ชัน/เงื่อนไขผ่านงานมากพอให้ Worker ลงมือได้แล้ว ให้หยุดสำรวจแล้วส่ง JSON ทันที ส่วนที่ยังไม่แน่ใจให้ตั้งเป็นข้อย่อยแบบ `"read"` ให้ Worker ไปตรวจแทนการสำรวจเองต่อ',
         '',
         'ตอบกลับเป็น JSON บล็อกเดียวใน ```json ... ``` ตามสกีมานี้เท่านั้น:',
         '```json',
@@ -533,7 +573,7 @@ function buildReviewerPrompt({ originalPrompt, history, plan, workerResults, cha
 
 // ── Single-Agent Headless Subprocess Runner ──────────────────────────────────
 
-function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, rolePrefix, onThoughtEvent, abortCtx }) {
+function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, idleMs, rolePrefix, onThoughtEvent, abortCtx }) {
     return new Promise((resolve) => {
         const cliModel = String(candidate.model || '').replace('claude-code-', '').trim() || 'opus';
         const args = [
@@ -572,18 +612,22 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
         let currentBlockType = '';
         let currentToolName = '';
         let currentToolJson = '';
-        let timedOut = false;
+        let timedOut = null;
 
-        const timer = setTimeout(() => {
-            timedOut = true;
-            try { child.kill('SIGTERM'); } catch (_) {}
-            setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 2500);
-        }, timeoutMs);
+        const wd = makeWatchdog({
+            hardMs: timeoutMs,
+            idleMs,
+            onFire: (f) => {
+                timedOut = f;
+                try { child.kill('SIGTERM'); } catch (_) {}
+                setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 2500);
+            }
+        });
 
         const finishOnce = (res) => {
             if (settled) return;
             settled = true;
-            clearTimeout(timer);
+            wd.stop();
             abortCtx.unregister(child);
             resolve(res);
         };
@@ -650,6 +694,7 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
         };
 
         child.stdout.on('data', (d) => {
+            wd.touch();
             stdoutBuf += d.toString('utf8');
             const lines = stdoutBuf.split('\n');
             stdoutBuf = lines.pop() || '';
@@ -667,7 +712,7 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
                 return finishOnce({ ok: false, aborted: true, output, stderr: stderrTail, error: 'aborted', crashed: false, stepsCount });
             }
             if (timedOut) {
-                return finishOnce({ ok: false, output, stderr: stderrTail, error: `timeout (${Math.round(timeoutMs / 1000)}s)`, crashed: false, stepsCount });
+                return finishOnce({ ok: false, output, stderr: stderrTail, error: timeoutErrorText(timedOut), crashed: false, stepsCount });
             }
             const failed = code !== 0 || resultIsError || !output.trim();
             finishOnce({
@@ -682,7 +727,7 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
     });
 }
 
-function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, rolePrefix, onThoughtEvent, abortCtx, claimedBrains }) {
+function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, idleMs, rolePrefix, onThoughtEvent, abortCtx, claimedBrains }) {
     return new Promise((resolve) => {
         const home = candidate.home || HOME_DIR;
         const brainDir = path.join(home, '.gemini/antigravity-cli/brain');
@@ -716,9 +761,11 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, r
         let output = '';
         let stderrTail = '';
         let stepsCount = 0;
-        let timedOut = false;
+        let timedOut = null;
         let myBrainId = null;
         let lastSeenSteps = 0;
+        let lastTranscriptSig = '';
+        let wd = null; // ตั้งค่าด้านล่าง (poller เรียก wd.touch() เมื่อ transcript ขยับ)
 
         // Lightweight brain transcript poller so live tool calls show up in UI timeline
         const pollBrain = setInterval(() => {
@@ -731,12 +778,19 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, r
                         });
                         myBrainId = dirs[0];
                         claimedBrains.add(`${home}:${myBrainId}`);
+                        if (wd) wd.touch();
                     }
                 }
                 if (!myBrainId) return;
                 const tFile = path.join(brainDir, myBrainId, '.system_generated/logs/transcript.jsonl');
                 if (!fs.existsSync(tFile)) return;
                 const stat = fs.statSync(tFile);
+                // transcript ขยับ = โมเดลยังทำงานอยู่ (นับเป็นความคืบหน้า)
+                const sig = `${stat.size}:${stat.mtimeMs}`;
+                if (sig !== lastTranscriptSig) {
+                    lastTranscriptSig = sig;
+                    if (wd) wd.touch();
+                }
                 const readSz = Math.min(stat.size, 32 * 1024);
                 const buf = Buffer.alloc(readSz);
                 const fd = fs.openSync(tFile, 'r');
@@ -767,23 +821,27 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, r
             } catch (_) {}
         }, 700);
 
-        const timer = setTimeout(() => {
-            timedOut = true;
-            try { child.kill('SIGTERM'); } catch (_) {}
-            setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 2500);
-        }, timeoutMs);
+        wd = makeWatchdog({
+            hardMs: timeoutMs,
+            idleMs,
+            onFire: (f) => {
+                timedOut = f;
+                try { child.kill('SIGTERM'); } catch (_) {}
+                setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 2500);
+            }
+        });
 
         const finishOnce = (res) => {
             if (settled) return;
             settled = true;
             clearInterval(pollBrain);
-            clearTimeout(timer);
+            wd.stop();
             abortCtx.unregister(child);
             resolve(res);
         };
 
-        child.stdout.on('data', (d) => { output += d.toString('utf8'); });
-        child.stderr.on('data', (d) => { stderrTail = (stderrTail + d.toString('utf8')).slice(-4000); });
+        child.stdout.on('data', (d) => { wd.touch(); output += d.toString('utf8'); });
+        child.stderr.on('data', (d) => { wd.touch(); stderrTail = (stderrTail + d.toString('utf8')).slice(-4000); });
         child.on('error', (err) => {
             finishOnce({ ok: false, output, stderr: stderrTail, error: err.message, crashed: false, stepsCount });
         });
@@ -793,7 +851,7 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, r
             }
             const crashed = aiRouter.isBinaryCrash(stderrTail);
             if (timedOut) {
-                return finishOnce({ ok: false, output, stderr: stderrTail, error: `timeout (${Math.round(timeoutMs / 1000)}s)`, crashed, stepsCount });
+                return finishOnce({ ok: false, output, stderr: stderrTail, error: timeoutErrorText(timedOut), crashed, stepsCount });
             }
             const cleanOut = output.trim();
             const failed = code !== 0 || crashed || !cleanOut;
@@ -809,7 +867,7 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, r
     });
 }
 
-function runDeepSeekSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, rolePrefix, onThoughtEvent, abortCtx }) {
+function runDeepSeekSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, idleMs, rolePrefix, onThoughtEvent, abortCtx }) {
     return new Promise((resolve) => {
         let settled = false;
         let output = '';
@@ -820,15 +878,19 @@ function runDeepSeekSubprocess(candidate, { prompt, cwd, readOnly, mode, timeout
         const finishOnce = (res) => {
             if (settled) return;
             settled = true;
-            clearTimeout(timer);
+            wd.stop();
             abortCtx.unregisterHandle(handle);
             resolve(res);
         };
 
-        const timer = setTimeout(() => {
-            if (handle && handle.abort) handle.abort();
-            finishOnce({ ok: false, output, stderr: '', error: `timeout (${Math.round(timeoutMs / 1000)}s)`, crashed: false, stepsCount });
-        }, timeoutMs);
+        const wd = makeWatchdog({
+            hardMs: timeoutMs,
+            idleMs,
+            onFire: (f) => {
+                if (handle && handle.abort) handle.abort();
+                finishOnce({ ok: false, output, stderr: '', error: timeoutErrorText(f), crashed: false, stepsCount });
+            }
+        });
 
         try {
             handle = deepseekAgent.runDeepSeekPrompt({
@@ -840,6 +902,7 @@ function runDeepSeekSubprocess(candidate, { prompt, cwd, readOnly, mode, timeout
                 model: candidate.model,
                 history: [],
                 onChunk: (type, payload) => {
+                    wd.touch();
                     if (type === 'stdout') output += String(payload || '');
                     else if (type === 'thought' && payload && payload.currentAction) {
                         stepsCount = Math.max(stepsCount, payload.stepsCount || 0);
@@ -886,6 +949,7 @@ async function runWithFailover(candidates, {
     readOnly,
     mode,
     timeoutMs,
+    idleMs,
     rolePrefix,
     decision,
     originalPrompt,
@@ -898,6 +962,7 @@ async function runWithFailover(candidates, {
     const deadGroups = new Set();
     let healed = false;
     let attempts = 0;
+    let lastSteps = 0;
     const tried = [];
     let lastError = 'ไม่มีโมเดลที่พร้อมใช้งาน';
 
@@ -916,7 +981,8 @@ async function runWithFailover(candidates, {
         aiRouter.notePick(c);
         onThoughtEvent('status', `${rolePrefix} กำลังรันด้วย ${c.label} (${c.accountLabel})...`);
 
-        const res = await runner(c, { prompt, cwd, readOnly, mode, timeoutMs, rolePrefix: `${rolePrefix} [${c.label}]`, onThoughtEvent, abortCtx, claimedBrains });
+        const res = await runner(c, { prompt, cwd, readOnly, mode, timeoutMs, idleMs, rolePrefix: `${rolePrefix} [${c.label}]`, onThoughtEvent, abortCtx, claimedBrains });
+        lastSteps = Math.max(lastSteps, res.stepsCount || 0);
         if (res.aborted || abortCtx.aborted) {
             return { ok: false, aborted: true, error: 'aborted', output: res.output || '', candidate: c, tried, durationMs: Date.now() - startedAt };
         }
@@ -967,7 +1033,7 @@ async function runWithFailover(candidates, {
         };
     }
 
-    return { ok: false, output: '', error: lastError, candidate: null, tried, durationMs: Date.now() - startedAt };
+    return { ok: false, output: '', error: lastError, candidate: null, tried, stepsCount: lastSteps, durationMs: Date.now() - startedAt };
 }
 
 // ── Stage 2: Conflict-Free DAG + Multi-Account Worker Scheduler ──────────────
@@ -1045,6 +1111,7 @@ async function runWorkerWave(tasks, {
             readOnly: task.access === 'read' || mode !== 'exec',
             mode,
             timeoutMs: STAGE_TIMEOUT_MS.worker,
+            idleMs: STAGE_IDLE_MS.worker,
             rolePrefix: tag,
             decision,
             originalPrompt,
@@ -1240,6 +1307,7 @@ function runCrossTeamPipeline({
             readOnly: true,
             mode,
             timeoutMs: STAGE_TIMEOUT_MS.architect,
+            idleMs: STAGE_IDLE_MS.architect,
             rolePrefix: '🏗️ Architect',
             decision,
             originalPrompt: prompt,
@@ -1253,7 +1321,7 @@ function runCrossTeamPipeline({
             return onDone(130, 'aborted', { stage: 'architect' });
         }
         if (!archRes.ok) {
-            aiRouter.logDecision({ source: 'cross-team', prompt, decision, event: 'stage1-failed', extra: { error: archRes.error, tried: archRes.tried } });
+            aiRouter.logDecision({ source: 'cross-team', prompt, decision, event: 'stage1-failed', extra: { error: archRes.error, tried: archRes.tried, steps: archRes.stepsCount || 0, ms: archRes.durationMs, outputChars: String(archRes.output || '').length } });
             return onDone(1, archRes.error || 'Architect failed', { stage: 'architect', canFallbackSingle: true });
         }
 
@@ -1356,6 +1424,7 @@ function runCrossTeamPipeline({
                 readOnly: true,
                 mode,
                 timeoutMs: STAGE_TIMEOUT_MS.reviewer,
+                idleMs: STAGE_IDLE_MS.reviewer,
                 rolePrefix: '🔍 Reviewer',
                 decision,
                 originalPrompt: prompt,
@@ -1464,5 +1533,10 @@ module.exports = {
     parseArchitectPlan,
     parseReviewerVerdict,
     runWorkerWave,
-    runWithFailover
+    runWithFailover,
+    // ตัวรัน/ตัวจับเวลา — export ให้เทสต์ (test/cross-team-watchdog.test.js)
+    makeWatchdog,
+    runAgySubprocess,
+    STAGE_TIMEOUT_MS,
+    STAGE_IDLE_MS
 };

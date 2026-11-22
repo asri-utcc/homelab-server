@@ -35,14 +35,14 @@ const CLAUDE_BIN = process.env.CLAUDE_BIN || path.join(HOME_DIR, '.local/bin/cla
 // ยังสำรวจ/คิดอยู่แต่ถูกตัดที่ 240 วินาที (26 ขั้นตอน, ขั้นเดียวคิดนาน ~2 นาที) แล้วทั้งด่านล้ม
 const STAGE_TIMEOUT_MS = {
     architect: 720_000,
-    worker: 900_000,
+    worker: 1_800_000, // งานเรนเดอร์วิดีโอ/ติดตั้ง/เทสต์ยาว (คลิป 62 วินาที = 1,870 เฟรม) ต้องอยู่ได้ — ตัวจับเวลา idle ยังตัดโปรเซสค้างอยู่
     reviewer: 480_000
 };
 // ตัดเมื่อ "เงียบนิ่ง" ไม่มีความคืบหน้าเกินนี้ (เท่ากับเพดานเดิมของ Architect/Reviewer จึงไม่ทนต่อโปรเซสค้างนานกว่าเดิม)
 // ถ้ายังคืบหน้าอยู่ ทำต่อได้ถึงเพดานรวมข้างบน
 const STAGE_IDLE_MS = {
     architect: 240_000,
-    worker: 300_000,
+    worker: 600_000, // เขียนไฟล์ใหญ่ก้อนเดียว (เช่น TSX ทั้งคอมโพเนนต์) ใช้เวลาหลายนาทีโดยไม่มีเหตุการณ์ใหม่ (วัดเจอ: script.json 75 วินาที)
     reviewer: 240_000
 };
 
@@ -75,7 +75,102 @@ function makeWatchdog({ hardMs, idleMs, onFire }) {
 function timeoutErrorText(f) {
     return `timeout (${f.kind} ${Math.round(f.ms / 1000)}s)`;
 }
-const MAX_SUBTASKS = 4;
+
+// ── ความคืบหน้าระดับโปรเซส ──────────────────────────────────────────────────────
+// คำสั่งยาวๆ (remotion render / ffmpeg / tsc / npm) ที่ agy หรือ claude รันเป็นโปรเซสลูก ทำให้ transcript และ stdout
+// ไม่ขยับเลยเป็นสิบนาที (agy -p รอ background task อยู่เฉยๆ) — วัดจริง: Worker รอเรนเดอร์ 1,870 เฟรมแล้วถูกตัดที่ idle 300s
+// จึงนับ "CPU ของโปรเซสลูกเพิ่มขึ้น" เป็นความคืบหน้าด้วย (โปรเซสค้างที่ไม่ใช้ CPU ยังถูกตัดตามปกติ)
+const CPU_SAMPLE_MS = parseInt(process.env.CROSS_TEAM_CPU_SAMPLE_MS || '5000', 10);
+// CPU ต้องเพิ่มอย่างน้อย 5% ของหนึ่งคอร์ตลอดรอบสุ่ม (สเกลตามความยาวรอบ; ขั้นต่ำ 1 tick = 0.01 วินาที)
+const CPU_PROGRESS_MIN_S = Math.max(0.01, 0.05 * CPU_SAMPLE_MS / 1000);
+const CLK_TCK = 100;            // Linux
+
+function procCpuSeconds(pid, { includeSelf }) {
+    try {
+        const f = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+        const r = f.slice(f.lastIndexOf(')') + 2).split(' ');
+        // utime, stime (ตัวเอง) + cutime, cstime (ลูกที่จบไปแล้ว — กันเลขลดเมื่อโปรเซสลูกเลิกทำงาน)
+        const self = includeSelf ? (parseInt(r[11], 10) + parseInt(r[12], 10)) : 0;
+        return (self + parseInt(r[13], 10) + parseInt(r[14], 10)) / CLK_TCK;
+    } catch (_) {
+        return 0;
+    }
+}
+
+/** เวลา CPU รวม (วินาที) ของทุกโปรเซสลูกใต้ rootPid (root นับเฉพาะส่วนของลูกที่จบแล้ว) */
+function treeCpuSeconds(rootPid) {
+    if (!rootPid) return 0;
+    let total = procCpuSeconds(rootPid, { includeSelf: false });
+    const seen = new Set([rootPid]);
+    const stack = [rootPid];
+    while (stack.length) {
+        const pid = stack.pop();
+        let tasks = [];
+        try { tasks = fs.readdirSync(`/proc/${pid}/task`); } catch (_) { continue; }
+        for (const t of tasks) {
+            let kids = [];
+            try { kids = fs.readFileSync(`/proc/${pid}/task/${t}/children`, 'utf8').split(' ').filter(Boolean).map(Number); } catch (_) { continue; }
+            for (const k of kids) {
+                if (seen.has(k)) continue;
+                seen.add(k);
+                stack.push(k);
+                total += procCpuSeconds(k, { includeSelf: true });
+            }
+        }
+    }
+    return total;
+}
+
+/** pid ของโปรเซสลูกทุกชั้นใต้ rootPid (ไม่รวม root) */
+function listDescendants(rootPid) {
+    const out = [];
+    if (!rootPid) return out;
+    const seen = new Set([rootPid]);
+    const stack = [rootPid];
+    while (stack.length) {
+        const pid = stack.pop();
+        let tasks = [];
+        try { tasks = fs.readdirSync(`/proc/${pid}/task`); } catch (_) { continue; }
+        for (const t of tasks) {
+            let kids = [];
+            try { kids = fs.readFileSync(`/proc/${pid}/task/${t}/children`, 'utf8').split(' ').filter(Boolean).map(Number); } catch (_) { continue; }
+            for (const k of kids) {
+                if (seen.has(k)) continue;
+                seen.add(k);
+                out.push(k);
+                stack.push(k);
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * ตัดโปรเซสที่หมดเวลาพร้อมลูกทั้งหมด: ต้องเก็บรายชื่อลูก "ก่อน" ฆ่า root (พอ root ตาย ลูกจะถูกย้ายไปอยู่ใต้ init แล้วหาไม่เจอ)
+ * ไม่งั้นเรนเดอร์/ffmpeg ที่ตกค้างวิ่งต่อและถือท่อ stdout ไว้ ทำให้ด่านค้างรอจนมันจบเอง
+ */
+function killProcessTree(child, graceMs = 2500) {
+    const kids = listDescendants(child.pid);
+    const send = (sig) => {
+        try { child.kill(sig); } catch (_) {}
+        for (const k of kids) { try { process.kill(k, sig); } catch (_) {} }
+    };
+    send('SIGTERM');
+    setTimeout(() => send('SIGKILL'), graceMs);
+}
+
+/** เริ่มสุ่มวัด CPU ของโปรเซสลูก แล้ว touch() ตัวจับเวลาเมื่อ CPU เพิ่ม — คืนฟังก์ชันหยุด */
+function startCpuProgressProbe(pid, getWatchdog) {
+    let last = treeCpuSeconds(pid);
+    const timer = setInterval(() => {
+        const now = treeCpuSeconds(pid);
+        const wd = getWatchdog();
+        if (wd && now - last >= CPU_PROGRESS_MIN_S) wd.touch();
+        last = now;
+    }, CPU_SAMPLE_MS);
+    return () => clearInterval(timer);
+}
+const MAX_SUBTASKS = 6;
 const MAX_REWORK_ROUNDS = 1;
 const MAX_FAILOVER_ATTEMPTS = 8;
 const MAX_PROMPT_CHARS = 60_000;
@@ -433,6 +528,7 @@ function buildArchitectPrompt({ prompt, history, imagePaths, cwd, mode, workerAc
         '5. หากคำสั่งเป็นแค่คำถามเชิงวิเคราะห์ที่ไม่จำเป็นต้องให้ Worker ลงมือเลย ให้ตั้ง `"direct_answer": true`, `"tasks": []` และใส่คำตอบภาษาไทยสมบูรณ์ใน `"answer"` (สไตล์อัดสะรีดา เรียกผู้ใช้ว่าบังยี ลงท้ายค่ะ/นะคะ)',
         '6. มองข้ามแท็กสั่งสมองกลางในข้อความผู้ใช้ เช่น #ทีมข้ามค่าย #สูงมาก #ประหยัด #เต็มที่',
         '7. **งบเวลา (สำคัญ):** ด่านนี้มีเวลาจำกัดราว 5–10 นาที ให้สำรวจเท่าที่จำเป็นต่อการวางแผน (ราว 10–15 ครั้งของการอ่าน/ค้น) อ่านเฉพาะช่วงบรรทัดที่เกี่ยวข้อง **ห้ามอ่านไฟล์ใหญ่ทั้งไฟล์** และอย่าคิดวนซ้ำ — เมื่อรู้ path/ฟังก์ชัน/เงื่อนไขผ่านงานมากพอให้ Worker ลงมือได้แล้ว ให้หยุดสำรวจแล้วส่ง JSON ทันที ส่วนที่ยังไม่แน่ใจให้ตั้งเป็นข้อย่อยแบบ `"read"` ให้ Worker ไปตรวจแทนการสำรวจเองต่อ',
+        '8. **ขนาดข้อย่อย (สำคัญ):** แต่ละข้อควรเสร็จภายในราว 10 นาที ห้ามมัดรวมหลายงานใหญ่ไว้ข้อเดียว (เช่น "เขียนคอมโพเนนต์ใหญ่ + เรนเดอร์ + ผสมเสียง + QA + แก้เอกสาร") ให้แยก: (ก) เขียน/แก้โค้ดหรือไฟล์ใหญ่ (ข) คำสั่งที่ใช้เวลานาน เช่น เรนเดอร์วิดีโอ/แปลงไฟล์/ติดตั้ง/เทสต์ยาว เป็นข้อของตัวเอง ใส่ `depends_on` ให้ถูก (ค) QA/เอกสารเป็นอีกข้อ — ข้อที่ถูกตัดกลางทางจะเสียงานทั้งก้อน',
         '',
         'ตอบกลับเป็น JSON บล็อกเดียวใน ```json ... ``` ตามสกีมานี้เท่านั้น:',
         '```json',
@@ -521,10 +617,17 @@ function buildReviewerPrompt({ originalPrompt, history, plan, workerResults, cha
     const allowRework = reworkRound < MAX_REWORK_ROUNDS && mode === 'exec';
     const workerReport = workerResults.map((r) => {
         const who = r.candidate ? `${r.candidate.label} (${r.candidate.accountLabel})` : r.task.model;
-        const status = r.ok ? '✅ สำเร็จ' : `❌ ล้มเหลว (${r.error || 'error'})`;
+        const durationMs = Number(r.durationMs) || 0;
+        const stepsCount = Number(r.stepsCount) || 0;
+        const skipped = Boolean(r.skipped);
+        const status = r.ok
+            ? '✅ สำเร็จ'
+            : (skipped ? `⏭️ ถูกข้าม (${r.error || 'ข้อก่อนหน้าไม่สำเร็จ'})` : `❌ ล้มเหลว (${r.error || 'error'})`);
+        const metaLine = `สถานะ: ok=${Boolean(r.ok)} · skipped=${skipped} · stepsCount=${stepsCount} · durationMs=${durationMs}${r.error ? ` · error=${r.error}` : ''}`;
         return [
-            `### [${r.task.id}] ${r.task.title} · ${who} · ${status} (${(r.durationMs / 1000).toFixed(1)}s)`,
-            `ขอบเขต: ${r.task.access} · ไฟล์: ${r.task.files.join(', ') || '(ไม่ระบุ)'}`,
+            `### [${r.task.id}] ${r.task.title} · ${who} · ${status} (${(durationMs / 1000).toFixed(1)}s)`,
+            metaLine,
+            `ขอบเขต: ${r.task.access} · ไฟล์: ${(r.task.files || []).join(', ') || '(ไม่ระบุ)'}`,
             truncateMiddle(r.output || r.error || '(ไม่มีผลลัพธ์)', 6500)
         ].join('\n');
     }).join('\n\n');
@@ -541,7 +644,8 @@ function buildReviewerPrompt({ originalPrompt, history, plan, workerResults, cha
                 '3. **การตัดสินใจ:**',
                 '   - ถ้างานผ่านครบถ้วน (หรือมีเพียงข้อสังเกตเล็กน้อยที่ไม่ใช่บั๊ก) → ขึ้นต้นบรรทัดแรกด้วย `[[VERDICT:PASS]]` แล้วตามด้วย **คำตอบสรุปฉบับสมบูรณ์ภาษาไทย** ส่งตรงถึงผู้ใช้',
                 '   - ถ้าพบ **บั๊กร้ายแรง / syntax พัง / ทำไม่ครบตามสเปก** ที่ต้องให้ Gemini แก้ก่อนจบ → ขึ้นต้นบรรทัดแรกด้วย `[[VERDICT:REWORK]]` แล้วตามด้วย JSON บล็อกเดียวใน ```json ... ``` รูปแบบ:',
-                '     `{"issues":["..."],"rework_tasks":[{"id":"r1","title":"...","model":"neon|hydrogen","access":"write","files":["..."],"depends_on":[],"instructions":"..."}]}` (ไม่เกิน 2 ข้อย่อย, เฉพาะจุดที่ต้องแก้จริง)'
+                '     `{"issues":["..."],"rework_tasks":[{"id":"r1","title":"...","model":"neon|hydrogen","access":"write","files":["..."],"depends_on":[],"instructions":"..."}]}` (ไม่เกิน 3 ข้อย่อย, เฉพาะจุดที่ต้องแก้จริง)',
+                '   - **กรณีมี Worker ล้มเพราะ timeout หรือถูกข้าม (`skipped=true`):** ให้ตรวจไฟล์จริงบนดิสก์ก่อน แล้วสร้าง `rework_tasks` ที่ทำเฉพาะส่วนที่ยังไม่เสร็จต่อจากจุดที่ค้าง (เช่น สั่งเรนเดอร์/มิกซ์/พรีวิวต่อจากไฟล์ที่มีอยู่) แยกงานยาวเป็นข้อของตัวเอง และไม่ต้องเขียนโค้ดที่เสร็จแล้วใหม่ทั้งหมด'
             ].join('\n')
             : '3. **นี่คือรอบตรวจสุดท้าย (Final Review):** ห้ามสั่ง REWORK อีก ให้ขึ้นต้นบรรทัดแรกด้วย `[[VERDICT:PASS]]` แล้วเขียนคำตอบสรุปฉบับสมบูรณ์ภาษาไทยส่งตรงถึงผู้ใช้ (หากยังมีข้อจำกัด/จุดที่ค้างให้แจ้งตรงไปตรงมา)',
         '4. **โทนภาษาสำหรับคำตอบสุดท้ายถึงผู้ใช้:** แทนตัวเองว่า **อัดสะรีดา**, เรียกผู้ใช้ว่า **บังยี**, ใช้คำลงท้าย ค่ะ/นะคะ อย่างเป็นกันเอง ชัดเจน กระชับ ตรงประเด็น และใส่ลิงก์ไฟล์แบบ `[filename](file:///abs/path)` สำหรับไฟล์ที่อ้างอิงทุกไฟล์'
@@ -619,15 +723,16 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
             idleMs,
             onFire: (f) => {
                 timedOut = f;
-                try { child.kill('SIGTERM'); } catch (_) {}
-                setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 2500);
+                killProcessTree(child);
             }
         });
 
+        const stopCpuProbe = startCpuProgressProbe(child.pid, () => wd);
         const finishOnce = (res) => {
             if (settled) return;
             settled = true;
             wd.stop();
+            stopCpuProbe();
             abortCtx.unregister(child);
             resolve(res);
         };
@@ -826,16 +931,17 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, i
             idleMs,
             onFire: (f) => {
                 timedOut = f;
-                try { child.kill('SIGTERM'); } catch (_) {}
-                setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 2500);
+                killProcessTree(child);
             }
         });
 
+        const stopCpuProbe = startCpuProgressProbe(child.pid, () => wd);
         const finishOnce = (res) => {
             if (settled) return;
             settled = true;
             clearInterval(pollBrain);
             wd.stop();
+            stopCpuProbe();
             abortCtx.unregister(child);
             resolve(res);
         };
@@ -1072,12 +1178,33 @@ async function runWorkerWave(tasks, {
 
     const canStartTask = (task) => {
         for (const depId of (task.depends_on || [])) {
-            if (!completed.has(depId)) return false;
+            const depRec = completed.get(depId);
+            if (!depRec || !depRec.ok) return false;
         }
         for (const { task: activeTask } of running.values()) {
             if (tasksConflict(task, activeTask)) return false;
         }
         return true;
+    };
+
+    // ข้ามข้อที่พึ่งข้อก่อนหน้าซึ่งล้มเหลวหรือถูกข้ามไปแล้ว เพื่อไม่ให้รันต่อบนโค้ด/ผลลัพธ์ที่ไม่ครบ
+    const skipTask = (task, failedDepIds) => {
+        const reason = `ข้ามเพราะข้อ ${failedDepIds.join(', ')} ไม่สำเร็จ`;
+        const record = {
+            task,
+            ok: false,
+            skipped: true,
+            aborted: false,
+            output: '',
+            error: reason,
+            candidate: null,
+            tried: [],
+            stepsCount: 0,
+            durationMs: 0
+        };
+        completed.set(task.id, record);
+        onThoughtEvent('status', `⏭️ Worker[${task.id}] ข้าม "${task.title}" เพราะข้อ ${failedDepIds.join(', ')} ไม่สำเร็จ`);
+        return record;
     };
 
     let ranInParallel = false;
@@ -1127,11 +1254,13 @@ async function runWorkerWave(tasks, {
         const record = {
             task,
             ok: res.ok,
+            skipped: false,
             aborted: Boolean(res.aborted),
             output: res.output || '',
             error: res.error || null,
             candidate: res.candidate,
             tried: res.tried || [],
+            stepsCount: res.stepsCount || 0,
             durationMs: res.durationMs || 0
         };
         completed.set(task.id, record);
@@ -1143,6 +1272,25 @@ async function runWorkerWave(tasks, {
     const inflightPromises = new Map();
 
     while ((pending.length > 0 || inflightPromises.size > 0) && !abortCtx.aborted) {
+        // ข้ามข้อที่ dependency ครบแล้วแต่มีอย่างน้อย 1 ข้อไม่สำเร็จ (วนซ้ำเพื่อให้ข้ามเป็นทอดได้ครบ)
+        let skippedAny = true;
+        while (skippedAny && pending.length > 0) {
+            skippedAny = false;
+            for (let i = 0; i < pending.length; ) {
+                const deps = pending[i].depends_on || [];
+                if (deps.length > 0 && deps.every((d) => completed.has(d))) {
+                    const failedDepIds = deps.filter((d) => !completed.get(d).ok);
+                    if (failedDepIds.length > 0) {
+                        const [toSkip] = pending.splice(i, 1);
+                        skipTask(toSkip, failedDepIds);
+                        skippedAny = true;
+                        continue;
+                    }
+                }
+                i++;
+            }
+        }
+
         let launchedAny = false;
         for (let i = 0; i < pending.length && running.size < maxPar; ) {
             const candidateTask = pending[i];
@@ -1161,9 +1309,14 @@ async function runWorkerWave(tasks, {
         } else if (!launchedAny && pending.length > 0) {
             // Defensive safety valve (should never happen because cycles were broken)
             const forced = pending.shift();
-            const p = launchTask(forced).finally(() => { inflightPromises.delete(forced.id); });
-            inflightPromises.set(forced.id, p);
-            await p;
+            const failedDepIds = (forced.depends_on || []).filter((d) => completed.has(d) && !completed.get(d).ok);
+            if (failedDepIds.length > 0) {
+                skipTask(forced, failedDepIds);
+            } else {
+                const p = launchTask(forced).finally(() => { inflightPromises.delete(forced.id); });
+                inflightPromises.set(forced.id, p);
+                await p;
+            }
         }
     }
 
@@ -1390,7 +1543,8 @@ function runCrossTeamPipeline({
         const stage2Ms = Date.now() - stage2Start;
         const formatWorkerChips = (results) => results.map((r) => {
             const w = r.candidate ? `${r.candidate.label} @${String(r.candidate.account || '').toUpperCase()}` : r.task.model;
-            return `${r.task.id}: ${w} ${r.ok ? '✅' : '⚠️'}`;
+            const icon = r.ok ? '✅' : (r.skipped ? '⏭️' : '⚠️');
+            return `${r.task.id}: ${w} ${icon}`;
         }).join(' · ');
 
         appendOut(`> ⚡ **ด่าน 2 (Workers) เสร็จแล้ว** (${(stage2Ms / 1000).toFixed(1)}s${wave1.ranInParallel ? ' · รันขนาน G1+G2' : ''}) — ${formatWorkerChips(wave1.results)}\n\n`);
@@ -1494,8 +1648,14 @@ function runCrossTeamPipeline({
         }
 
         const revWho = reviewerUsed ? `${reviewerUsed.label} (${reviewerUsed.accountLabel})` : 'Reviewer';
-        appendOut(`> 🔍 **ด่าน 3 (Reviewer · ${revWho}) ตรวจเรียบร้อยแล้ว** (${(reviewDurationMs / 1000).toFixed(1)}s · รวมทั้งหมด ${((Date.now() - pipelineStart) / 1000).toFixed(1)}s)\n\n---\n\n${finalAnswer}`);
-        emitThought('tool_ok', '✅ สายพานทีม AI ข้ามค่าย 3 ด่านทำงานเสร็จสมบูรณ์');
+        // รอบสุดท้ายผู้ตรวจต้องสรุปเสมอ (ห้ามสั่งแก้อีก) → ถ้ายังมี Worker ที่ไม่สำเร็จ ห้ามติดป้ายว่า "เรียบร้อย"
+        const failedWorkers = allWorkerResults.filter((r) => !r.ok);
+        const incomplete = failedWorkers.length > 0;
+        const failedChips = failedWorkers.map((r) => `${r.skipped ? '⏭️ ' : ''}${r.task.id}${r.error ? ` (${String(r.error).slice(0, 60)})` : ''}`).join(', ');
+        appendOut(incomplete
+            ? `> ⚠️ **ด่าน 3 (Reviewer · ${revWho}) ตรวจแล้ว แต่งานยังไม่ครบ** — Worker ที่ไม่สำเร็จ ${failedWorkers.length} ข้อ: ${failedChips} (${(reviewDurationMs / 1000).toFixed(1)}s · รวมทั้งหมด ${((Date.now() - pipelineStart) / 1000).toFixed(1)}s)\n\n---\n\n${finalAnswer}`
+            : `> 🔍 **ด่าน 3 (Reviewer · ${revWho}) ตรวจเรียบร้อยแล้ว** (${(reviewDurationMs / 1000).toFixed(1)}s · รวมทั้งหมด ${((Date.now() - pipelineStart) / 1000).toFixed(1)}s)\n\n---\n\n${finalAnswer}`);
+        emitThought('tool_ok', incomplete ? `⚠️ สายพานทีม AI ข้ามค่ายจบแล้ว แต่มี Worker ไม่สำเร็จ ${failedWorkers.length} ข้อ` : '✅ สายพานทีม AI ข้ามค่าย 3 ด่านทำงานเสร็จสมบูรณ์');
 
         aiRouter.logDecision({
             source: 'cross-team',
@@ -1504,13 +1664,14 @@ function runCrossTeamPipeline({
             event: 'completed',
             extra: {
                 architect: archRes.candidate && `${archRes.candidate.model}@${archRes.candidate.account}`,
-                workers: allWorkerResults.map((r) => ({ id: r.task.id, model: r.candidate && r.candidate.model, account: r.candidate && r.candidate.account, ok: r.ok })),
+                workers: allWorkerResults.map((r) => ({ id: r.task.id, model: r.candidate && r.candidate.model, account: r.candidate && r.candidate.account, ok: r.ok, skipped: Boolean(r.skipped), steps: r.stepsCount || 0, ms: r.durationMs, error: r.ok ? undefined : String(r.error || '').slice(0, 120) })),
+                incomplete,
                 reviewer: reviewerUsed && `${reviewerUsed.model}@${reviewerUsed.account}`,
                 ranInParallel: wave1.ranInParallel,
                 totalMs: Date.now() - pipelineStart
             }
         });
-        onDone(0, null, { completed: true });
+        onDone(0, null, { completed: true, incomplete });
     })().catch((err) => {
         console.error('[CrossTeam] Pipeline crashed:', err);
         onDone(1, err.message || String(err), { stage: 'crash' });
@@ -1532,10 +1693,12 @@ module.exports = {
     sanitizeTasks,
     parseArchitectPlan,
     parseReviewerVerdict,
+    buildReviewerPrompt,
     runWorkerWave,
     runWithFailover,
     // ตัวรัน/ตัวจับเวลา — export ให้เทสต์ (test/cross-team-watchdog.test.js)
     makeWatchdog,
+    treeCpuSeconds,
     runAgySubprocess,
     STAGE_TIMEOUT_MS,
     STAGE_IDLE_MS

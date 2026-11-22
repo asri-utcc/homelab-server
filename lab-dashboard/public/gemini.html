@@ -1350,6 +1350,70 @@ body::before {
   justify-content: space-between;
   gap: 8px;
 }
+.md-video-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+.md-video-card {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+  width: 340px;
+  margin: 6px 0;
+  background: rgba(1, 10, 16, 0.94);
+  border: 1px solid rgba(0, 229, 255, 0.42);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.52), 0 0 14px rgba(0, 229, 255, 0.14);
+}
+.md-video-card video {
+  display: block;
+  width: 100%;
+  max-height: 460px;
+  background: #02070b;
+}
+.md-video-caption {
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: rgba(0, 229, 255, 0.08);
+  border-top: 1px solid rgba(0, 229, 255, 0.2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.md-video-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.md-video-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.md-dl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #021218;
+  background: var(--cyan);
+  text-decoration: none;
+  font-weight: 600;
+  transition: filter 0.15s;
+}
+.md-dl-chip:hover { filter: brightness(1.15); }
 
 /* ── Tactical Hacker-Terminal AI Processing Status Bar in Message ──────── */
 .msg__thinking-card {
@@ -1568,33 +1632,6 @@ body::before {
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
-}
-
-.chips {
-  display: flex;
-  gap: 7px;
-  overflow-x: auto;
-  white-space: nowrap;
-  scrollbar-width: none;
-  padding-bottom: 2px;
-}
-.chips::-webkit-scrollbar { display: none; }
-.chip {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 4px 11px;
-  background: rgba(6, 28, 40, 0.85);
-  border: 1px solid rgba(0, 229, 255, 0.25);
-  color: var(--ink-2);
-  cursor: pointer;
-  transition: all 0.15s;
-  border-radius: 2px;
-}
-.chip:hover {
-  background: rgba(0, 229, 255, 0.16);
-  border-color: var(--cyan);
-  color: #fff;
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
 }
 
 .core-control-strip {
@@ -2418,15 +2455,6 @@ body::before {
       </div>
 
       <div class="core-dock">
-        <div class="chips" id="quick-chips">
-          <button class="chip" data-prompt="ดึงข้อมูลการใช้ไฟฟ้าจาก Home Assistant ในอุปกรณ์ PZEM เพื่อตรวจสอบค่าไฟวันนี้ และคำนวณค่าไฟของทั้งเดือนนี้ สรุปยอดหน่วย kWh และค่าไฟเป็นเงินบาท">⚡ ค่าไฟ PZEM</button>
-          <button class="chip" data-prompt="คุณจำอะไรเกี่ยวกับฉันและการตั้งค่าเซิร์ฟเวอร์นี้ได้บ้าง สรุปข้อมูลทั้งหมดที่คุณจำได้ให้ดูหน่อย">🧠 ความจำ AI</button>
-          <button class="chip" data-prompt="ตรวจสอบสถานะ Docker Containers และ Resource การทำงานของ Host ทั้งหมด">🔍 Containers &amp; Host</button>
-          <button class="chip" data-prompt="ตรวจสอบไฟร์วอลล์ UFW, พอร์ตที่กำลังเปิดใช้งาน และความปลอดภัยของระบบ">🛡️ Firewall &amp; Ports</button>
-          <button class="chip" data-prompt="สร้างโปรเจกต์ทดสอบ Node.js Express ง่ายๆ ไว้ในโฟลเดอร์ projects">📁 สร้างโปรเจกต์</button>
-          <button class="chip" data-prompt="วิเคราะห์สถานะ OnePercentBotTrade และตรวจสอบไฟล์ log ล่าสุด">📈 OnePercentBot</button>
-        </div>
-
         <div class="core-control-strip">
           <div class="core-strip-left">
             <button type="button" id="btn-sound" class="btn" style="display:none;">🔊 เสียง</button>
@@ -5898,6 +5926,10 @@ body::before {
     });
 
     const renderedImgUrls = new Set();
+    const renderedVideos = new Map();
+    function escAttr(v) {
+      return String(v || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
     function resolveImageUrl(rawUrl) {
       const clean = String(rawUrl || '').replace(/&amp;/g, '&').trim();
       if (/^file:\/\/(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
@@ -5912,15 +5944,69 @@ body::before {
       }
       return null;
     }
+    function resolveLocalFileUrl(rawUrl, download = false) {
+      const clean = String(rawUrl || '').replace(/&amp;/g, '&').trim();
+      let localPath = null;
+      if (/^file:\/\/(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
+        localPath = clean.replace(/^file:\/\//i, '');
+      } else if (/^(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
+        localPath = clean;
+      }
+      if (localPath) {
+        return '/api/gemini/local-file?path=' + encodeURIComponent(localPath) + (download ? '&download=1' : '');
+      }
+      if (/^(?:https?:\/\/[^/\s]+)?\/api\/gemini\/local-file\?/i.test(clean)) {
+        if (!download) return clean.replace(/([?&])download=1(&|$)/i, (_, p1, p2) => (p2 ? p1 : '')).replace(/[?&]$/, '');
+        return /([?&])download=1(?:&|$)/i.test(clean) ? clean : clean + (clean.includes('?') ? '&download=1' : '?download=1');
+      }
+      if (/^(https?:\/\/|\/api\/|\/files\/)/i.test(clean)) {
+        return clean;
+      }
+      return null;
+    }
+    function getUrlExtension(rawUrl) {
+      const clean = String(rawUrl || '').replace(/&amp;/g, '&').trim();
+      const lfMatch = clean.match(/\/api\/gemini\/local-file\?[^#\s]*[?&]path=([^&\s#]+)/i);
+      let target = clean;
+      if (lfMatch) {
+        try { target = decodeURIComponent(lfMatch[1]); } catch (_) { target = lfMatch[1]; }
+      } else {
+        target = clean.split(/[?#]/)[0];
+      }
+      const m = target.match(/\.([a-z0-9]{1,8})$/i);
+      return m ? m[1].toLowerCase() : '';
+    }
+    function getVideoDedupeKey(src) {
+      const lfMatch = String(src || '').match(/\/api\/gemini\/local-file\?[^#\s]*[?&]path=([^&\s#]+)/i);
+      if (lfMatch) {
+        try { return 'local:' + decodeURIComponent(lfMatch[1]); } catch (_) { return 'local:' + lfMatch[1]; }
+      }
+      return String(src || '').replace(/^https?:\/\/[^/]+/i, '');
+    }
 
     function buildImgCard(src, caption) {
       renderedImgUrls.add(src);
       const safeCap = escapeHtml(caption || 'Generated Image');
+      const safeSrc = escAttr(src);
       return `<div class="md-img-card">` +
-        `<a href="${src}" target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูรูปขนาดเต็ม">` +
-          `<img src="${src}" alt="${safeCap}" loading="lazy" onerror="this.closest('.md-img-card').style.display='none'" />` +
+        `<a href="${safeSrc}" target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูรูปขนาดเต็ม">` +
+          `<img src="${safeSrc}" alt="${safeCap}" loading="lazy" onerror="this.closest('.md-img-card').style.display='none'" />` +
         `</a>` +
-        `<div class="md-img-caption"><span>🖼️ ${safeCap}</span><a class="md-link" href="${src}" target="_blank" rel="noopener noreferrer">เปิดเต็มจอ ↗</a></div>` +
+        `<div class="md-img-caption"><span>🖼️ ${safeCap}</span><a class="md-link" href="${safeSrc}" target="_blank" rel="noopener noreferrer">เปิดเต็มจอ ↗</a></div>` +
+      `</div>`;
+    }
+    function buildVideoCard(src, dlSrc, safeCaptionHtml) {
+      const safeSrc = escAttr(src);
+      const safeDl = escAttr(dlSrc || src);
+      return `<div class="md-video-card">` +
+        `<video controls playsinline preload="metadata" src="${safeSrc}"></video>` +
+        `<div class="md-video-caption">` +
+          `<span class="md-video-title" title="${safeCaptionHtml}">🎬 ${safeCaptionHtml}</span>` +
+          `<span class="md-video-actions">` +
+            `<a class="md-link" href="${safeSrc}" target="_blank" rel="noopener noreferrer">เปิดเต็มจอ ↗</a>` +
+            `<a class="md-dl-chip" href="${safeDl}" download>⬇️ ดาวน์โหลด</a>` +
+          `</span>` +
+        `</div>` +
       `</div>`;
     }
 
@@ -5934,14 +6020,31 @@ body::before {
       // Links: [label](url)
       s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, url) => {
         const cleanUrl = url.replace(/&amp;/g, '&');
-        if (/\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(cleanUrl)) {
+        const ext = getUrlExtension(cleanUrl);
+        if (/^(png|jpe?g|webp|gif|svg)$/i.test(ext)) {
           const src = resolveImageUrl(cleanUrl);
           if (src) return buildImgCard(src, label);
         }
-        if (/^(https?:\/\/|\/)/i.test(cleanUrl)) {
-          return `<a class="md-link" href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        if (/^(mp4|webm|mov|m4v)$/i.test(ext)) {
+          const src = resolveLocalFileUrl(cleanUrl, false);
+          if (src) {
+            const dlSrc = resolveLocalFileUrl(cleanUrl, true) || src;
+            const key = getVideoDedupeKey(src);
+            if (!renderedVideos.has(key)) renderedVideos.set(key, { src, dlSrc, safeCaptionHtml: label });
+            return `<a class="md-link" href="${escAttr(src)}" target="_blank" rel="noopener noreferrer">🎬 ${label}</a> ` +
+                   `<a class="md-dl-chip" href="${escAttr(dlSrc)}" download title="ดาวน์โหลดไฟล์ต้นฉบับ">⬇️ ดาวน์โหลด</a>`;
+          }
         }
-        return `<span class="md-link" title="${cleanUrl}">${label}</span>`;
+        if (/^(html|pdf|srt|vtt|txt|md|json|csv|wav|mp3|m4a|ogg|zip)$/i.test(ext)) {
+          const fileSrc = resolveLocalFileUrl(cleanUrl, false);
+          if (fileSrc) {
+            return `<a class="md-link" href="${escAttr(fileSrc)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+          }
+        }
+        if (/^(https?:\/\/|\/)/i.test(cleanUrl)) {
+          return `<a class="md-link" href="${escAttr(cleanUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        }
+        return `<span class="md-link" title="${escAttr(cleanUrl)}">${label}</span>`;
       });
       // Bold (**text** or __text__)
       s = s.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
@@ -6087,6 +6190,7 @@ body::before {
     const bareMatches = String(raw).match(/(?:file:\/\/)?(\/home\/dev\/(?:projects|\.gemini)\/[^\s`"'()<>]+\.(?:png|jpe?g|webp|gif|svg)|\/tmp\/[^\s`"'()<>]+\.(?:png|jpe?g|webp|gif|svg))/gi) || [];
     const extraCards = [];
     for (const m of bareMatches) {
+      if (/[{}$*]/.test(m)) continue;
       const src = resolveImageUrl(m);
       if (src && !renderedImgUrls.has(src)) {
         const fname = m.split('/').pop();
@@ -6095,6 +6199,27 @@ body::before {
     }
     if (extraCards.length > 0) {
       out.push(`<div class="md-img-gallery">${extraCards.join('')}</div>`);
+    }
+
+    // Auto-detect any bare local video paths and render playable video cards
+    const bareVideoMatches = String(raw).match(/(?:file:\/\/)?(\/home\/dev\/(?:projects|\.gemini)\/[^\s`"'()<>]+\.(?:mp4|webm|mov|m4v)|\/tmp\/[^\s`"'()<>]+\.(?:mp4|webm|mov|m4v))/gi) || [];
+    for (const m of bareVideoMatches) {
+      if (/[{}$*]/.test(m)) continue;
+      const src = resolveLocalFileUrl(m, false);
+      if (!src) continue;
+      const key = getVideoDedupeKey(src);
+      if (!renderedVideos.has(key)) {
+        const dlSrc = resolveLocalFileUrl(m, true) || src;
+        const fname = escapeHtml(m.split('/').pop() || 'video.mp4');
+        renderedVideos.set(key, { src, dlSrc, safeCaptionHtml: fname });
+      }
+    }
+    if (renderedVideos.size > 0) {
+      const videoCards = [];
+      for (const v of renderedVideos.values()) {
+        videoCards.push(buildVideoCard(v.src, v.dlSrc, v.safeCaptionHtml));
+      }
+      out.push(`<div class="md-video-gallery">${videoCards.join('')}</div>`);
     }
 
     return out.join('');
@@ -7597,12 +7722,6 @@ body::before {
       e.preventDefault();
       sendPrompt();
     }
-  });
-
-  document.querySelectorAll('.chip').forEach((c) => {
-    c.addEventListener('click', () => {
-      sendPrompt(c.dataset.prompt);
-    });
   });
 
   btnClear.addEventListener('click', async () => {

@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AI Video Studio · สร้างวิดีโออัตโนมัติ — Homelab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #080b11;
+      --bench: #10151f;
+      --well: #161d2b;
+      --well-hover: #1d2638;
+      --glass: rgba(16, 21, 31, 0.78);
+      --border: rgba(255, 255, 255, 0.09);
+      --border-strong: rgba(255, 255, 255, 0.18);
+      --ink: #eef2f6;
+      --ink-2: #b9c2cf;
+      --muted: #7f8b9c;
+      --star: #f6c453;
+      --star-soft: rgba(246, 196, 83, 0.14);
+      --cyan: #38bdf8;
+      --cyan-soft: rgba(56, 189, 248, 0.14);
+      --violet: #a78bfa;
+      --coral: #fb7185;
+      --coral-soft: rgba(251, 113, 133, 0.14);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.14);
+      --sans: "Noto Sans Thai", "IBM Plex Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, select, textarea { font-family: inherit; color: inherit; }
+    button { cursor: pointer; }
+
+    body {
+      background:
+        radial-gradient(920px 420px at 12% -6%, rgba(246, 196, 83, 0.08), transparent 60%),
+        radial-gradient(820px 480px at 90% 2%, rgba(56, 189, 248, 0.08), transparent 62%),
+        radial-gradient(700px 420px at 50% 100%, rgba(167, 139, 250, 0.05), transparent 60%),
+        var(--canvas);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .hidden { display: none !important; }
+
+    /* Topbar (matches bg-remove.html) */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(16, 21, 31, 0.88);
+      backdrop-filter: blur(14px);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .star-emblem {
+      width: 36px; height: 36px; border-radius: 10px;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, #f6c453 0%, #38bdf8 100%);
+      color: #080b11; font-size: 18px; font-weight: 900;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+      flex: none;
+    }
+    .brand h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -0.01em; }
+    .brand p { font-size: 12px; color: var(--muted); }
+    .top-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 11px; border-radius: 999px;
+      background: var(--well); border: 1px solid var(--border);
+      font-size: 12px; color: var(--ink-2);
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; }
+    .status-dot.warn { background: var(--star); }
+    .status-dot.busy { background: var(--cyan); animation: pulseDot 1.2s ease-in-out infinite; }
+    .status-dot.err { background: var(--coral); }
+    @keyframes pulseDot { 50% { opacity: 0.35; transform: scale(0.82); } }
+
+    .btn-link, .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 8px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: var(--well); color: var(--ink);
+      font-size: 13px; font-weight: 600; text-decoration: none;
+      transition: background 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+    }
+    .btn-link:hover, .btn:hover:not(:disabled) { background: var(--well-hover); border-color: rgba(255,255,255,0.28); }
+    .btn:active:not(:disabled) { transform: translateY(1px); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #f6c453 0%, #f59e0b 100%);
+      color: #080b11; border-color: transparent;
+      box-shadow: 0 4px 16px rgba(246, 196, 83, 0.22);
+    }
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.06); background: linear-gradient(135deg, #f6c453 0%, #f59e0b 100%); }
+
+    .btn-cyan {
+      background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+      color: #06101a; border-color: transparent;
+      box-shadow: 0 4px 16px rgba(56, 189, 248, 0.2);
+    }
+    .btn-cyan:hover:not(:disabled) { filter: brightness(1.07); background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); }
+
+    .btn-danger { background: var(--coral-soft); border-color: rgba(251, 113, 133, 0.35); color: #fda4af; }
+    .btn-danger:hover:not(:disabled) { background: rgba(251, 113, 133, 0.22); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+
+    /* Container & Tabs */
+    .container {
+      width: 100%;
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 18px 16px 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .nav-tabs {
+      display: inline-flex;
+      gap: 6px;
+      padding: 5px;
+      background: var(--bench);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      align-self: flex-start;
+      flex-wrap: wrap;
+    }
+    .nav-tab {
+      padding: 8px 16px;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink-2);
+      font-size: 13.5px;
+      font-weight: 600;
+      transition: all 0.16s ease;
+    }
+    .nav-tab:hover { color: var(--ink); background: rgba(255,255,255,0.04); }
+    .nav-tab.is-active {
+      background: var(--well);
+      color: var(--ink);
+      border-color: var(--border-strong);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    }
+
+    /* Glass Card with gradient border accent */
+    .glass-card {
+      position: relative;
+      background: var(--glass);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    .glass-card.accent-edge::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(246, 196, 83, 0.35), rgba(56, 189, 248, 0.25), rgba(167, 139, 250, 0.2));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .muted { color: var(--muted); font-size: 12.5px; }
+
+    /* Hero */
+    .hero-head { margin-bottom: 12px; }
+    .hero-head h2 {
+      font-size: clamp(20px, 3vw, 26px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, #eef2f6 0%, #f6c453 55%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-head p { color: var(--ink-2); font-size: 13.5px; margin-top: 2px; }
+
+    .topic-input {
+      width: 100%;
+      min-height: 92px;
+      padding: 13px 15px;
+      border-radius: 12px;
+      border: 1px solid var(--border-strong);
+      background: rgba(8, 11, 17, 0.72);
+      color: var(--ink);
+      font-size: 15px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease;
+    }
+    .topic-input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+
+    .chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .chip {
+      padding: 5px 11px;
+      border-radius: 999px;
+      background: var(--well);
+      border: 1px solid var(--border);
+      color: var(--ink-2);
+      font-size: 12px;
+      transition: all 0.14s ease;
+    }
+    .chip:hover { border-color: var(--cyan); color: var(--ink); background: var(--well-hover); }
+
+    /* Settings Grid */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .settings-grid { grid-template-columns: 1fr; }
+    }
+
+    .field-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink-2);
+      margin-bottom: 6px;
+    }
+    .input, .select {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 9px;
+      border: 1px solid var(--border-strong);
+      background: rgba(8, 11, 17, 0.72);
+      color: var(--ink);
+      font-size: 13px;
+      outline: none;
+    }
+    .input:focus, .select:focus { border-color: var(--cyan); }
+
+    .range-wrap { display: flex; align-items: center; gap: 12px; }
+    .range-wrap input[type="range"] { flex: 1; accent-color: var(--star); }
+
+    /* Style Picker */
+    .style-toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .style-toolbar .input { flex: 1; min-width: 180px; }
+    .cat-pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .cat-pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--well);
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+    .cat-pill.is-active {
+      background: var(--cyan-soft);
+      border-color: var(--cyan);
+      color: #bae6fd;
+    }
+
+    .style-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .style-card {
+      text-align: left;
+      padding: 11px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: rgba(22, 29, 43, 0.75);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+    }
+    .style-card:hover { border-color: var(--border-strong); background: var(--well-hover); }
+    .style-card.is-selected {
+      border-color: var(--star);
+      background: rgba(246, 196, 83, 0.1);
+      box-shadow: 0 0 0 1px rgba(246, 196, 83, 0.35);
+    }
+    .swatches { display: flex; gap: 4px; align-items: center; }
+    .swatch {
+      width: 16px; height: 16px; border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.16);
+    }
+    .badge-custom {
+      margin-left: auto;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(167, 139, 250, 0.2);
+      color: #ddd6fe;
+      border: 1px solid rgba(167, 139, 250, 0.4);
+    }
+    .style-th { font-size: 13px; font-weight: 700; color: var(--ink); }
+    .style-en { font-size: 11px; color: var(--muted); }
+    .style-sum {
+      font-size: 11.5px; color: var(--ink-2);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    /* Action Bar */
+    .action-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 14px;
+    }
+    .action-bar .btn { flex: 1; min-width: 200px; padding: 12px 18px; font-size: 14.5px; }
+
+    /* Stepper */
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      margin: 12px 0;
+    }
+    @media (max-width: 768px) {
+      .stepper { grid-template-columns: repeat(4, 1fr); }
+    }
+    .step-item {
+      padding: 8px 6px;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      background: var(--well);
+      text-align: center;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .step-item.is-done { border-color: rgba(52, 211, 153, 0.45); background: var(--green-soft); color: #a7f3d0; }
+    .step-item.is-active { border-color: var(--cyan); background: var(--cyan-soft); color: #e0f2fe; font-weight: 700; }
+
+    .progress-track {
+      width: 100%; height: 8px; border-radius: 999px;
+      background: var(--well); overflow: hidden; margin: 8px 0;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--star), var(--cyan));
+      transition: width 0.25s ease;
+    }
+    .log-tail {
+      background: #06090e;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--ink-2);
+      max-height: 140px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Draft Editor */
+    .scene-list { display: flex; flex-direction: column; gap: 12px; }
+    .scene-card {
+      background: rgba(22, 29, 43, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .scene-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .scene-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 680px) { .scene-grid { grid-template-columns: 1fr; } }
+
+    /* Result & Video */
+    .result-grid {
+      display: grid;
+      grid-template-columns: minmax(240px, 340px) 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+    @media (max-width: 780px) { .result-grid { grid-template-columns: 1fr; } }
+    .video-box {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      background: #000;
+      border-radius: 12px;
+      border: 1px solid var(--border-strong);
+      overflow: hidden;
+    }
+    .video-box video { width: 100%; height: 100%; object-fit: contain; }
+    .storyboard-img {
+      width: 100%;
+      max-height: 240px;
+      object-fit: contain;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #05070b;
+    }
+
+    /* Skeleton & Empty */
+    .skeleton {
+      background: linear-gradient(90deg, var(--well) 25%, #222c40 50%, var(--well) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 10px;
+      height: 86px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .empty-state {
+      padding: 26px 16px;
+      text-align: center;
+      border: 1px dashed var(--border-strong);
+      border-radius: 12px;
+      color: var(--ink-2);
+    }
+
+    /* Toast */
+    .toast-stack {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      z-index: 90;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: min(360px, calc(100vw - 32px));
+    }
+    .toast {
+      padding: 11px 14px;
+      border-radius: 10px;
+      background: var(--bench);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .toast.is-error { border-color: rgba(251, 113, 133, 0.5); background: #261219; color: #fecdd3; }
+    .toast.is-ok { border-color: rgba(52, 211, 153, 0.5); background: #0f241d; color: #a7f3d0; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="star-emblem" aria-hidden="true">▶</div>
+      <div>
+        <h1>AI Video Studio · สร้างวิดีโออัตโนมัติ</h1>
+        <p>Hybrid Studio Engine · 46+ สไตล์ · Remotion + Thai TTS บน Homelab</p>
+      </div>
+    </div>
+    <div class="top-right">
+      <div class="status-pill" id="engine-pill">
+        <span class="status-dot" id="engine-dot"></span>
+        <span class="mono" id="engine-text">กำลังเชื่อมต่อ Studio...</span>
+      </div>
+      <a href="/" class="btn-link">← กลับหน้า Overview</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <nav class="nav-tabs" role="tablist" aria-label="เมนูหลัก">
+      <button type="button" class="nav-tab is-active" data-tab="studio">🎬 สร้างวิดีโอ</button>
+      <button type="button" class="nav-tab" data-tab="library">📚 คลังงาน</button>
+      <button type="button" class="nav-tab" data-tab="learn">🎨 สอนสไตล์ใหม่</button>
+    </nav>
+
+    <!-- TAB 1: STUDIO -->
+    <section id="tab-studio" class="tab-panel" style="display:flex;flex-direction:column;gap:16px;">
+      <div class="glass-card accent-edge">
+        <div class="hero-head">
+          <h2>AI Video Studio</h2>
+          <p>พิมพ์หัวข้อหรือไอเดียที่ต้องการ ระบบจะค้นข้อมูล เขียนบท พากย์เสียง และเรนเดอร์คลิปแนวตั้ง 9:16 ให้อัตโนมัติ</p>
+        </div>
+        <textarea id="topic-input" class="topic-input" placeholder="อยากได้วิดีโอเรื่องอะไร บอกได้เลยค่ะ..."></textarea>
+        <div class="chips-row" aria-label="ตัวอย่างหัวข้อ">
+          <button type="button" class="chip" data-topic="ทำไม CPU ถึงร้อนเวลาเล่นเกม และวิธีระบายความร้อนแบบเข้าใจง่าย">💡 ทำไม CPU ถึงร้อนเวลาเล่นเกม</button>
+          <button type="button" class="chip" data-topic="3 เทคนิคประหยัดค่าไฟในบ้านด้วย Smart Home ที่ทำได้จริง">⚡ 3 เทคนิคประหยัดค่าไฟ Smart Home</button>
+          <button type="button" class="chip" data-topic="สรุปข่าว AI ล่าสุดที่คนทำงานสายเทคต้องรู้ใน 30 วินาที">🤖 สรุปข่าว AI สำหรับคนทำงาน</button>
+        </div>
+
+        <div class="action-bar">
+          <button type="button" class="btn btn-primary" id="btn-oneshot">⚡ สร้างทันที (One-Shot)</button>
+          <button type="button" class="btn btn-cyan" id="btn-draft">📝 ร่างบทก่อน (Draft)</button>
+        </div>
+      </div>
+
+      <div class="settings-grid">
+        <div class="glass-card">
+          <div class="section-title">
+            <span>🎨 เลือกสไตล์ภาพ (Style Picker)</span>
+            <span class="muted" id="style-count-label">กำลังโหลดสไตล์...</span>
+          </div>
+          <div class="style-toolbar">
+            <input type="search" id="style-search" class="input" autocomplete="off" data-lpignore="true" placeholder="ค้นหาสไตล์ (ชื่อไทย / อังกฤษ / คำอธิบาย)..." />
+          </div>
+          <div class="cat-pills" id="cat-pills"></div>
+          <div class="style-grid" id="style-grid">
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="display:flex;flex-direction:column;gap:14px;">
+          <div class="section-title"><span>⚙️ ตั้งค่าวิดีโอ</span></div>
+          <div>
+            <div class="field-label">
+              <span>ความยาววิดีโอ</span>
+              <span class="mono" id="duration-val">30 วินาที</span>
+            </div>
+            <div class="range-wrap">
+              <span class="muted mono">15s</span>
+              <input type="range" id="duration-range" min="15" max="120" step="5" value="30" />
+              <span class="muted mono">120s</span>
+            </div>
+          </div>
+          <div>
+            <label class="field-label" for="voice-select">เสียงพากย์ (Voice)</label>
+            <select id="voice-select" class="select">
+              <option value="gemini:Charon">Gemini · Charon (สุขุม ชัดเจน)</option>
+              <option value="gemini:Aoede">Gemini · Aoede (นุ่มนวล เล่าเรื่อง)</option>
+              <option value="gemini:Kore">Gemini · Kore (สดใส ทันสมัย)</option>
+              <option value="gemini:Fenrir">Gemini · Fenrir (หนักแน่น ทรงพลัง)</option>
+              <option value="gemini:Puck">Gemini · Puck (กระฉับกระเฉง)</option>
+              <option value="edge:th-TH-PremwadeeNeural">Edge TTS · เปรมวดี (หญิง)</option>
+              <option value="edge:th-TH-NiwatNeural">Edge TTS · นิวัฒน์ (ชาย)</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="bgm-select">เพลงประกอบ (BGM)</label>
+            <select id="bgm-select" class="select">
+              <option value="warm_tech">Warm Tech (เทคโนโลยีอบอุ่น)</option>
+              <option value="story_cinematic">Story Cinematic (เล่าเรื่องชวนติดตาม)</option>
+              <option value="dawn_ambient">Dawn Ambient (บรรยากาศนุ่มลึก)</option>
+              <option value="none">ไม่มีเพลงประกอบ (None)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- JOB PANEL -->
+      <div class="glass-card hidden" id="job-panel">
+        <div class="section-title">
+          <span>🚀 สถานะงาน: <span class="mono" id="job-id-label">—</span></span>
+          <button type="button" class="btn btn-danger btn-sm" id="btn-abort">ยกเลิกงาน</button>
+        </div>
+        <div class="stepper" id="job-stepper"></div>
+        <div class="progress-track"><div class="progress-fill" id="job-progress"></div></div>
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;">
+          <span id="job-msg" style="font-size:13px;">กำลังเตรียมงาน...</span>
+          <span class="mono muted" id="job-pct">0%</span>
+        </div>
+        <pre class="log-tail" id="job-log">รอข้อมูล log...</pre>
+      </div>
+
+      <!-- DRAFT EDITOR -->
+      <div class="glass-card hidden" id="draft-panel">
+        <div class="section-title">
+          <span>📝 แก้ไขบทรายซีน (Draft Editor)</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm" id="btn-add-scene">+ เพิ่มซีน</button>
+            <button type="button" class="btn btn-sm" id="btn-save-script">💾 บันทึกบท</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-build-video">🎬 สร้างวิดีโอ</button>
+          </div>
+        </div>
+        <div class="scene-list" id="scene-list"></div>
+      </div>
+
+      <!-- RESULT & PHASE 1 EDITING -->
+      <div class="glass-card hidden" id="result-panel">
+        <div class="section-title">
+          <span>🎉 ผลลัพธ์วิดีโอ</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="version-select" class="select" style="width:auto;padding:5px 10px;"></select>
+            <a id="btn-download" class="btn btn-sm" href="#" download>⬇ ดาวน์โหลด</a>
+            <button type="button" class="btn btn-sm" id="btn-copy-link">🔗 คัดลอกลิงก์</button>
+          </div>
+        </div>
+        <div class="result-grid">
+          <div class="video-box">
+            <video id="result-video" controls playsinline></video>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div id="storyboard-wrap" class="hidden">
+              <div class="field-label">Storyboard</div>
+              <img id="storyboard-img" class="storyboard-img" alt="Storyboard preview" />
+            </div>
+
+            <div class="glass-card" style="padding:14px;background:rgba(8,11,17,0.55);">
+              <div class="section-title" style="margin-bottom:8px;"><span>✂️ ตัดต่อด่วน (เฟส 1)</span></div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <div>
+                  <div class="field-label"><span>ตัดหัว-ท้าย (Trim)</span></div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <button type="button" class="btn btn-sm" id="btn-set-trim-start">ตั้งจุดเริ่มจากเวลาปัจจุบัน</button>
+                    <input type="number" step="0.1" min="0" id="trim-start" class="input" style="width:88px;" placeholder="เริ่ม (s)" />
+                    <button type="button" class="btn btn-sm" id="btn-set-trim-end">ตั้งจุดจบจากเวลาปัจจุบัน</button>
+                    <input type="number" step="0.1" min="0" id="trim-end" class="input" style="width:88px;" placeholder="จบ (s)" />
+                    <button type="button" class="btn btn-cyan btn-sm" id="btn-do-trim">ตัดหัวท้าย</button>
+                  </div>
+                </div>
+                <div>
+                  <div class="field-label"><span>ตัดท่อนกลางออก (Cut)</span></div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <input type="number" step="0.1" min="0" id="cut-from" class="input" style="width:96px;" placeholder="จาก (s)" />
+                    <input type="number" step="0.1" min="0" id="cut-to" class="input" style="width:96px;" placeholder="ถึง (s)" />
+                    <button type="button" class="btn btn-cyan btn-sm" id="btn-do-cut">ตัดท่อนกลาง</button>
+                  </div>
+                </div>
+                <div>
+                  <div class="field-label"><span>แก้ซีนเฉพาะจุด</span></div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <select id="edit-scene-select" class="select" style="width:auto;min-width:180px;"></select>
+                    <button type="button" class="btn btn-sm" id="btn-open-edit-scene">✏️ แก้ซีนนี้</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: LIBRARY -->
+    <section id="tab-library" class="tab-panel hidden">
+      <div class="glass-card">
+        <div class="section-title">
+          <span>📚 คลังงานวิดีโอ</span>
+          <button type="button" class="btn btn-sm" id="btn-refresh-jobs">↻ รีเฟรช</button>
+        </div>
+        <div id="jobs-list" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="empty-state">กำลังโหลดรายการงาน...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: STYLE LEARNER -->
+    <section id="tab-learn" class="tab-panel hidden" style="display:flex;flex-direction:column;gap:16px;">
+      <div class="glass-card accent-edge">
+        <div class="section-title"><span>🎨 สอนสไตล์ใหม่จากวิดีโอหรือภาพตัวอย่าง</span></div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <label class="field-label" for="learn-name">ชื่อสไตล์ใหม่</label>
+            <input type="text" id="learn-name" class="input" placeholder="เช่น Neon Cyberpunk Thai" />
+          </div>
+          <div>
+            <label class="field-label" for="learn-url">ลิงก์วิดีโออ้างอิง (URL)</label>
+            <input type="url" id="learn-url" class="input" placeholder="https://..." />
+          </div>
+          <div>
+            <label class="field-label" for="learn-files">หรืออัปโหลดคลิป/ภาพแคปหน้าจอ (ไม่เกิน 60MB)</label>
+            <input type="file" id="learn-files" class="input" accept="video/*,image/*" multiple />
+          </div>
+          <div>
+            <button type="button" class="btn btn-primary" id="btn-start-learn">✨ เริ่มเรียนรู้สไตล์</button>
+          </div>
+          <div id="learn-status-box" class="hidden" style="padding:10px;border-radius:9px;background:var(--well);border:1px solid var(--border);">
+            <span id="learn-status-text">กำลังวิเคราะห์สไตล์...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div class="section-title"><span>สไตล์ที่เรียนรู้ไว้ (Custom Styles)</span></div>
+        <div id="custom-styles-list" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="empty-state">ยังไม่มีสไตล์ที่เรียนรู้เอง</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const STEPS = [
+        { key: 'researching', label: 'ค้นข้อมูล' },
+        { key: 'scripting', label: 'เขียนบท' },
+        { key: 'tts', label: 'เสียง' },
+        { key: 'rendering', label: 'เรนเดอร์' },
+        { key: 'mixing', label: 'มิกซ์' },
+        { key: 'previewing', label: 'พรีวิว' },
+        { key: 'delivering', label: 'ส่ง Telegram' }
+      ];
+
+      const state = {
+        presets: [],
+        custom: [],
+        selectedStyleId: '',
+        activeCategory: 'ทั้งหมด',
+        activeJobId: null,
+        activeJob: null,
+        activeScript: null,
+        pollTimer: null,
+        learnTimer: null
+      };
+
+      const $ = (id) => document.getElementById(id);
+
+      function escapeHtml(str) {
+        return String(str ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function toast(msg, type = 'info') {
+        const el = document.createElement('div');
+        el.className = 'toast' + (type === 'error' ? ' is-error' : type === 'ok' ? ' is-ok' : '');
+        el.textContent = msg;
+        $('toast-stack').appendChild(el);
+        setTimeout(() => el.remove(), 4200);
+      }
+
+      async function apiFetch(url, opts = {}) {
+        const res = await fetch(url, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          ...opts,
+          headers: {
+            ...(opts.body && typeof opts.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+            ...(opts.headers || {})
+          }
+        });
+        const text = await res.text();
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (_) {}
+        if (!res.ok) {
+          throw new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
+        }
+        return data;
+      }
+
+      // Tabs
+      document.querySelectorAll('.nav-tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.nav-tab').forEach((b) => b.classList.remove('is-active'));
+          btn.classList.add('is-active');
+          const target = btn.dataset.tab;
+          document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
+          $('tab-' + target).classList.remove('hidden');
+          if (target === 'library') loadJobs();
+        });
+      });
+
+      // Topic chips
+      document.querySelectorAll('.chip[data-topic]').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          $('topic-input').value = chip.dataset.topic;
+          $('topic-input').focus();
+        });
+      });
+
+      // Duration slider
+      $('duration-range').addEventListener('input', (e) => {
+        $('duration-val').textContent = `${e.target.value} วินาที`;
+      });
+
+      // Status polling
+      async function pollEngineStatus() {
+        try {
+          const d = await apiFetch('/api/video-studio/status');
+          const busy = !!(d.busy || d.activeJob || (d.queue && d.queue.length));
+          $('engine-dot').className = 'status-dot' + (busy ? ' busy' : '');
+          $('engine-text').textContent = busy ? 'กำลังประมวลผลวิดีโอ...' : 'Studio พร้อมใช้งาน';
+        } catch (_) {
+          $('engine-dot').className = 'status-dot warn';
+          $('engine-text').textContent = 'รอเชื่อมต่อ API';
+        }
+      }
+      pollEngineStatus();
+      setInterval(pollEngineStatus, 10000);
+
+      // Styles
+      async function loadStyles() {
+        try {
+          const data = await apiFetch('/api/video-studio/styles');
+          state.presets = Array.isArray(data?.presets) ? data.presets : [];
+          state.custom = Array.isArray(data?.custom) ? data.custom : [];
+          if (!state.selectedStyleId && state.presets.length) {
+            state.selectedStyleId = state.presets[0].id;
+          }
+          renderCategories();
+          renderStyles();
+          renderCustomStylesList();
+        } catch (err) {
+          $('style-count-label').textContent = 'ยังเชื่อมต่อ API สไตล์ไม่ได้';
+          $('style-grid').innerHTML = `<div class="empty-state">ไม่สามารถโหลดรายการสไตล์ได้ (${escapeHtml(err.message)})</div>`;
+        }
+      }
+
+      function allStyles() {
+        return [
+          ...state.custom.map((s) => ({ ...s, isCustom: true })),
+          ...state.presets.map((s) => ({ ...s, isCustom: false }))
+        ];
+      }
+
+      function renderCategories() {
+        const cats = ['ทั้งหมด', ...new Set(allStyles().map((s) => s.category || 'อื่นๆ'))];
+        $('cat-pills').innerHTML = cats.map((c) =>
+          `<button type="button" class="cat-pill ${state.activeCategory === c ? 'is-active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`
+        ).join('');
+        $('cat-pills').querySelectorAll('.cat-pill').forEach((b) => {
+          b.addEventListener('click', () => {
+            state.activeCategory = b.dataset.cat;
+            renderCategories();
+            renderStyles();
+          });
+        });
+      }
+
+      function extractPaletteColors(styleObj) {
+        const raw = styleObj?.tokens?.palette ?? styleObj?.palette;
+        if (Array.isArray(raw) && raw.length) return raw.slice(0, 5);
+        if (raw && typeof raw === 'object') {
+          const cols = [raw.bg, raw.bgSecondary, raw.accent, raw.accent2 || raw.cardBg, raw.fg].filter(Boolean);
+          if (cols.length) return cols.slice(0, 5);
+        }
+        return ['#0f172a', '#1e293b', '#38bdf8', '#f6c453', '#eef2f6'];
+      }
+
+      function encodeSubPath(rel) {
+        return String(rel || '').split('/').filter(Boolean).map((s) => encodeURIComponent(s)).join('/');
+      }
+
+      function renderStyles() {
+        const q = $('style-search').value.trim().toLowerCase();
+        const list = allStyles().filter((s) => {
+          if (state.activeCategory !== 'ทั้งหมด' && (s.category || 'อื่นๆ') !== state.activeCategory) return false;
+          if (!q) return true;
+          return [s.thName, s.enName, s.summary, s.id].some((v) => String(v || '').toLowerCase().includes(q));
+        });
+        $('style-count-label').textContent = `${list.length} สไตล์`;
+        if (!list.length) {
+          $('style-grid').innerHTML = `<div class="empty-state">ไม่พบสไตล์ที่ตรงกับคำค้น</div>`;
+          return;
+        }
+        $('style-grid').innerHTML = list.map((s) => {
+          const pal = extractPaletteColors(s);
+          const swatches = pal.map((c) => `<span class="swatch" style="background:${escapeHtml(c)}"></span>`).join('');
+          const sel = s.id === state.selectedStyleId ? 'is-selected' : '';
+          return `
+            <button type="button" class="style-card ${sel}" data-id="${escapeHtml(s.id)}">
+              <div class="swatches">
+                ${swatches}
+                ${s.isCustom ? '<span class="badge-custom">Custom</span>' : ''}
+              </div>
+              <div class="style-th">${escapeHtml(s.thName || s.name || s.id)}</div>
+              <div class="style-en">${escapeHtml(s.enName || '')}</div>
+              <div class="style-sum">${escapeHtml(s.summary || '')}</div>
+            </button>
+          `;
+        }).join('');
+        $('style-grid').querySelectorAll('.style-card').forEach((card) => {
+          card.addEventListener('click', () => {
+            state.selectedStyleId = card.dataset.id;
+            renderStyles();
+          });
+        });
+      }
+      $('style-search').addEventListener('input', renderStyles);
+
+      function renderCustomStylesList() {
+        const box = $('custom-styles-list');
+        if (!state.custom.length) {
+          box.innerHTML = `<div class="empty-state">ยังไม่มีสไตล์ที่เรียนรู้เอง</div>`;
+          return;
+        }
+        box.innerHTML = state.custom.map((s) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--well);">
+            <div>
+              <div style="font-weight:700;">${escapeHtml(s.thName || s.name || s.id)}</div>
+              <div class="muted">${escapeHtml(s.summary || s.id)}</div>
+            </div>
+            <button type="button" class="btn btn-danger btn-sm" data-del-style="${escapeHtml(s.id)}">ลบสไตล์</button>
+          </div>
+        `).join('');
+        box.querySelectorAll('[data-del-style]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            try {
+              await apiFetch(`/api/video-studio/styles/custom/${encodeURIComponent(btn.dataset.delStyle)}`, { method: 'DELETE' });
+              toast('ลบสไตล์เรียบร้อยแล้ว', 'ok');
+              loadStyles();
+            } catch (e) { toast(`ลบสไตล์ไม่สำเร็จ: ${e.message}`, 'error'); }
+          });
+        });
+      }
+
+      // Create Job
+      async function startJob(mode) {
+        const topic = $('topic-input').value.trim();
+        if (!topic) {
+          toast('กรุณาพิมพ์หัวข้อวิดีโอก่อนค่ะ', 'error');
+          $('topic-input').focus();
+          return;
+        }
+        try {
+          const body = {
+            mode,
+            topic,
+            styleId: state.selectedStyleId || 'look-1',
+            durationSec: Number($('duration-range').value || 30),
+            voice: $('voice-select').value,
+            bgm: $('bgm-select').value
+          };
+          const res = await apiFetch('/api/video-studio/jobs', { method: 'POST', body: JSON.stringify(body) });
+          state.activeJobId = res.id;
+          toast(mode === 'draft' ? 'เริ่มร่างบทแล้วค่ะ' : 'เริ่มสร้างวิดีโอแล้วค่ะ', 'ok');
+          openJob(res.id);
+        } catch (e) {
+          toast(`เริ่มงานไม่สำเร็จ: ${e.message}`, 'error');
+        }
+      }
+      $('btn-oneshot').addEventListener('click', () => startJob('oneshot'));
+      $('btn-draft').addEventListener('click', () => startJob('draft'));
+
+      function openJob(id) {
+        state.activeJobId = id;
+        $('job-panel').classList.remove('hidden');
+        $('job-id-label').textContent = id;
+        if (state.pollTimer) clearInterval(state.pollTimer);
+        pollJob();
+        state.pollTimer = setInterval(pollJob, 2000);
+      }
+
+      async function pollJob() {
+        if (!state.activeJobId) return;
+        try {
+          const data = await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}`);
+          const job = data.job || data;
+          state.activeJob = job;
+          if (data.script) state.activeScript = data.script;
+          renderJobPanel(job);
+          if (job.status === 'draft_ready' && data.script) {
+            renderDraftEditor(data.script);
+          }
+          if (job.status === 'done' || job.outputs?.jobVideoFile || job.finalFile) {
+            renderResultPanel(job);
+          }
+          if (['done', 'error', 'aborted', 'draft_ready'].includes(job.status)) {
+            clearInterval(state.pollTimer);
+            state.pollTimer = null;
+          }
+        } catch (e) {
+          toast(`โหลดสถานะงานไม่สำเร็จ: ${e.message}`, 'error');
+          clearInterval(state.pollTimer);
+          state.pollTimer = null;
+        }
+      }
+
+      function renderJobPanel(job) {
+        const pct = Math.max(0, Math.min(100, Number(job.progress || 0)));
+        $('job-progress').style.width = pct + '%';
+        $('job-pct').textContent = pct + '%';
+        $('job-msg').textContent = job.message || job.status || 'กำลังทำงาน...';
+        $('job-log').textContent = Array.isArray(job.logTail) && job.logTail.length ? job.logTail.join('\n') : (job.logTail || '—');
+        const stageKey = job.stage || job.status;
+        const curIdx = STEPS.findIndex((s) => s.key === stageKey);
+        $('job-stepper').innerHTML = STEPS.map((s, idx) => {
+          const cls = job.status === 'done' || (curIdx >= 0 && idx < curIdx) ? 'is-done' : (idx === curIdx ? 'is-active' : '');
+          return `<div class="step-item ${cls}">${escapeHtml(s.label)}</div>`;
+        }).join('');
+      }
+
+      $('btn-abort').addEventListener('click', async () => {
+        if (!state.activeJobId) return;
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/abort`, { method: 'POST' });
+          toast('ส่งคำสั่งยกเลิกงานแล้ว', 'ok');
+          pollJob();
+        } catch (e) { toast(`ยกเลิกไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      // Draft Editor
+      function renderDraftEditor(script) {
+        $('draft-panel').classList.remove('hidden');
+        const scenes = Array.isArray(script.scenes) ? script.scenes : [];
+        $('scene-list').innerHTML = scenes.map((sc, i) => `
+          <div class="scene-card" data-idx="${i}">
+            <div class="scene-head">
+              <strong>ซีน ${i + 1} (${escapeHtml(sc.id || 's' + (i + 1))})</strong>
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="btn btn-sm" data-move="-1">↑</button>
+                <button type="button" class="btn btn-sm" data-move="1">↓</button>
+                <button type="button" class="btn btn-danger btn-sm" data-del-scene="${i}">ลบ</button>
+              </div>
+            </div>
+            <div class="scene-grid">
+              <div><label class="field-label">หัวข้อ (Title)</label><input class="input" data-f="title" value="${escapeHtml(sc.title || '')}" /></div>
+              <div><label class="field-label">คำรอง (Subtitle)</label><input class="input" data-f="subtitle" value="${escapeHtml(sc.subtitle || '')}" /></div>
+              <div><label class="field-label">ไอคอน (Icon)</label><input class="input" data-f="icon" value="${escapeHtml(sc.icon || '')}" /></div>
+              <div><label class="field-label">ภาพประกอบ (Visual)</label><input class="input" data-f="visual" value="${escapeHtml(sc.visual || '')}" /></div>
+            </div>
+            <div><label class="field-label">บทพากย์ (Narration)</label><textarea class="input" rows="2" data-f="narration">${escapeHtml(sc.narration || '')}</textarea></div>
+            <div><label class="field-label">Bullets (คั่นด้วย ,)</label><input class="input" data-f="bullets" value="${escapeHtml(Array.isArray(sc.bullets) ? sc.bullets.join(', ') : (sc.bullets || ''))}" /></div>
+          </div>
+        `).join('');
+
+        $('scene-list').querySelectorAll('.scene-card').forEach((card) => {
+          const idx = Number(card.dataset.idx);
+          card.querySelectorAll('[data-f]').forEach((inp) => {
+            inp.addEventListener('input', () => {
+              const f = inp.dataset.f;
+              if (f === 'bullets') {
+                state.activeScript.scenes[idx][f] = inp.value.split(',').map((x) => x.trim()).filter(Boolean);
+              } else {
+                state.activeScript.scenes[idx][f] = inp.value;
+              }
+            });
+          });
+          card.querySelectorAll('[data-move]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const dir = Number(btn.dataset.move);
+              const arr = state.activeScript.scenes;
+              const j = idx + dir;
+              if (j < 0 || j >= arr.length) return;
+              [arr[idx], arr[j]] = [arr[j], arr[idx]];
+              renderDraftEditor(state.activeScript);
+            });
+          });
+          card.querySelector('[data-del-scene]').addEventListener('click', () => {
+            state.activeScript.scenes.splice(idx, 1);
+            renderDraftEditor(state.activeScript);
+          });
+        });
+      }
+
+      $('btn-add-scene').addEventListener('click', () => {
+        if (!state.activeScript) state.activeScript = { scenes: [] };
+        const n = state.activeScript.scenes.length + 1;
+        state.activeScript.scenes.push({ id: `scene-${n}`, title: `ซีนที่ ${n}`, subtitle: '', narration: '', visual: '', bullets: [], icon: '' });
+        renderDraftEditor(state.activeScript);
+      });
+
+      $('btn-save-script').addEventListener('click', async () => {
+        if (!state.activeJobId || !state.activeScript) return;
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/script`, {
+            method: 'PUT',
+            body: JSON.stringify({ script: state.activeScript })
+          });
+          toast('บันทึกบทเรียบร้อยแล้ว', 'ok');
+        } catch (e) { toast(`บันทึกบทไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      $('btn-build-video').addEventListener('click', async () => {
+        if (!state.activeJobId) return;
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/build`, { method: 'POST' });
+          toast('เริ่มสร้างวิดีโอจากบทแล้วค่ะ', 'ok');
+          openJob(state.activeJobId);
+        } catch (e) { toast(`สั่งสร้างวิดีโอไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      // Result & Phase 1 Edit
+      function normalizeVersionEntry(v) {
+        if (v && typeof v === 'object') {
+          const file = v.file || 'final.mp4';
+          const label = v.version ? `v${v.version} (${v.kind || file})` : file;
+          return { file, label, watchUrl: v.watchUrl || '' };
+        }
+        const file = String(v || 'final.mp4');
+        return { file, label: file, watchUrl: '' };
+      }
+
+      function renderResultPanel(job) {
+        $('result-panel').classList.remove('hidden');
+        const rawVersions = Array.isArray(job.versions) && job.versions.length
+          ? job.versions
+          : [job.outputs?.jobVideoFile || job.finalFile || 'final.mp4'];
+        const versions = rawVersions.map(normalizeVersionEntry);
+        $('version-select').innerHTML = versions.map((v) => `<option value="${escapeHtml(v.file)}">${escapeHtml(v.label)}</option>`).join('');
+        const latest = versions[versions.length - 1];
+        setVideoVersion(latest.file);
+        $('version-select').value = latest.file;
+
+        const sbFile = job.outputs?.storyboardFile || job.storyboardFile;
+        if (sbFile) {
+          $('storyboard-wrap').classList.remove('hidden');
+          $('storyboard-img').src = `/api/video-studio/file/${encodeURIComponent(job.id)}/${encodeSubPath(sbFile)}`;
+        }
+        const scenes = state.activeScript?.scenes || [];
+        $('edit-scene-select').innerHTML = scenes.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title || s.id)}</option>`).join('');
+      }
+
+      function setVideoVersion(filename) {
+        if (!state.activeJobId) return;
+        const url = `/api/video-studio/file/${encodeURIComponent(state.activeJobId)}/${encodeSubPath(filename)}`;
+        $('result-video').src = url;
+        $('btn-download').href = url + '?download=1';
+        $('btn-download').setAttribute('download', filename.split('/').pop() || 'video.mp4');
+      }
+      $('version-select').addEventListener('change', (e) => setVideoVersion(e.target.value));
+
+      $('btn-copy-link').addEventListener('click', async () => {
+        const selectedFile = $('version-select').value;
+        const verObj = Array.isArray(state.activeJob?.versions)
+          ? state.activeJob.versions.find((v) => v && typeof v === 'object' && v.file === selectedFile)
+          : null;
+        const link = verObj?.watchUrl || state.activeJob?.outputs?.watchUrl || state.activeJob?.watchUrl || $('result-video').src;
+        try {
+          await navigator.clipboard.writeText(link);
+          toast('คัดลอกลิงก์แล้วค่ะ', 'ok');
+        } catch (_) { toast('คัดลอกลิงก์ไม่สำเร็จ', 'error'); }
+      });
+
+      $('btn-set-trim-start').addEventListener('click', () => { $('trim-start').value = $('result-video').currentTime.toFixed(1); });
+      $('btn-set-trim-end').addEventListener('click', () => { $('trim-end').value = $('result-video').currentTime.toFixed(1); });
+
+      $('btn-do-trim').addEventListener('click', async () => {
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/trim`, {
+            method: 'POST',
+            body: JSON.stringify({ start: Number($('trim-start').value || 0), end: Number($('trim-end').value || 0) })
+          });
+          toast('เริ่มตัดหัวท้ายแล้ว', 'ok');
+          openJob(state.activeJobId);
+        } catch (e) { toast(`ตัดหัวท้ายไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      $('btn-do-cut').addEventListener('click', async () => {
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/cut`, {
+            method: 'POST',
+            body: JSON.stringify({ from: Number($('cut-from').value || 0), to: Number($('cut-to').value || 0) })
+          });
+          toast('เริ่มตัดท่อนกลางแล้ว', 'ok');
+          openJob(state.activeJobId);
+        } catch (e) { toast(`ตัดท่อนกลางไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      $('btn-open-edit-scene').addEventListener('click', async () => {
+        const sceneId = $('edit-scene-select').value;
+        if (!sceneId) return;
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/edit-scene`, {
+            method: 'POST',
+            body: JSON.stringify({ sceneId })
+          });
+          toast(`เริ่มเรนเดอร์ซีน ${sceneId} ใหม่แล้ว`, 'ok');
+          openJob(state.activeJobId);
+        } catch (e) { toast(`แก้ซีนไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      // Library
+      async function loadJobs() {
+        try {
+          const data = await apiFetch('/api/video-studio/jobs');
+          const jobs = Array.isArray(data?.jobs) ? data.jobs : (Array.isArray(data) ? data : []);
+          if (!jobs.length) {
+            $('jobs-list').innerHTML = `<div class="empty-state">ยังไม่มีงานวิดีโอในคลัง</div>`;
+            return;
+          }
+          $('jobs-list').innerHTML = jobs.map((j) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--well);">
+              <div>
+                <div style="font-weight:700;">${escapeHtml(j.topic || j.id)}</div>
+                <div class="muted mono">${escapeHtml(j.id)} · ${escapeHtml(j.status || '')} · ${escapeHtml(j.styleId || '')}</div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-sm" data-open-job="${escapeHtml(j.id)}">เปิดดู</button>
+                <button type="button" class="btn btn-danger btn-sm" data-del-job="${escapeHtml(j.id)}">ลบ</button>
+              </div>
+            </div>
+          `).join('');
+          $('jobs-list').querySelectorAll('[data-open-job]').forEach((b) => {
+            b.addEventListener('click', () => {
+              document.querySelector('.nav-tab[data-tab="studio"]').click();
+              openJob(b.dataset.openJob);
+            });
+          });
+          $('jobs-list').querySelectorAll('[data-del-job]').forEach((b) => {
+            b.addEventListener('click', async () => {
+              try {
+                await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(b.dataset.delJob)}`, { method: 'DELETE' });
+                toast('ลบงานแล้ว', 'ok');
+                loadJobs();
+              } catch (e) { toast(`ลบงานไม่สำเร็จ: ${e.message}`, 'error'); }
+            });
+          });
+        } catch (e) {
+          $('jobs-list').innerHTML = `<div class="empty-state">โหลดคลังงานไม่สำเร็จ (${escapeHtml(e.message)})</div>`;
+        }
+      }
+      $('btn-refresh-jobs').addEventListener('click', loadJobs);
+
+      // Style Learner
+      function readAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+          r.readAsDataURL(file);
+        });
+      }
+
+      $('btn-start-learn').addEventListener('click', async () => {
+        const name = $('learn-name').value.trim();
+        const url = $('learn-url').value.trim();
+        const files = Array.from($('learn-files').files || []);
+        if (!url && !files.length) {
+          toast('กรุณาใส่ลิงก์หรืออัปโหลดไฟล์อย่างน้อย 1 รายการ', 'error');
+          return;
+        }
+        try {
+          $('learn-status-box').classList.remove('hidden');
+          $('learn-status-text').textContent = 'กำลังอัปโหลดและเริ่มวิเคราะห์สไตล์...';
+          const uploadIds = [];
+          for (const f of files) {
+            if (f.size > 60 * 1024 * 1024) throw new Error(`ไฟล์ ${f.name} ใหญ่เกิน 60MB`);
+            const dataUrl = await readAsDataUrl(f);
+            const up = await apiFetch('/api/video-studio/upload', {
+              method: 'POST',
+              body: JSON.stringify({ dataUrl, filename: f.name })
+            });
+            if (up?.uploadId) uploadIds.push(up.uploadId);
+          }
+          const res = await apiFetch('/api/video-studio/styles/learn', {
+            method: 'POST',
+            body: JSON.stringify({ url: url || undefined, uploadIds: uploadIds.length ? uploadIds : undefined, name: name || undefined })
+          });
+          const learnId = res.learnId;
+          if (state.learnTimer) clearInterval(state.learnTimer);
+          state.learnTimer = setInterval(async () => {
+            try {
+              const st = await apiFetch(`/api/video-studio/styles/learn/${encodeURIComponent(learnId)}`);
+              $('learn-status-text').textContent = st.message || st.status || 'กำลังวิเคราะห์...';
+              if (st.status === 'done') {
+                clearInterval(state.learnTimer);
+                toast('เรียนรู้สไตล์ใหม่สำเร็จแล้ว!', 'ok');
+                loadStyles();
+              } else if (st.status === 'error') {
+                clearInterval(state.learnTimer);
+                toast(`เรียนรู้สไตล์ไม่สำเร็จ: ${st.message || 'error'}`, 'error');
+              }
+            } catch (_) {}
+          }, 2000);
+        } catch (e) {
+          toast(`เกิดข้อผิดพลาด: ${e.message}`, 'error');
+          $('learn-status-text').textContent = `ไม่สำเร็จ: ${e.message}`;
+        }
+      });
+
+      loadStyles();
+    })();
+  </script>
+</body>
+</html>

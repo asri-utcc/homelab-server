@@ -33,6 +33,7 @@ const wgManager = require('./wireguard-manager');
 const geminiManager = require('./gemini-manager');
 const aiRouter = require('./ai-router');
 const bgRemoveManager = require('./bg-remove-manager');
+const videoStudioManager = require('./video-studio-manager');
 
 // ── config ────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.DASHBOARD_PORT || '8090', 10);
@@ -1181,6 +1182,7 @@ async function terminalExec(body = {}) {
 const LINKS = [
     { id: 'terminal', label: 'Web Terminal (Cockpit)', icon: 'terminal', url: '/terminal' },
     { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
+    { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
     { id: 'ports', label: 'Port & Firewall Manager', icon: 'shield', url: '#sec-ports' },
     { id: 'wireguard', label: 'WireGuard VPN UI', icon: 'shield', url: `https://${TAIL_HOST}:51821/` },
     { id: 'emqx', label: 'EMQX Dashboard', icon: 'activity', url: `https://${TAIL_HOST}:18083/` },
@@ -1779,6 +1781,169 @@ const server = http.createServer(async (req, res) => {
             res.end(data);
             return;
         }
+        if (p === '/video-studio' || p === '/video-studio/') {
+            return await serveStatic(req, res, '/video-studio.html');
+        }
+        if (req.method === 'GET' && p === '/api/video-studio/styles') {
+            try {
+                return sendJson(res, 200, await videoStudioManager.listStyles());
+            } catch (err) {
+                return sendJson(res, err.statusCode || 500, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'GET' && p === '/api/video-studio/status') {
+            try {
+                return sendJson(res, 200, await videoStudioManager.getStatus());
+            } catch (err) {
+                return sendJson(res, err.statusCode || 500, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'GET' && p === '/api/video-studio/jobs') {
+            try {
+                return sendJson(res, 200, await videoStudioManager.listJobs(50));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 500, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/video-studio/jobs') {
+            try {
+                const body = await readJsonBody(req, 256 * 1024);
+                return sendJson(res, 200, await videoStudioManager.createJob(body));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/video-studio/upload') {
+            try {
+                const body = await readJsonBody(req, 64 * 1024 * 1024);
+                return sendJson(res, 200, await videoStudioManager.saveUpload(body.dataUrl, body.filename));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/video-studio/styles/learn') {
+            try {
+                const body = await readJsonBody(req, 256 * 1024);
+                return sendJson(res, 200, await videoStudioManager.learnStyle(body));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'GET' && p.startsWith('/api/video-studio/styles/learn/')) {
+            const learnId = p.slice('/api/video-studio/styles/learn/'.length);
+            try {
+                return sendJson(res, 200, await videoStudioManager.getLearn(learnId));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'DELETE' && p.startsWith('/api/video-studio/styles/custom/')) {
+            const styleId = p.slice('/api/video-studio/styles/custom/'.length);
+            try {
+                return sendJson(res, 200, await videoStudioManager.deleteCustomStyle(styleId));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if (p.startsWith('/api/video-studio/jobs/')) {
+            const rest = p.slice('/api/video-studio/jobs/'.length);
+            const parts = rest.split('/').filter(Boolean);
+            const jobId = parts[0] || '';
+            const action = parts[1] || '';
+            try {
+                if (parts.length === 1 && req.method === 'GET') {
+                    return sendJson(res, 200, await videoStudioManager.getJob(jobId));
+                }
+                if (parts.length === 1 && req.method === 'DELETE') {
+                    return sendJson(res, 200, await videoStudioManager.deleteJob(jobId));
+                }
+                if (parts.length === 2 && action === 'script' && req.method === 'PUT') {
+                    const body = await readJsonBody(req, 256 * 1024);
+                    const scriptPayload = body && body.script !== undefined ? body.script : body;
+                    return sendJson(res, 200, await videoStudioManager.saveScript(jobId, scriptPayload));
+                }
+                if (parts.length === 2 && action === 'build' && req.method === 'POST') {
+                    return sendJson(res, 200, await videoStudioManager.buildJob(jobId));
+                }
+                if (parts.length === 2 && action === 'edit-scene' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 256 * 1024);
+                    return sendJson(res, 200, await videoStudioManager.editScene(jobId, body.sceneId || body.scene));
+                }
+                if (parts.length === 2 && action === 'trim' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 256 * 1024);
+                    return sendJson(res, 200, await videoStudioManager.trimJob(jobId, body.start, body.end));
+                }
+                if (parts.length === 2 && action === 'cut' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 256 * 1024);
+                    return sendJson(res, 200, await videoStudioManager.cutJob(jobId, body.from, body.to));
+                }
+                if (parts.length === 2 && action === 'abort' && req.method === 'POST') {
+                    return sendJson(res, 200, await videoStudioManager.abortJob(jobId));
+                }
+                return sendJson(res, 404, { ok: false, error: 'Video Studio route not found' });
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/api/video-studio/file/')) {
+            const rel = p.slice('/api/video-studio/file/'.length);
+            const slashIdx = rel.indexOf('/');
+            if (slashIdx <= 0) return sendJson(res, 404, { ok: false, error: 'File not found' });
+            const jobId = rel.slice(0, slashIdx);
+            const subPath = rel.slice(slashIdx + 1);
+            const info = await videoStudioManager.resolveSafeFile(jobId, subPath);
+            if (!info) return sendJson(res, 404, { ok: false, error: 'File not found' });
+
+            const isDownload = url.searchParams.get('download') === '1';
+            const safeName = info.filename.replace(/["\r\n]/g, '');
+            const headers = {
+                'Content-Type': info.mime,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'private, max-age=3600',
+            };
+            if (isDownload) {
+                headers['Content-Disposition'] = `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(info.filename)}`;
+            }
+
+            const rangeHeader = req.headers.range;
+            if (info.size > 0 && rangeHeader && /^bytes=\d*-\d*$/i.test(rangeHeader.trim())) {
+                const [rawStart, rawEnd] = rangeHeader.trim().slice(6).split('-');
+                let start = rawStart === '' ? 0 : parseInt(rawStart, 10);
+                let end = rawEnd === '' ? info.size - 1 : parseInt(rawEnd, 10);
+                if (rawStart === '' && rawEnd !== '') {
+                    const suffix = parseInt(rawEnd, 10);
+                    start = Math.max(0, info.size - suffix);
+                    end = info.size - 1;
+                }
+                if (Number.isNaN(start) || Number.isNaN(end) || start > end || start < 0 || end >= info.size) {
+                    res.writeHead(416, { 'Content-Range': `bytes */${info.size}` });
+                    res.end();
+                    return;
+                }
+                res.writeHead(206, {
+                    ...headers,
+                    'Content-Range': `bytes ${start}-${end}/${info.size}`,
+                    'Content-Length': String(end - start + 1),
+                });
+                if (req.method === 'HEAD') { res.end(); return; }
+                const stream = fs.createReadStream(info.filePath, { start, end });
+                res.on('close', () => stream.destroy());
+                stream.on('error', () => { if (!res.writableEnded) res.end(); });
+                stream.pipe(res);
+                return;
+            }
+
+            res.writeHead(200, {
+                ...headers,
+                'Content-Length': String(info.size),
+            });
+            if (req.method === 'HEAD') { res.end(); return; }
+            const stream = fs.createReadStream(info.filePath);
+            res.on('close', () => stream.destroy());
+            stream.on('error', () => { if (!res.writableEnded) res.end(); });
+            stream.pipe(res);
+            return;
+        }
         if (req.method === 'POST' && p === '/api/settings/telegram-test') {
             return new Promise((resolve) => {
                 execFile('/usr/bin/python3', ['/home/dev/projects/notify-telegram.py', '🔔 ทดสอบการแจ้งเตือนจากหน้า Settings — Homelab Server พร้อมใช้งาน!'], { timeout: 15000 }, (err, stdout, stderr) => {
@@ -2160,36 +2325,129 @@ const server = http.createServer(async (req, res) => {
             }
         }
 
-        if (req.method === 'GET' && p === '/api/gemini/local-image') {
-            const rawPath = (url.searchParams.get('path') || '').replace(/^file:\/\//i, '');
-            if (!rawPath) return sendJson(res, 400, { error: 'Missing path' });
-            const resolved = path.resolve(rawPath);
+        const LOCAL_IMAGE_EXTS = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml',
+        };
+        const LOCAL_FILE_EXTS = {
+            ...LOCAL_IMAGE_EXTS,
+            '.mp4': 'video/mp4',
+            '.m4v': 'video/mp4',
+            '.webm': 'video/webm',
+            '.mov': 'video/quicktime',
+            '.wav': 'audio/wav',
+            '.mp3': 'audio/mpeg',
+            '.m4a': 'audio/mp4',
+            '.ogg': 'audio/ogg',
+            '.html': 'text/html; charset=utf-8',
+            '.pdf': 'application/pdf',
+            '.srt': 'text/plain; charset=utf-8',
+            '.vtt': 'text/vtt; charset=utf-8',
+            '.txt': 'text/plain; charset=utf-8',
+            '.md': 'text/markdown; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.csv': 'text/csv; charset=utf-8',
+            '.zip': 'application/zip',
+        };
+        async function resolveAllowedLocalFile(rawPath, allowedExts, maxBytes, label = 'File') {
+            const clean = String(rawPath || '').replace(/^file:\/\//i, '').trim();
+            if (!clean) return { status: 400, error: 'Missing path' };
+            const resolved = path.resolve(clean);
             const allowedRoots = ['/home/dev/projects', '/home/dev/.gemini', '/tmp'];
-            const isAllowed = allowedRoots.some((root) => resolved === root || resolved.startsWith(root + '/'));
-            const ext = path.extname(resolved).toLowerCase();
-            const allowedExts = {
-                '.png': 'image/png',
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.webp': 'image/webp',
-                '.gif': 'image/gif',
-                '.svg': 'image/svg+xml'
-            };
-            if (!isAllowed || !allowedExts[ext]) {
-                return sendJson(res, 403, { error: 'Forbidden image path' });
+            const inAllowed = (target) => allowedRoots.some((root) => target === root || target.startsWith(root + '/'));
+            if (!inAllowed(resolved)) return { status: 403, error: `Forbidden ${label.toLowerCase()} path` };
+            const base = path.basename(resolved);
+            if (base.startsWith('.') || /^caddy-credentials/i.test(base) || /\/(?:\.ssh|\.git)\//i.test(resolved)) {
+                return { status: 403, error: `Forbidden ${label.toLowerCase()} path` };
             }
+            const ext = path.extname(resolved).toLowerCase();
+            const mime = allowedExts[ext];
+            if (!mime) return { status: 403, error: `Forbidden ${label.toLowerCase()} path` };
+            let real;
             try {
-                const st = await fsp.stat(resolved);
-                if (!st.isFile() || st.size > 25 * 1024 * 1024) {
-                    return sendJson(res, 404, { error: 'Image not available' });
+                real = await fsp.realpath(resolved);
+            } catch (_) {
+                return { status: 404, error: `${label} not found` };
+            }
+            if (!inAllowed(real)) return { status: 403, error: `Forbidden ${label.toLowerCase()} path` };
+            try {
+                const st = await fsp.stat(real);
+                if (!st.isFile() || st.size > maxBytes) {
+                    return { status: 404, error: `${label} not available` };
                 }
-                const data = await fsp.readFile(resolved);
-                res.writeHead(200, { 'Content-Type': allowedExts[ext], 'Cache-Control': 'public, max-age=3600' });
+                return { ok: true, filePath: real, filename: path.basename(real), mime, size: st.size };
+            } catch (_) {
+                return { status: 404, error: `${label} not found` };
+            }
+        }
+
+        if (req.method === 'GET' && p === '/api/gemini/local-image') {
+            const info = await resolveAllowedLocalFile(url.searchParams.get('path'), LOCAL_IMAGE_EXTS, 25 * 1024 * 1024, 'Image');
+            if (!info.ok) return sendJson(res, info.status, { error: info.error });
+            try {
+                const data = await fsp.readFile(info.filePath);
+                res.writeHead(200, { 'Content-Type': info.mime, 'Cache-Control': 'public, max-age=3600' });
                 res.end(data);
                 return;
             } catch (_) {
                 return sendJson(res, 404, { error: 'Image not found' });
             }
+        }
+
+        if ((req.method === 'GET' || req.method === 'HEAD') && p === '/api/gemini/local-file') {
+            const info = await resolveAllowedLocalFile(url.searchParams.get('path'), LOCAL_FILE_EXTS, 2 * 1024 * 1024 * 1024, 'File');
+            if (!info.ok) return sendJson(res, info.status, { error: info.error });
+            const isDownload = url.searchParams.get('download') === '1';
+            const safeName = info.filename.replace(/["\r\n]/g, '');
+            const headers = {
+                'Content-Type': info.mime,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'private, max-age=3600',
+            };
+            if (isDownload) {
+                headers['Content-Disposition'] = `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(info.filename)}`;
+            }
+            const rangeHeader = req.headers.range;
+            if (info.size > 0 && rangeHeader && /^bytes=\d*-\d*$/i.test(rangeHeader.trim())) {
+                const [rawStart, rawEnd] = rangeHeader.trim().slice(6).split('-');
+                let start = rawStart === '' ? 0 : parseInt(rawStart, 10);
+                let end = rawEnd === '' ? info.size - 1 : parseInt(rawEnd, 10);
+                if (rawStart === '' && rawEnd !== '') {
+                    const suffix = parseInt(rawEnd, 10);
+                    start = Math.max(0, info.size - suffix);
+                    end = info.size - 1;
+                }
+                if (Number.isNaN(start) || Number.isNaN(end) || start > end || start < 0 || end >= info.size) {
+                    res.writeHead(416, { 'Content-Range': `bytes */${info.size}` });
+                    res.end();
+                    return;
+                }
+                res.writeHead(206, {
+                    ...headers,
+                    'Content-Range': `bytes ${start}-${end}/${info.size}`,
+                    'Content-Length': String(end - start + 1),
+                });
+                if (req.method === 'HEAD') { res.end(); return; }
+                const stream = fs.createReadStream(info.filePath, { start, end });
+                res.on('close', () => stream.destroy());
+                stream.on('error', () => { if (!res.writableEnded) res.end(); });
+                stream.pipe(res);
+                return;
+            }
+            res.writeHead(200, {
+                ...headers,
+                'Content-Length': String(info.size),
+            });
+            if (req.method === 'HEAD') { res.end(); return; }
+            const stream = fs.createReadStream(info.filePath);
+            res.on('close', () => stream.destroy());
+            stream.on('error', () => { if (!res.writableEnded) res.end(); });
+            stream.pipe(res);
+            return;
         }
 
         if (req.method === 'POST' && p === '/api/gemini/abort') {

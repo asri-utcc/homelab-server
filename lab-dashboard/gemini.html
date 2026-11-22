@@ -1350,6 +1350,70 @@ body::before {
   justify-content: space-between;
   gap: 8px;
 }
+.md-video-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+.md-video-card {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+  width: 340px;
+  margin: 6px 0;
+  background: rgba(1, 10, 16, 0.94);
+  border: 1px solid rgba(0, 229, 255, 0.42);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.52), 0 0 14px rgba(0, 229, 255, 0.14);
+}
+.md-video-card video {
+  display: block;
+  width: 100%;
+  max-height: 460px;
+  background: #02070b;
+}
+.md-video-caption {
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: rgba(0, 229, 255, 0.08);
+  border-top: 1px solid rgba(0, 229, 255, 0.2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.md-video-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.md-video-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.md-dl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #021218;
+  background: var(--cyan);
+  text-decoration: none;
+  font-weight: 600;
+  transition: filter 0.15s;
+}
+.md-dl-chip:hover { filter: brightness(1.15); }
 
 /* ── Tactical Hacker-Terminal AI Processing Status Bar in Message ──────── */
 .msg__thinking-card {
@@ -1568,33 +1632,6 @@ body::before {
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
-}
-
-.chips {
-  display: flex;
-  gap: 7px;
-  overflow-x: auto;
-  white-space: nowrap;
-  scrollbar-width: none;
-  padding-bottom: 2px;
-}
-.chips::-webkit-scrollbar { display: none; }
-.chip {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 4px 11px;
-  background: rgba(6, 28, 40, 0.85);
-  border: 1px solid rgba(0, 229, 255, 0.25);
-  color: var(--ink-2);
-  cursor: pointer;
-  transition: all 0.15s;
-  border-radius: 2px;
-}
-.chip:hover {
-  background: rgba(0, 229, 255, 0.16);
-  border-color: var(--cyan);
-  color: #fff;
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
 }
 
 .core-control-strip {
@@ -2022,8 +2059,18 @@ body::before {
   height: 100%; border-radius: 999px; transition: width 0.3s ease;
 }
 
+.agy-hidden { display: none !important; }
+.agy-account-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 4px 0; }
+.agy-account-bar__label { font-family: var(--mono); font-size: 10.5px; color: var(--ink-muted); margin-right: 2px; }
+.agy-chip {
+  font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  background: rgba(5, 25, 36, 0.78); border: 1px solid var(--border); color: var(--ink-1); transition: all 0.2s ease;
+}
+.agy-chip:hover { border-color: var(--cyan); }
+.agy-chip.is-active { background: rgba(0, 229, 255, 0.16); border-color: var(--cyan); color: var(--cyan); font-weight: 700; }
 .desktop-only { display: inline-flex; }
 .mobile-controls { display: none; }
+.mobile-chat-nav { display: none; }
 
 .settings-section { margin-bottom: 14px; }
 .settings-label {
@@ -2142,36 +2189,299 @@ body::before {
 
 @media (max-width: 768px) {
   .desktop-only { display: none !important; }
-  .mobile-controls { display: flex; align-items: center; gap: 6px; }
-  .core-shell { margin: 4px; }
-  .topbar { padding: 8px 10px; }
-  .brand__title { font-size: 12px; letter-spacing: 0.1em; }
-  .brand__sub { display: none; }
-  .messages { padding: 10px 10px; gap: 12px; }
-  .msg { max-width: 94%; }
-  .msg--assistant { max-width: 100%; padding: 10px 12px; }
-  .core-dock { margin: 0 8px 8px 8px; padding: 8px 10px; gap: 6px; border-radius: 12px; }
-  .core-control-strip { display: none; }
-  .btn-mic, .btn-attach { width: 38px; height: 38px; min-width: 38px; font-size: 15px; }
-  .btn-send { height: 38px; padding: 0 14px; font-size: 12px; }
-  .btn-abort { height: 38px; padding: 0 10px; font-size: 11px; }
-  .prompt-input { height: 32px; font-size: 13px; padding-top: 4px; }
+  html, body {
+    height: 100dvh;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  .topbar {
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px 10px;
+    gap: 8px;
+    background: rgba(3, 12, 20, 0.96);
+    border-bottom: 1px solid rgba(0, 229, 255, 0.16);
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+  }
+  .topbar > .brand { display: none !important; }
+  .mobile-chat-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .mobile-chat-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .mobile-chat-title-line {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    cursor: pointer;
+  }
+  .mobile-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #34d399;
+    box-shadow: 0 0 6px #34d399;
+    flex-shrink: 0;
+  }
+  .mobile-status-dot.is-running {
+    background: #fbbf24;
+    box-shadow: 0 0 8px #fbbf24;
+    animation: pulse-dot 1.1s infinite ease-in-out;
+  }
+  .mobile-pin-star { font-size: 11px; flex-shrink: 0; }
+  .mobile-chat-title-text {
+    font-size: 14px;
+    font-weight: 700;
+    color: #f0fdf4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    line-height: 1.25;
+  }
+  .mobile-edit-hint { font-size: 10px; opacity: 0.55; flex-shrink: 0; }
+  .mobile-chat-sub-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+    line-height: 1.2;
+  }
+  #mobile-chat-sub {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .mobile-controls {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .mob-icon-btn {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgba(8, 30, 44, 0.85);
+    border: 1px solid rgba(0, 229, 255, 0.28);
+    color: var(--ink-1);
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .mob-icon-btn:active { transform: scale(0.94); }
+  .mob-icon-btn--accent {
+    background: rgba(0, 229, 255, 0.14);
+    border-color: rgba(0, 229, 255, 0.45);
+    color: var(--cyan);
+  }
+  .mob-running-dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: #10b981;
+    color: #02140e;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+  }
+  .mob-model-btn {
+    height: 34px;
+    padding: 0 8px;
+    border-radius: 10px;
+    background: rgba(8, 30, 44, 0.85);
+    border: 1px solid rgba(0, 229, 255, 0.28);
+    color: var(--ink-1);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .mob-model-btn__ico {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+  .mob-model-btn__ico svg { width: 13px; height: 13px; }
+  .mob-model-btn__pct {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: #34d399;
+  }
   .mode-pill-btn {
-    font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 4px 8px;
-    border-radius: 3px; background: rgba(255, 123, 41, 0.2); border: 1px solid var(--orange);
-    color: #ff9f61; cursor: pointer; white-space: nowrap;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(255, 123, 41, 0.18);
+    border: 1px solid rgba(255, 123, 41, 0.65);
+    color: #ff9f61;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .mode-pill-btn[data-mode="chat"] { background: var(--cyan-dim); border-color: var(--cyan); color: var(--cyan); }
   .mode-pill-btn[data-mode="plan"] { background: rgba(168, 85, 247, 0.2); border-color: #a855f7; color: #d3a6ff; }
-  .btn--settings { padding: 4px 8px; font-size: 11px; font-weight: 600; border-color: var(--cyan); color: var(--cyan); }
-  .queue-tray { margin: 0 8px 4px 8px; }
+
+  /* Full-bleed Native Chat Container (zero wasted margins/borders) */
+  .core-shell {
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: hidden;
+  }
+  .hud-corner { display: none !important; }
+  .core-workspace {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .core-reactor-pane {
+    display: none;
+    flex-shrink: 0;
+    padding: 6px 12px;
+  }
+  .core-reactor-pane.show-visual {
+    display: flex !important;
+  }
+  .core-chat-pane {
+    flex: 1;
+    min-height: 0;
+    border-radius: 0 !important;
+  }
+  .chat-header-bar { display: none !important; }
+
+  /* Spacious Native Conversation Stream */
+  .messages {
+    padding: 10px 10px 12px 10px;
+    gap: 10px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  .msg { max-width: 90%; }
+  .msg--user {
+    max-width: 86%;
+    padding: 9px 13px;
+    border-radius: 18px 18px 4px 18px;
+  }
+  .msg--assistant {
+    max-width: 100%;
+    padding: 10px 12px;
+    border-radius: 16px 16px 16px 4px;
+  }
+  .msg__meta { font-size: 10px; margin-bottom: 5px; padding-bottom: 4px; }
+  .msg__time, .msg__duration { font-size: 9.5px; padding: 1px 5px; }
+  .msg__body { font-size: 14.5px; line-height: 1.55; }
+  .btn-scroll-bottom {
+    right: 12px;
+    bottom: 66px;
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+
+  /* Native Sticky Bottom Composer */
+  .core-dock {
+    margin: 0;
+    padding: 7px 8px calc(7px + env(safe-area-inset-bottom, 0px)) 8px;
+    gap: 6px;
+    border-radius: 16px 16px 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    background: rgba(4, 15, 25, 0.96);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.45);
+  }
+  .core-control-strip { display: none; }
+  .input-box { gap: 6px; align-items: flex-end; }
+  .btn-mic, .btn-attach {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .prompt-input-wrap {
+    border-radius: 20px;
+    clip-path: none;
+    padding: 6px 12px;
+    min-height: 38px;
+  }
+  .prompt-input {
+    height: 24px;
+    min-height: 24px;
+    max-height: 120px;
+    font-size: 16px;
+    line-height: 1.4;
+    padding: 0;
+  }
+  .btn-send {
+    height: 38px;
+    padding: 0 13px;
+    font-size: 13px;
+    border-radius: 19px;
+    clip-path: none;
+  }
+  .btn-send.btn--queue { padding: 0 10px; font-size: 12px; }
+  .btn-abort {
+    height: 38px;
+    padding: 0 10px;
+    font-size: 11.5px;
+    border-radius: 19px;
+  }
+  .msg__thinking-sub { display: none !important; }
+  .msg__thinking-meta { gap: 6px; }
+  .btn-thought-toggle { padding: 2px 6px; font-size: 10px; }
+  .queue-tray { margin: 0 6px 4px 6px; }
   .queue-subhint { display: none; }
-  .chat-header-bar { flex-direction: column; align-items: flex-start; padding: 8px 12px; gap: 6px; }
-  .chat-header-bar__left { width: 100%; }
-  .chat-header-bar__right { width: 100%; justify-content: flex-start; gap: 5px; }
-  .chat-topic-title { font-size: 13px; }
+
+  /* Friendly Mobile Modals (Bottom-sheet feel) */
+  .modal-overlay { padding: 8px; }
+  .modal-card, .model-modal-card {
+    max-height: 88dvh;
+    border-radius: 16px;
+    clip-path: none;
+    padding: 14px;
+  }
 }
 </style>
+<script src="/ai-think-sounds.js?v=20261121-think"></script>
+<script>window.agyState = window.agyState || { accounts: [], chosen: (function(){ try { return localStorage.getItem('agy_account') || ''; } catch (_) { return ''; } })(), quotas: {} };</script>
 </head>
 <body>
 <canvas id="galaxy-canvas"></canvas>
@@ -2185,11 +2495,32 @@ body::before {
     </div>
   </div>
 
+  <!-- Mobile Native Chat App Header (Hidden on Desktop) -->
+  <div class="mobile-chat-nav">
+    <button type="button" id="btn-sessions-mobile" class="mob-icon-btn" title="รายการแชททั้งหมด">
+      <span>💬</span>
+      <span class="mob-running-dot" id="sessions-running-badge-mobile" style="display:none;"></span>
+    </button>
+    <div class="mobile-chat-meta">
+      <div class="mobile-chat-title-line" id="btn-mobile-rename" title="แตะเพื่อเปลี่ยนชื่อหัวข้อแชท">
+        <span class="mobile-status-dot" id="mobile-status-dot"></span>
+        <span class="mobile-pin-star" id="mobile-pin-star" style="display:none;">⭐</span>
+        <span class="mobile-chat-title-text" id="mobile-chat-title">หัวข้อแชท</span>
+        <span class="mobile-edit-hint">✏️</span>
+      </div>
+      <div class="mobile-chat-sub-line">
+        <span id="mobile-chat-sub">ห้อง #1 · 0 ข้อความ</span>
+        <button type="button" id="mobile-mode-pill" class="mode-pill-btn" data-mode="exec" title="แตะเพื่อสลับโหมดหรือตั้งค่า">⚡ YOLO</button>
+      </div>
+    </div>
+  </div>
+
   <div class="controls">
     <div id="badge-key" class="badge badge--warn" style="display:none;">AUTH: CHECKING...</div>
 
     <select id="sel-model" style="display:none;" title="เลือก Model AI">
-      <option value="gemini-4-hydrogen-high" selected>Gemini 4 Hydrogen (High)</option>
+      <option value="auto" selected>🧠 Auto · สมองกลางเลือกให้</option>
+        <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
       <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
       <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
       <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
@@ -2202,6 +2533,7 @@ body::before {
       <span class="model-picker-trigger__quota" id="trigger-model-quota">--%</span>
       <span class="model-picker-trigger__chev">▾</span>
     </button>
+    <select id="sel-agy-account" class="select-box desktop-only agy-hidden" title="เลือกบัญชี Google ที่ใช้ตอบ (มีผลกับโมเดล Gemini/Claude ที่เลือกเอง — โหมด 🧠 Auto สมองกลางเลือกบัญชีให้เอง)"></select>
 
     <select id="sel-cwd" class="select-box" style="display:none;" title="เลือก Working Directory บนเซิร์ฟเวอร์">
       <option value="/home/dev/projects">📁 /home/dev/projects (Root)</option>
@@ -2217,12 +2549,12 @@ body::before {
 
     <!-- Mobile-Only Action Controls -->
     <div class="mobile-controls">
-      <button type="button" id="btn-sessions-mobile" class="mode-pill-btn" title="สลับห้องแชท">💬</button>
-      <button type="button" id="btn-new-chat-mobile" class="mode-pill-btn" title="แชทใหม่">➕</button>
-      <a href="/quota" class="mode-pill-btn" style="text-decoration:none;" title="เปิดหน้า AI Quota Monitor">📊</a>
-      <button type="button" id="mobile-mode-pill" class="mode-pill-btn" data-mode="exec" title="แตะเพื่อเลือกโหมดหรือตั้งค่า">⚡ YOLO</button>
-      <button type="button" id="btn-open-settings" class="btn btn--settings" style="display:none;">⚙️ เพิ่มเติม</button>
-      <a href="/#settings" class="btn btn--settings" onclick="if(window.parent!==window){window.parent.postMessage({type:'open-settings'},'*');return false;}" style="text-decoration:none;" title="ตั้งค่าทั้งหมด">⚙️ ตั้งค่า</a>
+      <button type="button" id="btn-model-picker-mobile" class="mob-model-btn" title="เลือกโมเดล AI และดูโควตา">
+        <span class="mob-model-btn__ico" id="mobile-trigger-model-icon"></span>
+        <span class="mob-model-btn__pct" id="mobile-trigger-model-quota">AUTO</span>
+      </button>
+      <button type="button" id="btn-new-chat-mobile" class="mob-icon-btn mob-icon-btn--accent" title="แชทใหม่">➕</button>
+      <button type="button" id="btn-open-settings" class="mob-icon-btn" title="เครื่องมือ &amp; ตั้งค่าทั้งหมด">⚙️</button>
     </div>
   </div>
 </header>
@@ -2405,15 +2737,6 @@ body::before {
       </div>
 
       <div class="core-dock">
-        <div class="chips" id="quick-chips">
-          <button class="chip" data-prompt="ดึงข้อมูลการใช้ไฟฟ้าจาก Home Assistant ในอุปกรณ์ PZEM เพื่อตรวจสอบค่าไฟวันนี้ และคำนวณค่าไฟของทั้งเดือนนี้ สรุปยอดหน่วย kWh และค่าไฟเป็นเงินบาท">⚡ ค่าไฟ PZEM</button>
-          <button class="chip" data-prompt="คุณจำอะไรเกี่ยวกับฉันและการตั้งค่าเซิร์ฟเวอร์นี้ได้บ้าง สรุปข้อมูลทั้งหมดที่คุณจำได้ให้ดูหน่อย">🧠 ความจำ AI</button>
-          <button class="chip" data-prompt="ตรวจสอบสถานะ Docker Containers และ Resource การทำงานของ Host ทั้งหมด">🔍 Containers &amp; Host</button>
-          <button class="chip" data-prompt="ตรวจสอบไฟร์วอลล์ UFW, พอร์ตที่กำลังเปิดใช้งาน และความปลอดภัยของระบบ">🛡️ Firewall &amp; Ports</button>
-          <button class="chip" data-prompt="สร้างโปรเจกต์ทดสอบ Node.js Express ง่ายๆ ไว้ในโฟลเดอร์ projects">📁 สร้างโปรเจกต์</button>
-          <button class="chip" data-prompt="วิเคราะห์สถานะ OnePercentBotTrade และตรวจสอบไฟล์ log ล่าสุด">📈 OnePercentBot</button>
-        </div>
-
         <div class="core-control-strip">
           <div class="core-strip-left">
             <button type="button" id="btn-sound" class="btn" style="display:none;">🔊 เสียง</button>
@@ -2531,7 +2854,8 @@ body::before {
     <div class="settings-section">
       <div class="settings-label">🤖 เลือกโมเดล AI (Model)</div>
       <select id="modal-sel-model" style="display:none;">
-        <option value="gemini-4-hydrogen-high" selected>Gemini 4 Hydrogen (High)</option>
+        <option value="auto" selected>🧠 Auto · สมองกลางเลือกให้</option>
+        <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
         <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
         <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
         <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
@@ -2562,10 +2886,15 @@ body::before {
     <div class="settings-section">
       <div class="settings-label">🛠️ ตัวเลือก &amp; เครื่องมือเพิ่มเติม</div>
       <div class="settings-tools-grid">
+        <button type="button" id="modal-btn-pin-chat" class="btn settings-tool-btn">☆ ปักหมุดแชทนี้</button>
+        <button type="button" id="modal-btn-rename-chat" class="btn settings-tool-btn">✏️ เปลี่ยนชื่อหัวข้อ</button>
+        <button type="button" id="modal-btn-tts-auto" class="btn settings-tool-btn">🗣️ อ่านอัตโนมัติ: ปิด</button>
         <button type="button" id="modal-btn-sound" class="btn settings-tool-btn">🔊 เสียงเอฟเฟกต์ (Sound FX)</button>
         <button type="button" id="modal-btn-memory" class="btn settings-tool-btn">🧠 ความจำระยะยาว (Memory)</button>
         <button type="button" id="modal-btn-config" class="btn btn--primary settings-tool-btn">🔑 บัญชี Google / Key</button>
         <button type="button" id="modal-btn-toggle-hud" class="btn settings-tool-btn">👁️ ลูกแก้ว 3D Visualizer</button>
+        <a href="/quota" class="btn settings-tool-btn" style="text-decoration:none;">📊 หน้าโควตา AI</a>
+        <a href="/#settings" class="btn settings-tool-btn" onclick="if(window.parent!==window){window.parent.postMessage({type:'open-settings'},'*');return false;}" style="text-decoration:none; grid-column: span 2;">⚙️ ตั้งค่าระบบ Dashboard ทั้งหมด</a>
         <button type="button" id="modal-btn-clear" class="btn btn--danger settings-tool-btn" style="grid-column: span 2;">🧹 ล้างประวัติการคุย (Clear History)</button>
       </div>
     </div>
@@ -2654,6 +2983,7 @@ body::before {
       </div>
       <input type="text" id="model-search-input" name="ds_model_query_x" class="model-search-input" placeholder="ค้นหาโมเดล..." autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onpointerdown="this.removeAttribute('readonly');" onfocus="this.removeAttribute('readonly');" />
     </div>
+    <div class="agy-account-bar agy-hidden" id="agy-account-bar" style="padding:8px 18px 0;"></div>
     <div class="model-picker-body">
       <div class="model-picker-grid" id="model-picker-grid"></div>
     </div>
@@ -2754,11 +3084,20 @@ body::before {
   let coreEngineInfo = 'Google DeepMind Agentic Engine (agy 1.5.3)';
 
   function getCoreIdentity() {
-    const rawId = (selModel && selModel.value) ? selModel.value : 'gemini-4-hydrogen-high';
+    const rawId = (selModel && selModel.value) ? selModel.value : 'auto';
     const id = String(rawId).toLowerCase();
     const optText = (selModel && selModel.selectedIndex >= 0) ? selModel.options[selModel.selectedIndex].text : '';
     const baseName = optText.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
 
+    if (id === 'auto') {
+      return {
+        name: 'AUTO ROUTER CORE',
+        short: 'สมองกลาง · AUTO',
+        detail: 'สมองกลางเลือกโมเดลให้อัตโนมัติ',
+        engine: 'AI Router (Flash classifier + quota-aware)',
+        accent: '#e879f9'
+      };
+    }
     if (id.startsWith('deepseek-')) {
       const isFlash = id.includes('flash');
       return {
@@ -2972,7 +3311,7 @@ body::before {
     btnQueueClear.addEventListener('click', async () => {
       if (!confirm('ต้องการล้างคำสั่งที่รออยู่ในคิวทั้งหมดใช่หรือไม่?')) return;
       try {
-        const res = await fetch('/api/gemini/queue/clear', { method: 'POST' });
+        const res = await fetch('/api/gemini/queue/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentSessionId }) });
         const data = await res.json();
         if (data.ok) renderQueue([]);
       } catch (err) {
@@ -3016,7 +3355,7 @@ body::before {
 
   async function fetchQueue() {
     try {
-      const res = await fetch('/api/gemini/queue');
+      const res = await fetch('/api/gemini/queue?sessionId=' + encodeURIComponent(currentSessionId || ''));
       if (res.ok) {
         const data = await res.json();
         if (data.queue) renderQueue(data.queue);
@@ -3098,6 +3437,15 @@ body::before {
   if (mobileModePill) mobileModePill.addEventListener('click', openSettingsModal);
   if (btnModalSettingsClose) btnModalSettingsClose.addEventListener('click', closeSettingsModal);
   if (btnModalSettingsX) btnModalSettingsX.addEventListener('click', closeSettingsModal);
+  if (modalSettings) modalSettings.addEventListener('click', (e) => { if (e.target === modalSettings) closeSettingsModal(); });
+  document.getElementById('btn-mobile-rename')?.addEventListener('click', promptRenameCurrentChat);
+  document.getElementById('modal-btn-pin-chat')?.addEventListener('click', () => {
+    if (currentSessionId) toggleSessionPin(currentSessionId);
+  });
+  document.getElementById('modal-btn-rename-chat')?.addEventListener('click', () => {
+    closeSettingsModal();
+    promptRenameCurrentChat();
+  });
 
   // Mode Selection in Modal & Topbar
   modeBtns.forEach((b) => {
@@ -3175,135 +3523,16 @@ body::before {
     if (ev.key === 'homelab_sound_fx') updateSoundBtn();
   });
 
-  let thinkingLoopNodes = null;
-  let thinkingPulseTimer = null;
-
-  function playAiThinkingSound() {
-    if (!isSoundEnabled()) return;
-    try {
-      const ctx = getAudioCtx();
-      if (!ctx) return;
-      if (ctx.state === 'suspended') ctx.resume();
-      const t = ctx.currentTime;
-      const notes = [523.25, 659.25, 783.99, 987.77];
-      notes.forEach((freq, idx) => {
-        const start = t + idx * 0.055;
-        const osc = ctx.createOscillator();
-        const sub = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        sub.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, start);
-        osc.frequency.exponentialRampToValueAtTime(freq * 1.12, start + 0.18);
-        sub.frequency.setValueAtTime(freq * 0.5, start);
-        gain.gain.setValueAtTime(0.001, start);
-        gain.gain.linearRampToValueAtTime(0.15 - idx * 0.015, start + 0.025);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
-        osc.connect(gain);
-        sub.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(start);
-        sub.start(start);
-        osc.stop(start + 0.32);
-        sub.stop(start + 0.32);
-      });
-    } catch (_) {}
-  }
-
+  // Thinking sound themes live in /ai-think-sounds.js (chosen in Settings)
   function startThinkingLoop() {
-    stopThinkingLoop(true);
-    if (!isSoundEnabled()) return;
-    try {
-      const ctx = getAudioCtx();
-      if (!ctx) return;
-      if (ctx.state === 'suspended') ctx.resume();
-      const t = ctx.currentTime;
-
-      const master = ctx.createGain();
-      master.gain.setValueAtTime(0.001, t);
-      master.gain.linearRampToValueAtTime(0.055, t + 0.45);
-
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(420, t);
-
-      const pad1 = ctx.createOscillator();
-      const pad2 = ctx.createOscillator();
-      pad1.type = 'sine';
-      pad2.type = 'triangle';
-      pad1.frequency.setValueAtTime(110, t);     // A2 warm space drone
-      pad2.frequency.setValueAtTime(164.81, t);  // E3 fifth harmonic
-
-      // Slow breathing LFO on filter cutoff
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.type = 'sine';
-      lfo.frequency.setValueAtTime(0.45, t);
-      lfoGain.gain.setValueAtTime(160, t);
-      lfo.connect(lfoGain);
-      lfoGain.connect(filter.frequency);
-
-      pad1.connect(filter);
-      pad2.connect(filter);
-      filter.connect(master);
-      master.connect(ctx.destination);
-
-      pad1.start(t);
-      pad2.start(t);
-      lfo.start(t);
-
-      thinkingLoopNodes = { master, pad1, pad2, lfo };
-
-      // Subtle crystalline galactic telemetry pings every 1.1s while thinking
-      const scale = [659.25, 830.61, 987.77, 1174.66, 1318.51];
-      let step = 0;
-      thinkingPulseTimer = setInterval(() => {
-        if (!isSoundEnabled() || !isRunning) return;
-        try {
-          const now = ctx.currentTime;
-          const freq = scale[step % scale.length];
-          step++;
-          const osc = ctx.createOscillator();
-          const g = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, now);
-          g.gain.setValueAtTime(0.001, now);
-          g.gain.linearRampToValueAtTime(0.045, now + 0.03);
-          g.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
-          osc.connect(g);
-          g.connect(ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.5);
-        } catch (_) {}
-      }, 1100);
-    } catch (_) {}
+    if (!isSoundEnabled() || !window.AiThinkSounds) return;
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    window.AiThinkSounds.start(ctx, window.AiThinkSounds.selected(), () => isRunning && isSoundEnabled());
   }
 
   function stopThinkingLoop(immediate = false) {
-    if (thinkingPulseTimer) {
-      clearInterval(thinkingPulseTimer);
-      thinkingPulseTimer = null;
-    }
-    if (thinkingLoopNodes) {
-      try {
-        const ctx = getAudioCtx();
-        const { master, pad1, pad2, lfo } = thinkingLoopNodes;
-        thinkingLoopNodes = null;
-        if (ctx && !immediate) {
-          const t = ctx.currentTime;
-          master.gain.cancelScheduledValues(t);
-          master.gain.setValueAtTime(master.gain.value || 0.04, t);
-          master.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-          setTimeout(() => {
-            try { pad1.stop(); pad2.stop(); lfo.stop(); } catch (_) {}
-          }, 280);
-        } else {
-          try { pad1.stop(); pad2.stop(); lfo.stop(); } catch (_) {}
-        }
-      } catch (_) {
-        thinkingLoopNodes = null;
-      }
-    }
+    if (window.AiThinkSounds) window.AiThinkSounds.stop(immediate);
   }
 
   function playAiDoneSound() {
@@ -3955,8 +4184,8 @@ body::before {
       const pill = document.getElementById('ai-hud-quota-pill');
       if (!g5h || !r5h || !gWk || !rWk) return;
 
-      const modelId = (selModel ? selModel.value : 'gemini-4-hydrogen-high').toLowerCase();
-      const pools = liveQuota?.pools || [];
+      const modelId = (selModel ? selModel.value : 'auto').toLowerCase();
+      const pools = quotaSourceFor()?.pools || [];
       const geminiPool = pools.find(p => p.id === 'gemini');
       const claudePool = pools.find(p => p.id === 'claude');
       const argonPool = pools.find(p => p.id === 'argon');
@@ -4067,6 +4296,17 @@ body::before {
       else if (s.includes('-low')) { tier = 'Low · Fast'; tierColor = '#34d399'; }
       else if (s.includes('-medium')) { tier = 'Medium · Balanced'; tierColor = '#22d3ee'; }
 
+      if (s === 'auto') {
+        return {
+          family: 'auto',
+          accent: '#e879f9',
+          bg: 'rgba(232, 121, 249, 0.16)',
+          tier: 'Auto · Router',
+          tierColor: '#e879f9',
+          desc: 'สมองกลางเลือกโมเดล/บัญชีให้ตามงาน · ใช้แพ็กเกจรายเดือนก่อน DeepSeek สุดท้าย',
+          svg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e879f9" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3" fill="#e879f9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>`
+        };
+      }
       if (s.startsWith('claude-code-')) {
         const isOpus = s.includes('opus');
         const isHaiku = s.includes('haiku');
@@ -4162,8 +4402,20 @@ body::before {
       return `รีเซ็ต ${m}น.`;
     }
 
-    function getModelQuotaInfo(id) {
+    function quotaSourceFor(accId) {
+      const a = accId || (window.agyState && window.agyState.chosen) || '';
+      const extra = a && a !== 'g1' && window.agyState && window.agyState.quotas[a];
+      if (extra && extra.ok) return extra;
+      if (liveQuota && liveQuota.ok) return liveQuota;
+      const firstReady = window.agyState && Object.values(window.agyState.quotas || {}).find(q => q && q.ok);
+      return firstReady || liveQuota;
+    }
+
+    function getModelQuotaInfo(id, accId) {
       const s = (id || '').toLowerCase();
+      if (s === 'auto') {
+        return { isAuto: true, remainingPct: null, resetTime: null, fiveHour: null, weekly: null };
+      }
       if (s.startsWith('claude-code-')) {
         const cw = liveQuota?.claudeWeb;
         if (cw && cw.ok) {
@@ -4199,8 +4451,9 @@ body::before {
           weekly: null
         };
       }
-      const pools = liveQuota?.pools || [];
-      const models = liveQuota?.models || [];
+      const qSrc = quotaSourceFor(accId);
+      const pools = qSrc?.pools || [];
+      const models = qSrc?.models || [];
       const exact = models.find(m => m.id.toLowerCase() === s);
       const isClaudeOrGpt = s.includes('claude') || s.includes('gpt');
       const pool = isClaudeOrGpt
@@ -4219,11 +4472,19 @@ body::before {
 
     function syncModelTriggerUI() {
       if (!selModel) return;
-      const curId = selModel.value || 'gemini-4-hydrogen-high';
-      const curName = selModel.selectedIndex >= 0 ? selModel.options[selModel.selectedIndex].text : curId;
+      const curId = selModel.value || 'auto';
+      let curName = selModel.selectedIndex >= 0 ? selModel.options[selModel.selectedIndex].text : curId;
+      {
+        const l = curId.toLowerCase();
+        const ra = (window.agyState?.accounts || []).filter(a => a.ready);
+        if (ra.length > 1 && l !== 'auto' && !l.startsWith('deepseek-') && !l.startsWith('claude-code-')) {
+          const cur = ra.find(a => a.id === window.agyState.chosen) || ra[0];
+          curName += ' · ' + cur.label;
+        }
+      }
       const vis = getModelVisual(curId);
       const q = getModelQuotaInfo(curId);
-      const pctText = q.isDeepSeek
+      const pctText = q.isAuto ? 'AUTO' : q.isDeepSeek
         ? (q.dsOk ? `$${q.dsTotal}` : '$--')
         : (q.isClaudeSub && !q.cwOk ? 'Sub' : (q.remainingPct !== null ? `${q.remainingPct}%` : '--%'));
       const pctCol = q.isDeepSeek
@@ -4232,10 +4493,11 @@ body::before {
 
       [
         ['trigger-model-icon', 'trigger-model-name', 'trigger-model-quota'],
-        ['modal-trigger-model-icon', 'modal-trigger-model-name', 'modal-trigger-model-quota']
+        ['modal-trigger-model-icon', 'modal-trigger-model-name', 'modal-trigger-model-quota'],
+        ['mobile-trigger-model-icon', null, 'mobile-trigger-model-quota']
       ].forEach(([iconId, nameId, quotaId]) => {
         const iEl = document.getElementById(iconId);
-        const nEl = document.getElementById(nameId);
+        const nEl = nameId ? document.getElementById(nameId) : null;
         const qEl = document.getElementById(quotaId);
         if (iEl) {
           iEl.innerHTML = vis.svg;
@@ -4245,9 +4507,11 @@ body::before {
         if (qEl) {
           qEl.textContent = pctText;
           qEl.style.color = pctCol;
-          qEl.style.background = q.remainingPct !== null && q.remainingPct < 20
-            ? 'rgba(248, 113, 113, 0.16)'
-            : (q.remainingPct !== null && q.remainingPct < 50 ? 'rgba(251, 191, 36, 0.16)' : 'rgba(52, 211, 153, 0.14)');
+          if (quotaId !== 'mobile-trigger-model-quota') {
+            qEl.style.background = q.remainingPct !== null && q.remainingPct < 20
+              ? 'rgba(248, 113, 113, 0.16)'
+              : (q.remainingPct !== null && q.remainingPct < 50 ? 'rgba(251, 191, 36, 0.16)' : 'rgba(52, 211, 153, 0.14)');
+          }
         }
       });
     }
@@ -4270,10 +4534,38 @@ body::before {
           const cw = liveQuota.claudeWeb;
           parts.push(`Claude Sub: 5H ${cw.fiveHour?.remainingPct ?? '--'}% / Wk ${cw.weekly?.remainingPct ?? '--'}%`);
         }
-        subEl.textContent = `บัญชี ${liveQuota.email} · ${parts.join(' | ')}`;
+        const readyA = (window.agyState?.accounts || []).filter(a => a.ready);
+        if (readyA.length > 1) {
+          const accParts = readyA.map(a => {
+            const src = quotaSourceFor(a.id);
+            const g = (src?.pools || []).find(p => p.id === 'gemini');
+            const c = (src?.pools || []).find(p => p.id === 'claude');
+            return `${a.label}: Gemini ${g ? g.remainingPct + '%' : '--'} · Claude/GPT ${c ? c.remainingPct + '%' : '--'}`;
+          });
+          if (liveQuota.deepseek?.ok) accParts.push(`DeepSeek: $${liveQuota.deepseek.totalBalance} ${liveQuota.deepseek.currency || 'USD'}`);
+          subEl.textContent = accParts.join(' | ');
+        } else {
+          subEl.textContent = `บัญชี ${liveQuota.email} · ${parts.join(' | ')}`;
+        }
       }
 
-      const filtered = opts.filter(m => {
+      const readyAccsAll = (window.agyState?.accounts || []).filter(a => a.ready);
+      const effChosen = (window.agyState?.chosen) || (readyAccsAll[0] && readyAccsAll[0].id) || '';
+      const isAccountable = (id) => {
+        const l = (id || '').toLowerCase();
+        return l !== 'auto' && !l.startsWith('deepseek-') && !l.startsWith('claude-code-');
+      };
+      // โมเดล Google/Antigravity: แตกการ์ดแยกตามบัญชี (Google#1, Google#2) ให้เลือกเฉลี่ยโทเคนได้
+      const expanded = [];
+      opts.forEach(m => {
+        if (readyAccsAll.length > 1 && isAccountable(m.id)) {
+          readyAccsAll.forEach(a => expanded.push({ id: m.id, baseName: m.name, name: `${m.name} · ${a.label}`, acc: a.id, accLabel: a.label }));
+        } else {
+          expanded.push({ id: m.id, baseName: m.name, name: m.name, acc: '', accLabel: '' });
+        }
+      });
+
+      const filtered = expanded.filter(m => {
         const vis = getModelVisual(m.id);
         if (activeModelFamily !== 'all' && vis.family !== activeModelFamily) return false;
         if (qText && !m.name.toLowerCase().includes(qText) && !m.id.toLowerCase().includes(qText)) return false;
@@ -4288,8 +4580,8 @@ body::before {
       modelPickerGrid.innerHTML = '';
       filtered.forEach(m => {
         const vis = getModelVisual(m.id);
-        const q = getModelQuotaInfo(m.id);
-        const isSelected = m.id === curId;
+        const q = getModelQuotaInfo(m.id, m.acc || undefined);
+        const isSelected = m.id === curId && (!m.acc || m.acc === effChosen);
         const pct = q.remainingPct !== null ? q.remainingPct : 100;
         const barCol = q.isDeepSeek
           ? (q.dsAvailable ? '#22d3ee' : '#ef4444')
@@ -4298,12 +4590,41 @@ body::before {
           ? 'ไม่มีวันหมดอายุ'
           : (q.isClaudeSub && !q.cwOk ? 'Claude.ai OAuth' : fmtResetShort(q.resetTime));
         const extraWindow = q.isDeepSeek
-          ? (q.dsOk ? `เครดิต $${q.dsTotal} ${q.dsCurrency}` : 'กำลังโหลดเครดิต...')
+          ? (q.dsOk ? (q.dsAvailable ? `เครดิต $${q.dsTotal} ${q.dsCurrency}` : `เครดิตหมด ($${q.dsTotal} · Auto ข้าม)`) : 'กำลังโหลดเครดิต...')
           : (q.isClaudeSub && !q.cwOk
             ? 'Subscription Active'
             : ((q.fiveHour && q.weekly)
               ? `5H ${q.fiveHour.remainingPct}% · Wk ${q.weekly.remainingPct}%`
               : `คงเหลือ ${q.remainingPct !== null ? pct + '%' : 'ไม่ทราบ'}`));
+
+        const readyAccs = m.acc ? readyAccsAll.filter(a => a.id === m.acc) : [];
+        const multiAcc = readyAccs.length > 0 && !q.isAuto && !q.isDeepSeek && !q.isClaudeSub;
+        const chosenAcc = effChosen;
+        const quotaBlockHtml = multiAcc
+          ? readyAccs.map(a => {
+              const qa = getModelQuotaInfo(m.id, a.id);
+              const p = qa.remainingPct !== null ? qa.remainingPct : 100;
+              const c = qa.remainingPct !== null ? thermalColor(p) : '#64748b';
+              const mark = (chosenAcc === a.id) ? ' ✓' : '';
+              const txt = qa.remainingPct !== null ? `${a.label}${mark} · ${qa.remainingPct}%` : `${a.label}${mark} · --`;
+              return `<div class="model-quota-wrap">
+                <div class="model-quota-meta">
+                  <span style="color:${c}; font-weight:700;">${txt}</span>
+                  <span style="color:var(--ink-muted);">${fmtResetShort(qa.resetTime) || 'พร้อมใช้งาน'}</span>
+                </div>
+                <div class="model-quota-track"><div class="model-quota-fill" style="width:${Math.max(2, p)}%; background:${c}; box-shadow:0 0 8px ${c}66;"></div></div>
+              </div>`;
+            }).join('')
+          : `          <div class="model-quota-wrap">
+            <div class="model-quota-meta">
+              <span style="color:${barCol}; font-weight:700;">${extraWindow}</span>
+              <span style="color:var(--ink-muted);">${resetTxt || 'พร้อมใช้งาน'}</span>
+            </div>
+            <div class="model-quota-track">
+              <div class="model-quota-fill" style="width:${Math.max(2, pct)}%; background:${barCol}; box-shadow:0 0 8px ${barCol}66;"></div>
+            </div>
+          </div>
+`;
 
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -4324,19 +4645,17 @@ body::before {
               </div>
             </div>
           </div>
-          <div class="model-quota-wrap">
-            <div class="model-quota-meta">
-              <span style="color:${barCol}; font-weight:700;">${extraWindow}</span>
-              <span style="color:var(--ink-muted);">${resetTxt || 'พร้อมใช้งาน'}</span>
-            </div>
-            <div class="model-quota-track">
-              <div class="model-quota-fill" style="width:${Math.max(2, pct)}%; background:${barCol}; box-shadow:0 0 8px ${barCol}66;"></div>
-            </div>
-          </div>
+          ${quotaBlockHtml}
         `;
         btn.addEventListener('click', () => {
+          const st = window.agyState;
+          if (st) {
+            st.chosen = m.acc || '';
+            try { localStorage.setItem('agy_account', st.chosen); } catch (_) {}
+          }
           selModel.value = m.id;
           selModel.dispatchEvent(new Event('change'));
+          window.dispatchEvent(new Event('agy-changed'));
           closeModelPickerModal();
         });
         modelPickerGrid.appendChild(btn);
@@ -4366,6 +4685,7 @@ body::before {
     }
 
     if (btnModelPicker) btnModelPicker.addEventListener('click', openModelPickerModal);
+    document.getElementById('btn-model-picker-mobile')?.addEventListener('click', openModelPickerModal);
     if (modalBtnModelPicker) modalBtnModelPicker.addEventListener('click', () => {
       const settingsModal = document.getElementById('modal-settings');
       if (settingsModal) settingsModal.classList.remove('is-open');
@@ -4396,19 +4716,66 @@ body::before {
     syncModelTriggerUI();
     if (modalSelModel) modalSelModel.addEventListener('change', updateQuotaRings);
 
+    let telemetryTick = 0;
     async function refreshTelemetry() {
       try {
-        const [sRes, eRes, qRes] = await Promise.all([
+        telemetryTick++;
+        const syncAccounts = (telemetryTick % 3 === 1);
+        const [sRes, eRes, qRes, aRes] = await Promise.all([
           fetch('/api/summary').then(r => r.ok ? r.json() : null).catch(() => null),
           fetch('/api/energy').then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch('/api/gemini/quota').then(r => r.ok ? r.json() : null).catch(() => null)
+          fetch('/api/gemini/quota').then(r => r.ok ? r.json() : null).catch(() => null),
+          syncAccounts ? fetch('/api/ai-router/accounts').then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null)
         ]);
         if (sRes) liveSummary = sRes;
         if (eRes) liveEnergy = eRes;
         else if (sRes?.energy) liveEnergy = sRes.energy;
-        if (qRes && qRes.ok) {
-          liveQuota = qRes;
+        if (qRes) {
+          if (qRes.ok) {
+            liveQuota = qRes;
+          } else {
+            liveQuota = {
+              ...(liveQuota || {}),
+              ok: false,
+              pools: [],
+              deepseek: qRes.deepseek !== undefined ? qRes.deepseek : (liveQuota && liveQuota.deepseek) || null,
+              claudeWeb: qRes.claudeWeb !== undefined ? qRes.claudeWeb : (liveQuota && liveQuota.claudeWeb) || null
+            };
+          }
+        }
+        const st = window.agyState;
+        if (st && aRes && aRes.ok && Array.isArray(aRes.accounts)) {
+          const prevSig = (st.accounts || []).map(a => `${a.id}:${a.ready}`).join(',');
+          const nextSig = aRes.accounts.map(a => `${a.id}:${a.ready}`).join(',');
+          if (prevSig !== nextSig) {
+            st.accounts = aRes.accounts;
+            if (st.chosen && !st.accounts.some(a => a.ready && a.id === st.chosen)) {
+              st.chosen = '';
+              try { localStorage.setItem('agy_account', ''); } catch (_) {}
+            }
+            if (typeof renderAgyAccountUI === 'function') renderAgyAccountUI();
+          }
+        }
+        if (st) {
+          const extras = (st.accounts || []).filter(a => a.ready && a.id !== 'g1');
+          await Promise.all(extras.map(async a => {
+            const d = await fetch('/api/gemini/quota?account=' + encodeURIComponent(a.id)).then(r => r.ok ? r.json() : null).catch(() => null);
+            if (d && d.ok) {
+              st.quotas[a.id] = d;
+            } else if (d && d.authError) {
+              delete st.quotas[a.id];
+              if (st.chosen === a.id) {
+                st.chosen = '';
+                try { localStorage.setItem('agy_account', ''); } catch (_) {}
+                if (typeof renderAgyAccountUI === 'function') renderAgyAccountUI();
+              }
+            }
+          }));
+        }
+        if (liveQuota || (st && Object.keys(st.quotas || {}).length > 0)) {
           updateQuotaRings();
+          syncModelTriggerUI();
+          if (modalModelPicker && modalModelPicker.classList.contains('is-open')) renderModelPickerList();
         }
         if (activePopoverDef && popoverEl.classList.contains('is-open')) {
           openPlanetPopover(activePopoverDef);
@@ -4417,6 +4784,12 @@ body::before {
     }
     refreshTelemetry();
     setInterval(refreshTelemetry, 10000);
+    window.addEventListener('agy-changed', () => {
+      syncModelTriggerUI();
+      updateQuotaRings();
+      if (modalModelPicker && modalModelPicker.classList.contains('is-open')) renderModelPickerList();
+      refreshTelemetry();
+    });
 
     function findPm2(name) {
       const list = liveSummary?.pm2?.items || [];
@@ -4961,11 +5334,11 @@ body::before {
 
     if (thinking) {
       if (!wasThinking) {
-        playAiThinkingSound();
         startThinkingLoop();
       }
       wasThinking = true;
       if (hud) hud.classList.add('is-thinking');
+      document.getElementById('mobile-status-dot')?.classList.add('is-running');
       if (reactorStatus) reactorStatus.textContent = 'กำลังประมวลผล...';
       if (badge) {
         badge.textContent = '🔥 THINKING';
@@ -4992,6 +5365,7 @@ body::before {
         playAiDoneSound();
       }
       if (hud) hud.classList.remove('is-thinking');
+      document.getElementById('mobile-status-dot')?.classList.remove('is-running');
       if (reactorStatus) reactorStatus.textContent = 'พร้อมรับคำสั่ง';
       if (badge) {
         badge.textContent = '⚡ AI READY';
@@ -5020,6 +5394,13 @@ body::before {
       if (modelTag && selModel.selectedIndex >= 0) {
         modelTag.textContent = selModel.options[selModel.selectedIndex].text;
       }
+      {
+        const l = (selModel.value || '').toLowerCase();
+        if (window.agyState && window.agyState.chosen && (l === 'auto' || l.startsWith('deepseek-') || l.startsWith('claude-code-'))) {
+          window.agyState.chosen = '';
+          try { localStorage.setItem('agy_account', ''); } catch (_) {}
+        }
+      }
       applyCoreBranding();
     });
     applyCoreBranding();
@@ -5032,6 +5413,57 @@ body::before {
       currentMode = b.dataset.mode;
     });
   });
+
+  function chooseAgyAccount(v) {
+    const st = window.agyState;
+    st.chosen = v || '';
+    try { localStorage.setItem('agy_account', st.chosen); } catch (_) {}
+    renderAgyAccountUI();
+    window.dispatchEvent(new Event('agy-changed'));
+  }
+
+  function renderAgyAccountUI() {
+    // ซ่อน Dropdown และแถบเลือกบัญชีบนหน้าจอแชท เพื่อความสะอาดตาและปล่อยให้สมองกลาง (Auto Router) จัดการอัตโนมัติ
+    const sel = document.getElementById('sel-agy-account');
+    const bar = document.getElementById('agy-account-bar');
+    [sel, bar].forEach(el => { if (el) el.classList.add('agy-hidden'); });
+  }
+
+  function setupAgyAccounts(list) {
+    const st = window.agyState;
+    st.accounts = Array.isArray(list) ? list : [];
+    if (st.chosen && !st.accounts.some(a => a.ready && a.id === st.chosen)) st.chosen = '';
+    renderAgyAccountUI();
+    window.dispatchEvent(new Event('agy-changed'));
+  }
+  (function () {
+    const sel = document.getElementById('sel-agy-account');
+    if (sel) sel.addEventListener('change', () => chooseAgyAccount(sel.value));
+  })();
+
+  function resolveValidModelId(preferredId, fallbackId = 'auto') {
+    if (!selModel || !selModel.options.length) return preferredId || fallbackId;
+    const has = (id) => id && [...selModel.options].some(o => o.value === id);
+    if (has(preferredId)) return preferredId;
+    if (has(fallbackId)) return fallbackId;
+    if (has('auto')) return 'auto';
+    if (has('gemini-4-hydrogen-high')) return 'gemini-4-hydrogen-high';
+    return selModel.options[0].value;
+  }
+
+  function applySelectedModel(modelId) {
+    const resolved = resolveValidModelId(modelId);
+    if (selModel && resolved) {
+      selModel.value = resolved;
+      if (modalSelModel && [...modalSelModel.options].some(o => o.value === resolved)) {
+        modalSelModel.value = resolved;
+      }
+      if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
+      if (typeof updateQuotaRings === 'function') updateQuotaRings();
+      applyCoreBranding();
+    }
+    return resolved;
+  }
 
   async function loadStatus() {
     try {
@@ -5048,24 +5480,32 @@ body::before {
       } else if (data.hasKey) {
         badgeKey.className = 'badge badge--ok';
         badgeKey.textContent = 'API KEY ACTIVE';
+      } else if (data.claudeCodeReady || data.hasDeepSeek) {
+        badgeKey.className = 'badge badge--ok';
+        badgeKey.textContent = data.claudeCodeReady ? 'CLAUDE PRO READY' : 'DEEPSEEK READY';
       } else {
         badgeKey.className = 'badge badge--warn';
         badgeKey.textContent = 'AUTH: NOT CONFIGURED';
       }
 
+      if (typeof setupAgyAccounts === 'function') setupAgyAccounts(data.agyAccounts || []);
+
+      if (data.defaultModel) localStorage.setItem('core_default_model', data.defaultModel);
       if (data.models && data.models.length) {
+        const prevWanted = (currentSessionMeta && currentSessionMeta.model) || (selModel && selModel.value) || localStorage.getItem('core_default_model') || data.defaultModel || 'auto';
         [selModel, modalSelModel].forEach((sel) => {
           if (!sel) return;
-          const cur = sel.value;
           sel.innerHTML = '';
           data.models.forEach((m) => {
             const opt = document.createElement('option');
             opt.value = m.id;
             opt.textContent = m.name;
-            if (m.id === cur || (!cur && m.id === 'gemini-4-hydrogen-high')) opt.selected = true;
             sel.appendChild(opt);
           });
         });
+        const chosenId = resolveValidModelId(prevWanted, data.defaultModel || 'auto');
+        if (selModel) selModel.value = chosenId;
+        if (modalSelModel && [...modalSelModel.options].some(o => o.value === chosenId)) modalSelModel.value = chosenId;
         const modelTag = document.getElementById('ai-hud-model-tag');
         if (modelTag && selModel && selModel.selectedIndex >= 0) {
           modelTag.textContent = selModel.options[selModel.selectedIndex].text;
@@ -5160,6 +5600,26 @@ body::before {
         badge.style.display = 'none';
       }
     }
+    syncMobileChatSub(totalMs);
+  }
+
+  function syncMobileChatSub(totalMsOverride) {
+    const mobSub = document.getElementById('mobile-chat-sub');
+    if (!mobSub) return;
+    let roomNum = '';
+    if (currentSessionMeta && Array.isArray(cachedSessions) && cachedSessions.length > 0) {
+      const idx = cachedSessions.findIndex(s => s.id === currentSessionMeta.id);
+      if (idx !== -1) roomNum = `#${idx + 1}`;
+    }
+    const msgCountText = (document.getElementById('chat-msg-count-badge')?.textContent || '0').replace(' ข้อความ', ' ข้อ');
+    const totalBadge = document.getElementById('chat-total-time-badge');
+    const rawTime = (typeof totalMsOverride === 'number' && totalMsOverride > 0)
+      ? formatDurationTh(totalMsOverride)
+      : (totalBadge && totalBadge.style.display !== 'none' ? totalBadge.textContent.replace('⏱️ AI คิดรวม ', '') : '');
+    const timeText = rawTime ? `⏱️ ${rawTime.replace(' นาที', 'น.').replace(' วิ', 'ว.').replace(' ชม.', 'ชม.')}` : '';
+    const parts = [roomNum || '#1', msgCountText];
+    if (timeText) parts.push(timeText);
+    mobSub.textContent = parts.join(' · ');
   }
 
   function markAssistantMessageDone(bodyEl, finishedAt = null, startedAt = null) {
@@ -5303,6 +5763,20 @@ body::before {
       countBadge.textContent = `${count} ข้อความ`;
     }
 
+    const mobTitle = document.getElementById('mobile-chat-title');
+    if (mobTitle) {
+      mobTitle.textContent = title;
+      mobTitle.title = title;
+    }
+    const mobPinStar = document.getElementById('mobile-pin-star');
+    if (mobPinStar) mobPinStar.style.display = pinned ? 'inline' : 'none';
+
+    const modalPinBtn = document.getElementById('modal-btn-pin-chat');
+    if (modalPinBtn) {
+      modalPinBtn.textContent = pinned ? '⭐ ปักหมุดไว้แล้ว (คลิกยกเลิก)' : '☆ ปักหมุดแชทนี้';
+    }
+    syncMobileChatSub();
+
     document.title = `${pinned ? '⭐ ' : ''}${title} · Antigravity Core`;
 
     const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -5337,13 +5811,23 @@ body::before {
 
   function updateRunningSessionsBadge(runningIds) {
     const badge = document.getElementById('sessions-running-badge');
-    if (!badge) return;
+    const mobBadge = document.getElementById('sessions-running-badge-mobile');
     const count = Array.isArray(runningIds) ? runningIds.length : 0;
-    if (count > 0) {
-      badge.textContent = count + ' ⏳';
-      badge.style.display = 'inline-block';
-    } else {
-      badge.style.display = 'none';
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = count + ' ⏳';
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    if (mobBadge) {
+      if (count > 0) {
+        mobBadge.textContent = String(count);
+        mobBadge.style.display = 'inline-flex';
+      } else {
+        mobBadge.style.display = 'none';
+      }
     }
   }
 
@@ -5384,10 +5868,8 @@ body::before {
       if (data && data.ok && data.session) {
         currentSessionId = data.session.id;
         localStorage.setItem('core_active_session', currentSessionId);
-        if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
-          selModel.value = data.session.model;
-          if (modalSelModel) modalSelModel.value = data.session.model;
-          applyCoreBranding();
+        if (data.session.model && selModel) {
+          applySelectedModel(data.session.model);
         }
         if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
           selCwd.value = data.session.cwd;
@@ -5397,6 +5879,7 @@ body::before {
         if (data.job && data.job.runningSessionIds) {
           updateRunningSessionsBadge(data.job.runningSessionIds);
         }
+        fetchQueue();
         if (!Array.isArray(cachedSessions) || cachedSessions.length === 0) {
           fetch('/api/gemini/sessions').then(r => r.json()).then(d => {
             if (d && d.ok && Array.isArray(d.sessions)) {
@@ -5430,15 +5913,14 @@ body::before {
     currentSessionId = sid;
     localStorage.setItem('core_active_session', sid);
     if (modalSessions) modalSessions.classList.remove('is-open');
+    renderQueue([]); // คิวแยกตามห้อง: ล้างของห้องเก่าออกก่อน แล้วโหลดคิวของห้องใหม่
 
     try {
       const res = await fetch('/api/gemini/session?id=' + encodeURIComponent(sid));
       const data = await res.json();
       if (!data || !data.ok) return;
-      if (data.session.model && selModel && [...selModel.options].some(o => o.value === data.session.model)) {
-        selModel.value = data.session.model;
-        if (modalSelModel) modalSelModel.value = data.session.model;
-        applyCoreBranding();
+      if (data.session.model && selModel) {
+        applySelectedModel(data.session.model);
       }
       if (data.session.cwd && selCwd && [...selCwd.options].some(o => o.value === data.session.cwd)) {
         selCwd.value = data.session.cwd;
@@ -5448,6 +5930,8 @@ body::before {
       if (data.job && data.job.runningSessionIds) {
         updateRunningSessionsBadge(data.job.runningSessionIds);
       }
+      renderQueue(data.job && Array.isArray(data.job.queue) ? data.job.queue : []);
+      fetchQueue();
       if (data.job && data.job.status === 'running') {
         currentTurnJobId = data.job.id;
         const allMsgs = msgList.querySelectorAll('.msg');
@@ -5473,7 +5957,7 @@ body::before {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: 'แชทใหม่',
-          model: selModel ? selModel.value : 'gemini-4-hydrogen-high',
+          // โมเดลของแชทใหม่ = โมเดลเริ่มต้นจากหน้าตั้งค่าบน server (ค่าเริ่มต้น = auto สมองกลาง)
           cwd: selCwd ? selCwd.value : '/home/dev/projects',
           mode: currentMode || 'exec'
         })
@@ -5788,6 +6272,10 @@ body::before {
     });
 
     const renderedImgUrls = new Set();
+    const renderedVideos = new Map();
+    function escAttr(v) {
+      return String(v || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
     function resolveImageUrl(rawUrl) {
       const clean = String(rawUrl || '').replace(/&amp;/g, '&').trim();
       if (/^file:\/\/(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
@@ -5802,15 +6290,69 @@ body::before {
       }
       return null;
     }
+    function resolveLocalFileUrl(rawUrl, download = false) {
+      const clean = String(rawUrl || '').replace(/&amp;/g, '&').trim();
+      let localPath = null;
+      if (/^file:\/\/(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
+        localPath = clean.replace(/^file:\/\//i, '');
+      } else if (/^(\/home\/dev\/(?:projects|\.gemini)\/|\/tmp\/)/i.test(clean)) {
+        localPath = clean;
+      }
+      if (localPath) {
+        return '/api/gemini/local-file?path=' + encodeURIComponent(localPath) + (download ? '&download=1' : '');
+      }
+      if (/^(?:https?:\/\/[^/\s]+)?\/api\/gemini\/local-file\?/i.test(clean)) {
+        if (!download) return clean.replace(/([?&])download=1(&|$)/i, (_, p1, p2) => (p2 ? p1 : '')).replace(/[?&]$/, '');
+        return /([?&])download=1(?:&|$)/i.test(clean) ? clean : clean + (clean.includes('?') ? '&download=1' : '?download=1');
+      }
+      if (/^(https?:\/\/|\/api\/|\/files\/)/i.test(clean)) {
+        return clean;
+      }
+      return null;
+    }
+    function getUrlExtension(rawUrl) {
+      const clean = String(rawUrl || '').replace(/&amp;/g, '&').trim();
+      const lfMatch = clean.match(/\/api\/gemini\/local-file\?[^#\s]*[?&]path=([^&\s#]+)/i);
+      let target = clean;
+      if (lfMatch) {
+        try { target = decodeURIComponent(lfMatch[1]); } catch (_) { target = lfMatch[1]; }
+      } else {
+        target = clean.split(/[?#]/)[0];
+      }
+      const m = target.match(/\.([a-z0-9]{1,8})$/i);
+      return m ? m[1].toLowerCase() : '';
+    }
+    function getVideoDedupeKey(src) {
+      const lfMatch = String(src || '').match(/\/api\/gemini\/local-file\?[^#\s]*[?&]path=([^&\s#]+)/i);
+      if (lfMatch) {
+        try { return 'local:' + decodeURIComponent(lfMatch[1]); } catch (_) { return 'local:' + lfMatch[1]; }
+      }
+      return String(src || '').replace(/^https?:\/\/[^/]+/i, '');
+    }
 
     function buildImgCard(src, caption) {
       renderedImgUrls.add(src);
       const safeCap = escapeHtml(caption || 'Generated Image');
+      const safeSrc = escAttr(src);
       return `<div class="md-img-card">` +
-        `<a href="${src}" target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูรูปขนาดเต็ม">` +
-          `<img src="${src}" alt="${safeCap}" loading="lazy" onerror="this.closest('.md-img-card').style.display='none'" />` +
+        `<a href="${safeSrc}" target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูรูปขนาดเต็ม">` +
+          `<img src="${safeSrc}" alt="${safeCap}" loading="lazy" onerror="this.closest('.md-img-card').style.display='none'" />` +
         `</a>` +
-        `<div class="md-img-caption"><span>🖼️ ${safeCap}</span><a class="md-link" href="${src}" target="_blank" rel="noopener noreferrer">เปิดเต็มจอ ↗</a></div>` +
+        `<div class="md-img-caption"><span>🖼️ ${safeCap}</span><a class="md-link" href="${safeSrc}" target="_blank" rel="noopener noreferrer">เปิดเต็มจอ ↗</a></div>` +
+      `</div>`;
+    }
+    function buildVideoCard(src, dlSrc, safeCaptionHtml) {
+      const safeSrc = escAttr(src);
+      const safeDl = escAttr(dlSrc || src);
+      return `<div class="md-video-card">` +
+        `<video controls playsinline preload="metadata" src="${safeSrc}"></video>` +
+        `<div class="md-video-caption">` +
+          `<span class="md-video-title" title="${safeCaptionHtml}">🎬 ${safeCaptionHtml}</span>` +
+          `<span class="md-video-actions">` +
+            `<a class="md-link" href="${safeSrc}" target="_blank" rel="noopener noreferrer">เปิดเต็มจอ ↗</a>` +
+            `<a class="md-dl-chip" href="${safeDl}" download>⬇️ ดาวน์โหลด</a>` +
+          `</span>` +
+        `</div>` +
       `</div>`;
     }
 
@@ -5824,14 +6366,31 @@ body::before {
       // Links: [label](url)
       s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, url) => {
         const cleanUrl = url.replace(/&amp;/g, '&');
-        if (/\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(cleanUrl)) {
+        const ext = getUrlExtension(cleanUrl);
+        if (/^(png|jpe?g|webp|gif|svg)$/i.test(ext)) {
           const src = resolveImageUrl(cleanUrl);
           if (src) return buildImgCard(src, label);
         }
-        if (/^(https?:\/\/|\/)/i.test(cleanUrl)) {
-          return `<a class="md-link" href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        if (/^(mp4|webm|mov|m4v)$/i.test(ext)) {
+          const src = resolveLocalFileUrl(cleanUrl, false);
+          if (src) {
+            const dlSrc = resolveLocalFileUrl(cleanUrl, true) || src;
+            const key = getVideoDedupeKey(src);
+            if (!renderedVideos.has(key)) renderedVideos.set(key, { src, dlSrc, safeCaptionHtml: label });
+            return `<a class="md-link" href="${escAttr(src)}" target="_blank" rel="noopener noreferrer">🎬 ${label}</a> ` +
+                   `<a class="md-dl-chip" href="${escAttr(dlSrc)}" download title="ดาวน์โหลดไฟล์ต้นฉบับ">⬇️ ดาวน์โหลด</a>`;
+          }
         }
-        return `<span class="md-link" title="${cleanUrl}">${label}</span>`;
+        if (/^(html|pdf|srt|vtt|txt|md|json|csv|wav|mp3|m4a|ogg|zip)$/i.test(ext)) {
+          const fileSrc = resolveLocalFileUrl(cleanUrl, false);
+          if (fileSrc) {
+            return `<a class="md-link" href="${escAttr(fileSrc)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+          }
+        }
+        if (/^(https?:\/\/|\/)/i.test(cleanUrl)) {
+          return `<a class="md-link" href="${escAttr(cleanUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        }
+        return `<span class="md-link" title="${escAttr(cleanUrl)}">${label}</span>`;
       });
       // Bold (**text** or __text__)
       s = s.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
@@ -5977,6 +6536,7 @@ body::before {
     const bareMatches = String(raw).match(/(?:file:\/\/)?(\/home\/dev\/(?:projects|\.gemini)\/[^\s`"'()<>]+\.(?:png|jpe?g|webp|gif|svg)|\/tmp\/[^\s`"'()<>]+\.(?:png|jpe?g|webp|gif|svg))/gi) || [];
     const extraCards = [];
     for (const m of bareMatches) {
+      if (/[{}$*]/.test(m)) continue;
       const src = resolveImageUrl(m);
       if (src && !renderedImgUrls.has(src)) {
         const fname = m.split('/').pop();
@@ -5985,6 +6545,27 @@ body::before {
     }
     if (extraCards.length > 0) {
       out.push(`<div class="md-img-gallery">${extraCards.join('')}</div>`);
+    }
+
+    // Auto-detect any bare local video paths and render playable video cards
+    const bareVideoMatches = String(raw).match(/(?:file:\/\/)?(\/home\/dev\/(?:projects|\.gemini)\/[^\s`"'()<>]+\.(?:mp4|webm|mov|m4v)|\/tmp\/[^\s`"'()<>]+\.(?:mp4|webm|mov|m4v))/gi) || [];
+    for (const m of bareVideoMatches) {
+      if (/[{}$*]/.test(m)) continue;
+      const src = resolveLocalFileUrl(m, false);
+      if (!src) continue;
+      const key = getVideoDedupeKey(src);
+      if (!renderedVideos.has(key)) {
+        const dlSrc = resolveLocalFileUrl(m, true) || src;
+        const fname = escapeHtml(m.split('/').pop() || 'video.mp4');
+        renderedVideos.set(key, { src, dlSrc, safeCaptionHtml: fname });
+      }
+    }
+    if (renderedVideos.size > 0) {
+      const videoCards = [];
+      for (const v of renderedVideos.values()) {
+        videoCards.push(buildVideoCard(v.src, v.dlSrc, v.safeCaptionHtml));
+      }
+      out.push(`<div class="md-video-gallery">${videoCards.join('')}</div>`);
     }
 
     return out.join('');
@@ -6669,11 +7250,13 @@ body::before {
     if (isRunning) {
       // ── Enqueue task if AI is currently busy ──
       promptInput.value = '';
+    if (typeof autoResizePromptInput === 'function') autoResizePromptInput();
       try {
         const res = await fetch('/api/gemini/queue', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            sessionId: currentSessionId,
             prompt,
             images: attachedImages,
             mode: currentMode,
@@ -6695,6 +7278,7 @@ body::before {
     }
 
     promptInput.value = '';
+    if (typeof autoResizePromptInput === 'function') autoResizePromptInput();
     if (currentSessionMeta && (!currentSessionMeta.title || currentSessionMeta.title === 'แชทใหม่' || currentSessionMeta.title === 'New Chat')) {
       currentSessionMeta.title = prompt.replace(/\s+/g, ' ').trim().slice(0, 80);
       updateChatHeaderUI(currentSessionMeta, (currentSessionMeta.messageCount || 0) + 1);
@@ -6719,7 +7303,7 @@ body::before {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: activeStreamAbortController.signal,
-        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, resetSession: needNewSession })
+        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -6779,7 +7363,7 @@ body::before {
 
       // Check if queue has more items waiting on server:
       try {
-        const qRes = await fetch('/api/gemini/queue').then(r => r.json()).catch(() => ({ queue: [] }));
+        const qRes = await fetch('/api/gemini/queue?sessionId=' + encodeURIComponent(currentSessionId || '')).then(r => r.json()).catch(() => ({ queue: [] }));
         if (qRes.queue && qRes.queue.length > 0) {
           renderQueue(qRes.queue);
           isSseActive = false;
@@ -6810,18 +7394,22 @@ body::before {
   let ttsQueueToken = 0;
 
   function syncAutoTtsBtn() {
-    if (!btnTtsAuto) return;
-    btnTtsAuto.classList.toggle('is-active', autoTtsEnabled);
-    btnTtsAuto.textContent = autoTtsEnabled ? '🗣️ อ่านอัตโนมัติ: เปิด' : '🗣️ อ่านอัตโนมัติ';
+    if (btnTtsAuto) {
+      btnTtsAuto.classList.toggle('is-active', autoTtsEnabled);
+      btnTtsAuto.textContent = autoTtsEnabled ? '🗣️ อ่านอัตโนมัติ: เปิด' : '🗣️ อ่านอัตโนมัติ';
+    }
+    const modalBtnTts = document.getElementById('modal-btn-tts-auto');
+    if (modalBtnTts) {
+      modalBtnTts.classList.toggle('btn--primary', autoTtsEnabled);
+      modalBtnTts.textContent = autoTtsEnabled ? '🗣️ อ่านอัตโนมัติ: เปิด' : '🗣️ อ่านอัตโนมัติ: ปิด';
+    }
   }
   syncAutoTtsBtn();
 
   // Sync settings updated from /settings.html in real time
   (function applyStoredDefaults() {
-    const defModel = localStorage.getItem('core_default_model');
-    if (defModel && selModel && [...selModel.options].some(o => o.value === defModel)) {
-      selModel.value = defModel;
-    }
+    const defModel = localStorage.getItem('core_default_model') || 'auto';
+    if (selModel) applySelectedModel(defModel);
     const defCwd = localStorage.getItem('core_default_cwd');
     if (defCwd && selCwd && [...selCwd.options].some(o => o.value === defCwd)) {
       selCwd.value = defCwd;
@@ -6846,6 +7434,7 @@ body::before {
       if ([...selModel.options].some(o => o.value === ev.newValue)) {
         selModel.value = ev.newValue;
         if (modalSelModel) modalSelModel.value = ev.newValue;
+        if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();
         applyCoreBranding();
       }
     } else if (ev.key === 'core_default_cwd' && ev.newValue && selCwd) {
@@ -6853,14 +7442,16 @@ body::before {
     }
   });
 
-  if (btnTtsAuto) {
-    btnTtsAuto.addEventListener('click', () => {
-      autoTtsEnabled = !autoTtsEnabled;
-      localStorage.setItem('core_auto_tts', autoTtsEnabled ? '1' : '0');
-      syncAutoTtsBtn();
-      if (!autoTtsEnabled) stopSpeaking();
-    });
+  function toggleAutoTtsSetting() {
+    autoTtsEnabled = !autoTtsEnabled;
+    localStorage.setItem('core_auto_tts', autoTtsEnabled ? '1' : '0');
+    syncAutoTtsBtn();
+    if (!autoTtsEnabled) stopSpeaking();
   }
+  if (btnTtsAuto) {
+    btnTtsAuto.addEventListener('click', toggleAutoTtsSetting);
+  }
+  document.getElementById('modal-btn-tts-auto')?.addEventListener('click', toggleAutoTtsSetting);
 
   function populateVoiceSelect(neuralVoices) {
     if (!selTtsVoice) return;
@@ -7480,6 +8071,32 @@ body::before {
   });
   syncSttModeUi();
 
+  function autoResizePromptInput() {
+    if (!promptInput) return;
+    promptInput.style.height = 'auto';
+    const maxH = window.innerWidth <= 768 ? 120 : 150;
+    const minH = window.innerWidth <= 768 ? 24 : 36;
+    const nextH = Math.max(minH, Math.min(maxH, promptInput.scrollHeight));
+    promptInput.style.height = nextH + 'px';
+  }
+  if (promptInput) {
+    promptInput.addEventListener('input', autoResizePromptInput);
+  }
+  if (window.visualViewport) {
+    const syncViewportHeight = () => {
+      if (window.innerWidth <= 768) {
+        document.body.style.height = window.visualViewport.height + 'px';
+        if (msgList) {
+          const dist = msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight;
+          if (dist < 140) requestAnimationFrame(() => scrollToBottom(false));
+        }
+      } else {
+        document.body.style.height = '';
+      }
+    };
+    window.visualViewport.addEventListener('resize', syncViewportHeight);
+  }
+
   btnSend.addEventListener('click', () => sendPrompt());
 
   promptInput.addEventListener('keydown', (e) => {
@@ -7487,12 +8104,6 @@ body::before {
       e.preventDefault();
       sendPrompt();
     }
-  });
-
-  document.querySelectorAll('.chip').forEach((c) => {
-    c.addEventListener('click', () => {
-      sendPrompt(c.dataset.prompt);
-    });
   });
 
   btnClear.addEventListener('click', async () => {

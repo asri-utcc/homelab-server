@@ -3779,13 +3779,16 @@ html, body {
     }
 
     #term-subpanel-gemini {
-        height: calc(100vh - 148px) !important;
+        height: calc(100dvh - 134px - env(safe-area-inset-bottom, 0px)) !important;
         min-height: 0 !important;
         padding: 0 !important;
+        margin: 0 -14px !important;
     }
 
     #term-subpanel-gemini iframe {
-        border-radius: 6px;
+        border-radius: 0 !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
     }
 }
 

@@ -758,6 +758,26 @@ const VIEW_TITLES = {
     energy:   { icon: '⚡', text: 'Energy Monitor — โซลาร์ · แบตเตอรี่ · การไฟฟ้า · โหลด' },
 };
 
+function syncMobileTerminalMetrics() {
+    const isMobTerm = document.body.classList.contains('is-mobile-terminal-view') && window.innerWidth <= 900;
+    const mobNav = document.querySelector('.mobile-bottom-nav');
+    if (isMobTerm && mobNav) {
+        const navH = mobNav.offsetHeight || 62;
+        document.documentElement.style.setProperty('--mob-nav-h', navH + 'px');
+    } else {
+        document.documentElement.style.removeProperty('--mob-nav-h');
+    }
+    if (window.visualViewport) {
+        document.body.style.height = isMobTerm ? (window.visualViewport.height + 'px') : '';
+    } else {
+        document.body.style.height = '';
+    }
+}
+window.addEventListener('resize', syncMobileTerminalMetrics);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncMobileTerminalMetrics);
+}
+
 function switchTerminalSubtab(subtab) {
     const target = subtab === 'shell' ? 'shell' : 'gemini';
     if (state.isReady && state.activeTermSubtab !== target) {
@@ -904,6 +924,12 @@ function switchView(viewName, updateHash = true) {
 
         if (updateHash && location.hash !== `#${target}`) {
             history.replaceState(null, '', `#${target}`);
+        }
+
+        document.body.classList.toggle('is-mobile-terminal-view', target === 'terminal');
+        if (typeof syncMobileTerminalMetrics === 'function') {
+            syncMobileTerminalMetrics();
+            requestAnimationFrame(syncMobileTerminalMetrics);
         }
     };
 

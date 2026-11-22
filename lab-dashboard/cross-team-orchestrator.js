@@ -819,13 +819,14 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
             if (timedOut) {
                 return finishOnce({ ok: false, output, stderr: stderrTail, error: timeoutErrorText(timedOut), crashed: false, stepsCount });
             }
-            const failed = code !== 0 || resultIsError || !output.trim();
+            const crashed = aiRouter.isBinaryCrash(stderrTail);
+            const failed = code !== 0 || crashed || resultIsError || !output.trim();
             finishOnce({
                 ok: !failed,
                 output: output.trim(),
                 stderr: stderrTail,
-                error: failed ? (resultErrorText || stderrTail.trim() || `exit code ${code}`) : null,
-                crashed: false,
+                error: failed ? (crashed ? aiRouter.summarizeCrashError(stderrTail, 'claude-code', `exit code ${code}`) : (resultErrorText || stderrTail.trim() || `exit code ${code}`)) : null,
+                crashed,
                 stepsCount
             });
         });
@@ -1099,12 +1100,13 @@ async function runWithFailover(candidates, {
         lastError = res.error || 'unknown error';
         const canRetrySameOrFailover = readOnly || (res.stepsCount || 0) === 0;
 
-        // agy binary crash at startup → evict page cache once & retry same candidate
-        if (canRetrySameOrFailover && res.crashed && c.engine === 'agy' && !healed) {
+        // agy / claude-code binary crash at startup → evict page cache once & retry same candidate
+        if (canRetrySameOrFailover && res.crashed && (c.engine === 'agy' || c.engine === 'claude-code') && !healed) {
             healed = true;
-            aiRouter.logDecision({ source: 'cross-team', prompt: originalPrompt, decision, event: 'crash-heal', extra: { stage: stageName, from: `${c.model}@${c.account}` } });
+            const binFile = c.engine === 'claude-code' ? CLAUDE_BIN : aiRouter.AGY_BIN;
+            aiRouter.logDecision({ source: 'cross-team', prompt: originalPrompt, decision, event: 'crash-heal', extra: { stage: stageName, from: `${c.model}@${c.account}`, bin: binFile } });
             onThoughtEvent('status', `🩹 ${rolePrefix} ${c.label} แครชตอนเปิด — ล้าง RAM cache แล้วลองใหม่...`);
-            await aiRouter.healBinaryCache(aiRouter.AGY_BIN);
+            await aiRouter.healBinaryCache(binFile);
             queue.unshift(c);
             attempts--; // healing retry does not consume a failover slot
             continue;

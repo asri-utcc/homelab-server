@@ -18,8 +18,12 @@ ROUTER_URL = os.environ.get("AI_ROUTER_URL", "http://172.17.0.1:8090/api/ai-rout
 GEMINI_ENV_FILE = "/home/dev/.gemini/.env"
 AUTO_MODEL = "auto"
 AUTO_MAX_ATTEMPTS = 8
-# Go runtime crash before agy starts = RAM bit flip in the page-cached binary on this host
-CRASH_RE = re.compile(r"unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)", re.I)
+# Go/Bun runtime crash before the CLI even starts = RAM bit flip in the page-cached binary on this host
+CRASH_RE = re.compile(
+    r"unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)|"
+    r"oh no: Bun has crashed|panic\(main thread\)|Segmentation fault at address|bun\.report/\d+\.\d+|={20,}\r?\nBun v\d+\.\d+",
+    re.I,
+)
 PROFILES_DIR = "/home/dev/.agy-profiles"
 MAIN_TOKEN_REL = ".gemini/antigravity-cli/antigravity-oauth-token"
 CLAUDE_CREDS_FILE = "/home/dev/.claude/.credentials.json"
@@ -28,7 +32,8 @@ CLAUDE_CREDS_FILE = "/home/dev/.claude/.credentials.json"
 def evict_page_cache(path: str) -> None:
     """Drop a file from page cache so the next exec re-reads the intact copy from disk."""
     try:
-        fd = os.open(path, os.O_RDONLY)
+        real = os.path.realpath(path)
+        fd = os.open(real, os.O_RDONLY)
         try:
             os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
         finally:
@@ -241,11 +246,12 @@ def _run_auto_queue(prompt: str, cands: list[dict], timeout: int) -> tuple[str, 
             msg = str(exc)
             print(f"[AUTO] {label} failed: {msg[:200]}", file=sys.stderr)
             errors.append(f"{label}: {msg[:120]}")
-            if engine == "agy" and CRASH_RE.search(msg):
+            if engine in ("agy", "claude-code") and CRASH_RE.search(msg):
                 if not healed:
                     healed = True
-                    evict_page_cache(AGY_BIN)
-                    print(f"[AUTO] agy crashed at startup; evicted page cache, retrying {label}", file=sys.stderr)
+                    bin_path = CLAUDE_BIN if engine == "claude-code" else AGY_BIN
+                    evict_page_cache(bin_path)
+                    print(f"[AUTO] {engine} crashed at startup; evicted page cache ({bin_path}), retrying {label}", file=sys.stderr)
                     queue.insert(0, c)
                     continue
                 dead.add(crash_group)
@@ -259,7 +265,14 @@ def run_model(prompt: str, model: str, timeout: int, route_prompt: str = "", min
     if model != AUTO_MODEL:
         try:
             if model.startswith("claude-code-"):
-                return run_claude(prompt, model, timeout=timeout), model
+                try:
+                    return run_claude(prompt, model, timeout=timeout), model
+                except Exception as exc:
+                    if CRASH_RE.search(str(exc)):
+                        evict_page_cache(CLAUDE_BIN)
+                        print(f"[FIXED] claude-code crashed at startup; evicted page cache, retrying {model}", file=sys.stderr)
+                        return run_claude(prompt, model, timeout=timeout), model
+                    raise
             if model.startswith("deepseek-"):
                 return run_deepseek(prompt, model, timeout=timeout), model
             try:

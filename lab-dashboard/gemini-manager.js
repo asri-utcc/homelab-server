@@ -1082,8 +1082,8 @@ function executeAuto(params, onChunk, onDone) {
                     }
                     if (type === 'stderr') {
                         stderrTail = (stderrTail + String(payload || '')).slice(-4000);
-                        // Raw Go crash dumps are noise in the chat; the banner explains what happened
-                        if (aiRouter.isBinaryCrash(stderrTail)) return;
+                        // Suppress raw CLI stderr/crash dumps (Bun/Go) in chat bubbles; deepseek warnings still stream
+                        if (c.engine !== 'deepseek') return;
                     }
                     onChunk(type, payload);
                 }, (code, err) => {
@@ -1091,15 +1091,16 @@ function executeAuto(params, onChunk, onDone) {
                     const body = job ? String(job.output || '').slice(banner.length) : '';
                     const failed = code !== 0 && code !== 130 && !(job && job.status === 'aborted');
                     const crashed = failed && aiRouter.isBinaryCrash(stderrTail);
-                    const errText = crashed ? `${c.engine} crashed (${err || 'SIGSEGV'})` : String(err || body);
+                    const errText = crashed ? aiRouter.summarizeCrashError(stderrTail, c.engine, err) : String(err || body);
                     const canSwitch = failed && !aborted && maxSteps === 0 && tried.length < AUTO_MAX_ATTEMPTS;
 
-                    // agy crashed at startup → bit-flipped page cache: evict once and retry the same model
-                    if (canSwitch && crashed && c.engine === 'agy' && !healed) {
+                    // agy / claude-code crashed at startup → bit-flipped page cache: evict once and retry the same model
+                    if (canSwitch && crashed && (c.engine === 'agy' || c.engine === 'claude-code') && !healed) {
                         healed = true;
-                        aiRouter.logDecision({ source: 'chat', prompt: params.prompt, decision, event: 'crash-heal', extra: { from: tried[tried.length - 1], stderr: stderrTail.slice(0, 300) } });
+                        const binFile = c.engine === 'claude-code' ? CLAUDE_BIN : aiRouter.AGY_BIN;
+                        aiRouter.logDecision({ source: 'chat', prompt: params.prompt, decision, event: 'crash-heal', extra: { from: tried[tried.length - 1], bin: binFile, stderr: stderrTail.slice(0, 300) } });
                         onChunk('stdout', `\n\n> 🩹 ${c.label} แครชตอนเปิดโปรแกรม (ไฟล์ใน RAM cache เสีย) — ล้าง cache แล้ว กำลังลองใหม่...\n\n`);
-                        return aiRouter.healBinaryCache(aiRouter.AGY_BIN).then(() => runAttempt(idx, `ลองใหม่หลังล้าง cache`));
+                        return aiRouter.healBinaryCache(binFile).then(() => runAttempt(idx, `ลองใหม่หลังล้าง cache`));
                     }
                     if (failed && !aborted && maxSteps === 0) {
                         aiRouter.recordFailure(c, { crashed, errorText: errText, outputText: body, stderrText: stderrTail });
@@ -1606,10 +1607,14 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         });
 
         let claudeStderrTail = '';
+        let claudeCrashSuppressed = false;
         child.stderr.on('data', (d) => {
             const str = d.toString('utf8');
             claudeStderrTail = (claudeStderrTail + str).slice(-4000);
-            onChunk('stderr', str);
+            if (!claudeCrashSuppressed && (/^={20,}/.test(claudeStderrTail.trimStart()) || aiRouter.isBinaryCrash(claudeStderrTail))) {
+                claudeCrashSuppressed = true;
+            }
+            if (!claudeCrashSuppressed) onChunk('stderr', str);
         });
 
         child.on('error', (err) => {
@@ -1635,7 +1640,12 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             if (job.status !== 'aborted') {
                 job.status = (effectiveCode === 0) ? 'completed' : 'error';
                 if (effectiveCode !== 0 && !job.error) {
-                    job.error = claudeStderrTail.trim() || `Exit code ${effectiveCode}`;
+                    if (aiRouter.isBinaryCrash(claudeStderrTail)) {
+                        job.error = aiRouter.summarizeCrashError(claudeStderrTail, 'claude-code', `Exit code ${effectiveCode}`);
+                        if (!job.deferPersist) aiRouter.healBinaryCache(CLAUDE_BIN);
+                    } else {
+                        job.error = claudeStderrTail.trim() || `Exit code ${effectiveCode}`;
+                    }
                 }
             }
             job.finishedAt = Date.now();

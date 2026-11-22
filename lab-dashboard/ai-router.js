@@ -93,9 +93,9 @@ for (const f of MODEL_FAMILIES) {
 for (const d of DEEPSEEK_MODELS) MODEL_LABELS[d.model] = d.label;
 
 const CODE_HINT_RE = /code|โค้ด|bug|บั๊ก|แก้|fix|script|สคริปต์|deploy|config|\.js|\.py|function|error|api|sql|docker|pm2|git/i;
-// Go runtime crash before the CLI even starts — on this host that means a RAM bit flip in the
+// Go / Bun runtime crash before the CLI even finishes starting — on this host that means a RAM bit flip in the
 // page-cached binary (see homelab RAM notes). Evicting the file from page cache reloads it from disk.
-const CRASH_RE = /unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)|illegal instruction/i;
+const CRASH_RE = /unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)|illegal instruction|oh no: Bun has crashed|panic\(main thread\)|Segmentation fault at address|bun\.report\/\d+\.\d+|={20,}\r?\nBun v\d+\.\d+/i;
 const AUTH_OR_BILLING_RE = /\b401\b|\b402\b|\b403\b|invalid_grant|please sign in|not logged in|run \/login|unauthori[sz]ed|forbidden|invalid.?api.?key|insufficient.?balance|payment.?required|subscription|upgrade|ineligible|credit balance/i;
 const QUOTA_OR_LIMIT_RE = /\b429\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|hit your limit|usage limit|limit reached|โควตา/i;
 const RETRYABLE_ERR_RE = /\b429\b|\b402\b|\b403\b|\b401\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|overloaded|capacity|insufficient.?balance|payment.?required|credit|please sign in|not logged in|run \/login|unauthori[sz]ed|forbidden|invalid.?api.?key|invalid_grant|subscription|upgrade|hit your limit|usage limit|limit reached|expired|model.?not.?found|not.?available|ineligible|โควตา/i;
@@ -109,12 +109,20 @@ function isBinaryCrash(text) {
     return CRASH_RE.test(String(text || ''));
 }
 
+function summarizeCrashError(stderrText, engine = 'cli', fallback = '') {
+    const raw = String(stderrText || '');
+    const panicLine = raw.match(/panic\([^)]+\):[^\r\n]+/i)
+        || raw.match(/(?:Segmentation fault|fatal error:|unexpected fault address|SIGSEGV|SIGBUS|SIGILL)[^\r\n]*/i);
+    const detail = panicLine ? panicLine[0].trim() : (String(fallback || '').replace(/=+/g, '').trim() || 'SIGSEGV / RAM page-cache');
+    return `${engine} crashed (${detail.slice(0, 100)})`;
+}
+
 let lastHealAt = 0;
 /** Drop a binary from page cache (posix_fadvise DONTNEED) so the next exec re-reads it from disk. */
 function healBinaryCache(file = AGY_BIN) {
     lastHealAt = Date.now();
     return new Promise((resolve) => {
-        const code = 'import os,sys\nfd=os.open(sys.argv[1],os.O_RDONLY)\nos.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)\nos.close(fd)';
+        const code = 'import os,sys\np=os.path.realpath(sys.argv[1])\nfd=os.open(p,os.O_RDONLY)\nos.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)\nos.close(fd)';
         execFile('python3', ['-c', code, file], { timeout: 15000 }, (err) => {
             logDecision({ source: 'heal', prompt: file, decision: null, event: 'heal', extra: { ok: !err, error: err ? err.message : undefined } });
             resolve(!err);
@@ -1210,6 +1218,7 @@ module.exports = {
     TIER_TH,
     isRetryableFailure,
     isBinaryCrash,
+    summarizeCrashError,
     healBinaryCache,
     failureGroup,
     assessBudget,

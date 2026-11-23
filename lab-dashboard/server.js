@@ -34,6 +34,12 @@ const geminiManager = require('./gemini-manager');
 const aiRouter = require('./ai-router');
 const bgRemoveManager = require('./bg-remove-manager');
 const videoStudioManager = require('./video-studio-manager');
+let browserVisionBridge = null;
+try {
+    browserVisionBridge = require('./browser-vision-bridge');
+} catch (err) {
+    console.error('[lab-dashboard] browser-vision-bridge unavailable:', err.message);
+}
 
 // ── config ────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.DASHBOARD_PORT || '8090', 10);
@@ -1482,6 +1488,10 @@ async function currentSession(req) {
     return verifySession(parseCookies(req)[SESSION_COOKIE], secret);
 }
 
+async function isAuthorized(req) {
+    return Boolean(await currentSession(req));
+}
+
 // ── endpoint ของระบบล็อกอิน ───────────────────────────────────────────────────
 async function serveLoginPage(req, res, url) {
     const rd = safeRedirect(url.searchParams.get('rd') || '/');
@@ -2521,7 +2531,8 @@ const server = http.createServer(async (req, res) => {
                         cwd: body.cwd,
                         model: body.model,
                         agyAccount: /^g\d{1,2}$/.test(String(body.agyAccount || '')) ? String(body.agyAccount) : null,
-                        resetSession: Boolean(body.resetSession)
+                        resetSession: Boolean(body.resetSession),
+                        browserVision: body.browserVision === true
                     },
                     (type, text) => {
                         sendEvent('chunk', { type, text });
@@ -2653,12 +2664,20 @@ const server = http.createServer(async (req, res) => {
             cache.clear();
             return sendJson(res, 200, { ok: true });
         }
+        if (p.startsWith('/api/browser-vision/')) {
+            if (!browserVisionBridge) return sendJson(res, 503, { ok: false, error: 'Browser Vision bridge unavailable' });
+            if (await browserVisionBridge.handleApi(req, res, url, { sendJson, readJsonBody, isAuthorized })) return;
+        }
         if (p.startsWith('/api/')) return sendJson(res, 404, { error: 'not found' });
         return await serveStatic(req, res, p);
     } catch (e) {
         return sendJson(res, 500, { error: String(e.message || e) });
     }
 });
+
+if (browserVisionBridge && typeof browserVisionBridge.attachUpgrade === 'function') {
+    browserVisionBridge.attachUpgrade(server, { isAuthorized, log });
+}
 
 server.listen(PORT, HOST, () => {
     log(`lab-dashboard listening on ${HOST}:${PORT}`);

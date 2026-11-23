@@ -682,6 +682,9 @@ function deleteSession(sessionId) {
     } else {
         saveSessionsIndexSync();
     }
+    try {
+        require('./browser-vision-bridge').closeChatBrowser(sessionId);
+    } catch (_) {}
     return { ok: true, sessions: listSessions().sessions };
 }
 
@@ -1199,9 +1202,10 @@ function executeAuto(params, onChunk, onDone) {
             activeJob = teamJob;
             lastJobs.set(sid, teamJob);
 
+            const teamPrompt = buildBrowserVisionPrompt(params.prompt, sid, params.browserVision);
             const teamHandle = crossTeam.runCrossTeamPipeline({
                 decision,
-                prompt: params.prompt,
+                prompt: teamPrompt,
                 imagePaths,
                 mode: params.mode || 'exec',
                 cwd: safeCwd,
@@ -1238,10 +1242,35 @@ function executeAuto(params, onChunk, onDone) {
     return { abort };
 }
 
+// ── Browser Vision Co-Pilot Prompt Hint ──────────────────────────────────────
+function buildBrowserVisionHint(sessionId, browserVision) {
+    if (browserVision !== true || !sessionId) return '';
+    let bvSession;
+    try {
+        const bridge = require('./browser-vision-bridge');
+        bvSession = bridge.toBrowserSessionName(sessionId);
+    } catch (_) {
+        return '';
+    }
+    return [
+        '[Browser Vision Co-Pilot เปิดใช้งานอยู่ในห้องแชทนี้]',
+        `- งานโต้ตอบบนเว็บให้ใช้: /home/dev/.local/bin/lab-browser session <subcmd> --session ${bvSession} --shared-auth`,
+        '- งานค้นหาหรืออ่านข้อมูลด่วนแบบไม่โต้ตอบให้ใช้คำสั่ง one-shot (view / shot / check) โดยไม่ใส่ --session',
+        `- ถ้าจะเปิดหน้าเว็บเพื่อโชว์ผลให้ผู้ใช้ดู ให้ใช้: /home/dev/.local/bin/lab-browser session open <url> --new-tab --session ${bvSession} --shared-auth`,
+        '- ถ้าคำสั่งคืนค่า paused: true ให้หยุดคำสั่งเบราว์เซอร์ทั้งหมดทันที แจ้งผู้ใช้ และรอจนกว่าผู้ใช้จะกด Resume',
+        '- ถ้าเจอ handoff หรือหน้า sensitive (Login / OTP / Payment / CAPTCHA) ให้ขอให้ผู้ใช้ดำเนินการเองในหน้าจอด้านขวาแล้วกด ✅ ห้ามพยายามแก้ CAPTCHA เอง และห้ามเดาหรือกรอกรหัสผ่านแทนผู้ใช้',
+    ].join('\n');
+}
+
+function buildBrowserVisionPrompt(rawPrompt, sessionId, browserVision) {
+    const hint = buildBrowserVisionHint(sessionId, browserVision);
+    return hint ? `${hint}\n\n${rawPrompt}` : rawPrompt;
+}
+
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '' }, onChunk, onDone) {
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '', browserVision = false }, onChunk, onDone) {
     if (model === aiRouter.AUTO_MODEL_ID) {
-        return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession }, onChunk, onDone);
+        return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession, browserVision }, onChunk, onDone);
     }
     const sid = resolveSessionId(sessionId);
     if (activeRuns.has(sid)) {
@@ -1253,8 +1282,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         .map((img) => (typeof img === 'string' ? img : img && img.path))
         .filter((p) => p && fs.existsSync(p));
 
-    // routerDirective (AI Router subagent plan) goes to the CLI only — history keeps the user's own prompt
-    const directedPrompt = routerDirective ? `${routerDirective}\n\n${prompt}` : prompt;
+    // bvHint and routerDirective go to the CLI/agent only — history keeps the user's own prompt
+    const bvHint = buildBrowserVisionHint(sid, browserVision);
+    const directedPrompt = [bvHint, routerDirective, prompt].filter(Boolean).join('\n\n');
     const cliPrompt = imagePaths.length > 0
         ? `[ผู้ใช้งานแนบรูปภาพมาด้วย กรุณาอ่าน/ดูไฟล์รูปภาพต่อไปนี้ก่อนตอบคำถาม:\n${imagePaths.map((p) => `- ${p}`).join('\n')}\n]\n\n${directedPrompt}`
         : directedPrompt;
@@ -1686,7 +1716,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         let handle = null;
         handle = deepseekAgent.runDeepSeekPrompt({
             job,
-            prompt,
+            prompt: directedPrompt,
             imagePaths,
             mode,
             cwd: safeCwd,
@@ -1889,7 +1919,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         throw new Error('ยังไม่ได้ยืนยันตัวตน: กรุณาล็อกอิน Antigravity หรือระบุ Gemini API Key');
     }
 
-    const args = ['-p', prompt, '--skip-trust'];
+    const args = ['-p', cliPrompt, '--skip-trust'];
     if (!forceNew) {
         args.push('--resume', 'latest');
     }

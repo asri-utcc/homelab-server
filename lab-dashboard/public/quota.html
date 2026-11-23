@@ -574,6 +574,19 @@
       <div class="pool-grid" id="deepseek-grid"></div>
     </section>
 
+    <!-- ── Gemini API Credit (Prepay · TTS วิดีโอเท่านั้น) ── -->
+    <section class="provider-section" data-provider="deepseek">
+      <div class="provider-head">
+        <div class="provider-title">
+          <span class="provider-logo">🎙️</span>
+          <span>Gemini API (Prepay)</span>
+          <span class="provider-sub">· ใช้เฉพาะเสียงบรรยายวิดีโอ</span>
+        </div>
+        <span class="provider-tag" id="gc-status">⏳ กำลังโหลด</span>
+      </div>
+      <div class="pool-grid" id="gemini-credit-grid"></div>
+    </section>
+
     <!-- ── ฝั่งที่ 3: Claude.ai (Anthropic Rolling 5H & Weekly) ── -->
     <section class="provider-section" data-provider="claude">
       <div class="provider-head" style="background:linear-gradient(90deg, rgba(251,146,60,0.12), rgba(245,158,11,0.06)); border-color:rgba(251,146,60,0.28);">
@@ -984,6 +997,44 @@
           </div>
         `;
         dsGrid.appendChild(emptyCard);
+      }
+
+      // ── Gemini API Credit (TTS วิดีโอ — ประมาณการจาก usageMetadata) ──
+      const gcGrid = document.getElementById('gemini-credit-grid');
+      const gcTag = document.getElementById('gc-status');
+      if (gcGrid) {
+        gcGrid.innerHTML = '';
+        const gc = data.geminiCredit;
+        if (gc && gc.ok) {
+          const low = gc.remainingThb <= gc.lowThb;
+          const empty = gc.remainingThb <= 0.5;
+          const col = empty ? '#94a3b8' : (low ? '#f59e0b' : '#34d399');
+          const pct = Math.max(0, Math.min(100, (gc.remainingThb / (gc.topUpThb || gc.baselineThb || 1)) * 100));
+          if (gcTag) {
+            gcTag.textContent = empty ? '○ เครดิตหมด' : (low ? '⚠️ เครดิตใกล้หมด' : '● พร้อมใช้งาน');
+            gcTag.style.color = col;
+          }
+          const c = document.createElement('div');
+          c.className = 'pool-card';
+          c.innerHTML = `
+            <div class="pool-head">
+              <div class="pool-name" style="color:${col}">💳 Gemini API Credit Balance</div>
+              <span class="pace-badge ${low || empty ? 'pace-warn' : 'pace-ok'}">ประมาณการ ~</span>
+            </div>
+            <div class="pool-pct" style="color:${col}">฿${gc.remainingThb.toFixed(2)} <span>${gc.currency} คงเหลือ (โดยประมาณ)</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:linear-gradient(90deg, #10b981, ${col});"></div></div>
+            <div class="pool-meta"><span>ยอดตั้งต้น (${escHtml(String(gc.baselineAt).slice(0, 10))})</span><span><strong>฿${gc.baselineThb.toFixed(2)}</strong></span></div>
+            <div class="pool-meta" style="margin-top:4px;"><span>ใช้ไปตั้งแต่นั้น</span><span><strong>฿${gc.spentThb.toFixed(2)}</strong> ($${gc.spentUsd.toFixed(4)} · ${gc.calls} ครั้ง)</span></div>
+            <div class="pool-meta" style="margin-top:4px;"><span>Token เข้า / ออก</span><span>${gc.inputTokens.toLocaleString()} / ${gc.outputTokens.toLocaleString()}</span></div>
+            <div class="pace-summary pace-ok" style="margin-top:auto;">
+              ใช้เฉพาะเสียงบรรยายวิดีโอ (Gemini TTS) · คำนวณจาก Token จริง × เรต ${gc.usdToThb} ฿/$ · คลาดเคลื่อนได้เล็กน้อย
+              ${gc.unpriced ? `<br>⚠️ มี ${gc.unpriced} รายการที่ไม่มีราคาโมเดลใน gemini-credit.json` : ''}
+            </div>
+          `;
+          gcGrid.appendChild(c);
+        } else if (gcTag) {
+          gcTag.textContent = '○ ไม่ได้ตั้งค่า';
+        }
       }
 
       // ── Section 3: Claude.ai (Anthropic) ──

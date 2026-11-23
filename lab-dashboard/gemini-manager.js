@@ -2229,12 +2229,65 @@ function toPctObj(remainingFraction, resetTime = null) {
     };
 }
 
+const GEMINI_CREDIT_CFG = path.join(os.homedir(), '.gemini', 'gemini-credit.json');
+const GEMINI_TTS_LEDGER = path.join(os.homedir(), '.gemini', 'gemini-tts-ledger.jsonl');
+
+// Estimated Gemini API prepay balance = baseline (read from AI Studio) - cost of TTS calls logged since then
+async function getGeminiCredit() {
+    let cfg;
+    try {
+        cfg = JSON.parse(await fsp.readFile(GEMINI_CREDIT_CFG, 'utf8'));
+    } catch {
+        return null;
+    }
+    const fx = Number(cfg.usdToThb) || 34.5;
+    const since = Date.parse(cfg.baselineAt) || 0;
+    let usd = 0, calls = 0, inTok = 0, outTok = 0, lastAt = null;
+    let unpriced = 0;
+    try {
+        const lines = (await fsp.readFile(GEMINI_TTS_LEDGER, 'utf8')).split('\n');
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            let r;
+            try { r = JSON.parse(line); } catch { continue; }
+            if ((Date.parse(r.ts) || 0) < since) continue;
+            const price = (cfg.pricesUsdPerMTok || {})[r.model];
+            if (!price) { unpriced++; continue; }
+            const out = (r.outputTokens || 0) + (r.thoughtsTokens || 0);
+            usd += ((r.promptTokens || 0) * price.input + out * price.output) / 1e6;
+            inTok += r.promptTokens || 0;
+            outTok += out;
+            calls++;
+            lastAt = r.ts;
+        }
+    } catch { /* no ledger yet */ }
+    const baseline = Number(cfg.baselineBalanceThb) || 0;
+    const spentThb = usd * fx;
+    const remainingThb = Math.max(0, baseline - spentThb);
+    const topUp = Number(cfg.topUpThb) || baseline;
+    return {
+        ok: true,
+        currency: cfg.currency || 'THB',
+        remainingThb: Number(remainingThb.toFixed(2)),
+        baselineThb: baseline,
+        baselineAt: cfg.baselineAt,
+        topUpThb: topUp,
+        spentThb: Number(spentThb.toFixed(2)),
+        spentUsd: Number(usd.toFixed(4)),
+        usdToThb: fx,
+        calls, inputTokens: inTok, outputTokens: outTok, unpriced, lastAt,
+        lowThb: Number(cfg.lowThb) || 30,
+        estimated: true
+    };
+}
+
 async function getProviderQuotas({ force = false } = {}) {
+    const geminiCredit = await getGeminiCredit().catch(() => null);
     const [deepseek, claudeWeb] = await Promise.all([
         deepseekAgent.getDeepSeekBalance({ force, timeoutMs: 4500 }).catch((err) => ({ ok: false, error: err.message })),
         getClaudeWebQuota({ force }).catch((err) => ({ ok: false, configured: false, error: err.message }))
     ]);
-    return { deepseek: deepseek || null, claudeWeb: claudeWeb || null };
+    return { deepseek: deepseek || null, claudeWeb: claudeWeb || null, geminiCredit };
 }
 
 async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
@@ -2504,6 +2557,7 @@ async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
             unavailablePools,
             deepseek: deepseekInfo || null,
             claudeWeb: claudeWebInfo || null,
+            geminiCredit: prov.geminiCredit || null,
             summaryGroups: summaryData?.groups || [],
             models: models.sort((a, b) => a.id.localeCompare(b.id))
         };

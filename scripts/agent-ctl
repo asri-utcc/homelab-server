@@ -334,7 +334,7 @@ def main() -> int:
         job = res["job"]
         job_id = job["jobId"]
         node_id = job.get("nodeId", args.node)
-        local_monitor_url = f"http://127.0.0.1:8090/api/agent-hub/jobs/{job_id}/monitor"
+        local_monitor_url = f"{HUB_BASE.rstrip('/')}/api/agent-hub/jobs/{job_id}/monitor"
         ts_monitor_url = f"https://homelab.tail285279.ts.net/api/agent-hub/jobs/{job_id}/monitor"
 
         print(f"Job ID: {job_id} | Node: {node_id}", flush=True)

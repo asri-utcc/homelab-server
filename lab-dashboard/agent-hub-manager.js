@@ -46,7 +46,7 @@ const ONLINE_THRESHOLD_MS = 18000; // 18 seconds (3.5 heartbeats)
 let hubConfig = {
     token: DEFAULT_TOKEN,
     hubUrls: DEFAULT_HUB_URLS,
-    agentVersion: '1.0.1',
+    agentVersion: '1.0.2',
     createdAt: new Date().toISOString(),
 };
 
@@ -551,6 +551,83 @@ async function createRenderJob(opts = {}) {
     return job;
 }
 
+function selectBestBlenderNode(preferredNodeId = '', preferGpu = false) {
+    const pref = String(preferredNodeId || '').trim().toLowerCase();
+    const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+    if (pref && pref !== 'auto') {
+        const found = allOnline.find((n) => n.nodeId === pref);
+        if (found) return found;
+    }
+    const capable = allOnline.filter((n) => {
+        const caps = (n.specs && n.specs.capabilities) || [];
+        return caps.includes('blender') || caps.includes('blender-3d') || Boolean(n.specs && n.specs.blenderPath);
+    });
+    if (capable.length === 0) return null;
+
+    capable.sort((a, b) => {
+        const aGpu = preferGpu && a.specs && a.specs.hasNvidiaSmi ? 600 : (a.specs && a.specs.hasNvidiaSmi ? 150 : 0);
+        const bGpu = preferGpu && b.specs && b.specs.hasNvidiaSmi ? 600 : (b.specs && b.specs.hasNvidiaSmi ? 150 : 0);
+        const aThreads = ((a.specs && a.specs.cpuThreads) || 1) * 40;
+        const bThreads = ((b.specs && b.specs.cpuThreads) || 1) * 40;
+        const aLoad = ((a.metrics && a.metrics.cpuPct) || 0) * 5;
+        const bLoad = ((b.metrics && b.metrics.cpuPct) || 0) * 5;
+        return (bGpu + bThreads - bLoad) - (aGpu + aThreads - aLoad);
+    });
+    return capable[0];
+}
+
+async function createBlenderJob(opts = {}) {
+    const node = selectBestBlenderNode(opts.nodeId, Boolean(opts.preferGpu));
+    if (!node) {
+        throw new Error('ไม่มีเครื่อง Worker Agent ที่ออนไลน์และพร้อมรัน Blender 3D ในขณะนี้');
+    }
+
+    const jobId = `bjob_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
+    const jobDir = path.join(JOBS_DIR, jobId);
+    await fsp.mkdir(jobDir, { recursive: true });
+
+    const script = String(opts.script || '').trim();
+    if (!script) {
+        throw new Error('ต้องระบุสคริปต์ Python (bpy) สำหรับสร้างหรือเรนเดอร์ 3D Object');
+    }
+
+    const outputName = opts.outputName || `${jobId}.glb`;
+    const previewName = opts.previewName || `${jobId}_preview.png`;
+    const job = {
+        jobId,
+        kind: 'blender-3d',
+        nodeId: node.nodeId,
+        hostname: (node.specs && node.specs.hostname) || node.nodeId,
+        status: 'queued',
+        progress: 0,
+        message: `ส่งงาน 3D ไปยัง ${node.nodeId} แล้ว`,
+        outputName,
+        previewName,
+        outputFilePath: '',
+        previewFilePath: '',
+        downloadUrl: '',
+        previewUrl: '',
+        openGui: Boolean(opts.openGui),
+        encoder: 'blender-4.3',
+        renderDurationMs: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    renderJobs.set(jobId, job);
+    await saveJobs();
+
+    const { cmd } = enqueueCommand(node.nodeId, 'render.blender', {
+        jobId,
+        script,
+        outputName,
+        previewName,
+        openGui: job.openGui,
+    });
+    job.commandId = cmd.id;
+    return job;
+}
+
 function handleJobProgress(body) {
     const jobId = String((body && body.jobId) || '').trim();
     const job = renderJobs.get(jobId);
@@ -638,12 +715,17 @@ async function handleJobUpload(req, url) {
         nodeId,
         createdAt: new Date().toISOString(),
     };
-    job.status = 'completed';
-    job.progress = 100;
-    job.outputName = safeName;
-    job.outputFilePath = outPath;
-    job.outputSize = fileData.length;
-    job.downloadUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/output`;
+    if (job.previewName && safeName === job.previewName) {
+        job.previewFilePath = outPath;
+        job.previewUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/preview`;
+    } else {
+        job.status = 'completed';
+        job.progress = 100;
+        job.outputName = safeName;
+        job.outputFilePath = outPath;
+        job.outputSize = fileData.length;
+        job.downloadUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/output`;
+    }
     job.updatedAt = new Date().toISOString();
     renderJobs.set(jobId, job);
     await saveJobs();
@@ -654,6 +736,7 @@ async function handleJobUpload(req, url) {
         filename: safeName,
         size: fileData.length,
         downloadUrl: job.downloadUrl,
+        previewUrl: job.previewUrl || '',
     };
 }
 
@@ -938,8 +1021,8 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         }
     }
 
-    // 3. Job Input / Output file streaming (accessible by Agent Token or Dashboard Session)
-    const jobFileMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/(input|output)$/);
+    // 3. Job Input / Output / Preview file streaming (accessible by Agent Token or Dashboard Session)
+    const jobFileMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/(input|output|preview)$/);
     if (req.method === 'GET' && jobFileMatch) {
         const [, jobId, kind] = jobFileMatch;
         const job = renderJobs.get(jobId);
@@ -947,17 +1030,34 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             sendJson(res, 404, { ok: false, error: 'Render job not found' });
             return true;
         }
-        const targetPath = kind === 'input' ? job.inputFilePath : job.outputFilePath;
+        const targetPath = kind === 'input' ? job.inputFilePath : (kind === 'preview' ? job.previewFilePath : job.outputFilePath);
         if (!targetPath || !fs.existsSync(targetPath)) {
             sendJson(res, 404, { ok: false, error: `${kind} file not found` });
             return true;
         }
         const st = await fsp.stat(targetPath);
         const fname = path.basename(targetPath);
+        const ext = path.extname(fname).toLowerCase();
+        const mimeMap = {
+            '.mp4': 'video/mp4',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.glb': 'model/gltf-binary',
+            '.gltf': 'model/gltf+json',
+            '.stl': 'model/stl',
+            '.obj': 'text/plain; charset=utf-8',
+            '.fbx': 'application/octet-stream',
+            '.blend': 'application/octet-stream',
+        };
+        const contentType = mimeMap[ext] || 'application/octet-stream';
+        const disp = (ext === '.png' || ext === '.jpg' || ext === '.jpeg') && !url.searchParams.get('download')
+            ? `inline; filename="${fname}"`
+            : `attachment; filename="${fname}"`;
         res.writeHead(200, {
-            'Content-Type': 'video/mp4',
+            'Content-Type': contentType,
             'Content-Length': String(st.size),
-            'Content-Disposition': `attachment; filename="${fname}"`,
+            'Content-Disposition': disp,
             'Cache-Control': 'no-store',
         });
         fs.createReadStream(targetPath).pipe(res);
@@ -1045,6 +1145,17 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         return true;
     }
 
+    if (req.method === 'POST' && p === '/api/agent-hub/blender-jobs') {
+        const body = await readJsonBody(req, 8 * 1024 * 1024);
+        try {
+            const job = await createBlenderJob(body);
+            sendJson(res, 200, { ok: true, job });
+        } catch (err) {
+            sendJson(res, 400, { ok: false, error: err.message });
+        }
+        return true;
+    }
+
     if (req.method === 'DELETE' && p.startsWith('/api/agent-hub/nodes/')) {
         const nodeId = decodeURIComponent(p.slice('/api/agent-hub/nodes/'.length)).trim().toLowerCase();
         const existed = nodes.delete(nodeId);
@@ -1068,4 +1179,6 @@ module.exports = {
     enqueueCommand,
     createRenderJob,
     selectBestRenderNode,
+    createBlenderJob,
+    selectBestBlenderNode,
 };

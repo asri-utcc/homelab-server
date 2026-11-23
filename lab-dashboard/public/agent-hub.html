@@ -642,7 +642,7 @@
         <span>⚡ หรือรันคำสั่งเดียวใน PowerShell บนเครื่อง Windows:</span>
         <button type="button" class="btn btn--sm" id="btn-copy-ps">📋 คัดลอกคำสั่ง</button>
       </div>
-      <div class="ps-code" id="ps-oneliner">irm http://192.168.1.123:8090/api/agent-hub/install.ps1 | iex</div>
+      <div class="ps-code" id="ps-oneliner">irm http://100.93.214.79/api/agent-hub/install.ps1 | iex</div>
     </div>
   </section>
 
@@ -853,10 +853,10 @@ async function loadStatus() {
     $('#st-nvenc').textContent = `${c.nvencNodes || 0} เครื่อง`;
     $('#nodes-count-badge').textContent = `${(data.nodes || []).length} nodes`;
 
-    // Update PowerShell 1-liner to match best origin
-    const origin = location.origin.includes('tail285279.ts.net')
-      ? 'http://100.93.214.79:8090'
-      : 'http://192.168.1.123:8090';
+    // Update PowerShell 1-liner to match best origin (works over both Tailscale & LAN)
+    const origin = location.origin.includes('192.168.')
+      ? 'http://192.168.1.123'
+      : 'http://100.93.214.79';
     $('#ps-oneliner').textContent = `irm ${origin}/api/agent-hub/install.ps1 | iex`;
 
     hubState.nodes = data.nodes || [];

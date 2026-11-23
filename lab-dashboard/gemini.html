@@ -1195,6 +1195,7 @@ body::before {
 .md-h4 { font-size: 13.5px; color: var(--ink-2); }
 
 .md-ul, .md-ol { margin: 6px 0 12px 22px; padding: 0; }
+.md-ul .md-ul, .md-ul .md-ol, .md-ol .md-ul, .md-ol .md-ol { margin: 4px 0 4px 20px; }
 .md-ul li, .md-ol li { margin-bottom: 5px; line-height: 1.6; }
 .md-ul li::marker { color: var(--cyan); }
 .md-ol li::marker { color: var(--cyan); font-family: var(--mono); font-weight: 700; }
@@ -1572,6 +1573,109 @@ body::before {
 .term-tag--status {
   color: #34d399;
 }
+.term-tag--probe {
+  color: #38bdf8;
+  font-weight: 600;
+  background: rgba(56, 189, 248, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border-left: 2px solid #38bdf8;
+}
+/* 1. Live Process Heartbeat Telemetry Strip */
+.thinking-liveness-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  background: rgba(4, 18, 10, 0.92);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #86efac;
+  line-height: 1.35;
+}
+.liveness-left,
+.liveness-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.liveness-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.45);
+  transition: transform 0.18s ease, background 0.2s ease;
+}
+.liveness-badge.is-beat {
+  transform: scale(1.04);
+  background: rgba(34, 197, 94, 0.3);
+}
+.liveness-badge.is-wait {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+}
+.liveness-badge.is-lost {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.55);
+}
+.liveness-meta-chip {
+  color: #6ee7b7;
+  opacity: 0.9;
+}
+.liveness-child-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  color: #67e8f9;
+  font-weight: 600;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.liveness-signal {
+  color: #a7f3d0;
+}
+.liveness-signal.is-quiet {
+  color: #fcd34d;
+}
+.liveness-elapsed {
+  color: #4ade80;
+  font-weight: 600;
+}
+/* 2. Pinned Active Phase Footer inside Terminal */
+.term-pinned-footer {
+  position: sticky;
+  bottom: -8px;
+  margin: 6px -10px -8px -10px;
+  padding: 5px 10px;
+  background: linear-gradient(180deg, rgba(2, 10, 5, 0.94) 0%, rgba(3, 16, 8, 0.99) 100%);
+  border-top: 1px solid rgba(34, 197, 94, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  z-index: 2;
+}
 .term-live-stream {
   white-space: pre-wrap;
   color: #bbf7d0;
@@ -1581,7 +1685,22 @@ body::before {
 .term-active-prompt {
   color: #00ff66;
   font-weight: 600;
-  margin-top: 3px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.term-step-timer {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #67e8f9;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .term-cursor {
   display: inline-block;
@@ -1607,7 +1726,9 @@ body::before {
   color: #22c55e;
   font-weight: 600;
 }
-.msg__thinking-card.is-done .msg__thinking-shimmer-track {
+.msg__thinking-card.is-done .msg__thinking-shimmer-track,
+.msg__thinking-card.is-done .thinking-liveness-strip,
+.msg__thinking-card.is-done .term-pinned-footer {
   display: none;
 }
 .msg__thinking-card.is-done .ai-pulse-dot {
@@ -6443,6 +6564,92 @@ body::before {
       if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
       return trimmed.split('|').map((c) => formatInline(c.trim()));
     };
+    const countIndent = (s) => {
+      let n = 0;
+      for (let k = 0; k < s.length; k++) {
+        if (s[k] === '\t') n += 4 - (n % 4);
+        else if (s[k] === ' ') n += 1;
+        else break;
+      }
+      return n;
+    };
+    const matchListItem = (s) => {
+      const m = s.match(/^([ \t]*)(?:([-*•])|(\d+)\.)\s+(.*)$/);
+      if (!m || /^([-*_])\1{2,}$/.test(s.trim())) return null;
+      return {
+        indent: countIndent(m[1]),
+        ordered: Boolean(m[3]),
+        num: m[3] ? Number(m[3]) : null,
+        content: m[4]
+      };
+    };
+    const parseList = () => {
+      const first = matchListItem(lines[i]);
+      if (!first) return '';
+      const listOrdered = first.ordered;
+      const listIndent = first.indent;
+      const startNum = first.num;
+      const items = [];
+
+      while (i < lines.length) {
+        let peek = i;
+        while (peek < lines.length && lines[peek].trim() === '') peek++;
+        if (peek >= lines.length) {
+          i = peek;
+          break;
+        }
+        const nextItem = matchListItem(lines[peek]);
+        if (!nextItem || nextItem.indent !== listIndent || nextItem.ordered !== listOrdered) {
+          break;
+        }
+        i = peek;
+        let itemHtml = formatInline(nextItem.content);
+        i++;
+
+        while (i < lines.length) {
+          let innerPeek = i;
+          while (innerPeek < lines.length && lines[innerPeek].trim() === '') innerPeek++;
+          if (innerPeek >= lines.length) break;
+
+          const lineAfterBlank = lines[innerPeek];
+          const trimmedAfter = lineAfterBlank.trim();
+          const subItem = matchListItem(lineAfterBlank);
+
+          if (subItem) {
+            if (subItem.indent > listIndent) {
+              i = innerPeek;
+              itemHtml += parseList();
+              continue;
+            }
+            break;
+          }
+
+          const lineIndent = countIndent(lineAfterBlank);
+          const isSpecialBlock =
+            /^@@CODEBLOCK_\d+@@$/.test(trimmedAfter) ||
+            /^(#{1,4})\s+/.test(trimmedAfter) ||
+            /^([-*_])\1{2,}$/.test(trimmedAfter) ||
+            trimmedAfter.startsWith('&gt;') ||
+            (trimmedAfter.includes('|') && innerPeek + 1 < lines.length && isTableSep(lines[innerPeek + 1]));
+
+          if (lineIndent > listIndent && !isSpecialBlock) {
+            i = innerPeek;
+            itemHtml += `<br>${formatInline(trimmedAfter)}`;
+            i++;
+            continue;
+          }
+          break;
+        }
+
+        items.push(`<li>${itemHtml}</li>`);
+      }
+
+      if (listOrdered) {
+        const startAttr = startNum !== null && startNum !== 1 ? ` start="${startNum}"` : '';
+        return `<ol class="md-ol"${startAttr}>${items.join('')}</ol>`;
+      }
+      return `<ul class="md-ul">${items.join('')}</ul>`;
+    };
 
     while (i < lines.length) {
       const line = lines[i];
@@ -6516,25 +6723,9 @@ body::before {
         continue;
       }
 
-      // Unordered list
-      if (/^\s*[-*•]\s+/.test(line)) {
-        const items = [];
-        while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) {
-          items.push(`<li>${formatInline(lines[i].replace(/^\s*[-*•]\s+/, ''))}</li>`);
-          i++;
-        }
-        out.push(`<ul class="md-ul">${items.join('')}</ul>`);
-        continue;
-      }
-
-      // Ordered list
-      if (/^\s*\d+\.\s+/.test(line)) {
-        const items = [];
-        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-          items.push(`<li>${formatInline(lines[i].replace(/^\s*\d+\.\s+/, ''))}</li>`);
-          i++;
-        }
-        out.push(`<ol class="md-ol">${items.join('')}</ol>`);
+      // Unordered / Ordered list (supports nested sub-lists, continuations, and preserved start numbers)
+      if (matchListItem(line)) {
+        out.push(parseList());
         continue;
       }
 
@@ -6547,8 +6738,7 @@ body::before {
         !/^(#{1,4})\s+/.test(lines[i].trim()) &&
         !/^([-*_])\1{2,}$/.test(lines[i].trim()) &&
         !lines[i].trim().startsWith('&gt;') &&
-        !/^\s*[-*•]\s+/.test(lines[i]) &&
-        !/^\s*\d+\.\s+/.test(lines[i]) &&
+        !matchListItem(lines[i]) &&
         !(lines[i].trim().includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1]))
       ) {
         pLines.push(formatInline(lines[i]));
@@ -6760,10 +6950,19 @@ body::before {
     const initTs = new Date(turnTime).toTimeString().slice(0, 8);
     thinkingCard._termState = {
       startedAt: turnTime,
+      stepStartedAt: turnTime,
+      lastServerSignalAt: turnTime,
+      lastHeartbeatReceivedAt: Date.now(),
       renderedTimelineCount: 0,
       renderedStepCount: 0,
+      stepsCount: 0,
       lastAction: '',
-      lastLiveThink: ''
+      lastLiveThink: '',
+      phaseLabel: '🧠 กำลังเชื่อมต่อและส่งคำสั่ง...',
+      pid: null,
+      alive: true,
+      rssMb: 0,
+      childProcs: []
     };
     thinkingCard.innerHTML = `
       <div class="msg__thinking-meta">
@@ -6779,14 +6978,28 @@ body::before {
       <div class="msg__thinking-shimmer-track">
         <div class="msg__thinking-shimmer-bar"></div>
       </div>
+      <div class="thinking-liveness-strip" id="active-thinking-liveness">
+        <div class="liveness-left">
+          <span class="liveness-badge" id="liveness-status-badge">🟢 ALIVE</span>
+          <span class="liveness-meta-chip" id="liveness-pid-text">กำลังตรวจสอบ PID...</span>
+          <span class="liveness-child-pill" id="liveness-child-pill" style="display:none;"></span>
+        </div>
+        <div class="liveness-right">
+          <span class="liveness-signal" id="liveness-signal-age">สัญญาณล่าสุด: 0s</span>
+          <span class="liveness-elapsed" id="liveness-total-elapsed">⏱ 0s</span>
+        </div>
+      </div>
       <div class="thinking-drawer is-open" id="active-thinking-drawer">
         <div class="thinking-terminal-inner">
           <div id="thinking-log-lines">
             <div class="term-line"><span class="term-ts">[${initTs}]</span><span class="term-tag--init">$ init --core="${escapeHtml(ident.short)}" --model="${escapeHtml(ident.detail)}"</span></div>
-            <div class="term-line"><span class="term-ts">[${initTs}]</span><span class="term-tag--status">[PROC] attaching live reasoning &amp; tool execution stream...</span></div>
+            <div class="term-line"><span class="term-ts">[${initTs}]</span><span class="term-tag--status">[PROC] attaching live reasoning &amp; /proc liveness watchdog...</span></div>
           </div>
           <div class="term-live-stream" id="thinking-detail-text"></div>
-          <div class="term-active-prompt" id="thinking-action-line">&gt; awaiting stream...<span class="term-cursor"></span></div>
+          <div class="term-pinned-footer" id="active-thinking-footer">
+            <div class="term-active-prompt" id="thinking-action-line">&gt; 🧠 กำลังเชื่อมต่อและส่งคำสั่ง...<span class="term-cursor"></span></div>
+            <span class="term-step-timer" id="thinking-step-timer">ขั้นที่ 1 · ⏱ 0s</span>
+          </div>
         </div>
       </div>
     `;
@@ -6807,6 +7020,7 @@ body::before {
           if (open) drawer.scrollTop = drawer.scrollHeight;
         });
       }
+      startThinkingLivenessTicker(thinkingCard);
     }
 
     currentTurnJobId = jobId;
@@ -6846,6 +7060,9 @@ body::before {
     } else if (kind === 'think') {
       bodySpan.className = 'term-tag--think';
       bodySpan.textContent = `[THINK] ${text}`;
+    } else if (kind === 'probe') {
+      bodySpan.className = 'term-tag--probe';
+      bodySpan.textContent = `[💓 WATCHDOG] ${text}`;
     } else {
       bodySpan.className = 'term-tag--status';
       bodySpan.textContent = `[PROC] ${text}`;
@@ -6858,18 +7075,127 @@ body::before {
     }
   }
 
+  function formatCompactSec(sec) {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}m ${r}s`;
+  }
+
+  function renderThinkingLivenessUI(activeBar, triggerBeat = false) {
+    if (!activeBar || activeBar.classList.contains('is-done')) return;
+    const state = activeBar._termState;
+    if (!state) return;
+
+    const now = Date.now();
+    const badgeEl = activeBar.querySelector('#liveness-status-badge');
+    const pidEl = activeBar.querySelector('#liveness-pid-text');
+    const childEl = activeBar.querySelector('#liveness-child-pill');
+    const sigEl = activeBar.querySelector('#liveness-signal-age');
+    const totalEl = activeBar.querySelector('#liveness-total-elapsed');
+    const stepTimerEl = activeBar.querySelector('#thinking-step-timer');
+    const actionLine = activeBar.querySelector('#thinking-action-line');
+
+    const totalSec = Math.max(0, Math.floor((now - (state.startedAt || now)) / 1000));
+    const stepSec = Math.max(0, Math.floor((now - (state.stepStartedAt || state.startedAt || now)) / 1000));
+    const signalAgeSec = Math.max(0, Math.floor((now - (state.lastServerSignalAt || state.startedAt || now)) / 1000));
+    const heartbeatGapSec = Math.max(0, Math.floor((now - (state.lastHeartbeatReceivedAt || now)) / 1000));
+
+    if (badgeEl) {
+      if (state.alive === false) {
+        badgeEl.className = 'liveness-badge is-lost';
+        badgeEl.textContent = '🔴 PROCESS LOST';
+      } else if (heartbeatGapSec >= 12) {
+        badgeEl.className = 'liveness-badge is-wait';
+        badgeEl.textContent = `🟡 รอสัญญาณเซิร์ฟเวอร์ (${heartbeatGapSec}s)`;
+      } else if (signalAgeSec >= 20) {
+        badgeEl.className = 'liveness-badge is-wait';
+        badgeEl.textContent = '🟢 ALIVE · งานรอนาน';
+      } else {
+        badgeEl.className = 'liveness-badge';
+        badgeEl.textContent = '🟢 ALIVE';
+      }
+      if (triggerBeat) {
+        badgeEl.classList.add('is-beat');
+        setTimeout(() => { try { badgeEl.classList.remove('is-beat'); } catch (_) {} }, 220);
+      }
+    }
+
+    if (pidEl) {
+      if (state.pid) {
+        pidEl.textContent = `PID ${state.pid}${state.rssMb ? ` · ${state.rssMb}MB` : ''}`;
+      } else {
+        pidEl.textContent = 'Engine Active';
+      }
+    }
+
+    if (childEl) {
+      if (Array.isArray(state.childProcs) && state.childProcs.length > 0) {
+        childEl.style.display = 'inline-flex';
+        childEl.textContent = `⚙️ child: ${state.childProcs.join(', ')}`;
+        childEl.title = `โพรเซสลูกที่กำลังรันอยู่จริงบน Linux: ${state.childProcs.join(', ')}`;
+      } else {
+        childEl.style.display = 'none';
+        childEl.textContent = '';
+      }
+    }
+
+    if (sigEl) {
+      sigEl.textContent = `ขยับล่าสุด: ${formatCompactSec(signalAgeSec)} ที่แล้ว`;
+      sigEl.classList.toggle('is-quiet', signalAgeSec >= 15);
+    }
+
+    if (totalEl) {
+      totalEl.textContent = `⏱ รวม ${formatCompactSec(totalSec)}`;
+    }
+
+    if (stepTimerEl) {
+      const stepNum = Math.max(1, Number(state.stepsCount || 0) + 1);
+      stepTimerEl.textContent = `ขั้นที่ ${stepNum} · ⏱ ${formatCompactSec(stepSec)}`;
+    }
+
+    if (actionLine && state.phaseLabel) {
+      actionLine.innerHTML = `&gt; ${escapeHtml(state.phaseLabel)}<span class="term-cursor"></span>`;
+    }
+  }
+
+  function startThinkingLivenessTicker(thinkingCard) {
+    if (!thinkingCard) return;
+    if (thinkingCard._livenessTicker) clearInterval(thinkingCard._livenessTicker);
+    thinkingCard._livenessTicker = setInterval(() => {
+      if (!document.body.contains(thinkingCard) || thinkingCard.classList.contains('is-done')) {
+        clearInterval(thinkingCard._livenessTicker);
+        thinkingCard._livenessTicker = null;
+        return;
+      }
+      renderThinkingLivenessUI(thinkingCard, false);
+    }, 1000);
+  }
+
   function updateThinkingBar(liveThought) {
     if (!liveThought || typeof liveThought !== 'object') return;
     const activeBar = document.getElementById('active-thinking-bar');
     if (!activeBar) return;
 
+    const now = Date.now();
     const state = activeBar._termState || (activeBar._termState = {
-      startedAt: Date.now(),
+      startedAt: now,
+      stepStartedAt: now,
+      lastServerSignalAt: now,
+      lastHeartbeatReceivedAt: now,
       renderedTimelineCount: 0,
       renderedStepCount: 0,
+      stepsCount: 0,
       lastAction: '',
-      lastLiveThink: ''
+      lastLiveThink: '',
+      phaseLabel: '🧠 กำลังคิดวิเคราะห์คำสั่ง...',
+      pid: null,
+      alive: true,
+      rssMb: 0,
+      childProcs: []
     });
+    state.lastHeartbeatReceivedAt = now;
 
     const logEl = document.getElementById('thinking-log-lines');
     const actionLine = document.getElementById('thinking-action-line');
@@ -6882,6 +7208,13 @@ body::before {
     const stepsCount = Number(liveThought.stepsCount || steps.length || 0);
     const action = String(liveThought.currentAction || '').trim();
     const thinking = String(liveThought.thinking || '').trim();
+    const lv = (liveThought.liveness && typeof liveThought.liveness === 'object') ? liveThought.liveness : null;
+
+    if (stepsCount !== state.stepsCount) {
+      state.stepsCount = stepsCount;
+      state.stepStartedAt = now;
+      state.lastServerSignalAt = now;
+    }
 
     if (timeline.length > 0) {
       if (timeline.length < state.renderedTimelineCount) {
@@ -6892,25 +7225,46 @@ body::before {
         if (!ev || !ev.text) continue;
         appendTerminalLine(logEl, ev.kind || 'status', ev.text, ev.ts);
         activeBar.dataset.hasRealThought = '1';
+        if (ev.kind !== 'probe') state.lastServerSignalAt = now;
       }
       state.renderedTimelineCount = timeline.length;
     } else if (steps.length > state.renderedStepCount) {
       for (let i = state.renderedStepCount; i < steps.length; i++) {
-        appendTerminalLine(logEl, 'tool', steps[i], Date.now());
+        appendTerminalLine(logEl, 'tool', steps[i], now);
         activeBar.dataset.hasRealThought = '1';
       }
       state.renderedStepCount = steps.length;
+      state.lastServerSignalAt = now;
     }
 
     if (action && action !== state.lastAction) {
       state.lastAction = action;
+      state.stepStartedAt = now;
+      state.lastServerSignalAt = now;
       if (labelText) labelText.textContent = `root@homelab:~$ ${action.slice(0, 58)}`;
-      if (actionLine) {
-        actionLine.innerHTML = `&gt; ${escapeHtml(action)}<span class="term-cursor"></span>`;
+      if (!lv || !lv.phaseLabel) {
+        state.phaseLabel = action;
       }
       if (!timeline.length && !steps.length) {
-        appendTerminalLine(logEl, 'status', action, Date.now());
+        appendTerminalLine(logEl, 'status', action, now);
       }
+    }
+
+    if (lv) {
+      if (lv.pid) state.pid = lv.pid;
+      if (typeof lv.alive === 'boolean') state.alive = lv.alive;
+      if (lv.rssMb) state.rssMb = lv.rssMb;
+      state.childProcs = Array.isArray(lv.childProcs) ? lv.childProcs : [];
+      if (lv.phaseLabel) state.phaseLabel = lv.phaseLabel;
+      if (typeof lv.lastSignalAt === 'number' && lv.lastSignalAt > 0) {
+        state.lastServerSignalAt = lv.lastSignalAt;
+      }
+      if (typeof lv.stepElapsedSec === 'number' && lv.stepElapsedSec >= 0) {
+        state.stepStartedAt = now - (lv.stepElapsedSec * 1000);
+      }
+      activeBar.dataset.hasRealThought = '1';
+    } else if (action) {
+      state.phaseLabel = action;
     }
 
     // Show live streaming reasoning tail (updates smoothly even mid-token)
@@ -6920,6 +7274,7 @@ body::before {
         const tail = thinking.length > 900 ? '...\n' + thinking.slice(-900) : thinking;
         if (tail !== state.lastLiveThink) {
           state.lastLiveThink = tail;
+          state.lastServerSignalAt = now;
           detailText.textContent = `[LIVE THINK] ${tail}`;
           activeBar.dataset.hasRealThought = '1';
         }
@@ -6934,6 +7289,8 @@ body::before {
       activeBar.dataset.stepsCount = String(stepsCount);
     }
 
+    renderThinkingLivenessUI(activeBar, true);
+
     if (drawer && drawer.classList.contains('is-open')) {
       drawer.scrollTop = drawer.scrollHeight;
     }
@@ -6942,6 +7299,11 @@ body::before {
   function finalizeThinkingBar() {
     const activeBar = document.getElementById('active-thinking-bar');
     if (!activeBar) return;
+
+    if (activeBar._livenessTicker) {
+      clearInterval(activeBar._livenessTicker);
+      activeBar._livenessTicker = null;
+    }
 
     const state = activeBar._termState || { startedAt: Date.now() };
     const elapsedSec = Math.max(0.1, (Date.now() - state.startedAt) / 1000).toFixed(1);
@@ -6975,11 +7337,26 @@ body::before {
     if (btnTog) btnTog.textContent = '▸ ดู Terminal ▾';
 
     // Detach active singleton IDs so future turns never collide while toggle closure keeps working
-    ['active-thinking-bar', 'active-thinking-label-text', 'thinking-log-lines', 'thinking-action-line', 'thinking-detail-text', 'btn-thought-drawer-toggle', 'active-thinking-drawer']
-      .forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.removeAttribute('id');
-      });
+    [
+      'active-thinking-bar',
+      'active-thinking-label-text',
+      'active-thinking-liveness',
+      'liveness-status-badge',
+      'liveness-pid-text',
+      'liveness-child-pill',
+      'liveness-signal-age',
+      'liveness-total-elapsed',
+      'thinking-log-lines',
+      'active-thinking-footer',
+      'thinking-action-line',
+      'thinking-step-timer',
+      'thinking-detail-text',
+      'btn-thought-drawer-toggle',
+      'active-thinking-drawer'
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.removeAttribute('id');
+    });
   }
 
   function startBackgroundJobPolling() {

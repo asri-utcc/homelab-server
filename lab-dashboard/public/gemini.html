@@ -1195,6 +1195,7 @@ body::before {
 .md-h4 { font-size: 13.5px; color: var(--ink-2); }
 
 .md-ul, .md-ol { margin: 6px 0 12px 22px; padding: 0; }
+.md-ul .md-ul, .md-ul .md-ol, .md-ol .md-ul, .md-ol .md-ol { margin: 4px 0 4px 20px; }
 .md-ul li, .md-ol li { margin-bottom: 5px; line-height: 1.6; }
 .md-ul li::marker { color: var(--cyan); }
 .md-ol li::marker { color: var(--cyan); font-family: var(--mono); font-weight: 700; }
@@ -1572,6 +1573,109 @@ body::before {
 .term-tag--status {
   color: #34d399;
 }
+.term-tag--probe {
+  color: #38bdf8;
+  font-weight: 600;
+  background: rgba(56, 189, 248, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border-left: 2px solid #38bdf8;
+}
+/* 1. Live Process Heartbeat Telemetry Strip */
+.thinking-liveness-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  background: rgba(4, 18, 10, 0.92);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #86efac;
+  line-height: 1.35;
+}
+.liveness-left,
+.liveness-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.liveness-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.45);
+  transition: transform 0.18s ease, background 0.2s ease;
+}
+.liveness-badge.is-beat {
+  transform: scale(1.04);
+  background: rgba(34, 197, 94, 0.3);
+}
+.liveness-badge.is-wait {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+}
+.liveness-badge.is-lost {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.55);
+}
+.liveness-meta-chip {
+  color: #6ee7b7;
+  opacity: 0.9;
+}
+.liveness-child-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  color: #67e8f9;
+  font-weight: 600;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.liveness-signal {
+  color: #a7f3d0;
+}
+.liveness-signal.is-quiet {
+  color: #fcd34d;
+}
+.liveness-elapsed {
+  color: #4ade80;
+  font-weight: 600;
+}
+/* 2. Pinned Active Phase Footer inside Terminal */
+.term-pinned-footer {
+  position: sticky;
+  bottom: -8px;
+  margin: 6px -10px -8px -10px;
+  padding: 5px 10px;
+  background: linear-gradient(180deg, rgba(2, 10, 5, 0.94) 0%, rgba(3, 16, 8, 0.99) 100%);
+  border-top: 1px solid rgba(34, 197, 94, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  z-index: 2;
+}
 .term-live-stream {
   white-space: pre-wrap;
   color: #bbf7d0;
@@ -1581,7 +1685,22 @@ body::before {
 .term-active-prompt {
   color: #00ff66;
   font-weight: 600;
-  margin-top: 3px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.term-step-timer {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #67e8f9;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .term-cursor {
   display: inline-block;
@@ -1607,7 +1726,9 @@ body::before {
   color: #22c55e;
   font-weight: 600;
 }
-.msg__thinking-card.is-done .msg__thinking-shimmer-track {
+.msg__thinking-card.is-done .msg__thinking-shimmer-track,
+.msg__thinking-card.is-done .thinking-liveness-strip,
+.msg__thinking-card.is-done .term-pinned-footer {
   display: none;
 }
 .msg__thinking-card.is-done .ai-pulse-dot {
@@ -2479,999 +2600,6 @@ body::before {
     padding: 14px;
   }
 }
-
-/* ===== Browser Vision ===== */
-.bv-toggle-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.bv-toggle-btn.is-active {
-  background: rgba(0, 229, 255, 0.18);
-  border-color: var(--cyan);
-  color: var(--cyan);
-  box-shadow: 0 0 14px rgba(0, 229, 255, 0.35);
-}
-.bv-btn-dot {
-  display: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
-  flex-shrink: 0;
-}
-.bv-toggle-btn.is-active .bv-btn-dot { display: inline-block; }
-.bv-toggle-btn.is-paused .bv-btn-dot {
-  display: inline-block;
-  background: var(--orange);
-  box-shadow: 0 0 8px var(--orange);
-  animation: bv-pulse 1.2s infinite ease-in-out;
-}
-.bv-toggle-btn.is-ai-busy .bv-btn-dot {
-  display: inline-block;
-  background: var(--cyan);
-  box-shadow: 0 0 10px var(--cyan);
-  animation: bv-pulse 0.9s infinite ease-in-out;
-}
-#btn-browser-vision-mobile .bv-btn-dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-}
-
-.bv-core-pill {
-  display: none;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 229, 255, 0.32);
-  background: rgba(0, 229, 255, 0.08);
-  color: var(--cyan);
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-.bv-core-pill__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green);
-}
-.bv-core-pill.is-thinking {
-  border-color: rgba(255, 123, 41, 0.65);
-  background: var(--orange-dim);
-  color: var(--orange);
-}
-.bv-core-pill.is-thinking .bv-core-pill__dot {
-  background: var(--orange);
-  box-shadow: 0 0 8px var(--orange);
-  animation: bv-pulse 0.9s infinite ease-in-out;
-}
-.core-shell.is-browser-open .bv-core-pill {
-  display: inline-flex;
-}
-
-/* Mobile Tab Switcher (<960px when Browser Vision is open) */
-.bv-mobile-tabs {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: rgba(3, 14, 22, 0.94);
-  border-bottom: 1px solid rgba(0, 229, 255, 0.22);
-  flex-shrink: 0;
-  z-index: 15;
-}
-.bv-mobile-tab {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 229, 255, 0.2);
-  background: rgba(5, 22, 32, 0.72);
-  color: var(--ink-2);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.16s ease;
-}
-.bv-mobile-tab.is-active {
-  background: rgba(0, 229, 255, 0.18);
-  border-color: var(--cyan);
-  color: #fff;
-  box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
-}
-.bv-mobile-tab__badge {
-  display: none;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 9.5px;
-  font-weight: 800;
-  background: rgba(0, 229, 255, 0.22);
-  color: var(--cyan);
-}
-.bv-mobile-tab__badge.is-visible { display: inline-flex; align-items: center; }
-.bv-mobile-tab__badge.is-paused {
-  background: rgba(255, 123, 41, 0.25);
-  color: var(--orange);
-  border: 1px solid rgba(255, 123, 41, 0.55);
-}
-
-/* Desktop Split Workspace when Browser Vision is open */
-.bv-resizer {
-  display: none;
-  width: 6px;
-  cursor: col-resize;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 229, 255, 0.06);
-  border-left: 1px solid rgba(0, 229, 255, 0.18);
-  border-right: 1px solid rgba(0, 229, 255, 0.18);
-  transition: background 0.15s ease;
-  user-select: none;
-  z-index: 12;
-}
-.bv-resizer::after {
-  content: "";
-  width: 2px;
-  height: 36px;
-  border-radius: 2px;
-  background: rgba(0, 229, 255, 0.45);
-}
-.bv-resizer:hover,
-.bv-resizer.is-dragging {
-  background: rgba(0, 229, 255, 0.22);
-}
-.bv-resizer:hover::after,
-.bv-resizer.is-dragging::after {
-  background: var(--cyan);
-  box-shadow: 0 0 8px var(--cyan);
-}
-
-.browser-vision-pane {
-  display: none;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: rgba(4, 15, 24, 0.94);
-  border-radius: 0 15px 15px 0;
-  overflow: hidden;
-  position: relative;
-  z-index: 10;
-}
-
-.core-workspace.is-browser-open {
-  grid-template-columns: minmax(340px, var(--bv-chat-pct, 42%)) 6px minmax(420px, 1fr);
-}
-.core-workspace.is-browser-open > .core-reactor-pane {
-  display: none !important;
-}
-.core-workspace.is-browser-open > .core-chat-pane {
-  border-radius: 15px 0 0 15px;
-  min-width: 0;
-}
-.core-workspace.is-browser-open > .bv-resizer {
-  display: flex;
-}
-.core-workspace.is-browser-open > .browser-vision-pane {
-  display: flex;
-}
-
-/* Browser Vision Header Toolbar */
-.bv-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  background: rgba(5, 20, 30, 0.96);
-  border-bottom: 1px solid rgba(0, 229, 255, 0.22);
-  flex-shrink: 0;
-  position: relative;
-  z-index: 16;
-}
-.bv-toolbar__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex-wrap: nowrap;
-}
-.bv-toolbar__row--meta {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px;
-}
-.bv-toolbar__group {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-.bv-icon-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  height: 28px;
-  min-width: 28px;
-  padding: 0 7px;
-  border-radius: 6px;
-  border: 1px solid rgba(0, 229, 255, 0.25);
-  background: rgba(6, 28, 40, 0.85);
-  color: var(--ink-1);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-.bv-icon-btn:hover {
-  border-color: var(--cyan);
-  background: rgba(0, 229, 255, 0.14);
-  color: #fff;
-}
-.bv-icon-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.bv-icon-btn--pause {
-  border-color: rgba(255, 123, 41, 0.55);
-  background: rgba(255, 123, 41, 0.14);
-  color: #ffb380;
-  font-weight: 700;
-  padding: 0 10px;
-}
-.bv-icon-btn--pause:hover {
-  border-color: var(--orange);
-  background: rgba(255, 123, 41, 0.28);
-  color: #fff;
-}
-.bv-icon-btn--resume {
-  border-color: rgba(0, 229, 163, 0.65);
-  background: rgba(0, 229, 163, 0.18);
-  color: var(--green);
-  font-weight: 700;
-  padding: 0 10px;
-}
-.bv-icon-btn--resume:hover {
-  border-color: var(--green);
-  background: rgba(0, 229, 163, 0.32);
-  color: #fff;
-}
-.bv-icon-btn--close:hover {
-  border-color: var(--critical);
-  background: rgba(255, 59, 48, 0.2);
-  color: #ff8078;
-}
-
-.bv-url-input {
-  flex: 1;
-  min-width: 110px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid rgba(0, 229, 255, 0.28);
-  background: rgba(2, 12, 18, 0.92);
-  color: var(--ink-1);
-  font-family: var(--mono);
-  font-size: 11.5px;
-  outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.bv-url-input:focus {
-  border-color: var(--cyan);
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.18);
-}
-
-.bv-tab-select {
-  max-width: 175px;
-  min-width: 90px;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(0, 229, 255, 0.25);
-  background: rgba(6, 28, 40, 0.9);
-  color: var(--ink-1);
-  font-family: var(--mono);
-  font-size: 11px;
-  outline: none;
-  cursor: pointer;
-}
-.bv-tab-select:focus { border-color: var(--cyan); }
-
-.bv-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 229, 255, 0.24);
-  background: rgba(4, 22, 34, 0.85);
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.bv-pill--live {
-  border-color: rgba(0, 229, 163, 0.55);
-  background: var(--green-dim);
-  color: var(--green);
-}
-.bv-pill--ai {
-  border-color: rgba(0, 229, 255, 0.65);
-  background: var(--cyan-dim);
-  color: var(--cyan);
-}
-.bv-pill--paused {
-  border-color: rgba(255, 123, 41, 0.7);
-  background: var(--orange-dim);
-  color: var(--orange);
-}
-.bv-pill--offline {
-  border-color: rgba(148, 163, 184, 0.35);
-  color: var(--ink-muted);
-}
-.bv-pill--room {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Popovers (Shared Login & More Menu) */
-.bv-popover-anchor {
-  position: relative;
-  display: inline-flex;
-}
-.bv-popover {
-  display: none;
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 240px;
-  max-width: 310px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-bright);
-  background: rgba(4, 18, 28, 0.98);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 16px rgba(0, 229, 255, 0.14);
-  z-index: 40;
-  color: var(--ink-1);
-  font-size: 12px;
-}
-.bv-popover.is-open { display: block; }
-.bv-popover__title {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--cyan);
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.bv-popover__meta {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--ink-muted);
-  margin-bottom: 8px;
-}
-.bv-auth-domains {
-  max-height: 150px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 10px;
-}
-.bv-auth-domain {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 4px 7px;
-  border-radius: 5px;
-  background: rgba(0, 229, 255, 0.08);
-  border: 1px solid rgba(0, 229, 255, 0.16);
-  color: var(--ink-1);
-  word-break: break-all;
-}
-.bv-menu-item {
-  width: 100%;
-  text-align: left;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  padding: 7px 9px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-1);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.bv-menu-item:hover {
-  background: rgba(0, 229, 255, 0.12);
-  border-color: rgba(0, 229, 255, 0.3);
-}
-.bv-menu-item--danger {
-  color: #ff7b74;
-}
-.bv-menu-item--danger:hover {
-  background: rgba(255, 59, 48, 0.16);
-  border-color: rgba(255, 59, 48, 0.5);
-}
-
-/* Non-blocking Pause / Handoff Banner */
-.bv-pause-banner {
-  display: none;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 12px;
-  background: linear-gradient(90deg, rgba(255, 123, 41, 0.2), rgba(255, 168, 41, 0.1));
-  border-bottom: 1px solid rgba(255, 123, 41, 0.55);
-  flex-shrink: 0;
-  z-index: 14;
-}
-.bv-pause-banner.is-visible { display: flex; }
-.bv-pause-banner__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.bv-pause-banner__text {
-  font-size: 12px;
-  font-weight: 700;
-  color: #ffd4b3;
-}
-.bv-pause-banner__kind {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(255, 123, 41, 0.24);
-  border: 1px solid rgba(255, 123, 41, 0.65);
-  color: #ffbe8f;
-}
-.bv-pause-banner__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.bv-resume-note {
-  flex: 1;
-  min-width: 150px;
-  height: 28px;
-  padding: 0 9px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 123, 41, 0.45);
-  background: rgba(4, 14, 22, 0.88);
-  color: var(--ink-1);
-  font-size: 12px;
-  outline: none;
-}
-.bv-resume-note:focus {
-  border-color: var(--orange);
-}
-.bv-resume-done-btn {
-  height: 28px;
-  padding: 0 11px;
-  border-radius: 6px;
-  border: 1px solid var(--green);
-  background: rgba(0, 229, 163, 0.22);
-  color: #d7fff2;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-.bv-resume-done-btn:hover {
-  background: var(--green);
-  color: #021a12;
-  box-shadow: 0 0 12px rgba(0, 229, 163, 0.45);
-}
-
-/* Browser Stage & AI Cursor Overlay */
-.bv-stage-wrap {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #02070c;
-  overflow: hidden;
-}
-.bv-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  outline: none;
-  overflow: hidden;
-  user-select: none;
-  cursor: default;
-}
-.bv-stage:focus {
-  box-shadow: inset 0 0 0 1.5px rgba(0, 229, 255, 0.45);
-}
-.bv-frame-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-  pointer-events: none;
-  user-select: none;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-.bv-frame-img.has-frame { opacity: 1; }
-
-.bv-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 20px;
-  text-align: center;
-  color: var(--ink-2);
-  background: radial-gradient(circle at 50% 45%, rgba(0, 229, 255, 0.08), rgba(2, 7, 12, 0.92) 70%);
-  z-index: 4;
-}
-.bv-placeholder.is-hidden { display: none; }
-.bv-placeholder__icon { font-size: 32px; filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.4)); }
-.bv-placeholder__title { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink-1); }
-.bv-placeholder__sub { font-size: 12px; color: var(--ink-muted); max-width: 340px; line-height: 1.5; }
-
-.bv-overlay-layer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 8;
-}
-.bv-ai-cursor {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform: translate(-9999px, -9999px);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: none;
-  will-change: transform, opacity;
-}
-.bv-ai-cursor.is-visible { opacity: 1; }
-.bv-ai-cursor__dot {
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
-  margin-top: -6px;
-  border-radius: 50%;
-  background: var(--cyan);
-  border: 2px solid #fff;
-  box-shadow: 0 0 14px var(--cyan), 0 0 24px rgba(0, 229, 255, 0.65);
-}
-.bv-ai-cursor__ripple {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 28px;
-  height: 28px;
-  margin-left: -14px;
-  margin-top: -14px;
-  border-radius: 50%;
-  border: 2px solid var(--cyan);
-  opacity: 0;
-}
-.bv-ai-cursor.is-rippling .bv-ai-cursor__ripple {
-  animation: bv-cursor-ripple 0.75s ease-out forwards;
-}
-.bv-ai-cursor__tag {
-  position: absolute;
-  left: 10px;
-  top: -12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(2, 18, 28, 0.92);
-  border: 1px solid var(--cyan);
-  color: var(--cyan);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55), 0 0 10px rgba(0, 229, 255, 0.3);
-}
-.bv-ai-cursor__action {
-  color: #e8fcff;
-  font-weight: 600;
-}
-
-@keyframes bv-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.85); }
-}
-@keyframes bv-cursor-ripple {
-  0% { transform: scale(0.45); opacity: 0.95; }
-  100% { transform: scale(2.4); opacity: 0; }
-}
-
-/* Responsive Browser Vision (<960px & <768px) */
-@media (max-width: 960px) {
-  .core-shell.is-browser-open .bv-mobile-tabs {
-    display: flex;
-  }
-  .core-shell.is-browser-open .bv-core-pill {
-    display: none;
-  }
-  .core-workspace.is-browser-open {
-    display: flex !important;
-    flex-direction: column !important;
-    grid-template-columns: 1fr !important;
-    grid-template-rows: minmax(0, 1fr) !important;
-  }
-  .core-workspace.is-browser-open > .bv-resizer {
-    display: none !important;
-  }
-  .core-workspace.is-browser-open > .core-reactor-pane {
-    display: none !important;
-  }
-  .core-workspace.is-browser-open > .core-chat-pane,
-  .core-workspace.is-browser-open > .browser-vision-pane {
-    flex: 1 1 0%;
-    min-height: 0;
-    width: 100%;
-    border-radius: 0 0 15px 15px;
-  }
-  .core-workspace.is-browser-open[data-bv-tab="chat"] > .browser-vision-pane {
-    display: none !important;
-  }
-  .core-workspace.is-browser-open[data-bv-tab="browser"] > .core-chat-pane {
-    display: none !important;
-  }
-}
-@media (max-width: 768px) {
-  .core-workspace.is-browser-open > .core-chat-pane,
-  .core-workspace.is-browser-open > .browser-vision-pane {
-    border-radius: 0 !important;
-  }
-  .bv-toolbar {
-    padding: 6px 8px;
-  }
-  .bv-toolbar__row {
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-  .bv-url-input {
-    min-width: 120px;
-  }
-  .bv-tab-select {
-    max-width: 110px;
-    min-width: 72px;
-  }
-  #bv-viewport-badge {
-    display: none;
-  }
-}
-
-/* --- Annotation & Magic DOM (t5) --- */
-.bv-stage.is-annotating {
-  cursor: crosshair;
-}
-.bv-stage.is-annotating.bv-tool-eraser {
-  cursor: cell;
-}
-.bv-stage.is-annotating.bv-tool-dom {
-  cursor: pointer;
-}
-.bv-anno-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 6;
-}
-.bv-stage.is-annotating .bv-anno-canvas {
-  pointer-events: auto;
-  touch-action: none;
-}
-
-.bv-anno-dock {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
-  z-index: 15;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  max-width: calc(100% - 20px);
-  pointer-events: none;
-}
-.bv-anno-dock > * {
-  pointer-events: auto;
-}
-
-.bv-anno-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 229, 255, 0.45);
-  background: rgba(4, 17, 28, 0.9);
-  backdrop-filter: blur(12px);
-  color: var(--ink-1, #e8f7ff);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55), 0 0 14px rgba(0, 229, 255, 0.22);
-  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
-}
-.bv-anno-pill:hover {
-  transform: translateY(-1px);
-  border-color: var(--cyan, #00e5ff);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.65), 0 0 18px rgba(0, 229, 255, 0.38);
-}
-.bv-anno-dock.is-expanded .bv-anno-pill {
-  display: none;
-}
-
-.bv-anno-badge {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--orange, #f59e0b);
-  color: #090d12;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 800;
-  line-height: 1;
-}
-.bv-anno-badge.has-count {
-  display: inline-flex;
-}
-
-.bv-anno-toolbar {
-  display: none;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 7px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(0, 229, 255, 0.35);
-  background: rgba(4, 15, 25, 0.94);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.72), 0 0 20px rgba(0, 229, 255, 0.18);
-  max-width: 100%;
-}
-.bv-anno-dock.is-expanded .bv-anno-toolbar {
-  display: flex;
-}
-
-.bv-anno-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.bv-anno-sep {
-  width: 1px;
-  height: 20px;
-  background: rgba(0, 229, 255, 0.2);
-  margin: 0 2px;
-}
-
-.bv-anno-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 28px;
-  min-width: 28px;
-  padding: 0 7px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--ink-1, #e8f7ff);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-}
-.bv-anno-btn:hover {
-  background: rgba(0, 229, 255, 0.14);
-  border-color: rgba(0, 229, 255, 0.45);
-}
-.bv-anno-btn.is-active {
-  background: rgba(0, 229, 255, 0.22);
-  border-color: var(--cyan, #00e5ff);
-  color: #fff;
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
-}
-.bv-anno-btn--dom.is-active {
-  background: rgba(245, 158, 11, 0.22);
-  border-color: #f59e0b;
-  color: #fde68a;
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
-}
-.bv-anno-btn--danger:hover {
-  background: rgba(255, 77, 79, 0.2);
-  border-color: rgba(255, 77, 79, 0.55);
-  color: #ffb3b4;
-}
-.bv-anno-btn--send {
-  background: linear-gradient(135deg, rgba(0, 229, 255, 0.25), rgba(0, 160, 255, 0.22));
-  border-color: rgba(0, 229, 255, 0.65);
-  color: #e8fcff;
-  padding: 0 10px;
-}
-.bv-anno-btn--send:hover {
-  background: linear-gradient(135deg, rgba(0, 229, 255, 0.38), rgba(0, 160, 255, 0.34));
-  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
-}
-.bv-anno-btn--send-now {
-  background: linear-gradient(135deg, rgba(0, 229, 163, 0.28), rgba(0, 200, 140, 0.22));
-  border-color: rgba(0, 229, 163, 0.7);
-  color: #d7fff0;
-  padding: 0 9px;
-}
-.bv-anno-btn--send-now:hover {
-  background: linear-gradient(135deg, rgba(0, 229, 163, 0.42), rgba(0, 200, 140, 0.36));
-  box-shadow: 0 0 12px rgba(0, 229, 163, 0.45);
-}
-.bv-anno-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.bv-anno-color {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
-}
-.bv-anno-color:hover {
-  transform: scale(1.12);
-}
-.bv-anno-color.is-active {
-  border-color: #fff;
-  transform: scale(1.15);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.55);
-}
-
-.bv-anno-size {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  cursor: pointer;
-  padding: 0;
-}
-.bv-anno-size span {
-  display: block;
-  border-radius: 50%;
-  background: var(--ink-1, #e8f7ff);
-}
-.bv-anno-size.is-active {
-  border-color: var(--cyan, #00e5ff);
-  background: rgba(0, 229, 255, 0.18);
-}
-
-.bv-anno-dom-note-toggle {
-  display: none;
-  font-size: 11px;
-  padding: 0 7px;
-}
-.bv-anno-dom-note-toggle.is-visible {
-  display: inline-flex;
-}
-
-/* Pin Note Popover */
-.bv-pin-popover {
-  position: absolute;
-  z-index: 20;
-  display: none;
-  flex-direction: column;
-  gap: 6px;
-  width: 240px;
-  max-width: calc(100% - 20px);
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 229, 255, 0.45);
-  background: rgba(4, 16, 28, 0.96);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.72), 0 0 16px rgba(0, 229, 255, 0.22);
-}
-.bv-pin-popover.is-open {
-  display: flex;
-}
-.bv-pin-popover__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--cyan, #00e5ff);
-}
-.bv-pin-popover__input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 7px 9px;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 229, 255, 0.3);
-  background: rgba(0, 0, 0, 0.45);
-  color: var(--ink-1, #e8f7ff);
-  font-size: 12.5px;
-  outline: none;
-}
-.bv-pin-popover__input:focus {
-  border-color: var(--cyan, #00e5ff);
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.18);
-}
-.bv-pin-popover__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-@media (max-width: 768px) {
-  .bv-anno-dock {
-    bottom: 8px;
-    max-width: calc(100% - 12px);
-  }
-  .bv-anno-toolbar {
-    padding: 6px 7px;
-    gap: 4px;
-  }
-  .bv-anno-btn {
-    height: 26px;
-    min-width: 26px;
-    font-size: 11.5px;
-  }
-}
-/* --- /Annotation & Magic DOM (t5) --- */
-/* ===== /Browser Vision ===== */
 </style>
 <script src="/ai-think-sounds.js?v=20261121-think"></script>
 <script>window.agyState = window.agyState || { accounts: [], chosen: (function(){ try { return localStorage.getItem('agy_account') || ''; } catch (_) { return ''; } })(), quotas: {} };</script>
@@ -3535,7 +2663,6 @@ body::before {
     <button type="button" id="btn-memory" class="btn" style="display:none;">🧠 ความจำ</button>
     <button type="button" id="btn-config" class="btn" style="display:none;">🔑 คีย์</button>
     <button type="button" id="btn-sessions" class="btn desktop-only" title="ดูรายการแชททั้งหมดและสลับ Session">💬 แชท <span id="sessions-running-badge" style="display:none;margin-left:4px;padding:1px 5px;border-radius:10px;background:rgba(52,211,153,0.22);color:#34d399;font-size:10px;"></span></button>
-    <button type="button" id="btn-browser-vision" class="btn desktop-only bv-toggle-btn" title="เปิด/ปิดจอแยก Browser Vision สด">🌐 Browser Vision<span class="bv-btn-dot" id="bv-topbar-dot"></span></button>
     <button type="button" id="btn-new-chat" class="btn desktop-only" title="เปิดห้องแชทใหม่ (Session ใหม่)">➕ แชทใหม่</button>
     <a href="/quota" class="btn desktop-only" style="text-decoration:none;" title="เปิดหน้า AI Quota Monitor (Gemini / Claude / DeepSeek)">📊 โควตา</a>
     <button type="button" id="btn-clear" class="btn btn--danger desktop-only" title="ล้างข้อความในห้องแชทนี้">🧹 ล้าง</button>
@@ -3543,7 +2670,6 @@ body::before {
 
     <!-- Mobile-Only Action Controls -->
     <div class="mobile-controls">
-      <button type="button" id="btn-browser-vision-mobile" class="mob-icon-btn bv-toggle-btn" title="เปิด/ปิด Browser Vision">🌐<span class="bv-btn-dot" id="bv-topbar-dot-mobile"></span></button>
       <button type="button" id="btn-model-picker-mobile" class="mob-model-btn" title="เลือกโมเดล AI และดูโควตา">
         <span class="mob-model-btn__ico" id="mobile-trigger-model-icon"></span>
         <span class="mob-model-btn__pct" id="mobile-trigger-model-quota">AUTO</span>
@@ -3554,25 +2680,13 @@ body::before {
   </div>
 </header>
 
-<div class="core-shell" id="core-shell">
+<div class="core-shell">
   <span class="hud-corner hud-corner--tl"></span>
   <span class="hud-corner hud-corner--tr"></span>
   <span class="hud-corner hud-corner--bl"></span>
   <span class="hud-corner hud-corner--br"></span>
 
-  <!-- ===== Browser Vision Mobile Tabs ===== -->
-  <div class="bv-mobile-tabs" id="bv-mobile-tabs" role="tablist" aria-label="สลับหน้าจอแชทและเบราว์เซอร์">
-    <button type="button" class="bv-mobile-tab is-active" id="bv-tab-btn-chat" data-tab="chat" role="tab" aria-selected="true">
-      <span>💬 แชท</span>
-      <span class="bv-mobile-tab__badge" id="bv-mob-chat-badge"></span>
-    </button>
-    <button type="button" class="bv-mobile-tab" id="bv-tab-btn-browser" data-tab="browser" role="tab" aria-selected="false">
-      <span>🌐 เบราว์เซอร์</span>
-      <span class="bv-mobile-tab__badge" id="bv-mob-browser-badge"></span>
-    </button>
-  </div>
-
-  <main class="core-workspace" id="core-workspace" data-bv-tab="browser">
+  <main class="core-workspace">
     <!-- Left Column: Holographic Core Reactor -->
     <section class="core-reactor-pane" id="ai-status-hud">
       <div class="reactor-stage">
@@ -3702,10 +2816,6 @@ body::before {
           <button type="button" class="chat-rename-icon-btn" id="btn-rename-topic" title="แก้ไขชื่อหัวข้อแชท">✏️</button>
         </div>
         <div class="chat-header-bar__right">
-          <span class="bv-core-pill" id="bv-core-pill" title="สถานะ AI Core">
-            <span class="bv-core-pill__dot"></span>
-            <span id="bv-core-pill-text">⚡ CORE READY</span>
-          </span>
           <span class="chat-status-badge" id="chat-status-badge">
             <span class="chat-status-badge__dot"></span>
             <span id="chat-status-badge-text">พร้อมสนทนา</span>
@@ -3786,148 +2896,6 @@ body::before {
         </div>
       </div>
     </section>
-
-    <!-- ===== Browser Vision ===== -->
-    <div class="bv-resizer" id="bv-resizer" title="ลากเพื่อปรับสัดส่วน แชท / เบราว์เซอร์" role="separator" aria-orientation="vertical"></div>
-
-    <section class="browser-vision-pane" id="browser-vision-pane" aria-label="Browser Vision Co-Pilot">
-      <div class="bv-toolbar" id="bv-toolbar">
-        <div class="bv-toolbar__row">
-          <button type="button" class="bv-icon-btn" id="bv-btn-back" title="ย้อนกลับ (Back)">←</button>
-          <button type="button" class="bv-icon-btn" id="bv-btn-forward" title="ไปข้างหน้า (Forward)">→</button>
-          <button type="button" class="bv-icon-btn" id="bv-btn-reload" title="รีเฟรชหน้า (Reload)">↻</button>
-          <input type="text" class="bv-url-input" id="bv-url-input" placeholder="https://..." autocomplete="off" spellcheck="false" aria-label="URL เบราว์เซอร์">
-          <select class="bv-tab-select" id="bv-tab-select" title="เลือกแท็บเบราว์เซอร์" aria-label="แท็บเบราว์เซอร์">
-            <option value="0">แท็บ 1</option>
-          </select>
-          <button type="button" class="bv-icon-btn" id="bv-btn-new-tab" title="เปิดแท็บใหม่">+</button>
-          <span class="bv-pill" id="bv-viewport-badge" title="ขนาดหน้าจอ Viewport">1280×800</span>
-        </div>
-
-        <div class="bv-toolbar__row bv-toolbar__row--meta">
-          <div class="bv-toolbar__group">
-            <span class="bv-pill bv-pill--offline" id="bv-status-pill">⚪ ออฟไลน์</span>
-            <span class="bv-pill bv-pill--room" id="bv-room-badge" title="ห้องแชทที่ผูกกับเบราว์เซอร์นี้">ห้อง #1</span>
-          </div>
-
-          <div class="bv-toolbar__group" id="bv-toolbar-actions">
-            <div class="bv-popover-anchor">
-              <button type="button" class="bv-icon-btn" id="bv-auth-btn" title="จัดการ Shared Login (คุกกี้และเซสชันที่แชร์ร่วมกัน)">🔑 Shared Login</button>
-              <div class="bv-popover" id="bv-auth-popover" role="dialog" aria-label="Shared Login">
-                <div class="bv-popover__title">
-                  <span>🔑 Shared Login</span>
-                  <button type="button" class="bv-icon-btn" id="bv-auth-refresh" style="height:22px;min-width:22px;font-size:11px;" title="รีเฟรช">↻</button>
-                </div>
-                <div class="bv-popover__meta" id="bv-auth-meta">กำลังโหลด...</div>
-                <div class="bv-auth-domains" id="bv-auth-domains"></div>
-                <button type="button" class="bv-menu-item bv-menu-item--danger" id="bv-auth-clear-btn">🗑️ ล้าง Shared Login ทั้งหมด</button>
-              </div>
-            </div>
-
-            <button type="button" class="bv-icon-btn bv-icon-btn--pause" id="bv-pause-btn" title="หยุดรอให้ผู้ใช้ควบคุมหน้าเว็บเอง">⏸️ หยุดรอ</button>
-
-            <div class="bv-popover-anchor">
-              <button type="button" class="bv-icon-btn" id="bv-more-btn" title="เมนูเพิ่มเติม">⋯</button>
-              <div class="bv-popover" id="bv-more-popover" style="min-width:210px;">
-                <button type="button" class="bv-menu-item" id="bv-menu-reconnect">🔄 เชื่อมต่อสตรีมใหม่</button>
-                <button type="button" class="bv-menu-item bv-menu-item--danger" id="bv-menu-close-browser">🛑 ปิดเบราว์เซอร์ห้องนี้</button>
-              </div>
-            </div>
-
-            <button type="button" class="bv-icon-btn bv-icon-btn--close" id="bv-close-btn" title="ปิดจอแสดงผล (เบราว์เซอร์ยังทำงานต่อในพื้นหลัง)">✕</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="bv-pause-banner" id="bv-pause-banner" role="status">
-        <div class="bv-pause-banner__head">
-          <span class="bv-pause-banner__text">⏸️ หยุดรอผู้ใช้ — คุณสามารถคลิก/พิมพ์บนหน้าเว็บได้เต็มที่</span>
-          <span class="bv-pause-banner__kind" id="bv-pause-kind" style="display:none;"></span>
-        </div>
-        <div class="bv-pause-banner__actions">
-          <input type="text" class="bv-resume-note" id="bv-resume-note" placeholder="โน้ตสั้นๆ ถึง AI (ไม่บังคับ) เช่น ล็อกอินแล้ว...">
-          <button type="button" class="bv-resume-done-btn" id="bv-resume-done-btn">✅ ทำเสร็จแล้ว · ให้ AI ทำต่อ</button>
-        </div>
-      </div>
-
-      <div class="bv-stage-wrap" id="bv-stage-wrap">
-        <div class="bv-stage" id="bv-stage" tabindex="0" aria-label="หน้าจอเบราว์เซอร์สด (คลิกเพื่อควบคุม)">
-          <img id="bv-frame-img" class="bv-frame-img" alt="Browser Vision Stream" draggable="false">
-          <canvas id="bv-anno-canvas" class="bv-anno-canvas" aria-label="ชั้นวาดและชี้จุด"></canvas>
-          <div class="bv-overlay-layer" id="bv-overlay-layer">
-            <div class="bv-ai-cursor" id="bv-ai-cursor">
-              <div class="bv-ai-cursor__ripple"></div>
-              <div class="bv-ai-cursor__dot"></div>
-              <div class="bv-ai-cursor__tag">
-                <span>🤖 AI</span>
-                <span class="bv-ai-cursor__action" id="bv-ai-cursor-action"></span>
-              </div>
-            </div>
-          </div>
-          <div class="bv-placeholder" id="bv-placeholder">
-            <div class="bv-placeholder__icon">🌐</div>
-            <div class="bv-placeholder__title" id="bv-placeholder-title">Browser Vision Co-Pilot</div>
-            <div class="bv-placeholder__sub" id="bv-placeholder-sub">กำลังเตรียมเบราว์เซอร์สำหรับห้องแชทนี้...</div>
-            <button type="button" class="btn btn--primary" id="bv-placeholder-retry" style="display:none;">🔄 ลองเชื่อมต่อใหม่</button>
-          </div>
-        </div>
-
-        <!-- Pin Note Popover (t5) -->
-        <div class="bv-pin-popover" id="bv-pin-popover" role="dialog" aria-label="โน้ตสำหรับหมุด">
-          <div class="bv-pin-popover__head">
-            <span id="bv-pin-popover-title">💬 หมุด ①</span>
-            <button type="button" class="bv-anno-btn bv-anno-btn--danger" id="bv-pin-popover-del" style="height:22px;min-width:22px;font-size:11px;" title="ลบหมุดนี้">🗑️</button>
-          </div>
-          <input type="text" class="bv-pin-popover__input" id="bv-pin-popover-input" placeholder="พิมพ์โน้ตให้ AI เช่น ปุ่มนี้กดไม่ติด...">
-          <div class="bv-pin-popover__actions">
-            <button type="button" class="bv-anno-btn" id="bv-pin-popover-cancel">ปิด</button>
-            <button type="button" class="bv-anno-btn bv-anno-btn--send" id="bv-pin-popover-save">บันทึก</button>
-          </div>
-        </div>
-
-        <!-- Floating Annotation Dock (t5) -->
-        <div class="bv-anno-dock" id="bv-anno-dock">
-          <button type="button" class="bv-anno-pill" id="bv-anno-pill" title="เปิดแถบเครื่องมือชี้จุด / วาด / Magic DOM">
-            <span>🎨 ชี้จุด / วาด</span>
-            <span class="bv-anno-badge" id="bv-anno-badge">0</span>
-          </button>
-          <div class="bv-anno-toolbar" id="bv-anno-toolbar" role="toolbar" aria-label="เครื่องมือวาดและชี้จุด">
-            <div class="bv-anno-group">
-              <button type="button" class="bv-anno-btn is-active" data-tool="pen" title="ปากกา">✏️</button>
-              <button type="button" class="bv-anno-btn" data-tool="rect" title="สี่เหลี่ยม">⬜</button>
-              <button type="button" class="bv-anno-btn" data-tool="ellipse" title="วงกลม / วงรี">⭕</button>
-              <button type="button" class="bv-anno-btn" data-tool="pin" title="ปักหมุดพร้อมโน้ต (①②③)">💬</button>
-              <button type="button" class="bv-anno-btn bv-anno-btn--dom" data-tool="dom" title="Magic DOM — ชี้เลือก Element จริง">🎯</button>
-              <button type="button" class="bv-anno-btn bv-anno-dom-note-toggle" id="bv-anno-dom-note" title="ถามโน้ตหมุดเมื่อคลิกเลือก Magic DOM">💬+โน้ต</button>
-              <button type="button" class="bv-anno-btn" data-tool="eraser" title="ยางลบ (คลิกลบทีละชิ้น)">🧽</button>
-            </div>
-            <div class="bv-anno-sep"></div>
-            <div class="bv-anno-group" aria-label="สี">
-              <button type="button" class="bv-anno-color is-active" data-color="#ff4d4f" style="background:#ff4d4f;" title="สีแดง (#ff4d4f)"></button>
-              <button type="button" class="bv-anno-color" data-color="#f59e0b" style="background:#f59e0b;" title="สีส้ม (#f59e0b)"></button>
-              <button type="button" class="bv-anno-color" data-color="#00e5ff" style="background:#00e5ff;" title="สีฟ้า (#00e5ff)"></button>
-            </div>
-            <div class="bv-anno-group" aria-label="ความหนา">
-              <button type="button" class="bv-anno-size" data-width="2" title="เส้นบาง"><span style="width:4px;height:4px;"></span></button>
-              <button type="button" class="bv-anno-size is-active" data-width="4" title="เส้นกลาง"><span style="width:7px;height:7px;"></span></button>
-              <button type="button" class="bv-anno-size" data-width="7" title="เส้นหนา"><span style="width:11px;height:11px;"></span></button>
-            </div>
-            <div class="bv-anno-sep"></div>
-            <div class="bv-anno-group">
-              <button type="button" class="bv-anno-btn" id="bv-anno-undo" title="ย้อนกลับ (Ctrl+Z)">↩️</button>
-              <button type="button" class="bv-anno-btn bv-anno-btn--danger" id="bv-anno-clear" title="ล้างทั้งหมด">🗑️</button>
-            </div>
-            <div class="bv-anno-sep"></div>
-            <div class="bv-anno-group">
-              <button type="button" class="bv-anno-btn bv-anno-btn--send" id="bv-anno-send" title="จับภาพพร้อมคำอธิบายแนบลงช่องแชท (ไม่ส่งอัตโนมัติ)">📤 ส่งให้ AI ดู</button>
-              <button type="button" class="bv-anno-btn bv-anno-btn--send-now" id="bv-anno-send-now" title="จับภาพแนบและส่งให้ AI ทันที">📤 ส่งทันที</button>
-              <button type="button" class="bv-anno-btn" id="bv-anno-close" title="พับแถบเครื่องมือ (Esc)">✕</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-    <!-- ===== /Browser Vision ===== -->
   </main>
 </div>
 
@@ -6484,9 +5452,6 @@ body::before {
       ? selModel.options[selModel.selectedIndex].text
       : 'Gemini 3.8 Flash';
     if (modelTag) modelTag.textContent = curModel;
-    if (window.BrowserVision && typeof window.BrowserVision.onCoreThinking === 'function') {
-      window.BrowserVision.onCoreThinking(Boolean(thinking));
-    }
 
     if (thinking) {
       if (!wasThinking) {
@@ -6940,9 +5905,6 @@ body::before {
       sessionTag.textContent = `🧠 ${roomNum ? 'ห้อง #' + roomNum : 'SESSION: ACTIVE'}`;
       sessionTag.title = `ห้องแชท: ${title} (${sess.id})`;
     }
-    if (window.BrowserVision && typeof window.BrowserVision.onRoomMetaUpdated === 'function') {
-      window.BrowserVision.onRoomMetaUpdated(sess, roomNum ? `ห้อง #${roomNum}` : roomText);
-    }
   }
 
   async function promptRenameCurrentChat() {
@@ -7028,9 +5990,6 @@ body::before {
       if (data && data.ok && data.session) {
         currentSessionId = data.session.id;
         localStorage.setItem('core_active_session', currentSessionId);
-        if (window.BrowserVision && typeof window.BrowserVision.onSessionChanged === 'function') {
-          window.BrowserVision.onSessionChanged(currentSessionId, data.session);
-        }
         if (data.session.model && selModel) {
           applySelectedModel(data.session.model);
         }
@@ -7075,9 +6034,6 @@ body::before {
 
     currentSessionId = sid;
     localStorage.setItem('core_active_session', sid);
-    if (window.BrowserVision && typeof window.BrowserVision.onSessionChanged === 'function') {
-      window.BrowserVision.onSessionChanged(sid, null);
-    }
     if (modalSessions) modalSessions.classList.remove('is-open');
     renderQueue([]); // คิวแยกตามห้อง: ล้างของห้องเก่าออกก่อน แล้วโหลดคิวของห้องใหม่
 
@@ -7608,6 +6564,92 @@ body::before {
       if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
       return trimmed.split('|').map((c) => formatInline(c.trim()));
     };
+    const countIndent = (s) => {
+      let n = 0;
+      for (let k = 0; k < s.length; k++) {
+        if (s[k] === '\t') n += 4 - (n % 4);
+        else if (s[k] === ' ') n += 1;
+        else break;
+      }
+      return n;
+    };
+    const matchListItem = (s) => {
+      const m = s.match(/^([ \t]*)(?:([-*•])|(\d+)\.)\s+(.*)$/);
+      if (!m || /^([-*_])\1{2,}$/.test(s.trim())) return null;
+      return {
+        indent: countIndent(m[1]),
+        ordered: Boolean(m[3]),
+        num: m[3] ? Number(m[3]) : null,
+        content: m[4]
+      };
+    };
+    const parseList = () => {
+      const first = matchListItem(lines[i]);
+      if (!first) return '';
+      const listOrdered = first.ordered;
+      const listIndent = first.indent;
+      const startNum = first.num;
+      const items = [];
+
+      while (i < lines.length) {
+        let peek = i;
+        while (peek < lines.length && lines[peek].trim() === '') peek++;
+        if (peek >= lines.length) {
+          i = peek;
+          break;
+        }
+        const nextItem = matchListItem(lines[peek]);
+        if (!nextItem || nextItem.indent !== listIndent || nextItem.ordered !== listOrdered) {
+          break;
+        }
+        i = peek;
+        let itemHtml = formatInline(nextItem.content);
+        i++;
+
+        while (i < lines.length) {
+          let innerPeek = i;
+          while (innerPeek < lines.length && lines[innerPeek].trim() === '') innerPeek++;
+          if (innerPeek >= lines.length) break;
+
+          const lineAfterBlank = lines[innerPeek];
+          const trimmedAfter = lineAfterBlank.trim();
+          const subItem = matchListItem(lineAfterBlank);
+
+          if (subItem) {
+            if (subItem.indent > listIndent) {
+              i = innerPeek;
+              itemHtml += parseList();
+              continue;
+            }
+            break;
+          }
+
+          const lineIndent = countIndent(lineAfterBlank);
+          const isSpecialBlock =
+            /^@@CODEBLOCK_\d+@@$/.test(trimmedAfter) ||
+            /^(#{1,4})\s+/.test(trimmedAfter) ||
+            /^([-*_])\1{2,}$/.test(trimmedAfter) ||
+            trimmedAfter.startsWith('&gt;') ||
+            (trimmedAfter.includes('|') && innerPeek + 1 < lines.length && isTableSep(lines[innerPeek + 1]));
+
+          if (lineIndent > listIndent && !isSpecialBlock) {
+            i = innerPeek;
+            itemHtml += `<br>${formatInline(trimmedAfter)}`;
+            i++;
+            continue;
+          }
+          break;
+        }
+
+        items.push(`<li>${itemHtml}</li>`);
+      }
+
+      if (listOrdered) {
+        const startAttr = startNum !== null && startNum !== 1 ? ` start="${startNum}"` : '';
+        return `<ol class="md-ol"${startAttr}>${items.join('')}</ol>`;
+      }
+      return `<ul class="md-ul">${items.join('')}</ul>`;
+    };
 
     while (i < lines.length) {
       const line = lines[i];
@@ -7681,25 +6723,9 @@ body::before {
         continue;
       }
 
-      // Unordered list
-      if (/^\s*[-*•]\s+/.test(line)) {
-        const items = [];
-        while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) {
-          items.push(`<li>${formatInline(lines[i].replace(/^\s*[-*•]\s+/, ''))}</li>`);
-          i++;
-        }
-        out.push(`<ul class="md-ul">${items.join('')}</ul>`);
-        continue;
-      }
-
-      // Ordered list
-      if (/^\s*\d+\.\s+/.test(line)) {
-        const items = [];
-        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-          items.push(`<li>${formatInline(lines[i].replace(/^\s*\d+\.\s+/, ''))}</li>`);
-          i++;
-        }
-        out.push(`<ol class="md-ol">${items.join('')}</ol>`);
+      // Unordered / Ordered list (supports nested sub-lists, continuations, and preserved start numbers)
+      if (matchListItem(line)) {
+        out.push(parseList());
         continue;
       }
 
@@ -7712,8 +6738,7 @@ body::before {
         !/^(#{1,4})\s+/.test(lines[i].trim()) &&
         !/^([-*_])\1{2,}$/.test(lines[i].trim()) &&
         !lines[i].trim().startsWith('&gt;') &&
-        !/^\s*[-*•]\s+/.test(lines[i]) &&
-        !/^\s*\d+\.\s+/.test(lines[i]) &&
+        !matchListItem(lines[i]) &&
         !(lines[i].trim().includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1]))
       ) {
         pLines.push(formatInline(lines[i]));
@@ -7925,10 +6950,19 @@ body::before {
     const initTs = new Date(turnTime).toTimeString().slice(0, 8);
     thinkingCard._termState = {
       startedAt: turnTime,
+      stepStartedAt: turnTime,
+      lastServerSignalAt: turnTime,
+      lastHeartbeatReceivedAt: Date.now(),
       renderedTimelineCount: 0,
       renderedStepCount: 0,
+      stepsCount: 0,
       lastAction: '',
-      lastLiveThink: ''
+      lastLiveThink: '',
+      phaseLabel: '🧠 กำลังเชื่อมต่อและส่งคำสั่ง...',
+      pid: null,
+      alive: true,
+      rssMb: 0,
+      childProcs: []
     };
     thinkingCard.innerHTML = `
       <div class="msg__thinking-meta">
@@ -7944,14 +6978,28 @@ body::before {
       <div class="msg__thinking-shimmer-track">
         <div class="msg__thinking-shimmer-bar"></div>
       </div>
+      <div class="thinking-liveness-strip" id="active-thinking-liveness">
+        <div class="liveness-left">
+          <span class="liveness-badge" id="liveness-status-badge">🟢 ALIVE</span>
+          <span class="liveness-meta-chip" id="liveness-pid-text">กำลังตรวจสอบ PID...</span>
+          <span class="liveness-child-pill" id="liveness-child-pill" style="display:none;"></span>
+        </div>
+        <div class="liveness-right">
+          <span class="liveness-signal" id="liveness-signal-age">สัญญาณล่าสุด: 0s</span>
+          <span class="liveness-elapsed" id="liveness-total-elapsed">⏱ 0s</span>
+        </div>
+      </div>
       <div class="thinking-drawer is-open" id="active-thinking-drawer">
         <div class="thinking-terminal-inner">
           <div id="thinking-log-lines">
             <div class="term-line"><span class="term-ts">[${initTs}]</span><span class="term-tag--init">$ init --core="${escapeHtml(ident.short)}" --model="${escapeHtml(ident.detail)}"</span></div>
-            <div class="term-line"><span class="term-ts">[${initTs}]</span><span class="term-tag--status">[PROC] attaching live reasoning &amp; tool execution stream...</span></div>
+            <div class="term-line"><span class="term-ts">[${initTs}]</span><span class="term-tag--status">[PROC] attaching live reasoning &amp; /proc liveness watchdog...</span></div>
           </div>
           <div class="term-live-stream" id="thinking-detail-text"></div>
-          <div class="term-active-prompt" id="thinking-action-line">&gt; awaiting stream...<span class="term-cursor"></span></div>
+          <div class="term-pinned-footer" id="active-thinking-footer">
+            <div class="term-active-prompt" id="thinking-action-line">&gt; 🧠 กำลังเชื่อมต่อและส่งคำสั่ง...<span class="term-cursor"></span></div>
+            <span class="term-step-timer" id="thinking-step-timer">ขั้นที่ 1 · ⏱ 0s</span>
+          </div>
         </div>
       </div>
     `;
@@ -7972,6 +7020,7 @@ body::before {
           if (open) drawer.scrollTop = drawer.scrollHeight;
         });
       }
+      startThinkingLivenessTicker(thinkingCard);
     }
 
     currentTurnJobId = jobId;
@@ -8011,6 +7060,9 @@ body::before {
     } else if (kind === 'think') {
       bodySpan.className = 'term-tag--think';
       bodySpan.textContent = `[THINK] ${text}`;
+    } else if (kind === 'probe') {
+      bodySpan.className = 'term-tag--probe';
+      bodySpan.textContent = `[💓 WATCHDOG] ${text}`;
     } else {
       bodySpan.className = 'term-tag--status';
       bodySpan.textContent = `[PROC] ${text}`;
@@ -8023,18 +7075,127 @@ body::before {
     }
   }
 
+  function formatCompactSec(sec) {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}m ${r}s`;
+  }
+
+  function renderThinkingLivenessUI(activeBar, triggerBeat = false) {
+    if (!activeBar || activeBar.classList.contains('is-done')) return;
+    const state = activeBar._termState;
+    if (!state) return;
+
+    const now = Date.now();
+    const badgeEl = activeBar.querySelector('#liveness-status-badge');
+    const pidEl = activeBar.querySelector('#liveness-pid-text');
+    const childEl = activeBar.querySelector('#liveness-child-pill');
+    const sigEl = activeBar.querySelector('#liveness-signal-age');
+    const totalEl = activeBar.querySelector('#liveness-total-elapsed');
+    const stepTimerEl = activeBar.querySelector('#thinking-step-timer');
+    const actionLine = activeBar.querySelector('#thinking-action-line');
+
+    const totalSec = Math.max(0, Math.floor((now - (state.startedAt || now)) / 1000));
+    const stepSec = Math.max(0, Math.floor((now - (state.stepStartedAt || state.startedAt || now)) / 1000));
+    const signalAgeSec = Math.max(0, Math.floor((now - (state.lastServerSignalAt || state.startedAt || now)) / 1000));
+    const heartbeatGapSec = Math.max(0, Math.floor((now - (state.lastHeartbeatReceivedAt || now)) / 1000));
+
+    if (badgeEl) {
+      if (state.alive === false) {
+        badgeEl.className = 'liveness-badge is-lost';
+        badgeEl.textContent = '🔴 PROCESS LOST';
+      } else if (heartbeatGapSec >= 12) {
+        badgeEl.className = 'liveness-badge is-wait';
+        badgeEl.textContent = `🟡 รอสัญญาณเซิร์ฟเวอร์ (${heartbeatGapSec}s)`;
+      } else if (signalAgeSec >= 20) {
+        badgeEl.className = 'liveness-badge is-wait';
+        badgeEl.textContent = '🟢 ALIVE · งานรอนาน';
+      } else {
+        badgeEl.className = 'liveness-badge';
+        badgeEl.textContent = '🟢 ALIVE';
+      }
+      if (triggerBeat) {
+        badgeEl.classList.add('is-beat');
+        setTimeout(() => { try { badgeEl.classList.remove('is-beat'); } catch (_) {} }, 220);
+      }
+    }
+
+    if (pidEl) {
+      if (state.pid) {
+        pidEl.textContent = `PID ${state.pid}${state.rssMb ? ` · ${state.rssMb}MB` : ''}`;
+      } else {
+        pidEl.textContent = 'Engine Active';
+      }
+    }
+
+    if (childEl) {
+      if (Array.isArray(state.childProcs) && state.childProcs.length > 0) {
+        childEl.style.display = 'inline-flex';
+        childEl.textContent = `⚙️ child: ${state.childProcs.join(', ')}`;
+        childEl.title = `โพรเซสลูกที่กำลังรันอยู่จริงบน Linux: ${state.childProcs.join(', ')}`;
+      } else {
+        childEl.style.display = 'none';
+        childEl.textContent = '';
+      }
+    }
+
+    if (sigEl) {
+      sigEl.textContent = `ขยับล่าสุด: ${formatCompactSec(signalAgeSec)} ที่แล้ว`;
+      sigEl.classList.toggle('is-quiet', signalAgeSec >= 15);
+    }
+
+    if (totalEl) {
+      totalEl.textContent = `⏱ รวม ${formatCompactSec(totalSec)}`;
+    }
+
+    if (stepTimerEl) {
+      const stepNum = Math.max(1, Number(state.stepsCount || 0) + 1);
+      stepTimerEl.textContent = `ขั้นที่ ${stepNum} · ⏱ ${formatCompactSec(stepSec)}`;
+    }
+
+    if (actionLine && state.phaseLabel) {
+      actionLine.innerHTML = `&gt; ${escapeHtml(state.phaseLabel)}<span class="term-cursor"></span>`;
+    }
+  }
+
+  function startThinkingLivenessTicker(thinkingCard) {
+    if (!thinkingCard) return;
+    if (thinkingCard._livenessTicker) clearInterval(thinkingCard._livenessTicker);
+    thinkingCard._livenessTicker = setInterval(() => {
+      if (!document.body.contains(thinkingCard) || thinkingCard.classList.contains('is-done')) {
+        clearInterval(thinkingCard._livenessTicker);
+        thinkingCard._livenessTicker = null;
+        return;
+      }
+      renderThinkingLivenessUI(thinkingCard, false);
+    }, 1000);
+  }
+
   function updateThinkingBar(liveThought) {
     if (!liveThought || typeof liveThought !== 'object') return;
     const activeBar = document.getElementById('active-thinking-bar');
     if (!activeBar) return;
 
+    const now = Date.now();
     const state = activeBar._termState || (activeBar._termState = {
-      startedAt: Date.now(),
+      startedAt: now,
+      stepStartedAt: now,
+      lastServerSignalAt: now,
+      lastHeartbeatReceivedAt: now,
       renderedTimelineCount: 0,
       renderedStepCount: 0,
+      stepsCount: 0,
       lastAction: '',
-      lastLiveThink: ''
+      lastLiveThink: '',
+      phaseLabel: '🧠 กำลังคิดวิเคราะห์คำสั่ง...',
+      pid: null,
+      alive: true,
+      rssMb: 0,
+      childProcs: []
     });
+    state.lastHeartbeatReceivedAt = now;
 
     const logEl = document.getElementById('thinking-log-lines');
     const actionLine = document.getElementById('thinking-action-line');
@@ -8047,6 +7208,13 @@ body::before {
     const stepsCount = Number(liveThought.stepsCount || steps.length || 0);
     const action = String(liveThought.currentAction || '').trim();
     const thinking = String(liveThought.thinking || '').trim();
+    const lv = (liveThought.liveness && typeof liveThought.liveness === 'object') ? liveThought.liveness : null;
+
+    if (stepsCount !== state.stepsCount) {
+      state.stepsCount = stepsCount;
+      state.stepStartedAt = now;
+      state.lastServerSignalAt = now;
+    }
 
     if (timeline.length > 0) {
       if (timeline.length < state.renderedTimelineCount) {
@@ -8057,25 +7225,46 @@ body::before {
         if (!ev || !ev.text) continue;
         appendTerminalLine(logEl, ev.kind || 'status', ev.text, ev.ts);
         activeBar.dataset.hasRealThought = '1';
+        if (ev.kind !== 'probe') state.lastServerSignalAt = now;
       }
       state.renderedTimelineCount = timeline.length;
     } else if (steps.length > state.renderedStepCount) {
       for (let i = state.renderedStepCount; i < steps.length; i++) {
-        appendTerminalLine(logEl, 'tool', steps[i], Date.now());
+        appendTerminalLine(logEl, 'tool', steps[i], now);
         activeBar.dataset.hasRealThought = '1';
       }
       state.renderedStepCount = steps.length;
+      state.lastServerSignalAt = now;
     }
 
     if (action && action !== state.lastAction) {
       state.lastAction = action;
+      state.stepStartedAt = now;
+      state.lastServerSignalAt = now;
       if (labelText) labelText.textContent = `root@homelab:~$ ${action.slice(0, 58)}`;
-      if (actionLine) {
-        actionLine.innerHTML = `&gt; ${escapeHtml(action)}<span class="term-cursor"></span>`;
+      if (!lv || !lv.phaseLabel) {
+        state.phaseLabel = action;
       }
       if (!timeline.length && !steps.length) {
-        appendTerminalLine(logEl, 'status', action, Date.now());
+        appendTerminalLine(logEl, 'status', action, now);
       }
+    }
+
+    if (lv) {
+      if (lv.pid) state.pid = lv.pid;
+      if (typeof lv.alive === 'boolean') state.alive = lv.alive;
+      if (lv.rssMb) state.rssMb = lv.rssMb;
+      state.childProcs = Array.isArray(lv.childProcs) ? lv.childProcs : [];
+      if (lv.phaseLabel) state.phaseLabel = lv.phaseLabel;
+      if (typeof lv.lastSignalAt === 'number' && lv.lastSignalAt > 0) {
+        state.lastServerSignalAt = lv.lastSignalAt;
+      }
+      if (typeof lv.stepElapsedSec === 'number' && lv.stepElapsedSec >= 0) {
+        state.stepStartedAt = now - (lv.stepElapsedSec * 1000);
+      }
+      activeBar.dataset.hasRealThought = '1';
+    } else if (action) {
+      state.phaseLabel = action;
     }
 
     // Show live streaming reasoning tail (updates smoothly even mid-token)
@@ -8085,6 +7274,7 @@ body::before {
         const tail = thinking.length > 900 ? '...\n' + thinking.slice(-900) : thinking;
         if (tail !== state.lastLiveThink) {
           state.lastLiveThink = tail;
+          state.lastServerSignalAt = now;
           detailText.textContent = `[LIVE THINK] ${tail}`;
           activeBar.dataset.hasRealThought = '1';
         }
@@ -8099,6 +7289,8 @@ body::before {
       activeBar.dataset.stepsCount = String(stepsCount);
     }
 
+    renderThinkingLivenessUI(activeBar, true);
+
     if (drawer && drawer.classList.contains('is-open')) {
       drawer.scrollTop = drawer.scrollHeight;
     }
@@ -8107,6 +7299,11 @@ body::before {
   function finalizeThinkingBar() {
     const activeBar = document.getElementById('active-thinking-bar');
     if (!activeBar) return;
+
+    if (activeBar._livenessTicker) {
+      clearInterval(activeBar._livenessTicker);
+      activeBar._livenessTicker = null;
+    }
 
     const state = activeBar._termState || { startedAt: Date.now() };
     const elapsedSec = Math.max(0.1, (Date.now() - state.startedAt) / 1000).toFixed(1);
@@ -8140,11 +7337,26 @@ body::before {
     if (btnTog) btnTog.textContent = '▸ ดู Terminal ▾';
 
     // Detach active singleton IDs so future turns never collide while toggle closure keeps working
-    ['active-thinking-bar', 'active-thinking-label-text', 'thinking-log-lines', 'thinking-action-line', 'thinking-detail-text', 'btn-thought-drawer-toggle', 'active-thinking-drawer']
-      .forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.removeAttribute('id');
-      });
+    [
+      'active-thinking-bar',
+      'active-thinking-label-text',
+      'active-thinking-liveness',
+      'liveness-status-badge',
+      'liveness-pid-text',
+      'liveness-child-pill',
+      'liveness-signal-age',
+      'liveness-total-elapsed',
+      'thinking-log-lines',
+      'active-thinking-footer',
+      'thinking-action-line',
+      'thinking-step-timer',
+      'thinking-detail-text',
+      'btn-thought-drawer-toggle',
+      'active-thinking-drawer'
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.removeAttribute('id');
+    });
   }
 
   function startBackgroundJobPolling() {
@@ -8496,7 +7708,7 @@ body::before {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: activeStreamAbortController.signal,
-        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession, browserVision: window.BrowserVision?.isOpenFor(currentSessionId) === true })
+        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -9416,2255 +8628,7 @@ body::before {
     });
   }
 
-  window.__geminiChatBridge = {
-    getSessionId: () => currentSessionId,
-    getSessionMeta: () => currentSessionMeta,
-    isRunning: () => Boolean(isRunning),
-    sendPrompt: (text) => sendPrompt(text),
-    uploadImageFiles: (fileList) => uploadImageFiles(fileList)
-  };
-
 })();
-</script>
-<script>
-/* ===== Browser Vision ===== */
-(function () {
-  'use strict';
-
-  const LS_SPLIT_KEY = 'bv_split';
-  const LS_ROOMS_KEY = 'bv_open_rooms';
-  const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000];
-  const SENSITIVE_LABELS = {
-    password: '🔐 หน้าล็อกอิน (รหัสผ่าน)',
-    login: '🔐 หน้าล็อกอิน',
-    otp: '🔢 รหัส OTP / 2FA',
-    '2fa': '🔢 รหัส OTP / 2FA',
-    captcha: '🛡️ CAPTCHA / ยืนยันตัวตน',
-    payment: '💳 หน้าชำระเงิน / Checkout',
-    checkout: '💳 หน้าชำระเงิน / Checkout',
-    user: '✋ ผู้ใช้สั่งหยุดรอ'
-  };
-
-  // DOM references
-  const coreShell = document.getElementById('core-shell') || document.querySelector('.core-shell');
-  const workspace = document.getElementById('core-workspace') || document.querySelector('.core-workspace');
-  const resizer = document.getElementById('bv-resizer');
-  const pane = document.getElementById('browser-vision-pane');
-  const btnToggleDesktop = document.getElementById('btn-browser-vision');
-  const btnToggleMobile = document.getElementById('btn-browser-vision-mobile');
-  const corePill = document.getElementById('bv-core-pill');
-  const corePillText = document.getElementById('bv-core-pill-text');
-
-  // Mobile tabs
-  const mobTabChat = document.getElementById('bv-tab-btn-chat');
-  const mobTabBrowser = document.getElementById('bv-tab-btn-browser');
-  const mobChatBadge = document.getElementById('bv-mob-chat-badge');
-  const mobBrowserBadge = document.getElementById('bv-mob-browser-badge');
-
-  // Toolbar controls
-  const btnBack = document.getElementById('bv-btn-back');
-  const btnForward = document.getElementById('bv-btn-forward');
-  const btnReload = document.getElementById('bv-btn-reload');
-  const urlInput = document.getElementById('bv-url-input');
-  const tabSelect = document.getElementById('bv-tab-select');
-  const btnNewTab = document.getElementById('bv-btn-new-tab');
-  const viewportBadge = document.getElementById('bv-viewport-badge');
-  const statusPill = document.getElementById('bv-status-pill');
-  const roomBadge = document.getElementById('bv-room-badge');
-  const authBtn = document.getElementById('bv-auth-btn');
-  const authPopover = document.getElementById('bv-auth-popover');
-  const authRefreshBtn = document.getElementById('bv-auth-refresh');
-  const authMeta = document.getElementById('bv-auth-meta');
-  const authDomainsEl = document.getElementById('bv-auth-domains');
-  const authClearBtn = document.getElementById('bv-auth-clear-btn');
-  const pauseBtn = document.getElementById('bv-pause-btn');
-  const moreBtn = document.getElementById('bv-more-btn');
-  const morePopover = document.getElementById('bv-more-popover');
-  const menuReconnect = document.getElementById('bv-menu-reconnect');
-  const menuCloseBrowser = document.getElementById('bv-menu-close-browser');
-  const closeBtn = document.getElementById('bv-close-btn');
-
-  // Pause banner
-  const pauseBanner = document.getElementById('bv-pause-banner');
-  const pauseKindEl = document.getElementById('bv-pause-kind');
-  const resumeNoteInput = document.getElementById('bv-resume-note');
-  const resumeDoneBtn = document.getElementById('bv-resume-done-btn');
-
-  // Stage & overlay
-  const stageEl = document.getElementById('bv-stage');
-  const frameImg = document.getElementById('bv-frame-img');
-  const placeholderEl = document.getElementById('bv-placeholder');
-  const placeholderTitle = document.getElementById('bv-placeholder-title');
-  const placeholderSub = document.getElementById('bv-placeholder-sub');
-  const placeholderRetry = document.getElementById('bv-placeholder-retry');
-  const aiCursorEl = document.getElementById('bv-ai-cursor');
-  const aiCursorActionEl = document.getElementById('bv-ai-cursor-action');
-
-  if (!workspace || !pane || !stageEl) return;
-
-  // State
-  let activeChatId = (window.__geminiChatBridge && window.__geminiChatBridge.getSessionId()) || localStorage.getItem('core_active_session') || '';
-  let isOpen = false;
-  let activeMobileTab = 'browser';
-  let ws = null;
-  let wsConnected = false;
-  let wsConnecting = false;
-  let connectSeq = 0;
-  let reconnectAttempt = 0;
-  let reconnectTimer = null;
-  let paused = false;
-  let pauseReason = '';
-  let aiBusy = false;
-  let coreThinking = false;
-  let viewport = { width: 1280, height: 800 };
-  let lastFrame = null;
-  let pendingFrame = null;
-  let rafScheduled = false;
-  let cursorHideTimer = null;
-  let annotationActive = false;
-  let lastMouseMoveSent = 0;
-
-  const messageListeners = new Map(); // type -> Set<cb>
-  const annotationToggleListeners = new Set();
-  const sessionChangeListeners = new Set();
-
-  // ── Storage helpers ────────────────────────────────────────────────────────
-  function readOpenRooms() {
-    try {
-      const raw = localStorage.getItem(LS_ROOMS_KEY);
-      const parsed = raw ? JSON.parse(raw) : {};
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (_) {
-      return {};
-    }
-  }
-
-  function writeOpenRoom(chatId, open) {
-    if (!chatId) return;
-    try {
-      const map = readOpenRooms();
-      if (open) map[chatId] = true;
-      else delete map[chatId];
-      localStorage.setItem(LS_ROOMS_KEY, JSON.stringify(map));
-    } catch (_) {}
-  }
-
-  function isOpenFor(chatId) {
-    const id = String(chatId || activeChatId || '').trim();
-    if (!id) return false;
-    if (id === activeChatId) return isOpen;
-    return Boolean(readOpenRooms()[id]);
-  }
-
-  function applySplitPct(pct) {
-    const clamped = Math.max(24, Math.min(72, Number(pct) || 42));
-    workspace.style.setProperty('--bv-chat-pct', clamped.toFixed(2) + '%');
-    return clamped;
-  }
-
-  function loadSavedSplit() {
-    try {
-      const saved = parseFloat(localStorage.getItem(LS_SPLIT_KEY));
-      if (!isNaN(saved) && saved >= 24 && saved <= 72) {
-        applySplitPct(saved);
-        return;
-      }
-    } catch (_) {}
-    applySplitPct(42);
-  }
-
-  function getActiveChatId() {
-    const bridgeId = window.__geminiChatBridge && window.__geminiChatBridge.getSessionId();
-    if (bridgeId) activeChatId = bridgeId;
-    if (!activeChatId) {
-      activeChatId = localStorage.getItem('core_active_session') || '';
-    }
-    return activeChatId;
-  }
-
-  // ── UI Updates ─────────────────────────────────────────────────────────────
-  function updateStatusUI() {
-    // Toggle buttons
-    [btnToggleDesktop, btnToggleMobile].forEach((btn) => {
-      if (!btn) return;
-      btn.classList.toggle('is-active', isOpen);
-      btn.classList.toggle('is-paused', isOpen && paused);
-      btn.classList.toggle('is-ai-busy', isOpen && !paused && (aiBusy || coreThinking));
-    });
-
-    // Status pill
-    if (statusPill) {
-      statusPill.className = 'bv-pill';
-      if (paused) {
-        statusPill.classList.add('bv-pill--paused');
-        statusPill.textContent = '⏸️ หยุดรอผู้ใช้';
-      } else if (aiBusy) {
-        statusPill.classList.add('bv-pill--ai');
-        statusPill.textContent = '🤖 AI กำลังทำงาน';
-      } else if (wsConnected) {
-        statusPill.classList.add('bv-pill--live');
-        statusPill.textContent = '🟢 Live';
-      } else if (wsConnecting) {
-        statusPill.classList.add('bv-pill--ai');
-        statusPill.textContent = '🔌 กำลังเชื่อมต่อ...';
-      } else {
-        statusPill.classList.add('bv-pill--offline');
-        statusPill.textContent = '⚪ ออฟไลน์';
-      }
-    }
-
-    // Pause button & banner
-    if (pauseBtn) {
-      if (paused) {
-        pauseBtn.textContent = '▶️ ทำต่อ';
-        pauseBtn.className = 'bv-icon-btn bv-icon-btn--resume';
-        pauseBtn.title = 'ให้ AI กลับมาควบคุมเบราว์เซอร์ต่อ';
-      } else {
-        pauseBtn.textContent = '⏸️ หยุดรอ';
-        pauseBtn.className = 'bv-icon-btn bv-icon-btn--pause';
-        pauseBtn.title = 'หยุดรอให้ผู้ใช้ควบคุมหน้าเว็บเอง';
-      }
-    }
-
-    if (pauseBanner) {
-      pauseBanner.classList.toggle('is-visible', Boolean(paused));
-      if (pauseKindEl) {
-        const label = pauseReason ? (SENSITIVE_LABELS[String(pauseReason).toLowerCase()] || String(pauseReason)) : '';
-        if (label) {
-          pauseKindEl.textContent = label;
-          pauseKindEl.style.display = 'inline-flex';
-        } else {
-          pauseKindEl.style.display = 'none';
-        }
-      }
-    }
-
-    // Mobile tab badges
-    if (mobBrowserBadge) {
-      mobBrowserBadge.className = 'bv-mobile-tab__badge';
-      if (paused) {
-        mobBrowserBadge.textContent = '⏸️ หยุดรอ';
-        mobBrowserBadge.classList.add('is-visible', 'is-paused');
-      } else if (aiBusy) {
-        mobBrowserBadge.textContent = '🤖 AI';
-        mobBrowserBadge.classList.add('is-visible');
-      } else {
-        mobBrowserBadge.textContent = '';
-      }
-    }
-    if (mobChatBadge) {
-      mobChatBadge.className = 'bv-mobile-tab__badge';
-      if (coreThinking) {
-        mobChatBadge.textContent = '🔥';
-        mobChatBadge.classList.add('is-visible');
-      } else {
-        mobChatBadge.textContent = '';
-      }
-    }
-  }
-
-  function setPlaceholder(visible, title, sub, showRetry) {
-    if (!placeholderEl) return;
-    placeholderEl.classList.toggle('is-hidden', !visible);
-    if (title !== undefined && placeholderTitle) placeholderTitle.textContent = title;
-    if (sub !== undefined && placeholderSub) placeholderSub.textContent = sub;
-    if (placeholderRetry) placeholderRetry.style.display = showRetry ? 'inline-flex' : 'none';
-  }
-
-  function updateViewportBadge() {
-    if (viewportBadge) {
-      viewportBadge.textContent = `${viewport.width}×${viewport.height}`;
-    }
-  }
-
-  function updateTabsUI(tabs, activeIndex) {
-    if (!tabSelect || !Array.isArray(tabs) || tabs.length === 0) return;
-    const prevVal = tabSelect.value;
-    tabSelect.innerHTML = '';
-    tabs.forEach((t, idx) => {
-      const opt = document.createElement('option');
-      const tabIdx = typeof t.index === 'number' ? t.index : idx;
-      opt.value = String(tabIdx);
-      const rawTitle = (t.title || t.url || `แท็บ ${tabIdx + 1}`).trim();
-      opt.textContent = `${tabIdx + 1}. ${rawTitle.length > 28 ? rawTitle.slice(0, 28) + '…' : rawTitle}`;
-      if (t.active || tabIdx === activeIndex) opt.selected = true;
-      tabSelect.appendChild(opt);
-    });
-    if (activeIndex !== undefined && activeIndex !== null) {
-      tabSelect.value = String(activeIndex);
-    } else if (prevVal && [...tabSelect.options].some((o) => o.value === prevVal)) {
-      tabSelect.value = prevVal;
-    }
-  }
-
-  function updateUrlUI(url) {
-    if (!urlInput || typeof url !== 'string') return;
-    if (document.activeElement !== urlInput) {
-      urlInput.value = url;
-    }
-  }
-
-  function setMobileTab(tab) {
-    activeMobileTab = tab === 'chat' ? 'chat' : 'browser';
-    workspace.setAttribute('data-bv-tab', activeMobileTab);
-    if (mobTabChat) {
-      const active = activeMobileTab === 'chat';
-      mobTabChat.classList.toggle('is-active', active);
-      mobTabChat.setAttribute('aria-selected', active ? 'true' : 'false');
-    }
-    if (mobTabBrowser) {
-      const active = activeMobileTab === 'browser';
-      mobTabBrowser.classList.toggle('is-active', active);
-      mobTabBrowser.setAttribute('aria-selected', active ? 'true' : 'false');
-    }
-  }
-
-  // ── Coordinate Mapping (contain rect <-> viewport) ─────────────────────────
-  function getRenderedImageRect() {
-    const box = frameImg.getBoundingClientRect();
-    const boxW = box.width;
-    const boxH = box.height;
-    if (boxW <= 0 || boxH <= 0) {
-      return { left: box.left, top: box.top, width: 0, height: 0 };
-    }
-    const natW = frameImg.naturalWidth || viewport.width || 1280;
-    const natH = frameImg.naturalHeight || viewport.height || 800;
-    const imgRatio = natW / natH;
-    const boxRatio = boxW / boxH;
-
-    let renderW, renderH, offsetX, offsetY;
-    if (boxRatio > imgRatio) {
-      renderH = boxH;
-      renderW = boxH * imgRatio;
-      offsetX = (boxW - renderW) / 2;
-      offsetY = 0;
-    } else {
-      renderW = boxW;
-      renderH = boxW / imgRatio;
-      offsetX = 0;
-      offsetY = (boxH - renderH) / 2;
-    }
-    return {
-      left: box.left + offsetX,
-      top: box.top + offsetY,
-      width: renderW,
-      height: renderH
-    };
-  }
-
-  function mapPoint(clientX, clientY) {
-    const rect = getRenderedImageRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return { x: 0, y: 0, inside: false, normX: 0, normY: 0, rect };
-    }
-    const normX = (clientX - rect.left) / rect.width;
-    const normY = (clientY - rect.top) / rect.height;
-    const inside = normX >= 0 && normX <= 1 && normY >= 0 && normY <= 1;
-    const clampedX = Math.max(0, Math.min(1, normX));
-    const clampedY = Math.max(0, Math.min(1, normY));
-    return {
-      x: Math.round(clampedX * viewport.width),
-      y: Math.round(clampedY * viewport.height),
-      inside,
-      normX: clampedX,
-      normY: clampedY,
-      rect
-    };
-  }
-
-  function viewportToStage(vx, vy) {
-    const imgRect = getRenderedImageRect();
-    const stageRect = stageEl.getBoundingClientRect();
-    if (imgRect.width <= 0 || imgRect.height <= 0) return null;
-    const sx = (imgRect.left - stageRect.left) + (vx / Math.max(1, viewport.width)) * imgRect.width;
-    const sy = (imgRect.top - stageRect.top) + (vy / Math.max(1, viewport.height)) * imgRect.height;
-    return { x: sx, y: sy };
-  }
-
-  // ── AI Cursor Overlay ──────────────────────────────────────────────────────
-  function showAiCursor(vx, vy, actionLabel) {
-    if (!aiCursorEl || typeof vx !== 'number' || typeof vy !== 'number') return;
-    const pt = viewportToStage(vx, vy);
-    if (!pt) return;
-    aiCursorEl.style.transform = `translate(${Math.round(pt.x)}px, ${Math.round(pt.y)}px)`;
-    if (aiCursorActionEl) {
-      aiCursorActionEl.textContent = actionLabel ? String(actionLabel) : '';
-    }
-    aiCursorEl.classList.add('is-visible');
-    aiCursorEl.classList.remove('is-rippling');
-    void aiCursorEl.offsetWidth; // restart ripple animation
-    aiCursorEl.classList.add('is-rippling');
-
-    clearTimeout(cursorHideTimer);
-    cursorHideTimer = setTimeout(() => {
-      aiCursorEl.classList.remove('is-visible', 'is-rippling');
-    }, 1500);
-  }
-
-  // ── Frame Rendering (rAF, drop old frames, keep only latest) ───────────────
-  function flushFrame() {
-    rafScheduled = false;
-    const frame = pendingFrame;
-    pendingFrame = null;
-    if (!frame || !frame.data) return;
-
-    const mime = frame.mime || 'image/jpeg';
-    frameImg.src = frame.data.startsWith('data:') ? frame.data : `data:${mime};base64,${frame.data}`;
-    if (!frameImg.classList.contains('has-frame')) {
-      frameImg.classList.add('has-frame');
-      setPlaceholder(false);
-    }
-  }
-
-  function scheduleFrame(msg) {
-    const meta = msg.meta || {};
-    const w = Number(meta.deviceWidth || msg.width || 0);
-    const h = Number(meta.deviceHeight || msg.height || 0);
-    if (w > 0 && h > 0 && (w !== viewport.width || h !== viewport.height)) {
-      viewport = { width: w, height: h };
-      updateViewportBadge();
-    }
-    lastFrame = {
-      data: msg.data,
-      mime: msg.mime || 'image/jpeg',
-      meta,
-      width: viewport.width,
-      height: viewport.height,
-      ts: Date.now()
-    };
-    pendingFrame = lastFrame;
-    if (!rafScheduled) {
-      rafScheduled = true;
-      requestAnimationFrame(flushFrame);
-    }
-  }
-
-  // ── Pub/Sub for t5 hooks ───────────────────────────────────────────────────
-  function emitMessage(type, msg) {
-    const set = messageListeners.get(type);
-    if (set) {
-      set.forEach((cb) => { try { cb(msg); } catch (_) {} });
-    }
-    const allSet = messageListeners.get('*');
-    if (allSet) {
-      allSet.forEach((cb) => { try { cb(msg); } catch (_) {} });
-    }
-  }
-
-  function onMessage(type, cb) {
-    if (typeof cb !== 'function') return () => {};
-    const key = String(type || '*');
-    if (!messageListeners.has(key)) messageListeners.set(key, new Set());
-    messageListeners.get(key).add(cb);
-    return () => {
-      const s = messageListeners.get(key);
-      if (s) s.delete(cb);
-    };
-  }
-
-  function onAnnotationToggle(cb) {
-    if (typeof cb !== 'function') return () => {};
-    annotationToggleListeners.add(cb);
-    return () => annotationToggleListeners.delete(cb);
-  }
-
-  function onSessionChange(cb) {
-    if (typeof cb !== 'function') return () => {};
-    sessionChangeListeners.add(cb);
-    return () => sessionChangeListeners.delete(cb);
-  }
-
-  function setAnnotationActive(active) {
-    const next = Boolean(active);
-    if (annotationActive === next) return;
-    annotationActive = next;
-    stageEl.classList.toggle('is-annotating', annotationActive);
-    annotationToggleListeners.forEach((cb) => {
-      try { cb(annotationActive); } catch (_) {}
-    });
-  }
-
-  // ── WebSocket Connection & Reconnect Backoff ───────────────────────────────
-  function clearReconnectTimer() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-  }
-
-  function closeSocketOnly() {
-    connectSeq++;
-    clearReconnectTimer();
-    wsConnecting = false;
-    wsConnected = false;
-    if (ws) {
-      const old = ws;
-      ws = null;
-      old.onopen = old.onmessage = old.onerror = old.onclose = null;
-      try { old.close(1000, 'client-close'); } catch (_) {}
-    }
-    updateStatusUI();
-  }
-
-  function send(msg) {
-    if (!ws || ws.readyState !== WebSocket.OPEN || !msg || typeof msg !== 'object') {
-      return false;
-    }
-    try {
-      ws.send(JSON.stringify(msg));
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function handleServerMessage(msg) {
-    if (!msg || typeof msg !== 'object') return;
-    const t = msg.type;
-
-    if (t === 'frame') {
-      scheduleFrame(msg);
-    } else if (t === 'hello') {
-      if (msg.viewport && msg.viewport.width && msg.viewport.height) {
-        viewport = { width: Number(msg.viewport.width), height: Number(msg.viewport.height) };
-        updateViewportBadge();
-      }
-      if (typeof msg.url === 'string') updateUrlUI(msg.url);
-      if (Array.isArray(msg.tabs)) updateTabsUI(msg.tabs, msg.activeTab);
-      if (typeof msg.paused === 'boolean') {
-        paused = msg.paused;
-        pauseReason = msg.pauseReason || msg.reason || '';
-      }
-      if (typeof msg.aiBusy === 'boolean') aiBusy = msg.aiBusy;
-      updateStatusUI();
-    } else if (t === 'tabs') {
-      if (Array.isArray(msg.tabs)) updateTabsUI(msg.tabs, msg.activeTab);
-      if (typeof msg.url === 'string') updateUrlUI(msg.url);
-    } else if (t === 'url' || t === 'nav' || t === 'navigate') {
-      if (typeof msg.url === 'string') updateUrlUI(msg.url);
-      if (Array.isArray(msg.tabs)) updateTabsUI(msg.tabs, msg.activeTab);
-    } else if (t === 'pause-state' || t === 'paused') {
-      paused = Boolean(msg.paused !== undefined ? msg.paused : true);
-      pauseReason = paused ? String(msg.reason || msg.pauseReason || (msg.handoff && msg.handoff.kind) || '') : '';
-      updateStatusUI();
-    } else if (t === 'ai-action' || t === 'cursor') {
-      if (typeof msg.aiBusy === 'boolean') aiBusy = msg.aiBusy;
-      const x = typeof msg.x === 'number' ? msg.x : (msg.point && msg.point.x);
-      const y = typeof msg.y === 'number' ? msg.y : (msg.point && msg.point.y);
-      const label = msg.action || msg.label || msg.cmd || '';
-      if (typeof x === 'number' && typeof y === 'number') {
-        showAiCursor(x, y, label);
-      }
-      updateStatusUI();
-    } else if (t === 'status') {
-      if (typeof msg.aiBusy === 'boolean') aiBusy = msg.aiBusy;
-      if (typeof msg.paused === 'boolean') {
-        paused = msg.paused;
-        pauseReason = paused ? String(msg.pauseReason || msg.reason || '') : '';
-      }
-      if (typeof msg.url === 'string') updateUrlUI(msg.url);
-      if (Array.isArray(msg.tabs)) updateTabsUI(msg.tabs, msg.activeTab);
-      if (msg.viewport && msg.viewport.width && msg.viewport.height) {
-        viewport = { width: Number(msg.viewport.width), height: Number(msg.viewport.height) };
-        updateViewportBadge();
-      }
-      updateStatusUI();
-    } else if (t === 'error') {
-      setPlaceholder(!frameImg.classList.contains('has-frame'), '⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อ', msg.error || 'ไม่สามารถเชื่อมสตรีมเบราว์เซอร์ได้', true);
-    }
-
-    emitMessage(t, msg);
-  }
-
-  function scheduleReconnect(chatId) {
-    if (!isOpen || chatId !== getActiveChatId()) return;
-    clearReconnectTimer();
-    const delay = BACKOFF_MS[Math.min(reconnectAttempt, BACKOFF_MS.length - 1)];
-    reconnectAttempt++;
-    setPlaceholder(!frameImg.classList.contains('has-frame'), '🔌 กำลังเชื่อมต่อใหม่...', `จะลองเชื่อมต่ออีกครั้งใน ${Math.round(delay / 1000)} วินาที`, true);
-    reconnectTimer = setTimeout(() => {
-      if (isOpen && chatId === getActiveChatId()) {
-        connectForChat(chatId);
-      }
-    }, delay);
-  }
-
-  async function connectForChat(chatId) {
-    if (!chatId || !isOpen) return;
-    closeSocketOnly();
-    const mySeq = ++connectSeq;
-    wsConnecting = true;
-    updateStatusUI();
-    if (!frameImg.classList.contains('has-frame')) {
-      setPlaceholder(true, '🌐 กำลังเปิดเบราว์เซอร์...', 'กำลังเตรียมเซสชันและเชื่อมต่อสตรีมภาพสด', false);
-    }
-
-    // 1. Start/ensure browser daemon via REST before opening WS
-    try {
-      const startRes = await fetch('/api/browser-vision/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat: chatId })
-      });
-      if (mySeq !== connectSeq || !isOpen) return;
-      const startData = await startRes.json().catch(() => ({}));
-      if (!startRes.ok || !startData.ok) {
-        wsConnecting = false;
-        updateStatusUI();
-        setPlaceholder(true, '⚠️ เปิดเบราว์เซอร์ไม่สำเร็จ', startData.error || `HTTP ${startRes.status}`, true);
-        scheduleReconnect(chatId);
-        return;
-      }
-      if (startData.status) {
-        if (typeof startData.status.url === 'string') updateUrlUI(startData.status.url);
-        if (typeof startData.status.paused === 'boolean') {
-          paused = startData.status.paused;
-          pauseReason = startData.status.pauseReason || '';
-        }
-      }
-    } catch (err) {
-      if (mySeq !== connectSeq || !isOpen) return;
-      wsConnecting = false;
-      updateStatusUI();
-      setPlaceholder(true, '⚠️ เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ', err.message || 'Network error', true);
-      scheduleReconnect(chatId);
-      return;
-    }
-
-    if (mySeq !== connectSeq || !isOpen) return;
-
-    // 2. Open WebSocket stream
-    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${wsProto}://${location.host}/ws/browser-vision?chat=${encodeURIComponent(chatId)}`;
-    let sock;
-    try {
-      sock = new WebSocket(wsUrl);
-    } catch (err) {
-      wsConnecting = false;
-      updateStatusUI();
-      scheduleReconnect(chatId);
-      return;
-    }
-    ws = sock;
-
-    sock.onopen = () => {
-      if (mySeq !== connectSeq || ws !== sock) {
-        try { sock.close(); } catch (_) {}
-        return;
-      }
-      wsConnecting = false;
-      wsConnected = true;
-      reconnectAttempt = 0;
-      clearReconnectTimer();
-      updateStatusUI();
-      send({ type: 'status' });
-    };
-
-    sock.onmessage = (ev) => {
-      if (mySeq !== connectSeq || ws !== sock) return;
-      if (typeof ev.data !== 'string') return;
-      try {
-        const msg = JSON.parse(ev.data);
-        handleServerMessage(msg);
-      } catch (_) {}
-    };
-
-    sock.onerror = () => {
-      // onclose will handle reconnect
-    };
-
-    sock.onclose = () => {
-      if (mySeq !== connectSeq) return;
-      ws = null;
-      wsConnecting = false;
-      wsConnected = false;
-      updateStatusUI();
-      if (isOpen && chatId === getActiveChatId()) {
-        scheduleReconnect(chatId);
-      }
-    };
-  }
-
-  // ── Open / Close / Session Switch ──────────────────────────────────────────
-  function resetFrameState() {
-    pendingFrame = null;
-    lastFrame = null;
-    paused = false;
-    pauseReason = '';
-    aiBusy = false;
-    frameImg.classList.remove('has-frame');
-    frameImg.removeAttribute('src');
-    if (aiCursorEl) aiCursorEl.classList.remove('is-visible', 'is-rippling');
-    updateStatusUI();
-  }
-
-  function open(chatId) {
-    const id = String(chatId || getActiveChatId() || '').trim();
-    if (!id) return;
-    activeChatId = id;
-    isOpen = true;
-    writeOpenRoom(id, true);
-    loadSavedSplit();
-    if (coreShell) coreShell.classList.add('is-browser-open');
-    workspace.classList.add('is-browser-open');
-    setMobileTab('browser');
-    updateStatusUI();
-    connectForChat(id);
-  }
-
-  function closeView(persist = true) {
-    isOpen = false;
-    if (persist && activeChatId) {
-      writeOpenRoom(activeChatId, false);
-    }
-    if (coreShell) coreShell.classList.remove('is-browser-open');
-    workspace.classList.remove('is-browser-open');
-    closeSocketOnly();
-    closeAllPopovers();
-    updateStatusUI();
-  }
-
-  async function closeBrowserSession() {
-    const id = getActiveChatId();
-    closeAllPopovers();
-    if (id) {
-      try {
-        await fetch('/api/browser-vision/close', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat: id })
-        });
-      } catch (_) {}
-    }
-    resetFrameState();
-    closeView(true);
-  }
-
-  function toggle() {
-    if (isOpen) closeView(true);
-    else open(getActiveChatId());
-  }
-
-  function onSessionChanged(newSessionId, meta) {
-    const nextId = String(newSessionId || '').trim();
-    if (!nextId) return;
-    const changed = nextId !== activeChatId;
-    activeChatId = nextId;
-    if (meta && meta.title && roomBadge) {
-      roomBadge.title = `ห้องแชท: ${meta.title} (${nextId})`;
-    }
-    const shouldBeOpen = Boolean(readOpenRooms()[nextId]);
-    if (changed) {
-      closeSocketOnly();
-      resetFrameState();
-      sessionChangeListeners.forEach((cb) => {
-        try { cb(nextId, meta); } catch (_) {}
-      });
-    }
-    if (shouldBeOpen) {
-      if (!isOpen || changed) {
-        open(nextId);
-      }
-    } else if (isOpen) {
-      closeView(false);
-    }
-  }
-
-  function onRoomMetaUpdated(sess, roomLabel) {
-    if (roomBadge && roomLabel) {
-      roomBadge.textContent = roomLabel;
-      if (sess && sess.title) roomBadge.title = `${roomLabel} · ${sess.title}`;
-    }
-  }
-
-  function onCoreThinking(thinking) {
-    coreThinking = Boolean(thinking);
-    if (corePill) {
-      corePill.classList.toggle('is-thinking', coreThinking);
-    }
-    if (corePillText) {
-      corePillText.textContent = coreThinking ? '🔥 THINKING' : '⚡ CORE READY';
-    }
-    updateStatusUI();
-  }
-
-  // ── Shared Auth Popover ────────────────────────────────────────────────────
-  function closeAllPopovers() {
-    if (authPopover) authPopover.classList.remove('is-open');
-    if (morePopover) morePopover.classList.remove('is-open');
-  }
-
-  async function loadSharedAuthStatus() {
-    if (!authMeta || !authDomainsEl) return;
-    authMeta.textContent = 'กำลังโหลดสถานะ Shared Login...';
-    authDomainsEl.innerHTML = '';
-    try {
-      const res = await fetch('/api/browser-vision/auth/status');
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        authMeta.textContent = '❌ โหลดไม่สำเร็จ: ' + (data.error || res.status);
-        return;
-      }
-      const domains = Array.isArray(data.domains) ? data.domains : [];
-      authMeta.textContent = `โดเมนที่ล็อกอินไว้: ${domains.length} · คุกกี้ ${data.cookieCount || 0} รายการ`;
-      if (domains.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'bv-popover__meta';
-        empty.textContent = 'ยังไม่มีเซสชันล็อกอินที่บันทึกไว้';
-        authDomainsEl.appendChild(empty);
-      } else {
-        domains.forEach((d) => {
-          const item = document.createElement('div');
-          item.className = 'bv-auth-domain';
-          item.textContent = '🌐 ' + d;
-          authDomainsEl.appendChild(item);
-        });
-      }
-    } catch (err) {
-      authMeta.textContent = '❌ เกิดข้อผิดพลาด: ' + err.message;
-    }
-  }
-
-  async function clearSharedAuth() {
-    if (!confirm('ยืนยันล้าง Shared Login (คุกกี้และเซสชันที่แชร์ร่วมกันทุกห้อง) ทั้งหมดหรือไม่?')) return;
-    try {
-      const res = await fetch('/api/browser-vision/auth/clear', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
-        await loadSharedAuthStatus();
-      } else {
-        alert('ล้าง Shared Login ไม่สำเร็จ: ' + (data.error || res.status));
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาด: ' + err.message);
-    }
-  }
-
-  // ── Pause / Resume Handoff ─────────────────────────────────────────────────
-  async function requestPause() {
-    const id = getActiveChatId();
-    if (!send({ type: 'pause', reason: 'user' }) && id) {
-      await fetch('/api/browser-vision/pause', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat: id, reason: 'user' })
-      }).catch(() => {});
-    }
-    paused = true;
-    pauseReason = 'user';
-    updateStatusUI();
-  }
-
-  async function requestResume(note, triggerChatContinue) {
-    const id = getActiveChatId();
-    const cleanNote = String(note || '').trim();
-    if (!send({ type: 'resume', note: cleanNote }) && id) {
-      await fetch('/api/browser-vision/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat: id, note: cleanNote })
-      }).catch(() => {});
-    }
-    paused = false;
-    pauseReason = '';
-    if (resumeNoteInput) resumeNoteInput.value = '';
-    updateStatusUI();
-
-    if (triggerChatContinue && window.__geminiChatBridge) {
-      const running = typeof window.__geminiChatBridge.isRunning === 'function' && window.__geminiChatBridge.isRunning();
-      if (!running && typeof window.__geminiChatBridge.sendPrompt === 'function') {
-        const msg = 'ฉันดำเนินการในเบราว์เซอร์เรียบร้อยแล้ว ทำขั้นตอนถัดไปต่อได้เลย' + (cleanNote ? '\nหมายเหตุ: ' + cleanNote : '');
-        window.__geminiChatBridge.sendPrompt(msg);
-      }
-    }
-  }
-
-  // ── Navigation Helpers ─────────────────────────────────────────────────────
-  function navigateToUrl(raw) {
-    let url = String(raw || '').trim();
-    if (!url) return;
-    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) {
-      url = 'https://' + url;
-    }
-    send({ type: 'navigate', url });
-    if (urlInput) urlInput.blur();
-  }
-
-  // ── Resizer Dragging (Desktop) ─────────────────────────────────────────────
-  if (resizer) {
-    resizer.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      resizer.classList.add('is-dragging');
-      const wsRect = workspace.getBoundingClientRect();
-      const onMove = (ev) => {
-        if (wsRect.width <= 0) return;
-        const chatW = ev.clientX - wsRect.left;
-        const minChat = 340;
-        const minBrowser = 420;
-        const clampedW = Math.max(minChat, Math.min(wsRect.width - minBrowser - 6, chatW));
-        const pct = (clampedW / wsRect.width) * 100;
-        const saved = applySplitPct(pct);
-        try { localStorage.setItem(LS_SPLIT_KEY, String(saved.toFixed(2))); } catch (_) {}
-      };
-      const onUp = () => {
-        resizer.classList.remove('is-dragging');
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-    });
-  }
-
-  // ── Stage Input Forwarding (Mouse, Wheel, Keyboard, Paste) ─────────────────
-  function getButtonName(btn) {
-    if (btn === 1) return 'middle';
-    if (btn === 2) return 'right';
-    return 'left';
-  }
-
-  function getModifiersMask(e) {
-    return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
-  }
-
-  stageEl.addEventListener('mousemove', (e) => {
-    if (annotationActive || !wsConnected) return;
-    const now = performance.now();
-    if (now - lastMouseMoveSent < 30) return;
-    const pt = mapPoint(e.clientX, e.clientY);
-    if (!pt.inside) return;
-    lastMouseMoveSent = now;
-    send({ type: 'input', kind: 'mouse', action: 'mouseMoved', x: pt.x, y: pt.y });
-  });
-
-  stageEl.addEventListener('mousedown', (e) => {
-    if (annotationActive) return;
-    stageEl.focus({ preventScroll: true });
-    if (!wsConnected) return;
-    const pt = mapPoint(e.clientX, e.clientY);
-    if (!pt.inside) return;
-    e.preventDefault();
-    send({
-      type: 'input',
-      kind: 'mouse',
-      action: 'mousePressed',
-      x: pt.x,
-      y: pt.y,
-      button: getButtonName(e.button),
-      clickCount: Math.max(1, e.detail || 1)
-    });
-  });
-
-  stageEl.addEventListener('mouseup', (e) => {
-    if (annotationActive || !wsConnected) return;
-    const pt = mapPoint(e.clientX, e.clientY);
-    if (!pt.inside) return;
-    send({
-      type: 'input',
-      kind: 'mouse',
-      action: 'mouseReleased',
-      x: pt.x,
-      y: pt.y,
-      button: getButtonName(e.button),
-      clickCount: Math.max(1, e.detail || 1)
-    });
-  });
-
-  stageEl.addEventListener('contextmenu', (e) => {
-    if (!annotationActive) e.preventDefault();
-  });
-
-  stageEl.addEventListener('wheel', (e) => {
-    if (annotationActive || !wsConnected) return;
-    const pt = mapPoint(e.clientX, e.clientY);
-    if (!pt.inside) return;
-    e.preventDefault();
-    send({
-      type: 'input',
-      kind: 'wheel',
-      x: pt.x,
-      y: pt.y,
-      deltaX: Math.round(e.deltaX),
-      deltaY: Math.round(e.deltaY)
-    });
-  }, { passive: false });
-
-  stageEl.addEventListener('keydown', (e) => {
-    if (annotationActive || !wsConnected) return;
-    if (document.activeElement !== stageEl) return;
-    // Let Ctrl+V / Cmd+V trigger the paste event so clipboard text is sent cleanly
-    if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'v') return;
-    e.preventDefault();
-    e.stopPropagation();
-    const modifiers = getModifiersMask(e);
-    const payload = {
-      type: 'input',
-      kind: 'key',
-      action: 'keyDown',
-      key: e.key,
-      code: e.code,
-      keyCode: e.keyCode || e.which || 0,
-      modifiers
-    };
-    if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      payload.text = e.key;
-    }
-    send(payload);
-  });
-
-  stageEl.addEventListener('keyup', (e) => {
-    if (annotationActive || !wsConnected) return;
-    if (document.activeElement !== stageEl) return;
-    if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'v') return;
-    e.preventDefault();
-    e.stopPropagation();
-    send({
-      type: 'input',
-      kind: 'key',
-      action: 'keyUp',
-      key: e.key,
-      code: e.code,
-      keyCode: e.keyCode || e.which || 0,
-      modifiers: getModifiersMask(e)
-    });
-  });
-
-  stageEl.addEventListener('paste', (e) => {
-    if (annotationActive || !wsConnected) return;
-    if (document.activeElement !== stageEl) return;
-    const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
-    if (!text) return;
-    e.preventDefault();
-    e.stopPropagation();
-    send({ type: 'input', kind: 'text', text });
-  });
-
-  // ── Event Bindings ─────────────────────────────────────────────────────────
-  if (btnToggleDesktop) btnToggleDesktop.addEventListener('click', toggle);
-  if (btnToggleMobile) btnToggleMobile.addEventListener('click', toggle);
-  if (closeBtn) closeBtn.addEventListener('click', () => closeView(true));
-
-  if (mobTabChat) mobTabChat.addEventListener('click', () => setMobileTab('chat'));
-  if (mobTabBrowser) mobTabBrowser.addEventListener('click', () => setMobileTab('browser'));
-
-  if (btnBack) btnBack.addEventListener('click', () => send({ type: 'back' }));
-  if (btnForward) btnForward.addEventListener('click', () => send({ type: 'forward' }));
-  if (btnReload) btnReload.addEventListener('click', () => send({ type: 'reload' }));
-
-  if (urlInput) {
-    urlInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        navigateToUrl(urlInput.value);
-      }
-    });
-  }
-
-  if (tabSelect) {
-    tabSelect.addEventListener('change', () => {
-      const idx = parseInt(tabSelect.value, 10);
-      if (!isNaN(idx)) send({ type: 'tab', index: idx });
-    });
-  }
-
-  if (btnNewTab) {
-    btnNewTab.addEventListener('click', () => send({ type: 'new-tab', url: 'about:blank' }));
-  }
-
-  if (pauseBtn) {
-    pauseBtn.addEventListener('click', () => {
-      if (paused) requestResume('', false);
-      else requestPause();
-    });
-  }
-
-  if (resumeDoneBtn) {
-    resumeDoneBtn.addEventListener('click', () => {
-      requestResume(resumeNoteInput ? resumeNoteInput.value : '', true);
-    });
-  }
-  if (resumeNoteInput) {
-    resumeNoteInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        requestResume(resumeNoteInput.value, true);
-      }
-    });
-  }
-
-  if (authBtn && authPopover) {
-    authBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const willOpen = !authPopover.classList.contains('is-open');
-      closeAllPopovers();
-      if (willOpen) {
-        authPopover.classList.add('is-open');
-        loadSharedAuthStatus();
-      }
-    });
-  }
-  if (authRefreshBtn) authRefreshBtn.addEventListener('click', loadSharedAuthStatus);
-  if (authClearBtn) authClearBtn.addEventListener('click', clearSharedAuth);
-
-  if (moreBtn && morePopover) {
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const willOpen = !morePopover.classList.contains('is-open');
-      closeAllPopovers();
-      if (willOpen) morePopover.classList.add('is-open');
-    });
-  }
-  if (menuReconnect) {
-    menuReconnect.addEventListener('click', () => {
-      closeAllPopovers();
-      reconnectAttempt = 0;
-      connectForChat(getActiveChatId());
-    });
-  }
-  if (menuCloseBrowser) {
-    menuCloseBrowser.addEventListener('click', closeBrowserSession);
-  }
-  if (placeholderRetry) {
-    placeholderRetry.addEventListener('click', () => {
-      reconnectAttempt = 0;
-      connectForChat(getActiveChatId());
-    });
-  }
-
-  document.addEventListener('click', (e) => {
-    if (authPopover && authPopover.classList.contains('is-open') && !authPopover.contains(e.target) && e.target !== authBtn) {
-      authPopover.classList.remove('is-open');
-    }
-    if (morePopover && morePopover.classList.contains('is-open') && !morePopover.contains(e.target) && e.target !== moreBtn) {
-      morePopover.classList.remove('is-open');
-    }
-  });
-
-  // ── Public API (including hooks for t5) ────────────────────────────────────
-  window.BrowserVision = {
-    open,
-    closeView,
-    closeBrowserSession,
-    toggle,
-    isOpen: () => isOpen,
-    isOpenFor,
-    mapPoint,
-    viewportToStage,
-    getRenderedImageRect,
-    setMobileTab,
-    getCurrentUrl: () => (urlInput && urlInput.value ? urlInput.value.trim() : ''),
-    getStage: () => stageEl,
-    getToolbarActions: () => document.getElementById('bv-toolbar-actions'),
-    send,
-    onMessage,
-    getLastFrame: () => lastFrame,
-    getViewport: () => ({ ...viewport }),
-    onAnnotationToggle,
-    setAnnotationActive,
-    onSessionChange,
-    onSessionChanged,
-    onRoomMetaUpdated,
-    onCoreThinking,
-    getState: () => ({
-      activeChatId,
-      isOpen,
-      wsConnected,
-      paused,
-      pauseReason,
-      aiBusy,
-      annotationActive,
-      viewport: { ...viewport }
-    })
-  };
-
-  // Restore saved split & per-room open state on initial page load
-  loadSavedSplit();
-  const initialId = getActiveChatId();
-  if (initialId && readOpenRooms()[initialId]) {
-    open(initialId);
-  }
-})();
-
-/* --- Annotation & Magic DOM (t5) --- */
-(function () {
-  'use strict';
-
-  const bv = window.BrowserVision;
-  if (!bv) return;
-
-  const stageEl = bv.getStage();
-  const stageWrap = document.getElementById('bv-stage-wrap');
-  const frameImg = document.getElementById('bv-frame-img');
-  const canvas = document.getElementById('bv-anno-canvas');
-  const dock = document.getElementById('bv-anno-dock');
-  const pillBtn = document.getElementById('bv-anno-pill');
-  const badgeEl = document.getElementById('bv-anno-badge');
-  const toolbarEl = document.getElementById('bv-anno-toolbar');
-  const btnDomNote = document.getElementById('bv-anno-dom-note');
-  const btnUndo = document.getElementById('bv-anno-undo');
-  const btnClear = document.getElementById('bv-anno-clear');
-  const btnSend = document.getElementById('bv-anno-send');
-  const btnSendNow = document.getElementById('bv-anno-send-now');
-  const btnClose = document.getElementById('bv-anno-close');
-
-  const pinPopover = document.getElementById('bv-pin-popover');
-  const pinPopoverTitle = document.getElementById('bv-pin-popover-title');
-  const pinPopoverInput = document.getElementById('bv-pin-popover-input');
-  const pinPopoverSave = document.getElementById('bv-pin-popover-save');
-  const pinPopoverCancel = document.getElementById('bv-pin-popover-cancel');
-  const pinPopoverDel = document.getElementById('bv-pin-popover-del');
-
-  if (!stageEl || !stageWrap || !canvas || !dock || !toolbarEl) return;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  // Per-room vector annotation store: Map<chatSessionId, { shapes, pins, domPicks, history }>
-  const roomAnnotations = new Map();
-
-  let expanded = false;
-  let activeTool = 'pen'; // 'pen' | 'rect' | 'ellipse' | 'pin' | 'dom' | 'eraser'
-  let activeColor = '#ff4d4f';
-  let activeWidth = 4;
-  let domPinNoteMode = false;
-
-  let drawing = false;
-  let draftShape = null;
-  let eraserDragging = false;
-  let editingPinId = null;
-
-  // Magic DOM state
-  let inspectSeq = 0;
-  let lastAppliedInspectId = 0;
-  let lastInspectSentAt = 0;
-  let domHover = null;
-
-  // Capture request state
-  let captureSeq = 0;
-  const pendingCaptures = new Map(); // id -> { resolve, timer }
-  let sendingToAi = false;
-
-  const CIRCLED_NUMS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
-  function circledNum(n) {
-    return (n >= 1 && n <= CIRCLED_NUMS.length) ? CIRCLED_NUMS[n - 1] : String(n);
-  }
-
-  function makeId(prefix) {
-    return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
-  }
-
-  function getRoomKey() {
-    const st = bv.getState();
-    const id = (st && st.activeChatId) || (window.__geminiChatBridge && window.__geminiChatBridge.getSessionId()) || localStorage.getItem('core_active_session') || '__default__';
-    return String(id || '__default__');
-  }
-
-  function getStore(roomKey) {
-    const key = roomKey || getRoomKey();
-    if (!roomAnnotations.has(key)) {
-      roomAnnotations.set(key, { shapes: [], pins: [], domPicks: [], history: [] });
-    }
-    return roomAnnotations.get(key);
-  }
-
-  function renumberPins(store) {
-    store.pins.forEach((p, idx) => { p.num = idx + 1; });
-  }
-
-  function updateBadge() {
-    const store = getStore();
-    const total = store.shapes.length + store.pins.length + store.domPicks.length;
-    if (badgeEl) {
-      badgeEl.textContent = String(total);
-      badgeEl.classList.toggle('has-count', total > 0);
-    }
-    if (btnUndo) {
-      btnUndo.disabled = store.history.length === 0;
-    }
-    if (btnClear) {
-      btnClear.disabled = total === 0;
-    }
-  }
-
-  // ── Canvas Metrics & Redraw ────────────────────────────────────────────────
-  function getDrawMetrics() {
-    const stageRect = stageEl.getBoundingClientRect();
-    const imgRect = bv.getRenderedImageRect();
-    const vp = bv.getViewport();
-    const vw = Math.max(1, vp.width || 1280);
-    const vh = Math.max(1, vp.height || 800);
-    if (imgRect.width <= 0 || imgRect.height <= 0) {
-      return { stageW: stageRect.width, stageH: stageRect.height, offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1, vw, vh, valid: false };
-    }
-    return {
-      stageW: stageRect.width,
-      stageH: stageRect.height,
-      offsetX: imgRect.left - stageRect.left,
-      offsetY: imgRect.top - stageRect.top,
-      scaleX: imgRect.width / vw,
-      scaleY: imgRect.height / vh,
-      vw,
-      vh,
-      valid: true
-    };
-  }
-
-  function syncCanvasSize() {
-    const rect = stageEl.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const w = Math.max(1, Math.round(rect.width * dpr));
-    const h = Math.max(1, Math.round(rect.height * dpr));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  function drawRoundedRectPath(c, x, y, w, h, r) {
-    const rad = Math.min(r, w / 2, h / 2);
-    c.beginPath();
-    c.moveTo(x + rad, y);
-    c.arcTo(x + w, y, x + w, y + h, rad);
-    c.arcTo(x + w, y + h, x, y + h, rad);
-    c.arcTo(x, y + h, x, y, rad);
-    c.arcTo(x, y, x + w, y, rad);
-    c.closePath();
-  }
-
-  function drawPillLabel(c, text, x, y, bg, borderColor, textColor, fontSize) {
-    c.save();
-    c.font = `700 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
-    const padX = Math.round(fontSize * 0.65);
-    const padY = Math.round(fontSize * 0.35);
-    const metrics = c.measureText(text);
-    const tw = metrics.width;
-    const bw = tw + padX * 2;
-    const bh = fontSize + padY * 2;
-    let px = Math.max(4, x);
-    let py = y - bh - 4;
-    if (py < 4) py = y + 4;
-    drawRoundedRectPath(c, px, py, bw, bh, 6);
-    c.fillStyle = bg;
-    c.fill();
-    c.lineWidth = 1.25;
-    c.strokeStyle = borderColor;
-    c.stroke();
-    c.fillStyle = textColor;
-    c.textBaseline = 'middle';
-    c.fillText(text, px + padX, py + bh / 2);
-    c.restore();
-  }
-
-  function drawShape(c, s, sx, sy, ox, oy) {
-    const strokeScale = Math.max(0.6, (sx + sy) / 2);
-    c.save();
-    c.strokeStyle = s.color || '#ff4d4f';
-    c.lineWidth = Math.max(1.5, (s.width || 4) * strokeScale);
-    c.lineCap = 'round';
-    c.lineJoin = 'round';
-    if (s.type === 'pen' && Array.isArray(s.points) && s.points.length > 0) {
-      c.beginPath();
-      const p0 = s.points[0];
-      c.moveTo(ox + p0.x * sx, oy + p0.y * sy);
-      if (s.points.length === 1) {
-        c.lineTo(ox + p0.x * sx + 0.5, oy + p0.y * sy + 0.5);
-      } else {
-        for (let i = 1; i < s.points.length; i++) {
-          c.lineTo(ox + s.points[i].x * sx, oy + s.points[i].y * sy);
-        }
-      }
-      c.stroke();
-    } else if (s.type === 'rect') {
-      c.strokeRect(ox + s.x * sx, oy + s.y * sy, s.w * sx, s.h * sy);
-    } else if (s.type === 'ellipse') {
-      const cx = ox + (s.x + s.w / 2) * sx;
-      const cy = oy + (s.y + s.h / 2) * sy;
-      const rx = Math.max(1, Math.abs(s.w * sx) / 2);
-      const ry = Math.max(1, Math.abs(s.h * sy) / 2);
-      c.beginPath();
-      c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      c.stroke();
-    }
-    c.restore();
-  }
-
-  function formatDomPill(info) {
-    const tag = String(info.tag || 'el').toLowerCase();
-    const cls = Array.isArray(info.classes) && info.classes.length > 0
-      ? '.' + info.classes.slice(0, 2).join('.')
-      : (info.idAttr ? '#' + info.idAttr : '');
-    const w = Math.round((info.box && info.box.width) || 0);
-    const h = Math.round((info.box && info.box.height) || 0);
-    return `${tag}${cls} · ${w}×${h}`;
-  }
-
-  function drawDomBox(c, info, sx, sy, ox, oy, opts) {
-    if (!info || !info.box) return;
-    const bx = ox + info.box.x * sx;
-    const by = oy + info.box.y * sy;
-    const bw = Math.max(2, info.box.width * sx);
-    const bh = Math.max(2, info.box.height * sy);
-    const isHover = Boolean(opts && opts.hover);
-    const fontSize = (opts && opts.forExport) ? 13 : 11;
-
-    c.save();
-    c.fillStyle = isHover ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.14)';
-    c.fillRect(bx, by, bw, bh);
-    c.strokeStyle = '#f59e0b';
-    c.lineWidth = isHover ? 2 : 2.5;
-    c.setLineDash(isHover ? [6, 4] : []);
-    c.strokeRect(bx, by, bw, bh);
-    c.restore();
-
-    const prefix = (opts && opts.indexLabel) ? `${opts.indexLabel} ` : '';
-    const label = prefix + formatDomPill(info);
-    drawPillLabel(c, label, bx, by, 'rgba(18, 12, 4, 0.92)', '#f59e0b', '#fde68a', fontSize);
-  }
-
-  function drawPin(c, pin, sx, sy, ox, oy, opts) {
-    const px = ox + pin.x * sx;
-    const py = oy + pin.y * sy;
-    const forExport = Boolean(opts && opts.forExport);
-    const r = forExport ? 15 : 13;
-
-    c.save();
-    // Outer glow & circle
-    c.beginPath();
-    c.arc(px, py, r, 0, Math.PI * 2);
-    c.fillStyle = pin.color || '#ff4d4f';
-    c.fill();
-    c.lineWidth = 2;
-    c.strokeStyle = '#ffffff';
-    c.stroke();
-
-    // Number
-    c.fillStyle = '#ffffff';
-    c.font = `800 ${forExport ? 14 : 12}px ui-sans-serif, system-ui, sans-serif`;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(String(pin.num || 1), px, py + 0.5);
-
-    // Note badge next to pin if note exists
-    if (pin.note && pin.note.trim()) {
-      const noteText = pin.note.trim().length > 36 ? pin.note.trim().slice(0, 35) + '…' : pin.note.trim();
-      const fontSize = forExport ? 13 : 11;
-      c.textAlign = 'left';
-      drawPillLabel(c, `${circledNum(pin.num)} ${noteText}`, px + r + 5, py + 10, 'rgba(4, 16, 28, 0.92)', pin.color || '#00e5ff', '#f0f9ff', fontSize);
-    }
-    c.restore();
-  }
-
-  function renderAnnotationsToCtx(c, store, sx, sy, ox, oy, opts) {
-    // 1. Locked DOM picks
-    store.domPicks.forEach((pick, idx) => {
-      drawDomBox(c, pick, sx, sy, ox, oy, { hover: false, indexLabel: `🎯#${idx + 1}`, forExport: opts && opts.forExport });
-    });
-    // 2. Hover DOM preview (live overlay only)
-    if (!(opts && opts.forExport) && expanded && activeTool === 'dom' && domHover) {
-      drawDomBox(c, domHover, sx, sy, ox, oy, { hover: true });
-    }
-    // 3. Committed vector shapes
-    store.shapes.forEach((s) => drawShape(c, s, sx, sy, ox, oy));
-    // 4. Draft shape while dragging
-    if (!(opts && opts.forExport) && draftShape) {
-      drawShape(c, draftShape, sx, sy, ox, oy);
-    }
-    // 5. Pins
-    store.pins.forEach((p) => drawPin(c, p, sx, sy, ox, oy, opts));
-  }
-
-  function redraw() {
-    syncCanvasSize();
-    const m = getDrawMetrics();
-    ctx.clearRect(0, 0, m.stageW + 2, m.stageH + 2);
-    if (!m.valid) return;
-    const store = getStore();
-    renderAnnotationsToCtx(ctx, store, m.scaleX, m.scaleY, m.offsetX, m.offsetY, { forExport: false });
-  }
-
-  // ── Hit-Testing (for Eraser & Pin click) ───────────────────────────────────
-  function distToSegment(px, py, x1, y1, x2, y2) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
-    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-  }
-
-  function hitTestShape(s, x, y, tol) {
-    if (s.type === 'pen' && Array.isArray(s.points)) {
-      if (s.points.length === 1) {
-        return Math.hypot(x - s.points[0].x, y - s.points[0].y) <= tol;
-      }
-      for (let i = 1; i < s.points.length; i++) {
-        if (distToSegment(x, y, s.points[i - 1].x, s.points[i - 1].y, s.points[i].x, s.points[i].y) <= tol) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (s.type === 'rect') {
-      const left = s.x, right = s.x + s.w, top = s.y, bottom = s.y + s.h;
-      const onVert = (y >= top - tol && y <= bottom + tol) && (Math.abs(x - left) <= tol || Math.abs(x - right) <= tol);
-      const onHoriz = (x >= left - tol && x <= right + tol) && (Math.abs(y - top) <= tol || Math.abs(y - bottom) <= tol);
-      const smallInside = s.w < tol * 2 && s.h < tol * 2 && x >= left && x <= right && y >= top && y <= bottom;
-      return onVert || onHoriz || smallInside;
-    }
-    if (s.type === 'ellipse') {
-      const rx = Math.max(1, s.w / 2);
-      const ry = Math.max(1, s.h / 2);
-      const cx = s.x + rx;
-      const cy = s.y + ry;
-      const nx = (x - cx) / rx;
-      const ny = (y - cy) / ry;
-      const d = Math.sqrt(nx * nx + ny * ny);
-      const avgR = (rx + ry) / 2;
-      const edgeDist = Math.abs(d - 1) * avgR;
-      return edgeDist <= tol || (avgR < tol && d <= 1.1);
-    }
-    return false;
-  }
-
-  function eraseAt(vx, vy) {
-    const store = getStore();
-    const m = getDrawMetrics();
-    const invScale = 1 / Math.max(0.25, (m.scaleX + m.scaleY) / 2);
-    const pinTol = Math.max(18, 16 * invScale);
-
-    // 1. Check pins (topmost first)
-    for (let i = store.pins.length - 1; i >= 0; i--) {
-      const p = store.pins[i];
-      if (Math.hypot(vx - p.x, vy - p.y) <= pinTol) {
-        const [removed] = store.pins.splice(i, 1);
-        renumberPins(store);
-        store.history.push({ kind: 'remove-pin', item: removed, index: i });
-        if (editingPinId === removed.id) closePinPopover();
-        updateBadge();
-        redraw();
-        return true;
-      }
-    }
-
-    // 2. Check shapes (topmost first)
-    for (let i = store.shapes.length - 1; i >= 0; i--) {
-      const s = store.shapes[i];
-      const tol = Math.max(12, ((s.width || 4) * 2 + 6) * invScale);
-      if (hitTestShape(s, vx, vy, tol)) {
-        const [removed] = store.shapes.splice(i, 1);
-        store.history.push({ kind: 'remove-shape', item: removed, index: i });
-        updateBadge();
-        redraw();
-        return true;
-      }
-    }
-
-    // 3. Check DOM picks (topmost first)
-    for (let i = store.domPicks.length - 1; i >= 0; i--) {
-      const d = store.domPicks[i];
-      if (!d.box) continue;
-      const pad = Math.max(8, 8 * invScale);
-      if (vx >= d.box.x - pad && vx <= d.box.x + d.box.width + pad && vy >= d.box.y - pad && vy <= d.box.y + d.box.height + pad) {
-        const [removed] = store.domPicks.splice(i, 1);
-        store.history.push({ kind: 'remove-dom', item: removed, index: i });
-        updateBadge();
-        redraw();
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function findPinAt(vx, vy) {
-    const store = getStore();
-    const m = getDrawMetrics();
-    const invScale = 1 / Math.max(0.25, (m.scaleX + m.scaleY) / 2);
-    const tol = Math.max(18, 16 * invScale);
-    for (let i = store.pins.length - 1; i >= 0; i--) {
-      const p = store.pins[i];
-      if (Math.hypot(vx - p.x, vy - p.y) <= tol) return p;
-    }
-    return null;
-  }
-
-  // ── Pin Note Popover ───────────────────────────────────────────────────────
-  function openPinPopover(pin) {
-    if (!pinPopover || !pin) return;
-    editingPinId = pin.id;
-    if (pinPopoverTitle) pinPopoverTitle.textContent = `💬 หมุด ${circledNum(pin.num)}`;
-    if (pinPopoverInput) pinPopoverInput.value = pin.note || '';
-
-    const pt = bv.viewportToStage(pin.x, pin.y);
-    const wrapRect = stageWrap.getBoundingClientRect();
-    const popW = 240;
-    const popH = 118;
-    let left = pt ? pt.x + 16 : 20;
-    let top = pt ? pt.y - 20 : 20;
-    if (left + popW > wrapRect.width - 10) left = Math.max(10, (pt ? pt.x : wrapRect.width) - popW - 16);
-    if (top + popH > wrapRect.height - 70) top = Math.max(10, wrapRect.height - popH - 76);
-    if (top < 10) top = 10;
-
-    pinPopover.style.left = Math.round(left) + 'px';
-    pinPopover.style.top = Math.round(top) + 'px';
-    pinPopover.classList.add('is-open');
-    if (pinPopoverInput) {
-      setTimeout(() => {
-        pinPopoverInput.focus();
-        pinPopoverInput.select();
-      }, 10);
-    }
-  }
-
-  function closePinPopover() {
-    editingPinId = null;
-    if (pinPopover) pinPopover.classList.remove('is-open');
-  }
-
-  function savePinPopover() {
-    if (!editingPinId) return;
-    const store = getStore();
-    const pin = store.pins.find((p) => p.id === editingPinId);
-    if (pin && pinPopoverInput) {
-      pin.note = pinPopoverInput.value.trim();
-    }
-    closePinPopover();
-    redraw();
-    stageEl.focus({ preventScroll: true });
-  }
-
-  function deleteEditingPin() {
-    if (!editingPinId) return;
-    const store = getStore();
-    const idx = store.pins.findIndex((p) => p.id === editingPinId);
-    if (idx !== -1) {
-      const [removed] = store.pins.splice(idx, 1);
-      renumberPins(store);
-      store.history.push({ kind: 'remove-pin', item: removed, index: idx });
-    }
-    closePinPopover();
-    updateBadge();
-    redraw();
-    stageEl.focus({ preventScroll: true });
-  }
-
-  // ── Undo / Clear ───────────────────────────────────────────────────────────
-  function undo() {
-    const store = getStore();
-    if (store.history.length === 0) return;
-    const entry = store.history.pop();
-    if (!entry) return;
-    if (entry.kind === 'add-shape') {
-      const idx = store.shapes.findIndex((s) => s.id === entry.id);
-      if (idx !== -1) store.shapes.splice(idx, 1);
-    } else if (entry.kind === 'add-pin') {
-      const idx = store.pins.findIndex((p) => p.id === entry.id);
-      if (idx !== -1) store.pins.splice(idx, 1);
-      renumberPins(store);
-      if (editingPinId === entry.id) closePinPopover();
-    } else if (entry.kind === 'add-dom') {
-      const idx = store.domPicks.findIndex((d) => d.id === entry.id);
-      if (idx !== -1) store.domPicks.splice(idx, 1);
-    } else if (entry.kind === 'remove-shape' && entry.item) {
-      store.shapes.splice(Math.min(entry.index, store.shapes.length), 0, entry.item);
-    } else if (entry.kind === 'remove-pin' && entry.item) {
-      store.pins.splice(Math.min(entry.index, store.pins.length), 0, entry.item);
-      renumberPins(store);
-    } else if (entry.kind === 'remove-dom' && entry.item) {
-      store.domPicks.splice(Math.min(entry.index, store.domPicks.length), 0, entry.item);
-    } else if (entry.kind === 'clear' && entry.snapshot) {
-      store.shapes = entry.snapshot.shapes;
-      store.pins = entry.snapshot.pins;
-      store.domPicks = entry.snapshot.domPicks;
-      renumberPins(store);
-    }
-    updateBadge();
-    redraw();
-  }
-
-  function clearAll() {
-    const store = getStore();
-    if (store.shapes.length === 0 && store.pins.length === 0 && store.domPicks.length === 0) return;
-    store.history.push({
-      kind: 'clear',
-      snapshot: {
-        shapes: store.shapes.slice(),
-        pins: store.pins.slice(),
-        domPicks: store.domPicks.slice()
-      }
-    });
-    store.shapes = [];
-    store.pins = [];
-    store.domPicks = [];
-    closePinPopover();
-    updateBadge();
-    redraw();
-  }
-
-  // ── Toolbar Expand / Collapse & Tool Switching ─────────────────────────────
-  function setTool(tool) {
-    activeTool = tool;
-    toolbarEl.querySelectorAll('[data-tool]').forEach((btn) => {
-      btn.classList.toggle('is-active', btn.getAttribute('data-tool') === tool);
-    });
-    stageEl.classList.toggle('bv-tool-eraser', tool === 'eraser');
-    stageEl.classList.toggle('bv-tool-dom', tool === 'dom');
-    if (btnDomNote) {
-      btnDomNote.classList.toggle('is-visible', tool === 'dom');
-    }
-    if (tool !== 'dom' && domHover) {
-      domHover = null;
-      redraw();
-    }
-  }
-
-  function setExpanded(next) {
-    const val = Boolean(next);
-    if (expanded === val) return;
-    expanded = val;
-    dock.classList.toggle('is-expanded', expanded);
-    bv.setAnnotationActive(expanded);
-    if (!expanded) {
-      drawing = false;
-      draftShape = null;
-      eraserDragging = false;
-      domHover = null;
-      closePinPopover();
-      redraw();
-    } else {
-      stageEl.focus({ preventScroll: true });
-      redraw();
-    }
-  }
-
-  // ── Magic DOM Inspect Protocol ─────────────────────────────────────────────
-  function normalizeInspectInfo(msg) {
-    const src = (msg && (msg.element || msg.result)) || msg || {};
-    const rawBox = src.box || src.rect || src.bbox;
-    if (!rawBox) return null;
-    const width = Number(rawBox.width !== undefined ? rawBox.width : rawBox.w) || 0;
-    const height = Number(rawBox.height !== undefined ? rawBox.height : rawBox.h) || 0;
-    if (width <= 0 || height <= 0) return null;
-    const classes = Array.isArray(src.classes)
-      ? src.classes.filter(Boolean)
-      : (typeof src.className === 'string' ? src.className.trim().split(/\s+/).filter(Boolean) : []);
-    const tag = String(src.tag || src.tagName || 'element').toLowerCase();
-    const idAttr = typeof src.idAttr === 'string' ? src.idAttr : (typeof src.elementId === 'string' ? src.elementId : '');
-    const selector = String(src.selector || (tag + (idAttr ? '#' + idAttr : '') + (classes.length ? '.' + classes.slice(0, 2).join('.') : '')));
-    return {
-      selector,
-      tag,
-      idAttr,
-      classes,
-      text: typeof src.text === 'string' ? src.text.trim().slice(0, 120) : '',
-      html: typeof src.html === 'string' ? src.html.trim().slice(0, 240) : (typeof src.outerHTML === 'string' ? src.outerHTML.trim().slice(0, 240) : ''),
-      styles: src.styles && typeof src.styles === 'object' ? src.styles : null,
-      box: {
-        x: Number(rawBox.x || 0),
-        y: Number(rawBox.y || 0),
-        width,
-        height
-      }
-    };
-  }
-
-  bv.onMessage('inspect-result', (msg) => {
-    if (!expanded || activeTool !== 'dom') return;
-    const id = typeof msg.id === 'number' ? msg.id : 0;
-    if (id > 0 && id < lastAppliedInspectId) return; // drop stale out-of-order response
-    if (id > 0) lastAppliedInspectId = id;
-    domHover = normalizeInspectInfo(msg);
-    redraw();
-  });
-
-  bv.onMessage('capture-result', (msg) => {
-    const id = msg && msg.id;
-    if (id && pendingCaptures.has(id)) {
-      const entry = pendingCaptures.get(id);
-      pendingCaptures.delete(id);
-      clearTimeout(entry.timer);
-      entry.resolve(msg);
-    }
-  });
-
-  // ── Pointer Interactions on Annotation Canvas ──────────────────────────────
-  canvas.addEventListener('pointerdown', (e) => {
-    if (!expanded) return;
-    if (e.button !== undefined && e.button !== 0) return;
-    const pt = bv.mapPoint(e.clientX, e.clientY);
-    if (!pt.inside) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    stageEl.focus({ preventScroll: true });
-
-    if (activeTool === 'eraser') {
-      eraserDragging = true;
-      eraseAt(pt.x, pt.y);
-      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-      return;
-    }
-
-    if (activeTool === 'pin') {
-      const existing = findPinAt(pt.x, pt.y);
-      if (existing) {
-        openPinPopover(existing);
-        return;
-      }
-      const store = getStore();
-      const pin = {
-        id: makeId('pin'),
-        num: store.pins.length + 1,
-        x: pt.x,
-        y: pt.y,
-        note: '',
-        color: activeColor
-      };
-      store.pins.push(pin);
-      renumberPins(store);
-      store.history.push({ kind: 'add-pin', id: pin.id });
-      updateBadge();
-      redraw();
-      openPinPopover(pin);
-      return;
-    }
-
-    if (activeTool === 'dom') {
-      if (domHover) {
-        const store = getStore();
-        const pick = {
-          id: makeId('dom'),
-          selector: domHover.selector,
-          tag: domHover.tag,
-          idAttr: domHover.idAttr,
-          classes: domHover.classes.slice(),
-          text: domHover.text,
-          html: domHover.html,
-          styles: domHover.styles,
-          box: { ...domHover.box }
-        };
-        store.domPicks.push(pick);
-        store.history.push({ kind: 'add-dom', id: pick.id });
-        updateBadge();
-        redraw();
-
-        if (domPinNoteMode) {
-          const pin = {
-            id: makeId('pin'),
-            num: store.pins.length + 1,
-            x: Math.round(pick.box.x + pick.box.width),
-            y: Math.round(pick.box.y),
-            note: `${pick.selector}: `,
-            color: '#f59e0b'
-          };
-          store.pins.push(pin);
-          renumberPins(store);
-          store.history.push({ kind: 'add-pin', id: pin.id });
-          updateBadge();
-          redraw();
-          openPinPopover(pin);
-        }
-      } else {
-        // Trigger an immediate inspect at click point if hover hasn't populated yet
-        const reqId = ++inspectSeq;
-        bv.send({ type: 'inspect', id: reqId, x: pt.x, y: pt.y });
-      }
-      return;
-    }
-
-    // Vector drawing tools: pen, rect, ellipse
-    drawing = true;
-    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-    if (activeTool === 'pen') {
-      draftShape = {
-        id: makeId('shp'),
-        type: 'pen',
-        color: activeColor,
-        width: activeWidth,
-        points: [{ x: pt.x, y: pt.y }]
-      };
-    } else if (activeTool === 'rect' || activeTool === 'ellipse') {
-      draftShape = {
-        id: makeId('shp'),
-        type: activeTool,
-        color: activeColor,
-        width: activeWidth,
-        x0: pt.x,
-        y0: pt.y,
-        x: pt.x,
-        y: pt.y,
-        w: 0,
-        h: 0
-      };
-    }
-    redraw();
-  });
-
-  canvas.addEventListener('pointermove', (e) => {
-    if (!expanded) return;
-    const pt = bv.mapPoint(e.clientX, e.clientY);
-
-    if (eraserDragging && activeTool === 'eraser') {
-      if (pt.inside) eraseAt(pt.x, pt.y);
-      return;
-    }
-
-    if (activeTool === 'dom' && !drawing) {
-      if (!pt.inside) {
-        if (domHover) {
-          domHover = null;
-          redraw();
-        }
-        return;
-      }
-      const now = performance.now();
-      if (now - lastInspectSentAt >= 80) {
-        lastInspectSentAt = now;
-        const reqId = ++inspectSeq;
-        bv.send({ type: 'inspect', id: reqId, x: pt.x, y: pt.y });
-      }
-      return;
-    }
-
-    if (!drawing || !draftShape) return;
-    if (draftShape.type === 'pen') {
-      const prev = draftShape.points[draftShape.points.length - 1];
-      if (!prev || Math.hypot(pt.x - prev.x, pt.y - prev.y) >= 2) {
-        draftShape.points.push({ x: pt.x, y: pt.y });
-        redraw();
-      }
-    } else if (draftShape.type === 'rect' || draftShape.type === 'ellipse') {
-      draftShape.x = Math.min(draftShape.x0, pt.x);
-      draftShape.y = Math.min(draftShape.y0, pt.y);
-      draftShape.w = Math.abs(pt.x - draftShape.x0);
-      draftShape.h = Math.abs(pt.y - draftShape.y0);
-      redraw();
-    }
-  });
-
-  function finishPointerAction(e) {
-    if (eraserDragging) {
-      eraserDragging = false;
-      try { if (e && e.pointerId !== undefined) canvas.releasePointerCapture(e.pointerId); } catch (_) {}
-      return;
-    }
-    if (!drawing || !draftShape) return;
-    drawing = false;
-    try { if (e && e.pointerId !== undefined) canvas.releasePointerCapture(e.pointerId); } catch (_) {}
-
-    const shape = draftShape;
-    draftShape = null;
-    const valid = shape.type === 'pen'
-      ? (shape.points && shape.points.length >= 1)
-      : (shape.w >= 3 || shape.h >= 3);
-    if (valid) {
-      delete shape.x0;
-      delete shape.y0;
-      const store = getStore();
-      store.shapes.push(shape);
-      store.history.push({ kind: 'add-shape', id: shape.id });
-      updateBadge();
-    }
-    redraw();
-  }
-
-  canvas.addEventListener('pointerup', finishPointerAction);
-  canvas.addEventListener('pointercancel', finishPointerAction);
-  canvas.addEventListener('pointerleave', () => {
-    if (activeTool === 'dom' && domHover) {
-      domHover = null;
-      redraw();
-    }
-  });
-
-  // ── Capture & Export to AI Chat ────────────────────────────────────────────
-  function requestFreshFrame() {
-    return new Promise((resolve) => {
-      const st = bv.getState();
-      if (!st || !st.wsConnected) {
-        resolve(bv.getLastFrame());
-        return;
-      }
-      const id = 'cap_' + (++captureSeq) + '_' + Date.now();
-      const timer = setTimeout(() => {
-        pendingCaptures.delete(id);
-        resolve(bv.getLastFrame());
-      }, 3000);
-      pendingCaptures.set(id, {
-        timer,
-        resolve: (msg) => {
-          if (msg && msg.data) {
-            resolve({
-              data: msg.data,
-              mime: msg.mime || 'image/png',
-              width: msg.width || (bv.getViewport().width),
-              height: msg.height || (bv.getViewport().height)
-            });
-          } else {
-            resolve(bv.getLastFrame());
-          }
-        }
-      });
-      if (!bv.send({ type: 'capture', id })) {
-        clearTimeout(timer);
-        pendingCaptures.delete(id);
-        resolve(bv.getLastFrame());
-      }
-    });
-  }
-
-  function loadImageFromFrame(frame) {
-    return new Promise((resolve) => {
-      if (!frame || !frame.data) {
-        resolve(null);
-        return;
-      }
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
-      const mime = frame.mime || 'image/jpeg';
-      img.src = frame.data.startsWith('data:') ? frame.data : `data:${mime};base64,${frame.data}`;
-    });
-  }
-
-  function buildAnnotationContextText(store, vp) {
-    const url = bv.getCurrentUrl() || 'about:blank';
-    const lines = [
-      `Browser Vision Annotation`,
-      `URL: ${url}`,
-      `Viewport: ${vp.width}×${vp.height}`
-    ];
-
-    if (store.pins.length > 0) {
-      lines.push('', 'Pins:');
-      store.pins.forEach((p) => {
-        const noteStr = p.note && p.note.trim() ? p.note.trim() : '(ไม่มีโน้ต)';
-        lines.push(`  ${circledNum(p.num)} (${Math.round(p.x)}, ${Math.round(p.y)}): ${noteStr}`);
-      });
-    }
-
-    if (store.domPicks.length > 0) {
-      lines.push('', 'DOM Elements:');
-      store.domPicks.forEach((d, idx) => {
-        const b = d.box || { x: 0, y: 0, width: 0, height: 0 };
-        lines.push(`  #${idx + 1} selector: ${d.selector}`);
-        lines.push(`     box: x=${Math.round(b.x)}, y=${Math.round(b.y)}, w=${Math.round(b.width)}, h=${Math.round(b.height)}`);
-        if (d.html) {
-          lines.push(`     html: ${d.html.replace(/\s+/g, ' ').slice(0, 200)}`);
-        }
-        if (d.styles && Object.keys(d.styles).length > 0) {
-          const styleStr = Object.entries(d.styles)
-            .slice(0, 10)
-            .map(([k, v]) => `${k}:${v}`)
-            .join('; ');
-          lines.push(`     styles: ${styleStr}`);
-        }
-      });
-    }
-
-    if (store.shapes.length > 0) {
-      const counts = store.shapes.reduce((acc, s) => {
-        acc[s.type] = (acc[s.type] || 0) + 1;
-        return acc;
-      }, {});
-      const summary = Object.entries(counts).map(([k, v]) => `${k}×${v}`).join(', ');
-      lines.push('', `Annotations: ${store.shapes.length} shapes (${summary})`);
-    }
-
-    return '```text\n' + lines.join('\n') + '\n```';
-  }
-
-  async function sendToAi(autoSend) {
-    if (sendingToAi) return;
-    sendingToAi = true;
-    const origSendLabel = btnSend ? btnSend.textContent : '';
-    const origNowLabel = btnSendNow ? btnSendNow.textContent : '';
-    if (btnSend) { btnSend.disabled = true; if (!autoSend) btnSend.textContent = '⏳ กำลังจับภาพ...'; }
-    if (btnSendNow) { btnSendNow.disabled = true; if (autoSend) btnSendNow.textContent = '⏳ กำลังส่ง...'; }
-
-    try {
-      closePinPopover();
-      const store = getStore();
-      const vp = bv.getViewport();
-      const vw = Math.max(1, vp.width || 1280);
-      const vh = Math.max(1, vp.height || 800);
-
-      // 1. Capture fresh frame (3s timeout -> fallback getLastFrame())
-      const frame = await requestFreshFrame();
-      const img = await loadImageFromFrame(frame);
-
-      // 2. Render frame + vector annotations onto offscreen canvas at viewport size
-      const off = document.createElement('canvas');
-      off.width = vw;
-      off.height = vh;
-      const offCtx = off.getContext('2d');
-      if (img) {
-        offCtx.drawImage(img, 0, 0, vw, vh);
-      } else {
-        offCtx.fillStyle = '#06111c';
-        offCtx.fillRect(0, 0, vw, vh);
-      }
-      renderAnnotationsToCtx(offCtx, store, 1, 1, 0, 0, { forExport: true });
-
-      // 3. Export PNG Blob -> File -> uploadImageFiles([file])
-      const blob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
-      if (blob && window.__geminiChatBridge && typeof window.__geminiChatBridge.uploadImageFiles === 'function') {
-        const file = new File([blob], `browser-annotation-${Date.now()}.png`, { type: 'image/png' });
-        await window.__geminiChatBridge.uploadImageFiles([file]);
-      }
-
-      // 4. Append structured context text into chat composer (#prompt-input)
-      const promptEl = document.getElementById('prompt-input');
-      const block = buildAnnotationContextText(store, { width: vw, height: vh });
-      if (promptEl) {
-        const prev = promptEl.value || '';
-        promptEl.value = prev.trim() ? `${prev.trimEnd()}\n\n${block}\n` : `${block}\n`;
-        promptEl.dispatchEvent(new Event('input', { bubbles: true }));
-        promptEl.scrollTop = promptEl.scrollHeight;
-      }
-
-      // 5. Switch to chat tab on mobile
-      if (window.innerWidth <= 960 && typeof bv.setMobileTab === 'function') {
-        bv.setMobileTab('chat');
-      }
-
-      // 6. Auto-send ONLY if user explicitly clicked "📤 ส่งทันที"
-      if (autoSend && window.__geminiChatBridge && typeof window.__geminiChatBridge.sendPrompt === 'function') {
-        window.__geminiChatBridge.sendPrompt();
-      } else if (promptEl) {
-        promptEl.focus();
-      }
-    } finally {
-      sendingToAi = false;
-      if (btnSend) { btnSend.disabled = false; btnSend.textContent = origSendLabel || '📤 ส่งให้ AI ดู'; }
-      if (btnSendNow) { btnSendNow.disabled = false; btnSendNow.textContent = origNowLabel || '📤 ส่งทันที'; }
-    }
-  }
-
-  // ── UI Event Bindings ──────────────────────────────────────────────────────
-  if (pillBtn) {
-    pillBtn.addEventListener('click', () => setExpanded(true));
-  }
-  if (btnClose) {
-    btnClose.addEventListener('click', () => setExpanded(false));
-  }
-
-  toolbarEl.querySelectorAll('[data-tool]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tool = btn.getAttribute('data-tool');
-      if (tool) setTool(tool);
-    });
-  });
-
-  if (btnDomNote) {
-    btnDomNote.addEventListener('click', () => {
-      domPinNoteMode = !domPinNoteMode;
-      btnDomNote.classList.toggle('is-active', domPinNoteMode);
-    });
-  }
-
-  toolbarEl.querySelectorAll('[data-color]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeColor = btn.getAttribute('data-color') || '#ff4d4f';
-      toolbarEl.querySelectorAll('[data-color]').forEach((b) => b.classList.toggle('is-active', b === btn));
-    });
-  });
-
-  toolbarEl.querySelectorAll('[data-width]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeWidth = Number(btn.getAttribute('data-width')) || 4;
-      toolbarEl.querySelectorAll('[data-width]').forEach((b) => b.classList.toggle('is-active', b === btn));
-    });
-  });
-
-  if (btnUndo) btnUndo.addEventListener('click', undo);
-  if (btnClear) btnClear.addEventListener('click', clearAll);
-  if (btnSend) btnSend.addEventListener('click', () => sendToAi(false));
-  if (btnSendNow) btnSendNow.addEventListener('click', () => sendToAi(true));
-
-  if (pinPopoverSave) pinPopoverSave.addEventListener('click', savePinPopover);
-  if (pinPopoverCancel) pinPopoverCancel.addEventListener('click', () => { closePinPopover(); stageEl.focus({ preventScroll: true }); });
-  if (pinPopoverDel) pinPopoverDel.addEventListener('click', deleteEditingPin);
-  if (pinPopoverInput) {
-    pinPopoverInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        savePinPopover();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        closePinPopover();
-        stageEl.focus({ preventScroll: true });
-      }
-    });
-  }
-
-  // Keyboard shortcuts: Esc = close toolbar, Ctrl+Z = undo ONLY when focus is in stage
-  function isFocusInStage() {
-    const ae = document.activeElement;
-    if (!ae) return false;
-    return ae === stageEl || stageWrap.contains(ae);
-  }
-
-  document.addEventListener('keydown', (e) => {
-    if (!expanded) return;
-    if (e.key === 'Escape') {
-      if (pinPopover && pinPopover.classList.contains('is-open')) {
-        e.preventDefault();
-        closePinPopover();
-        stageEl.focus({ preventScroll: true });
-      } else {
-        e.preventDefault();
-        setExpanded(false);
-      }
-      return;
-    }
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && String(e.key).toLowerCase() === 'z') {
-      const ae = document.activeElement;
-      const isTextInput = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
-      if (!isTextInput && isFocusInStage()) {
-        e.preventDefault();
-        e.stopPropagation();
-        undo();
-      }
-    }
-  });
-
-  // Resize & Frame & Room Switch listeners
-  if (typeof ResizeObserver !== 'undefined') {
-    const ro = new ResizeObserver(() => redraw());
-    ro.observe(stageEl);
-  }
-  window.addEventListener('resize', redraw);
-  if (frameImg) {
-    frameImg.addEventListener('load', redraw);
-  }
-  bv.onSessionChange(() => {
-    closePinPopover();
-    domHover = null;
-    updateBadge();
-    redraw();
-  });
-
-  // Expose annotation helper on window.BrowserVision for diagnostics & testing
-  bv.annotation = {
-    setExpanded,
-    isExpanded: () => expanded,
-    setTool,
-    getTool: () => activeTool,
-    undo,
-    clearAll,
-    sendToAi,
-    getStore: (roomId) => getStore(roomId),
-    redraw
-  };
-
-  setTool('pen');
-  updateBadge();
-  redraw();
-})();
-/* --- /Annotation & Magic DOM (t5) --- */
-/* ===== /Browser Vision ===== */
 </script>
 </body>
 </html>

@@ -333,7 +333,17 @@ function isSelfRestartCommand(cmd) {
 
 function runDeferredCommands(commands, cwd) {
     if (!commands.length) return;
-    const script = `sleep 4; ${commands.join('; ')}`;
+    // Wait until NO child AI worker (agy, claude) of lab-dashboard is running before executing self-restart
+    const script = [
+        'sleep 3',
+        'for i in $(seq 1 180); do',
+        '  if ! pgrep -f "/home/dev/.local/bin/agy.*-p " >/dev/null 2>&1 && ! pgrep -f "/home/dev/.local/bin/claude.*-p " >/dev/null 2>&1; then',
+        '    break',
+        '  fi',
+        '  sleep 2',
+        'done',
+        commands.join('; ')
+    ].join('; ');
     try {
         const child = spawn('bash', ['-c', script], { cwd, env: buildToolEnv(), detached: true, stdio: 'ignore' });
         child.unref();

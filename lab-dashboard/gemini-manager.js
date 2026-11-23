@@ -353,11 +353,196 @@ function getLiveThinkingState(sinceMs = 0, agyConversationId = null, brainDir = 
             stepsCount: steps.length,
             timeline: timeline.slice(-120),
             lastStepTime,
+            transcriptMtimeMs: stat.mtimeMs || 0,
+            transcriptSize: stat.size || 0,
             engine: 'antigravity'
         };
     } catch (_) {
         return null;
     }
+}
+
+// ── Linux /proc Process Tree Liveness & 15s Auto-Watchdog Probe ──────────────
+function getDirectChildPidsSync(pid) {
+    const out = [];
+    try {
+        const taskDir = `/proc/${pid}/task`;
+        if (!fs.existsSync(taskDir)) return out;
+        for (const tid of fs.readdirSync(taskDir)) {
+            try {
+                const raw = fs.readFileSync(`${taskDir}/${tid}/children`, 'utf8').trim();
+                if (raw) {
+                    for (const tok of raw.split(/\s+/)) {
+                        const n = parseInt(tok, 10);
+                        if (n > 0) out.push(n);
+                    }
+                }
+            } catch (_) {}
+        }
+    } catch (_) {}
+    return out;
+}
+
+function readProcSummarySync(pid) {
+    try {
+        const statusPath = `/proc/${pid}/status`;
+        if (!fs.existsSync(statusPath)) return null;
+        const status = fs.readFileSync(statusPath, 'utf8');
+        const rssMatch = status.match(/VmRSS:\s+(\d+)\s+kB/);
+        const stateMatch = status.match(/State:\s+([A-Z])/);
+        const nameMatch = status.match(/Name:\s+([^\n]+)/);
+        const rssKb = rssMatch ? parseInt(rssMatch[1], 10) : 0;
+        const procState = stateMatch ? stateMatch[1] : 'S';
+        const comm = nameMatch ? nameMatch[1].trim() : '';
+        let cmdLabel = comm;
+        try {
+            const rawCmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+            const parts = rawCmd.split('\0').filter(Boolean);
+            if (parts.length > 0) {
+                const bin = path.basename(parts[0]);
+                const arg1 = parts[1] && !parts[1].startsWith('-') ? path.basename(parts[1]) : (parts[1] || '');
+                cmdLabel = arg1 ? `${bin} ${arg1}`.slice(0, 36) : bin.slice(0, 28);
+            }
+        } catch (_) {}
+        return { pid, rssKb, procState, comm, cmdLabel };
+    } catch (_) {
+        return null;
+    }
+}
+
+function inspectProcessTreeSync(rootPid) {
+    if (!rootPid || rootPid <= 0) {
+        return { pid: null, alive: false, rssMb: 0, procState: 'X', childProcs: [], childCount: 0 };
+    }
+    const rootInfo = readProcSummarySync(rootPid);
+    if (!rootInfo) {
+        return { pid: rootPid, alive: false, rssMb: 0, procState: 'X', childProcs: [], childCount: 0 };
+    }
+    let totalRssKb = rootInfo.rssKb || 0;
+    const shellNames = new Set(['sh', 'bash', 'dash', 'zsh']);
+    const leafLabels = [];
+    const seenPids = new Set([rootPid]);
+    const queue = [{ pid: rootPid, depth: 0 }];
+
+    while (queue.length > 0) {
+        const { pid, depth } = queue.shift();
+        if (depth >= 4) continue;
+        const children = getDirectChildPidsSync(pid);
+        for (const cpid of children) {
+            if (seenPids.has(cpid)) continue;
+            seenPids.add(cpid);
+            const cinfo = readProcSummarySync(cpid);
+            if (!cinfo) continue;
+            totalRssKb += cinfo.rssKb || 0;
+            const grandChildren = depth < 3 ? getDirectChildPidsSync(cpid) : [];
+            if (grandChildren.length > 0) {
+                queue.push({ pid: cpid, depth: depth + 1 });
+            }
+            if (!shellNames.has(cinfo.comm) || grandChildren.length === 0) {
+                if (cinfo.cmdLabel && !leafLabels.includes(cinfo.cmdLabel)) {
+                    leafLabels.push(cinfo.cmdLabel);
+                }
+            }
+        }
+    }
+
+    return {
+        pid: rootPid,
+        alive: true,
+        rssMb: Math.max(1, Math.round(totalRssKb / 1024)),
+        procState: rootInfo.procState || 'S',
+        childProcs: leafLabels.slice(0, 3),
+        childCount: Math.max(0, seenPids.size - 1)
+    };
+}
+
+function attachLivenessToThought(job, state, rootPid) {
+    if (!job || !state || typeof state !== 'object') return state;
+    const now = Date.now();
+    const tree = inspectProcessTreeSync(rootPid);
+    const tlLen = Array.isArray(state.timeline) ? state.timeline.length : 0;
+    const thinkLen = state.thinking ? state.thinking.length : 0;
+    const outLen = job.output ? job.output.length : 0;
+    const action = String(state.currentAction || '').trim();
+    const stepsCount = Number(state.stepsCount || 0);
+
+    const sigKey = `${action}|${stepsCount}|${tlLen}|${thinkLen}|${state.transcriptMtimeMs || 0}|${outLen}|${tree.childProcs.join(',')}`;
+    if (!job._lastSignalAt || sigKey !== job._lastSigKey) {
+        job._lastSigKey = sigKey;
+        job._lastSignalAt = now;
+    }
+
+    const actionStepKey = `${action}|${stepsCount}`;
+    if (!job._stepStartedAt || actionStepKey !== job._lastActionStepKey) {
+        job._lastActionStepKey = actionStepKey;
+        job._stepStartedAt = now;
+    }
+
+    const silentSec = Math.max(0, Math.floor((now - (job._lastSignalAt || now)) / 1000));
+    const stepElapsedSec = Math.max(0, Math.floor((now - (job._stepStartedAt || now)) / 1000));
+    const totalElapsedSec = Math.max(0, Math.floor((now - (job.startedAt || now)) / 1000));
+
+    let phase = 'llm_think';
+    let phaseLabel = '🧠 กำลังรอโมเดลคิดวิเคราะห์...';
+    if (!tree.alive && rootPid) {
+        phase = 'lost';
+        phaseLabel = '🔴 โพรเซสหยุดทำงานแล้ว';
+    } else if (tree.childProcs.length > 0) {
+        phase = 'child_exec';
+        phaseLabel = `⚙️ รอโพรเซสลูก: ${tree.childProcs.join(', ')}`;
+    } else if (/^(run_command:|⚙️\s*Bash:)/i.test(action)) {
+        phase = 'tool_exec';
+        const cleanCmd = action.replace(/^(run_command:|⚙️\s*Bash:)\s*/i, '').slice(0, 62);
+        phaseLabel = `🔧 กำลังรันคำสั่ง: ${cleanCmd}`;
+    } else if (/^(invoke_subagent|🤖)/i.test(action)) {
+        phase = 'subagent';
+        phaseLabel = `🤖 กำลังรอ Subagent: ${action.slice(0, 56)}`;
+    } else if (action && !/กำลังคิดวิเคราะห์|กำลังเชื่อมต่อ|เชื่อมต่อ.*สำเร็จ/.test(action)) {
+        phase = 'tool_exec';
+        phaseLabel = `🔧 ใช้เครื่องมือ: ${action.slice(0, 62)}`;
+    } else if (outLen > (job._routeBannerLen || 0)) {
+        phase = 'streaming';
+        phaseLabel = '✍️ กำลังพิมพ์คำตอบส่งกลับ...';
+    }
+
+    // Auto-Watchdog Probe Log every 15 seconds of quiet waiting
+    if (!Array.isArray(job._probeEvents)) job._probeEvents = [];
+    const lastProbeOrSignal = Math.max(job._lastSignalAt || 0, job._lastProbeAt || 0);
+    if (silentSec >= 15 && (now - lastProbeOrSignal) >= 15000) {
+        job._lastProbeAt = now;
+        const childNote = tree.childProcs.length ? ` · child: ${tree.childProcs.join(', ')}` : '';
+        const pidNote = rootPid ? `PID ${rootPid} ${tree.alive ? 'ALIVE' : 'LOST'} · ${tree.rssMb}MB${childNote}` : 'Engine active';
+        const probeText = `${pidNote} · ${phaseLabel} (รอต่อเนื่อง ${silentSec}s — ระบบยังทำงานปกติ)`;
+        job._probeEvents.push({ kind: 'probe', text: probeText, ts: now });
+        if (job._probeEvents.length > 24) job._probeEvents.shift();
+    }
+
+    if (job._probeEvents.length > 0 && Array.isArray(state.timeline)) {
+        const existingProbeTs = new Set(state.timeline.filter(e => e && e.kind === 'probe').map(e => e.ts));
+        const merged = [...state.timeline];
+        for (const pe of job._probeEvents) {
+            if (!existingProbeTs.has(pe.ts)) merged.push(pe);
+        }
+        merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        state.timeline = merged.slice(-140);
+    }
+
+    state.liveness = {
+        pid: tree.pid,
+        alive: tree.alive,
+        rssMb: tree.rssMb,
+        procState: tree.procState,
+        childProcs: tree.childProcs,
+        childCount: tree.childCount,
+        phase,
+        phaseLabel,
+        lastSignalAt: job._lastSignalAt || now,
+        silentSec,
+        stepElapsedSec,
+        totalElapsedSec,
+        heartbeatAt: now
+    };
+    return state;
 }
 
 function formatClaudeToolSummary(name, input) {
@@ -380,11 +565,17 @@ function formatClaudeToolSummary(name, input) {
 
 function resolveJobLiveThought(job, sess) {
     if (!job || job.status !== 'running') return null;
-    if (job.liveThought) return job.liveThought;
+    const run = job.sessionId ? activeRuns.get(job.sessionId) : null;
+    const pid = (run && run.child && run.child.pid) ? run.child.pid : null;
+    if (job.liveThought) {
+        return pid ? attachLivenessToThought(job, { ...job.liveThought, timeline: Array.isArray(job.liveThought.timeline) ? [...job.liveThought.timeline] : [] }, pid) : job.liveThought;
+    }
     const m = typeof job.model === 'string' ? job.model : '';
     if (m.startsWith('claude-code-') || deepseekAgent.isDeepSeekModel(m)) return null;
     const brainDir = aiRouter.agyBrainDir(aiRouter.getAgyAccount(job.agyAccount || (sess && sess.agyAccount) || 'g1'));
-    return getLiveThinkingState(job.startedAt || 0, sess && sess.agyConversationId, brainDir);
+    const activeConvId = (sess && sess.agyConvs && sess.agyConvs[job.agyAccount || sess.agyAccount || 'g1']) || (sess && sess.agyConversationId);
+    const state = getLiveThinkingState(job.startedAt || 0, activeConvId, brainDir);
+    return (state && pid) ? attachLivenessToThought(job, state, pid) : state;
 }
 
 function getActiveJob(sessionId = null) {
@@ -1507,7 +1698,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
         const env = {
             ...process.env,
-            PATH: `/home/dev/.local/bin:${process.env.PATH || ''}`,
+            PATH: `/home/dev/.gemini/antigravity-cli/bin:/home/dev/.gemini/bin:/home/dev/.local/bin:/home/dev/.local/pm2/node_modules/.bin:${process.env.PATH || '/usr/local/bin:/usr/bin:/bin'}`,
             TERM: 'xterm-256color',
             FORCE_COLOR: '0'
         };
@@ -1542,15 +1733,19 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         };
         pushClaudeEvent('init', `claude-code --model=${cliModel} --mode=${mode}`);
 
+        job._routeBannerLen = (routeBanner || '').length;
         const emitClaudeThought = (action, force = false) => {
-            if (action) currentAction = action;
+            if (action) {
+                currentAction = action;
+                job._lastSignalAt = Date.now();
+            }
             const stepList = claudeSteps.length
                 ? 'ขั้นตอนที่ทำในรอบนี้:\n' + claudeSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')
                 : '';
             const thinkingText = claudeThinking
                 ? (stepList ? `${claudeThinking}\n\n${stepList}` : claudeThinking)
                 : stepList;
-            const payload = {
+            const rawPayload = {
                 currentAction: currentAction || 'กำลังคิดวิเคราะห์ (Claude)...',
                 thinking: thinkingText.slice(-3000),
                 steps: [...claudeSteps],
@@ -1558,6 +1753,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                 timeline: [...claudeTimeline],
                 engine: 'claude-code'
             };
+            const payload = attachLivenessToThought(job, rawPayload, child.pid);
             job.liveThought = payload;
             const now = Date.now();
             if (force || now - lastClaudeThoughtAt >= 100) {
@@ -1567,6 +1763,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         };
 
         emitClaudeThought('กำลังเชื่อมต่อ Claude Code...', true);
+        const claudeHeartbeatTimer = setInterval(() => {
+            emitClaudeThought(null, true);
+        }, 2000);
 
         const processClaudeLine = (rawLine) => {
             const line = rawLine.trim();
@@ -1733,6 +1932,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         });
 
         child.on('error', (err) => {
+            clearInterval(claudeHeartbeatTimer);
             activeRuns.delete(sid);
             job.liveThought = null;
             job.status = 'error';
@@ -1744,6 +1944,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         });
 
         child.on('close', (code) => {
+            clearInterval(claudeHeartbeatTimer);
             if (claudeStdoutBuf.trim()) {
                 processClaudeLine(claudeStdoutBuf);
                 claudeStdoutBuf = '';
@@ -1902,7 +2103,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
         const env = {
             ...process.env,
-            PATH: `/home/dev/.gemini/bin:/home/dev/.local/bin:${process.env.PATH || ''}`,
+            PATH: `/home/dev/.gemini/antigravity-cli/bin:/home/dev/.gemini/bin:/home/dev/.local/bin:/home/dev/.local/pm2/node_modules/.bin:${process.env.PATH || '/usr/local/bin:/usr/bin:/bin'}`,
             TERM: 'xterm-256color',
             FORCE_COLOR: '0',
             HOME: agyAcc.home,
@@ -1962,17 +2163,28 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         };
         const brainPoll = beforeBrains ? setInterval(detectConvId, 500) : null;
         let lastAgyThoughtSig = '';
+        let lastAgyHeartbeatAt = 0;
+        job._routeBannerLen = (routeBanner || '').length;
         const thoughtPoll = setInterval(() => {
             const liveMeta = getSessionMetaSync(sid) || sessMeta;
             const activeConvId = (liveMeta && liveMeta.agyConvs && liveMeta.agyConvs[agyAcc.id])
                 || (liveMeta && liveMeta.agyConversationId)
                 || convId;
-            const state = getLiveThinkingState(job.startedAt || 0, activeConvId, agyBrain);
-            if (!state) return;
+            const rawState = getLiveThinkingState(job.startedAt || 0, activeConvId, agyBrain) || {
+                thinking: '',
+                currentAction: 'กำลังเชื่อมต่อและวิเคราะห์คำสั่ง...',
+                steps: [],
+                stepsCount: 0,
+                timeline: [],
+                engine: 'antigravity'
+            };
+            const state = attachLivenessToThought(job, rawState, child.pid);
             const tlLen = Array.isArray(state.timeline) ? state.timeline.length : 0;
             const sig = `${state.currentAction}|${state.stepsCount}|${tlLen}|${state.thinking}`;
-            if (sig !== lastAgyThoughtSig) {
+            const now = Date.now();
+            if (sig !== lastAgyThoughtSig || (now - lastAgyHeartbeatAt) >= 2000) {
                 lastAgyThoughtSig = sig;
+                lastAgyHeartbeatAt = now;
                 job.liveThought = state;
                 try { onChunk('thought', state); } catch (_) {}
             }
@@ -1980,12 +2192,14 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
         child.stdout.on('data', (d) => {
             const str = d.toString('utf8');
+            job._lastSignalAt = Date.now();
             job.output += str;
             onChunk('stdout', str);
         });
 
         child.stderr.on('data', (d) => {
             const str = d.toString('utf8');
+            job._lastSignalAt = Date.now();
             onChunk('stderr', str);
         });
 

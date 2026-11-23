@@ -46,9 +46,13 @@ const ONLINE_THRESHOLD_MS = 18000; // 18 seconds (3.5 heartbeats)
 let hubConfig = {
     token: DEFAULT_TOKEN,
     hubUrls: DEFAULT_HUB_URLS,
-    agentVersion: '1.0.2',
+    agentVersion: '1.0.3',
     createdAt: new Date().toISOString(),
 };
+
+const MONITOR_HTML_PATH = path.join(__dirname, 'blender-live-monitor.html');
+const MAX_JOB_LOG_LINES = 300;
+const MAX_JOB_LOG_LINE_LEN = 400;
 
 // nodeId -> node record
 const nodes = new Map();
@@ -60,6 +64,8 @@ const pollWaiters = new Map();
 const commandHistory = new Map();
 // jobId -> render job record
 const renderJobs = new Map();
+// jobId -> Array<string> (in-memory log tail, never persisted to jobs.json)
+const jobLogs = new Map();
 
 let initialized = false;
 let buildInProgress = null;
@@ -74,11 +80,12 @@ function ensureDirsSync() {
 
 function loadStateSync() {
     ensureDirsSync();
+    const codeAgentVersion = hubConfig.agentVersion;
     try {
         if (fs.existsSync(CONFIG_PATH)) {
             const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
             if (raw && typeof raw.token === 'string' && raw.token.length >= 16) {
-                hubConfig = { ...hubConfig, ...raw };
+                hubConfig = { ...hubConfig, ...raw, agentVersion: codeAgentVersion };
             }
         } else {
             fs.writeFileSync(CONFIG_PATH, JSON.stringify(hubConfig, null, 2), { mode: 0o600 });
@@ -121,11 +128,31 @@ function scheduleSaveNodes() {
     if (typeof saveNodesTimer.unref === 'function') saveNodesTimer.unref();
 }
 
+let saveJobsTimer = null;
+let lastJobsSavedAt = 0;
+
 async function saveJobs() {
+    lastJobsSavedAt = Date.now();
     try {
         const arr = [...renderJobs.values()].slice(-100);
         await fsp.writeFile(JOBS_PATH, JSON.stringify(arr, null, 2));
     } catch (_) {}
+}
+
+function scheduleSaveJobsThrottled() {
+    const now = Date.now();
+    const elapsed = now - lastJobsSavedAt;
+    if (elapsed >= 5000 && !saveJobsTimer) {
+        saveJobs();
+        return;
+    }
+    if (saveJobsTimer) return;
+    const delay = Math.max(200, 5000 - elapsed);
+    saveJobsTimer = setTimeout(() => {
+        saveJobsTimer = null;
+        saveJobs();
+    }, delay);
+    if (typeof saveJobsTimer.unref === 'function') saveJobsTimer.unref();
 }
 
 function execFileAsync(cmd, args, opts = {}) {
@@ -640,6 +667,121 @@ function handleJobProgress(body) {
     return { ok: true, job };
 }
 
+function handleJobLog(body) {
+    const jobId = String((body && body.jobId) || '').trim();
+    const job = renderJobs.get(jobId);
+    if (!job) return { ok: false, error: 'Job not found' };
+
+    if (Array.isArray(body.lines) && body.lines.length > 0) {
+        let buf = jobLogs.get(jobId);
+        if (!buf) {
+            buf = [];
+            jobLogs.set(jobId, buf);
+        }
+        for (const rawLine of body.lines) {
+            if (rawLine === null || rawLine === undefined) continue;
+            buf.push(String(rawLine).slice(0, MAX_JOB_LOG_LINE_LEN));
+        }
+        if (buf.length > MAX_JOB_LOG_LINES) {
+            buf.splice(0, buf.length - MAX_JOB_LOG_LINES);
+        }
+        if (jobLogs.size > 120) {
+            const firstKey = jobLogs.keys().next().value;
+            if (firstKey && firstKey !== jobId) jobLogs.delete(firstKey);
+        }
+    }
+
+    if (typeof body.progress === 'number' && Number.isFinite(body.progress) && job.status !== 'failed') {
+        const clamped = Math.max(0, Math.min(100, body.progress));
+        job.progress = Math.max(typeof job.progress === 'number' ? job.progress : 0, clamped);
+    }
+
+    if (typeof body.phase === 'string' && body.phase.trim()) {
+        job.phase = body.phase.trim();
+    }
+
+    if (body.stats && typeof body.stats === 'object' && !Array.isArray(body.stats)) {
+        job.stats = { ...(job.stats || {}), ...body.stats };
+    }
+
+    if (job.status === 'queued') {
+        job.status = 'rendering';
+    }
+
+    job.updatedAt = new Date().toISOString();
+    scheduleSaveJobsThrottled();
+    return { ok: true };
+}
+
+function escapeHtmlAttr(str) {
+    return String(str || '').replace(/[&<>"'`\\]/g, (ch) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+        '`': '&#96;',
+        '\\': '&#92;',
+    })[ch]);
+}
+
+function buildJobLiveStatus(jobId) {
+    const job = renderJobs.get(jobId);
+    if (!job) return null;
+
+    const rawNode = job.nodeId ? nodes.get(job.nodeId) : null;
+    const dec = rawNode ? decorateNode(rawNode) : null;
+    const specs = dec?.specs || {};
+    const metrics = dec?.metrics || {};
+    const memUsed = metrics.memUsed || 0;
+    const memTotal = metrics.memTotal || 0;
+    const nodeInfo = dec ? {
+        nodeId: dec.nodeId,
+        hostname: specs.hostname || dec.nodeId,
+        online: Boolean(dec.online),
+        cpuThreads: specs.cpuThreads || 0,
+        cpuPct: metrics.cpuPct ?? null,
+        memUsed,
+        memTotal,
+        memPct: memTotal ? Math.round((memUsed / memTotal) * 1000) / 10 : null,
+        gpuModel: specs.gpuModel || '',
+        gpuUtilPct: metrics.gpuUtilPct ?? null,
+        gpuTempC: metrics.gpuTempC ?? null,
+        gpuMemUsed: metrics.gpuMemUsed ?? null,
+        gpuMemTotal: metrics.gpuMemTotal ?? null,
+    } : null;
+
+    const hasLiveFrame = Boolean(
+        (job.liveFramePath && fs.existsSync(job.liveFramePath)) ||
+        (job.previewFilePath && fs.existsSync(job.previewFilePath))
+    );
+
+    return {
+        ok: true,
+        jobId: job.jobId,
+        kind: job.kind || '',
+        nodeId: job.nodeId || '',
+        hostname: job.hostname || nodeInfo?.hostname || job.nodeId || '',
+        status: job.status || 'queued',
+        progress: typeof job.progress === 'number' ? job.progress : 0,
+        phase: job.phase || '',
+        message: job.message || '',
+        stats: job.stats || null,
+        liveSeq: job.liveSeq || 0,
+        liveUpdatedAt: job.liveUpdatedAt || null,
+        hasLiveFrame,
+        liveUrl: `/api/agent-hub/jobs/${encodeURIComponent(job.jobId)}/live`,
+        previewUrl: job.previewUrl || '',
+        downloadUrl: job.downloadUrl || '',
+        outputName: job.outputName || '',
+        outputSize: job.outputSize || 0,
+        createdAt: job.createdAt || null,
+        updatedAt: job.updatedAt || null,
+        logTail: jobLogs.get(jobId) || [],
+        node: nodeInfo,
+    };
+}
+
 function parseMultipartFile(buf, contentType) {
     const m = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
     if (!m) throw new Error('Missing multipart boundary');
@@ -710,14 +852,23 @@ async function handleJobUpload(req, url) {
     const outPath = path.join(jobDir, safeName);
     await fsp.writeFile(outPath, fileData);
 
+    const nowIso = new Date().toISOString();
     const job = renderJobs.get(jobId) || {
         jobId,
         nodeId,
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso,
     };
-    if (job.previewName && safeName === job.previewName) {
+    let isLiveFrame = false;
+    if (safeName.startsWith('live_')) {
+        isLiveFrame = true;
+        job.liveFramePath = outPath;
+        job.liveSeq = (job.liveSeq || 0) + 1;
+        job.liveUpdatedAt = nowIso;
+    } else if (job.previewName && safeName === job.previewName) {
         job.previewFilePath = outPath;
         job.previewUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/preview`;
+        job.liveSeq = (job.liveSeq || 0) + 1;
+        job.liveUpdatedAt = nowIso;
     } else {
         job.status = 'completed';
         job.progress = 100;
@@ -726,16 +877,21 @@ async function handleJobUpload(req, url) {
         job.outputSize = fileData.length;
         job.downloadUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/output`;
     }
-    job.updatedAt = new Date().toISOString();
+    job.updatedAt = nowIso;
     renderJobs.set(jobId, job);
-    await saveJobs();
+    if (isLiveFrame) {
+        scheduleSaveJobsThrottled();
+    } else {
+        await saveJobs();
+    }
 
     return {
         ok: true,
         jobId,
         filename: safeName,
         size: fileData.length,
-        downloadUrl: job.downloadUrl,
+        liveSeq: job.liveSeq || 0,
+        downloadUrl: job.downloadUrl || '',
         previewUrl: job.previewUrl || '',
     };
 }
@@ -1010,6 +1166,13 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             return true;
         }
 
+        if (req.method === 'POST' && p === '/api/agent-hub/agent/job-log') {
+            const body = await readJsonBody(req, 512 * 1024);
+            const out = handleJobLog(body);
+            sendJson(res, 200, out);
+            return true;
+        }
+
         if (req.method === 'POST' && p === '/api/agent-hub/agent/job-upload') {
             try {
                 const out = await handleJobUpload(req, url);
@@ -1021,8 +1184,8 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         }
     }
 
-    // 3. Job Input / Output / Preview file streaming (accessible by Agent Token or Dashboard Session)
-    const jobFileMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/(input|output|preview)$/);
+    // 3. Job Input / Output / Preview / Live file streaming & Live Monitor (accessible by Agent Token, Localhost, or Dashboard Session)
+    const jobFileMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/(input|output|preview|live)$/);
     if (req.method === 'GET' && jobFileMatch) {
         const [, jobId, kind] = jobFileMatch;
         const job = renderJobs.get(jobId);
@@ -1030,7 +1193,13 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             sendJson(res, 404, { ok: false, error: 'Render job not found' });
             return true;
         }
-        const targetPath = kind === 'input' ? job.inputFilePath : (kind === 'preview' ? job.previewFilePath : job.outputFilePath);
+        const targetPath = kind === 'input'
+            ? job.inputFilePath
+            : kind === 'preview'
+                ? job.previewFilePath
+                : kind === 'live'
+                    ? (job.liveFramePath || job.previewFilePath)
+                    : job.outputFilePath;
         if (!targetPath || !fs.existsSync(targetPath)) {
             sendJson(res, 404, { ok: false, error: `${kind} file not found` });
             return true;
@@ -1051,7 +1220,7 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             '.blend': 'application/octet-stream',
         };
         const contentType = mimeMap[ext] || 'application/octet-stream';
-        const disp = (ext === '.png' || ext === '.jpg' || ext === '.jpeg') && !url.searchParams.get('download')
+        const disp = (kind === 'live' || ((ext === '.png' || ext === '.jpg' || ext === '.jpeg') && !url.searchParams.get('download')))
             ? `inline; filename="${fname}"`
             : `attachment; filename="${fname}"`;
         res.writeHead(200, {
@@ -1061,6 +1230,64 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             'Cache-Control': 'no-store',
         });
         fs.createReadStream(targetPath).pipe(res);
+        return true;
+    }
+
+    const jobLiveStatusMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/live-status$/);
+    if (req.method === 'GET' && jobLiveStatusMatch) {
+        const [, jobId] = jobLiveStatusMatch;
+        const payload = buildJobLiveStatus(jobId);
+        if (!payload) {
+            sendJson(res, 404, { ok: false, error: 'Render job not found' });
+            return true;
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        sendJson(res, 200, payload);
+        return true;
+    }
+
+    const jobMonitorMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/monitor$/);
+    if (req.method === 'GET' && jobMonitorMatch) {
+        const [, jobId] = jobMonitorMatch;
+        try {
+            const tpl = await fsp.readFile(MONITOR_HTML_PATH, 'utf8');
+            const html = tpl.replace(/__JOB_ID__/g, escapeHtmlAttr(jobId));
+            res.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-store',
+            });
+            res.end(html);
+        } catch (err) {
+            sendJson(res, 500, { ok: false, error: `Monitor template unavailable: ${err.message}` });
+        }
+        return true;
+    }
+
+    if (req.method === 'GET' && p === '/api/agent-hub/blender-monitor') {
+        const blenderJobs = [...renderJobs.values()]
+            .filter((j) => j && j.kind === 'blender-3d')
+            .sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
+        if (blenderJobs.length === 0) {
+            const emptyHtml = `<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blender Live Monitor</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0f17;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}.card{background:#121826;border:1px solid #1e293b;border-radius:14px;padding:28px 32px;text-align:center;max-width:420px;box-shadow:0 12px 32px rgba(0,0,0,.4)}h1{margin:0 0 8px;font-size:20px;color:#38bdf8}p{margin:0 0 18px;font-size:14px;color:#94a3b8;line-height:1.6}button{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer}button:hover{background:#334155}</style></head><body><div class="card"><h1>🎨 Blender Live Monitor</h1><p>ยังไม่มีงาน Blender 3D ในระบบขณะนี้<br>เมื่อมีการสั่งเรนเดอร์ หน้านี้จะแสดงความคืบหน้าแบบเรียลไทม์โดยอัตโนมัติ</p><button onclick="location.reload()">รีเฟรช</button></div><script>setTimeout(()=>location.reload(),5000);</script></body></html>`;
+            res.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-store',
+            });
+            res.end(emptyHtml);
+            return true;
+        }
+        try {
+            const latestJob = blenderJobs[0];
+            const tpl = await fsp.readFile(MONITOR_HTML_PATH, 'utf8');
+            const html = tpl.replace(/__JOB_ID__/g, escapeHtmlAttr(latestJob.jobId));
+            res.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-store',
+            });
+            res.end(html);
+        } catch (err) {
+            sendJson(res, 500, { ok: false, error: `Monitor template unavailable: ${err.message}` });
+        }
         return true;
     }
 

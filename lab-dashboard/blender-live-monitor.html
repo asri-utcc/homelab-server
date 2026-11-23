@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blender Live Monitor — __JOB_ID__</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --surface: #121826;
+      --surface-2: #182133;
+      --border: #1e293b;
+      --border-soft: #283548;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --green: #22c55e;
+      --green-soft: rgba(34, 197, 94, 0.15);
+      --amber: #f59e0b;
+      --amber-soft: rgba(245, 158, 11, 0.15);
+      --red: #ef4444;
+      --red-soft: rgba(239, 68, 68, 0.16);
+      --purple: #a78bfa;
+      --radius: 12px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 14px 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Header */
+    .header {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      color: #f8fafc;
+      letter-spacing: 0.01em;
+    }
+
+    .sep {
+      color: var(--text-muted);
+    }
+
+    .node-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-soft);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12.5px;
+      color: var(--text);
+      font-family: var(--mono);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .dot.online { background: var(--green); box-shadow: 0 0 8px rgba(34, 197, 94, 0.7); }
+    .dot.offline { background: var(--red); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+    }
+    .badge.queued { background: rgba(148, 163, 184, 0.14); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.25); }
+    .badge.rendering { background: var(--amber-soft); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35); }
+    .badge.completed { background: var(--green-soft); color: #4ade80; border-color: rgba(34, 197, 94, 0.35); }
+    .badge.failed { background: var(--red-soft); color: #f87171; border-color: rgba(239, 68, 68, 0.35); }
+
+    .pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.75); }
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12.5px;
+      color: var(--text-dim);
+    }
+
+    .elapsed {
+      font-family: var(--mono);
+      background: var(--surface-2);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      padding: 4px 10px;
+      color: #f8fafc;
+      font-weight: 600;
+    }
+
+    .job-id-tag {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+
+    /* Progress & Phase card */
+    .progress-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .progress-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .phase-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .phase-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .message-text {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .pct-label {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .bar-track {
+      width: 100%;
+      height: 10px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0ea5e9, #38bdf8, #818cf8);
+      border-radius: 999px;
+      transition: width 0.35s ease;
+    }
+    .bar-fill.completed {
+      background: linear-gradient(90deg, #16a34a, #22c55e, #4ade80);
+    }
+    .bar-fill.failed {
+      background: linear-gradient(90deg, #dc2626, #ef4444);
+    }
+
+    .stats-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .stats-chips {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .stat-chip {
+      background: var(--surface-2);
+      border: 1px solid var(--border-soft);
+      border-radius: 7px;
+      padding: 3px 9px;
+      font-size: 12px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+    }
+    .stat-chip strong {
+      color: #f8fafc;
+      font-weight: 600;
+    }
+
+    /* Alert boxes (completed / failed) */
+    .alert-box {
+      display: none;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .alert-box.show { display: flex; }
+
+    .alert-error {
+      background: var(--red-soft);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      color: #fecaca;
+    }
+    .alert-error .alert-title {
+      font-weight: 700;
+      color: #fca5a5;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+    .alert-error pre {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #fecaca;
+    }
+
+    .alert-done {
+      background: var(--green-soft);
+      border: 1px solid rgba(34, 197, 94, 0.45);
+      color: #dcfce7;
+    }
+    .alert-done .alert-title {
+      font-weight: 700;
+      color: #4ade80;
+      font-size: 14px;
+    }
+    .alert-done .alert-sub {
+      font-size: 12.5px;
+      color: #bbf7d0;
+      margin-top: 2px;
+      font-family: var(--mono);
+    }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #22c55e;
+      color: #052e16;
+      font-weight: 700;
+      font-size: 13.5px;
+      text-decoration: none;
+      padding: 9px 16px;
+      border-radius: 9px;
+      box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+      transition: transform 0.15s ease, background 0.15s ease;
+      white-space: nowrap;
+    }
+    .download-btn:hover {
+      background: #4ade80;
+      transform: translateY(-1px);
+    }
+
+    /* Main 2-column grid */
+    .main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .panel-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    .panel-meta {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* Live viewport */
+    .viewport-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: radial-gradient(circle at 50% 45%, #162033 0%, #090d16 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .viewport-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+    .viewport-img.visible {
+      display: block;
+    }
+
+    .viewport-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      padding: 20px;
+      color: var(--text-dim);
+    }
+
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border: 3px solid rgba(56, 189, 248, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.95s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .placeholder-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+    .placeholder-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Node metrics strip */
+    .metrics-strip {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.55);
+    }
+
+    .metric-item {
+      background: var(--surface-2);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .metric-val {
+      font-family: var(--mono);
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Terminal Log */
+    .terminal-panel {
+      min-height: 360px;
+      max-height: 560px;
+    }
+
+    .log-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border-soft);
+      color: var(--text-dim);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+    .toggle-btn.active {
+      background: var(--accent-soft);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: var(--accent);
+    }
+
+    .log-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      background: #070b12;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+      color: #cbd5e1;
+      word-break: break-word;
+    }
+
+    .log-line {
+      padding: 1px 4px;
+      border-radius: 3px;
+      white-space: pre-wrap;
+    }
+    .log-line.log-err {
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.09);
+    }
+    .log-line.log-lab {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.08);
+      font-weight: 600;
+    }
+    .log-line.log-ok {
+      color: #4ade80;
+    }
+    .log-empty {
+      color: var(--text-muted);
+      font-style: italic;
+      padding: 12px 4px;
+    }
+
+    /* Responsive for narrow Browser Vision panel */
+    @media (max-width: 860px) {
+      .app {
+        padding: 10px 10px 16px;
+        gap: 10px;
+      }
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+      .terminal-panel {
+        min-height: 260px;
+        max-height: 360px;
+      }
+      .metrics-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        padding: 8px 10px;
+      }
+      .metric-val {
+        font-size: 12px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .metrics-strip {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="brand">🎨 Blender Live Monitor</div>
+        <span class="sep">·</span>
+        <div class="node-chip" id="nodeChip">
+          <span class="dot" id="nodeDot"></span>
+          <span id="nodeName">🖥️ กำลังเชื่อมต่อ…</span>
+        </div>
+        <span class="badge queued" id="statusBadge">
+          <span class="pulse" id="statusPulse"></span>
+          <span id="statusText">รอคิว</span>
+        </span>
+      </div>
+      <div class="header-right">
+        <span class="job-id-tag" id="jobIdLabel">__JOB_ID__</span>
+        <span class="elapsed" id="elapsedText">⏱ 00:00</span>
+      </div>
+    </header>
+
+    <!-- Progress Card -->
+    <section class="progress-card">
+      <div class="progress-top">
+        <div class="phase-wrap">
+          <span class="phase-pill" id="phaseText">เริ่มต้น</span>
+          <span class="message-text" id="messageText">กำลังโหลดสถานะงานจาก Hub…</span>
+        </div>
+        <div class="pct-label" id="pctLabel">0%</div>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" id="barFill"></div>
+      </div>
+      <div class="stats-row">
+        <div class="stats-chips" id="statsChips">
+          <span class="stat-chip">Frame: <strong id="statFrame">-</strong></span>
+          <span class="stat-chip">Sample: <strong id="statSample">-</strong></span>
+          <span class="stat-chip">Mem: <strong id="statMem">-</strong></span>
+        </div>
+        <div class="panel-meta" id="pollMeta">อัปเดตทุก 1 วินาที</div>
+      </div>
+    </section>
+
+    <!-- Completed Banner -->
+    <section class="alert-box alert-done" id="doneBox">
+      <div>
+        <div class="alert-title">✅ เรนเดอร์และส่งออกไฟล์ 3D เสร็จสมบูรณ์</div>
+        <div class="alert-sub" id="doneMeta">พร้อมดาวน์โหลด</div>
+      </div>
+      <a class="download-btn" id="downloadBtn" href="#" download>⬇️ ดาวน์โหลด .glb</a>
+    </section>
+
+    <!-- Failed Banner -->
+    <section class="alert-box alert-error" id="errorBox">
+      <div style="width:100%">
+        <div class="alert-title">❌ งาน Blender ล้มเหลว</div>
+        <pre id="errorText"></pre>
+      </div>
+    </section>
+
+    <!-- Main 2-column content -->
+    <main class="main-grid">
+      <!-- Left: Live Frame + Node Metrics -->
+      <section class="panel">
+        <div class="panel-header">
+          <span id="viewportTitle">🖼️ ภาพสดจาก Blender (Live Frame)</span>
+          <span class="panel-meta" id="frameMeta">เฟรม #0</span>
+        </div>
+        <div class="viewport-wrap">
+          <img id="liveImg" class="viewport-img" alt="Blender Live Frame" />
+          <div id="viewportPlaceholder" class="viewport-placeholder">
+            <div class="spinner" id="placeholderSpinner"></div>
+            <div class="placeholder-title">รอภาพสดจาก Blender…</div>
+            <div class="placeholder-sub">ภาพจะอัปเดตอัตโนมัติทันทีที่เครื่องลูกข่ายเรนเดอร์เฟรมแรก</div>
+          </div>
+        </div>
+        <div class="metrics-strip">
+          <div class="metric-item">
+            <span class="metric-label">CPU</span>
+            <span class="metric-val" id="mCpu">-</span>
+            <span class="metric-sub" id="mCpuSub">รอข้อมูลโหนด</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">RAM</span>
+            <span class="metric-val" id="mRam">-</span>
+            <span class="metric-sub" id="mRamSub">-</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">GPU</span>
+            <span class="metric-val" id="mGpu">-</span>
+            <span class="metric-sub" id="mGpuSub">-</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right: Live Terminal Log -->
+      <section class="panel terminal-panel">
+        <div class="panel-header">
+          <span>📟 Blender Log (Live)</span>
+          <div class="log-controls">
+            <span class="panel-meta" id="logCount">0 บรรทัด</span>
+            <button type="button" class="toggle-btn active" id="autoScrollBtn">Auto-scroll: เปิด</button>
+          </div>
+        </div>
+        <div class="log-body" id="logBody">
+          <div class="log-empty">รอข้อความ log จาก Blender…</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const RAW_JOB_ID = '__JOB_ID__';
+      const PLACEHOLDER_TOKEN = '__' + 'JOB_ID' + '__';
+      const JOB_ID = (RAW_JOB_ID && RAW_JOB_ID !== PLACEHOLDER_TOKEN) ? RAW_JOB_ID : '';
+      const API_BASE = JOB_ID ? ('/api/agent-hub/jobs/' + encodeURIComponent(JOB_ID)) : '';
+
+      const el = (id) => document.getElementById(id);
+      const nodeDot = el('nodeDot');
+      const nodeName = el('nodeName');
+      const statusBadge = el('statusBadge');
+      const statusPulse = el('statusPulse');
+      const statusText = el('statusText');
+      const jobIdLabel = el('jobIdLabel');
+      const elapsedText = el('elapsedText');
+      const phaseText = el('phaseText');
+      const messageText = el('messageText');
+      const pctLabel = el('pctLabel');
+      const barFill = el('barFill');
+      const statFrame = el('statFrame');
+      const statSample = el('statSample');
+      const statMem = el('statMem');
+      const pollMeta = el('pollMeta');
+      const doneBox = el('doneBox');
+      const doneMeta = el('doneMeta');
+      const downloadBtn = el('downloadBtn');
+      const errorBox = el('errorBox');
+      const errorText = el('errorText');
+      const viewportTitle = el('viewportTitle');
+      const frameMeta = el('frameMeta');
+      const liveImg = el('liveImg');
+      const viewportPlaceholder = el('viewportPlaceholder');
+      const mCpu = el('mCpu');
+      const mCpuSub = el('mCpuSub');
+      const mRam = el('mRam');
+      const mRamSub = el('mRamSub');
+      const mGpu = el('mGpu');
+      const mGpuSub = el('mGpuSub');
+      const logBody = el('logBody');
+      const logCount = el('logCount');
+      const autoScrollBtn = el('autoScrollBtn');
+
+      let autoScroll = true;
+      let lastLiveSeq = -1;
+      let lastLogSignature = '';
+      let createdAtMs = 0;
+      let stoppedAtMs = 0;
+      let pollTimer = null;
+      let clockTimer = null;
+      let inFlight = false;
+
+      const PHASE_LABELS = {
+        starting: 'เริ่มต้น (Starting)',
+        scripting: 'สร้างฉาก 3D (Scripting)',
+        rendering: 'กำลังเรนเดอร์ (Rendering)',
+        exporting: 'ส่งออกไฟล์ 3D (Exporting)',
+        uploading: 'อัปโหลดผลลัพธ์ (Uploading)',
+      };
+
+      const STATUS_LABELS = {
+        queued: 'รอคิว',
+        rendering: 'กำลังทำงาน',
+        running: 'กำลังทำงาน',
+        completed: 'เสร็จสมบูรณ์',
+        failed: 'ล้มเหลว',
+      };
+
+      autoScrollBtn.addEventListener('click', () => {
+        autoScroll = !autoScroll;
+        autoScrollBtn.classList.toggle('active', autoScroll);
+        autoScrollBtn.textContent = autoScroll ? 'Auto-scroll: เปิด' : 'Auto-scroll: ปิด';
+        if (autoScroll) logBody.scrollTop = logBody.scrollHeight;
+      });
+
+      function formatDuration(ms) {
+        const totalSec = Math.max(0, Math.floor(ms / 1000));
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        const pad = (n) => String(n).padStart(2, '0');
+        return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+      }
+
+      function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return '-';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let val = bytes;
+        let idx = 0;
+        while (val >= 1024 && idx < units.length - 1) {
+          val /= 1024;
+          idx++;
+        }
+        return `${val.toFixed(val >= 10 ? 1 : 2)} ${units[idx]}`;
+      }
+
+      function updateClock() {
+        if (!createdAtMs) return;
+        const end = stoppedAtMs || Date.now();
+        elapsedText.textContent = '⏱ ' + formatDuration(end - createdAtMs);
+      }
+
+      function loadImageSmooth(url) {
+        const img = new Image();
+        img.onload = () => {
+          liveImg.src = url;
+          liveImg.classList.add('visible');
+          viewportPlaceholder.style.display = 'none';
+        };
+        img.src = url;
+      }
+
+      function renderLogs(lines) {
+        if (!Array.isArray(lines) || lines.length === 0) return;
+        const sig = lines.length + ':' + (lines[lines.length - 1] || '');
+        if (sig === lastLogSignature) return;
+        lastLogSignature = sig;
+        logCount.textContent = `${lines.length} บรรทัด`;
+
+        const frag = document.createDocumentFragment();
+        for (const line of lines) {
+          const div = document.createElement('div');
+          let cls = 'log-line';
+          if (/error|traceback|exception|failed/i.test(line)) {
+            cls += ' log-err';
+          } else if (/LAB_/i.test(line)) {
+            cls += ' log-lab';
+          } else if (/saved:|finished|completed/i.test(line)) {
+            cls += ' log-ok';
+          }
+          div.className = cls;
+          div.textContent = line;
+          frag.appendChild(div);
+        }
+        logBody.innerHTML = '';
+        logBody.appendChild(frag);
+        if (autoScroll) {
+          logBody.scrollTop = logBody.scrollHeight;
+        }
+      }
+
+      function renderNodeMetrics(node) {
+        if (!node) {
+          nodeDot.className = 'dot';
+          return;
+        }
+        nodeDot.className = 'dot ' + (node.online ? 'online' : 'offline');
+        const label = node.hostname || node.nodeId || 'worker';
+        nodeName.textContent = '🖥️ ' + label;
+
+        mCpu.textContent = node.cpuPct !== null && node.cpuPct !== undefined
+          ? `${Number(node.cpuPct).toFixed(1)}%`
+          : '-';
+        mCpuSub.textContent = node.cpuThreads ? `${node.cpuThreads} Threads` : (node.online ? 'ออนไลน์' : 'ออฟไลน์');
+
+        if (node.memTotal) {
+          mRam.textContent = node.memPct !== null && node.memPct !== undefined
+            ? `${Number(node.memPct).toFixed(1)}%`
+            : formatBytes(node.memUsed);
+          mRamSub.textContent = `${formatBytes(node.memUsed)} / ${formatBytes(node.memTotal)}`;
+        } else {
+          mRam.textContent = '-';
+          mRamSub.textContent = '-';
+        }
+
+        if (node.gpuModel || node.gpuUtilPct !== null) {
+          const util = node.gpuUtilPct !== null && node.gpuUtilPct !== undefined ? `${Math.round(node.gpuUtilPct)}%` : 'พร้อมใช้';
+          const temp = node.gpuTempC !== null && node.gpuTempC !== undefined ? ` · ${Math.round(node.gpuTempC)}°C` : '';
+          mGpu.textContent = util + temp;
+          mGpuSub.textContent = node.gpuModel || 'NVIDIA GPU';
+        } else {
+          mGpu.textContent = 'CPU Render';
+          mGpuSub.textContent = 'ไม่มีข้อมูล GPU';
+        }
+      }
+
+      function applyStatus(data) {
+        if (!data || !data.ok) return;
+
+        if (!createdAtMs && data.createdAt) {
+          const parsed = Date.parse(data.createdAt);
+          if (!Number.isNaN(parsed)) createdAtMs = parsed;
+        }
+
+        const hostLabel = data.hostname || data.nodeId || 'worker';
+        nodeName.textContent = '🖥️ ' + hostLabel;
+        if (data.node) {
+          renderNodeMetrics(data.node);
+        }
+
+        const st = String(data.status || 'queued').toLowerCase();
+        const badgeCls = st === 'completed' ? 'completed' : st === 'failed' ? 'failed' : (st === 'queued' ? 'queued' : 'rendering');
+        statusBadge.className = 'badge ' + badgeCls;
+        statusText.textContent = STATUS_LABELS[st] || st;
+        statusPulse.style.display = (st === 'completed' || st === 'failed') ? 'none' : 'inline-block';
+
+        const pct = Math.max(0, Math.min(100, Math.round(Number(data.progress) || 0)));
+        pctLabel.textContent = pct + '%';
+        barFill.style.width = pct + '%';
+        barFill.className = 'bar-fill' + (st === 'completed' ? ' completed' : st === 'failed' ? ' failed' : '');
+
+        phaseText.textContent = PHASE_LABELS[data.phase] || (data.phase ? data.phase : (st === 'completed' ? 'เสร็จสมบูรณ์' : 'กำลังเตรียมงาน'));
+        if (data.message) {
+          messageText.textContent = data.message;
+        }
+
+        const stats = data.stats || {};
+        statFrame.textContent = stats.frame !== undefined && stats.frame !== null ? String(stats.frame) : '-';
+        if (stats.sample !== undefined && stats.totalSamples) {
+          statSample.textContent = `${stats.sample}/${stats.totalSamples}`;
+        } else if (stats.sample !== undefined) {
+          statSample.textContent = String(stats.sample);
+        } else {
+          statSample.textContent = '-';
+        }
+        statMem.textContent = stats.memMb !== undefined && stats.memMb !== null
+          ? `${Number(stats.memMb).toFixed(0)} MB`
+          : '-';
+
+        renderLogs(data.logTail);
+
+        const seq = Number(data.liveSeq) || 0;
+        if (st === 'completed') {
+          stoppedAtMs = Date.now();
+          updateClock();
+          pollMeta.textContent = 'หยุดการดึงข้อมูลอัตโนมัติ (งานเสร็จแล้ว)';
+          viewportTitle.textContent = '🖼️ ภาพตัวอย่างผลลัพธ์ (Preview)';
+          frameMeta.textContent = seq > 0 ? `เฟรม #${seq}` : 'Preview';
+
+          const finalImgUrl = data.previewUrl
+            ? (data.previewUrl + '?t=' + (seq || Date.now()))
+            : (data.hasLiveFrame ? (API_BASE + '/live?t=' + (seq || Date.now())) : '');
+          if (finalImgUrl) {
+            loadImageSmooth(finalImgUrl);
+          }
+
+          doneBox.classList.add('show');
+          errorBox.classList.remove('show');
+          const fname = data.outputName || (JOB_ID + '.glb');
+          const sizeStr = data.outputSize ? ` (${formatBytes(data.outputSize)})` : '';
+          doneMeta.textContent = `${fname}${sizeStr}`;
+          if (data.downloadUrl) {
+            downloadBtn.href = data.downloadUrl + '?download=1';
+            downloadBtn.textContent = `⬇️ ดาวน์โหลด ${fname.endsWith('.glb') ? '.glb' : fname}`;
+            downloadBtn.style.display = 'inline-flex';
+          } else {
+            downloadBtn.style.display = 'none';
+          }
+          stopPolling();
+        } else if (st === 'failed') {
+          stoppedAtMs = Date.now();
+          updateClock();
+          pollMeta.textContent = 'หยุดการดึงข้อมูลอัตโนมัติ (งานล้มเหลว)';
+          errorBox.classList.add('show');
+          doneBox.classList.remove('show');
+          errorText.textContent = data.message || 'เกิดข้อผิดพลาดระหว่างการทำงานของ Blender';
+          stopPolling();
+        } else {
+          if ((seq > lastLiveSeq && seq > 0) || (data.hasLiveFrame && lastLiveSeq < 0)) {
+            lastLiveSeq = seq;
+            frameMeta.textContent = seq > 0 ? `เฟรม #${seq}` : 'กำลังโหลดภาพ';
+            loadImageSmooth(`${API_BASE}/live?t=${seq || Date.now()}`);
+          }
+          updateClock();
+        }
+      }
+
+      function stopPolling() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        if (clockTimer) {
+          clearInterval(clockTimer);
+          clockTimer = null;
+        }
+      }
+
+      async function pollOnce() {
+        if (!API_BASE || inFlight) return;
+        inFlight = true;
+        try {
+          const resp = await fetch(`${API_BASE}/live-status`, { cache: 'no-store' });
+          if (!resp.ok) {
+            pollMeta.textContent = `HTTP ${resp.status} — กำลังลองใหม่…`;
+            return;
+          }
+          const data = await resp.json();
+          applyStatus(data);
+        } catch (err) {
+          pollMeta.textContent = 'ขาดการเชื่อมต่อชั่วคราว — กำลังลองใหม่…';
+        } finally {
+          inFlight = false;
+        }
+      }
+
+      if (!JOB_ID) {
+        jobIdLabel.textContent = 'preview-mode';
+        messageText.textContent = 'โหมดดูตัวอย่างหน้า Monitor (ยังไม่ได้ระบุ Job ID)';
+        pollMeta.textContent = 'โหมดออฟไลน์';
+        return;
+      }
+
+      pollOnce();
+      pollTimer = setInterval(pollOnce, 1000);
+      clockTimer = setInterval(updateClock, 1000);
+    })();
+  </script>
+</body>
+</html>

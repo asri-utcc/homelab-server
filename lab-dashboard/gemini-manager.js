@@ -1702,6 +1702,7 @@ function buildBrowserVisionHint(sessionId, browserVision) {
         `- งานโต้ตอบบนเว็บให้ใช้: /home/dev/.local/bin/lab-browser session <subcmd> --session ${bvSession} --shared-auth`,
         '- งานค้นหาหรืออ่านข้อมูลด่วนแบบไม่โต้ตอบให้ใช้คำสั่ง one-shot (view / shot / check) โดยไม่ใส่ --session',
         `- ถ้าจะเปิดหน้าเว็บเพื่อโชว์ผลให้ผู้ใช้ดู ให้ใช้: /home/dev/.local/bin/lab-browser session open <url> --new-tab --session ${bvSession} --shared-auth`,
+        `- งาน Blender/3D บนเครื่องลูกข่าย ให้รัน: /home/dev/.local/bin/agent-ctl blender --script <file.py> --live-session ${bvSession} --wait เพื่อสตรีมภาพสด + log ขึ้น Browser Vision (ในสคริปต์ bpy เรียก live_snapshot('ขั้นตอน') และ live_progress(pct,'ข้อความ') เป็นระยะ)`,
         '- ถ้าคำสั่งคืนค่า paused: true ให้หยุดคำสั่งเบราว์เซอร์ทั้งหมดทันที แจ้งผู้ใช้ และรอจนกว่าผู้ใช้จะกด Resume',
         '- ถ้าเจอ handoff หรือหน้า sensitive (Login / OTP / Payment / CAPTCHA) ให้ขอให้ผู้ใช้ดำเนินการเองในหน้าจอด้านขวาแล้วกด ✅ ห้ามพยายามแก้ CAPTCHA เอง และห้ามเดาหรือกรอกรหัสผ่านแทนผู้ใช้',
     ].join('\n');

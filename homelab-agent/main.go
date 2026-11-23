@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -11,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -18,7 +20,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,8 +30,8 @@ import (
 )
 
 var (
-	AgentVersion   = "1.0.0"
-	DefaultHubURLs = "http://192.168.1.123:8090,https://192.168.1.123,http://100.93.214.79:8090,https://homelab.tail285279.ts.net"
+	AgentVersion   = "1.0.3"
+	DefaultHubURLs = "https://homelab.tail285279.ts.net,http://100.93.214.79,http://100.93.214.79:8090,http://192.168.1.123,https://192.168.1.123"
 	DefaultToken   = "hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b"
 )
 
@@ -54,6 +58,7 @@ type StaticSpecs struct {
 	HasNvidiaSmi bool     `json:"hasNvidiaSmi"`
 	HasNVENC     bool     `json:"hasNvenc"`
 	FFmpegPath   string   `json:"ffmpegPath"`
+	BlenderPath  string   `json:"blenderPath"`
 	NodePath     string   `json:"nodePath"`
 	PythonPath   string   `json:"pythonPath"`
 	GitPath      string   `json:"gitPath"`
@@ -65,18 +70,18 @@ type StaticSpecs struct {
 }
 
 type LiveMetrics struct {
-	CPUPct     float64    `json:"cpuPct"`
-	MemTotal   uint64     `json:"memTotal"`
-	MemUsed    uint64     `json:"memUsed"`
-	MemFree    uint64     `json:"memFree"`
-	MemPct     float64    `json:"memPct"`
-	Disks      []DiskInfo `json:"disks"`
-	UptimeSec  uint64     `json:"uptimeSec"`
-	GPUTempC   int        `json:"gpuTempC"`
-	GPUUtilPct int        `json:"gpuUtilPct"`
-	ActiveJobs int32      `json:"activeJobs"`
-	HubEndpoint string    `json:"hubEndpoint"`
-	Timestamp  string     `json:"timestamp"`
+	CPUPct      float64    `json:"cpuPct"`
+	MemTotal    uint64     `json:"memTotal"`
+	MemUsed     uint64     `json:"memUsed"`
+	MemFree     uint64     `json:"memFree"`
+	MemPct      float64    `json:"memPct"`
+	Disks       []DiskInfo `json:"disks"`
+	UptimeSec   uint64     `json:"uptimeSec"`
+	GPUTempC    int        `json:"gpuTempC"`
+	GPUUtilPct  int        `json:"gpuUtilPct"`
+	ActiveJobs  int32      `json:"activeJobs"`
+	HubEndpoint string     `json:"hubEndpoint"`
+	Timestamp   string     `json:"timestamp"`
 }
 
 type HeartbeatPayload struct {
@@ -270,6 +275,11 @@ func detectBinaryPath(names ...string) string {
 				filepath.Join(progFiles, "ffmpeg", "bin", ext),
 				filepath.Join(progFiles, "nodejs", ext),
 				filepath.Join(progFiles, "Git", "cmd", ext),
+				filepath.Join(localAppData, "Programs", "Blender", ext),
+				filepath.Join(localAppData, "Programs", "Blender", "blender-4.3.2-windows-x64", ext),
+				filepath.Join(progFiles, "Blender Foundation", "Blender 4.3", ext),
+				filepath.Join(progFiles, "Blender Foundation", "Blender 4.2", ext),
+				filepath.Join(`C:\tools\blender`, ext),
 				filepath.Join(localAppData, "Microsoft", "WinGet", "Links", ext),
 				filepath.Join(home, "scoop", "shims", ext),
 				filepath.Join(`C:\ProgramData\chocolatey\bin`, ext),
@@ -330,6 +340,10 @@ func refreshStaticSpecs(installDir string) StaticSpecs {
 	if gitPath != "" {
 		caps = append(caps, "git")
 	}
+	blenderPath := detectBinaryPath("blender")
+	if blenderPath != "" {
+		caps = append(caps, "blender", "blender-3d")
+	}
 
 	specs := StaticSpecs{
 		NodeID:       agentCfg.NodeID,
@@ -346,6 +360,7 @@ func refreshStaticSpecs(installDir string) StaticSpecs {
 		HasNvidiaSmi: hasNvidiaSmi,
 		HasNVENC:     hasNvenc,
 		FFmpegPath:   ffmpegPath,
+		BlenderPath:  blenderPath,
 		NodePath:     nodePath,
 		PythonPath:   pythonPath,
 		GitPath:      gitPath,
@@ -621,6 +636,9 @@ func executeCommand(cmd AgentCommand) (map[string]interface{}, error) {
 
 	case "render.ffmpeg":
 		return handleRenderFFmpeg(cmd.Payload)
+
+	case "render.blender":
+		return handleRenderBlender(cmd.Payload)
 
 	case "self-update":
 		return handleSelfUpdate(cmd.Payload)
@@ -1194,6 +1212,723 @@ func handleRenderFFmpeg(p map[string]interface{}) (map[string]interface{}, error
 		"jobId":            jobID,
 		"nodeId":           agentCfg.NodeID,
 		"encoder":          encoder,
+		"outputSize":       st.Size(),
+		"renderDurationMs": renderDurationMs,
+		"hubUpload":        upData,
+	}, nil
+}
+
+const blenderLivePrelude = `# Homelab Blender Live Stream Prelude (auto-injected by homelab-agent)
+import builtins
+import os
+import shutil
+import sys
+import time
+
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
+_LIVE_FILE = os.environ.get("BLENDER_LIVE_FILE", "")
+_PREVIEW_FILE = os.environ.get("BLENDER_PREVIEW_FILE", "")
+_LAST_LIVE_TS = 0.0
+
+
+def lab_progress(pct, msg=""):
+    try:
+        p = int(max(0, min(100, float(pct))))
+        text = f"LAB_PROGRESS {p} {msg}".strip()
+        print(text, flush=True)
+    except Exception:
+        pass
+
+
+def _atomic_copy(src, dst):
+    if not src or not dst:
+        return False
+    try:
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return os.path.isfile(dst) and os.path.getsize(dst) > 0
+        if not os.path.isfile(src) or os.path.getsize(src) == 0:
+            return False
+        tmp = dst + ".tmp"
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+        return True
+    except Exception:
+        return False
+
+
+def lab_capture_live(scene=None, force=False):
+    global _LAST_LIVE_TS
+    if not _LIVE_FILE:
+        return False
+    now = time.monotonic()
+    if not force and (now - _LAST_LIVE_TS) < 1.0:
+        return False
+    try:
+        import bpy
+
+        if scene is None:
+            scene = getattr(bpy.context, "scene", None)
+
+        candidates = []
+        if scene is not None and getattr(scene, "render", None) is not None:
+            try:
+                fp = bpy.path.abspath(scene.render.frame_path(frame=scene.frame_current))
+                if fp:
+                    candidates.append(fp)
+            except Exception:
+                pass
+            try:
+                raw_fp = bpy.path.abspath(scene.render.filepath)
+                if raw_fp:
+                    candidates.append(raw_fp)
+                    if not raw_fp.lower().endswith(".png"):
+                        candidates.append(raw_fp + ".png")
+            except Exception:
+                pass
+        if _PREVIEW_FILE:
+            candidates.append(_PREVIEW_FILE)
+
+        for c in candidates:
+            if c and os.path.isfile(c) and os.path.getsize(c) > 0:
+                if _atomic_copy(c, _LIVE_FILE):
+                    _LAST_LIVE_TS = now
+                    return True
+
+        img = bpy.data.images.get("Render Result")
+        if img is not None and scene is not None:
+            tmp = _LIVE_FILE + ".tmp.png"
+            prev_fmt = scene.render.image_settings.file_format
+            try:
+                scene.render.image_settings.file_format = "PNG"
+                img.save_render(tmp, scene=scene)
+                if os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
+                    os.replace(tmp, _LIVE_FILE)
+                    _LAST_LIVE_TS = now
+                    return True
+            finally:
+                try:
+                    scene.render.image_settings.file_format = prev_fmt
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return False
+
+
+builtins.lab_progress = lab_progress
+builtins.lab_capture_live = lab_capture_live
+
+try:
+    import bpy
+    from bpy.app.handlers import persistent
+
+    @persistent
+    def _lab_on_render_init(scene, depsgraph=None):
+        frame = getattr(scene, "frame_current", 1) if scene is not None else 1
+        lab_progress(40, f"Rendering frame {frame}")
+
+    @persistent
+    def _lab_on_render_write(scene, depsgraph=None):
+        if lab_capture_live(scene, force=True):
+            frame = getattr(scene, "frame_current", 1) if scene is not None else 1
+            print(f"[lab_live] Captured live frame {frame}", flush=True)
+
+    @persistent
+    def _lab_on_render_complete(scene, depsgraph=None):
+        now = time.monotonic()
+        if not _LIVE_FILE:
+            return
+        if not os.path.isfile(_LIVE_FILE) or (now - _LAST_LIVE_TS) >= 0.5:
+            if lab_capture_live(scene, force=True):
+                print("[lab_live] Captured completed render frame", flush=True)
+
+    if _lab_on_render_init not in bpy.app.handlers.render_init:
+        bpy.app.handlers.render_init.append(_lab_on_render_init)
+    if _lab_on_render_write not in bpy.app.handlers.render_write:
+        bpy.app.handlers.render_write.append(_lab_on_render_write)
+    if _lab_on_render_complete not in bpy.app.handlers.render_complete:
+        bpy.app.handlers.render_complete.append(_lab_on_render_complete)
+except Exception as _e:
+    print(f"[lab_live_prelude] handler setup skipped: {_e}", flush=True)
+
+lab_progress(26, "Blender live prelude ready")
+`
+
+var (
+	reBlenderLabProgress = regexp.MustCompile(`(?i)\bLAB_PROGRESS\s+(\d+(?:\.\d+)?)(?:\s+(.*))?$`)
+	reBlenderCycles      = regexp.MustCompile(`Fra:(\d+).*?Sample\s+(\d+)/(\d+)`)
+	reBlenderGenSample   = regexp.MustCompile(`(?i)Rendering\s+(\d+)\s*/\s*(\d+)\s*samples?`)
+	reBlenderFra         = regexp.MustCompile(`Fra:(\d+)`)
+	reBlenderMem         = regexp.MustCompile(`Mem:(\d+(?:\.\d+)?)M`)
+)
+
+type blenderLogStats struct {
+	Frame        int     `json:"frame,omitempty"`
+	Sample       int     `json:"sample,omitempty"`
+	TotalSamples int     `json:"totalSamples,omitempty"`
+	MemMB        float64 `json:"memMb,omitempty"`
+	ElapsedMs    int64   `json:"elapsedMs"`
+}
+
+type blenderJobLogPayload struct {
+	JobID    string           `json:"jobId"`
+	NodeID   string           `json:"nodeId"`
+	Lines    []string         `json:"lines"`
+	Progress float64          `json:"progress,omitempty"`
+	Phase    string           `json:"phase,omitempty"`
+	Stats    *blenderLogStats `json:"stats,omitempty"`
+}
+
+type watchFileState struct {
+	path         string
+	uploadName   string
+	lastSeenSize int64
+	lastSeenMod  time.Time
+	stableTicks  int
+	uploadedSize int64
+	uploadedMod  time.Time
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes])
+}
+
+func splitBlenderLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i, b := range data {
+		if b == '\n' {
+			return i + 1, data[:i], nil
+		}
+		if b == '\r' {
+			if i+1 < len(data) && data[i+1] == '\n' {
+				return i + 2, data[:i], nil
+			}
+			return i + 1, data[:i], nil
+		}
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+func handleRenderBlender(p map[string]interface{}) (map[string]interface{}, error) {
+	atomic.AddInt32(&activeJobsCount, 1)
+	defer atomic.AddInt32(&activeJobsCount, -1)
+
+	specs := refreshStaticSpecs(getSpecs().InstallDir)
+	if specs.BlenderPath == "" {
+		return nil, fmt.Errorf("blender is not installed on node %s", agentCfg.NodeID)
+	}
+
+	jobID := getString(p, "jobId", fmt.Sprintf("bjob-%d", time.Now().Unix()))
+	script := getString(p, "script", "")
+	if b64 := getString(p, "scriptBase64", ""); b64 != "" && script == "" {
+		if dec, err := base64.StdEncoding.DecodeString(b64); err == nil {
+			script = string(dec)
+		}
+	}
+	if strings.TrimSpace(script) == "" {
+		return nil, fmt.Errorf("missing python script for render.blender")
+	}
+
+	outputName := getString(p, "outputName", jobID+".glb")
+	previewName := getString(p, "previewName", "")
+	openGui := getBool(p, "openGui", false)
+
+	workDir := filepath.Join(specs.InstallDir, "jobs", jobID)
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return nil, err
+	}
+	if !openGui {
+		defer os.RemoveAll(workDir)
+	}
+
+	preludeFile := filepath.Join(workDir, "lab_live_prelude.py")
+	scriptFile := filepath.Join(workDir, "job_script.py")
+	outFile := filepath.Join(workDir, outputName)
+	liveFile := filepath.Join(workDir, "live_frame.png")
+	previewFile := ""
+	if previewName != "" {
+		previewFile = filepath.Join(workDir, previewName)
+	}
+	blendSaveFile := filepath.Join(workDir, "scene.blend")
+
+	if err := os.WriteFile(preludeFile, []byte(blenderLivePrelude), 0644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(scriptFile, []byte(script), 0644); err != nil {
+		return nil, err
+	}
+
+	reportJobProgress(jobID, "rendering", 25, fmt.Sprintf("กำลังประมวลผล 3D ด้วย Blender บน %s...", specs.NodeID))
+
+	startedRender := time.Now()
+	var finalRenderDurationMs int64
+
+	uploadSingle := func(filePath string, fname string) (map[string]interface{}, error) {
+		rawBytes, rErr := os.ReadFile(filePath)
+		if rErr != nil {
+			return nil, rErr
+		}
+		durMs := atomic.LoadInt64(&finalRenderDurationMs)
+		if durMs <= 0 {
+			durMs = time.Since(startedRender).Milliseconds()
+		}
+		var mpBuf bytes.Buffer
+		mw := multipart.NewWriter(&mpBuf)
+		_ = mw.WriteField("jobId", jobID)
+		_ = mw.WriteField("nodeId", agentCfg.NodeID)
+		_ = mw.WriteField("encoder", "blender-4.3")
+		_ = mw.WriteField("renderDurationMs", fmt.Sprintf("%d", durMs))
+		fw, cErr := mw.CreateFormFile("file", fname)
+		if cErr != nil {
+			return nil, cErr
+		}
+		if _, wErr := fw.Write(rawBytes); wErr != nil {
+			return nil, wErr
+		}
+		mw.Close()
+
+		upPath := fmt.Sprintf("/api/agent-hub/agent/job-upload?jobId=%s&nodeId=%s&filename=%s",
+			url.QueryEscape(jobID), url.QueryEscape(agentCfg.NodeID), url.QueryEscape(fname))
+		upResp, _, upErr := doHubRequest(transferClient, "POST", upPath, mpBuf.Bytes(), mw.FormDataContentType())
+		if upErr != nil {
+			return nil, upErr
+		}
+		defer upResp.Body.Close()
+		var upData map[string]interface{}
+		_ = json.NewDecoder(upResp.Body).Decode(&upData)
+		if upResp.StatusCode >= 400 {
+			return upData, fmt.Errorf("upload returned HTTP %d", upResp.StatusCode)
+		}
+		return upData, nil
+	}
+
+	args := []string{"-b", "--factory-startup", "-P", preludeFile, "-P", scriptFile}
+	bCmd := exec.Command(specs.BlenderPath, args...)
+	bCmd.Dir = workDir
+	bCmd.SysProcAttr = hideWindowAttr()
+	bCmd.Env = append(os.Environ(),
+		"PYTHONUNBUFFERED=1",
+		"BLENDER_JOB_ID="+jobID,
+		"BLENDER_WORK_DIR="+workDir,
+		"BLENDER_OUTPUT_FILE="+outFile,
+		"BLENDER_PREVIEW_FILE="+previewFile,
+		"BLENDER_LIVE_FILE="+liveFile,
+		"BLENDER_SAVE_BLEND="+blendSaveFile,
+		fmt.Sprintf("BLENDER_HAS_NVIDIA=%v", specs.HasNvidiaSmi),
+	)
+
+	pr, pw := io.Pipe()
+	bCmd.Stdout = pw
+	bCmd.Stderr = pw
+
+	if err := bCmd.Start(); err != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		reportJobProgress(jobID, "failed", 0, "Blender start error: "+err.Error())
+		return nil, fmt.Errorf("blender start failed: %w", err)
+	}
+
+	waitErrCh := make(chan error, 1)
+	go func() {
+		wErr := bCmd.Wait()
+		_ = pw.Close()
+		waitErrCh <- wErr
+	}()
+
+	var (
+		logMu        sync.Mutex
+		pendingLines []string
+		curProgress  float64 = 25
+		curPhase     string  = "starting"
+		curStats     blenderLogStats
+	)
+
+	setPctLocked := func(v float64) {
+		if v < 0 {
+			v = 0
+		}
+		if v > 100 {
+			v = 100
+		}
+		v = math.Round(v*10) / 10
+		if v > curProgress {
+			curProgress = v
+		}
+	}
+
+	parseLineLocked := func(line string) {
+		if m := reBlenderFra.FindStringSubmatch(line); len(m) == 2 {
+			if f, err := strconv.Atoi(m[1]); err == nil {
+				curStats.Frame = f
+			}
+		}
+		if m := reBlenderMem.FindStringSubmatch(line); len(m) == 2 {
+			if mem, err := strconv.ParseFloat(m[1], 64); err == nil {
+				curStats.MemMB = mem
+			}
+		}
+
+		if m := reBlenderLabProgress.FindStringSubmatch(line); len(m) >= 2 {
+			if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+				setPctLocked(v)
+			}
+			msgLower := ""
+			if len(m) >= 3 {
+				msgLower = strings.ToLower(strings.TrimSpace(m[2]))
+			}
+			if strings.Contains(msgLower, "export") || strings.Contains(msgLower, "gltf") {
+				curPhase = "exporting"
+			} else if strings.Contains(msgLower, "render") {
+				if curPhase != "exporting" && curPhase != "uploading" {
+					curPhase = "rendering"
+				}
+			} else if curPhase == "starting" {
+				curPhase = "scripting"
+			}
+			return
+		}
+
+		if m := reBlenderCycles.FindStringSubmatch(line); len(m) == 4 {
+			if f, err := strconv.Atoi(m[1]); err == nil {
+				curStats.Frame = f
+			}
+			s, errS := strconv.Atoi(m[2])
+			t, errT := strconv.Atoi(m[3])
+			if errS == nil && errT == nil && t > 0 {
+				curStats.Sample = s
+				curStats.TotalSamples = t
+				setPctLocked(40.0 + 45.0*float64(s)/float64(t))
+			}
+			curPhase = "rendering"
+			return
+		}
+
+		if m := reBlenderGenSample.FindStringSubmatch(line); len(m) == 3 {
+			s, errS := strconv.Atoi(m[1])
+			t, errT := strconv.Atoi(m[2])
+			if errS == nil && errT == nil && t > 0 {
+				curStats.Sample = s
+				curStats.TotalSamples = t
+				setPctLocked(40.0 + 45.0*float64(s)/float64(t))
+			}
+			curPhase = "rendering"
+			return
+		}
+
+		lower := strings.ToLower(line)
+		if (strings.Contains(lower, "rendering") && strings.Contains(lower, "eevee")) || strings.Contains(line, "Saved:") {
+			curPhase = "rendering"
+			if strings.Contains(line, "Saved:") {
+				setPctLocked(75.0)
+			} else {
+				setPctLocked(50.0)
+			}
+			return
+		}
+
+		if strings.Contains(lower, "gltf") || strings.Contains(lower, "export") {
+			curPhase = "exporting"
+			if strings.Contains(lower, "finished") || strings.Contains(lower, "done") {
+				setPctLocked(90.0)
+			} else {
+				setPctLocked(85.0)
+			}
+			return
+		}
+
+		if curPhase == "starting" || curPhase == "scripting" {
+			curPhase = "scripting"
+			if curProgress < 40.0 {
+				setPctLocked(math.Min(40.0, curProgress+1.0))
+			}
+		}
+	}
+
+	stopCh := make(chan struct{})
+	var bgWG sync.WaitGroup
+
+	// Goroutine 1: logFlusher (every 1500ms + final flush on stop)
+	bgWG.Add(1)
+	go func() {
+		defer bgWG.Done()
+		ticker := time.NewTicker(1500 * time.Millisecond)
+		defer ticker.Stop()
+
+		lastSentProgress := -1.0
+		lastSentPhase := ""
+		loggedWarn := false
+
+		flush := func() {
+			logMu.Lock()
+			var batch []string
+			if len(pendingLines) > 200 {
+				batch = append([]string(nil), pendingLines[len(pendingLines)-200:]...)
+			} else if len(pendingLines) > 0 {
+				batch = append([]string(nil), pendingLines...)
+			} else {
+				batch = []string{}
+			}
+			pendingLines = nil
+			pct := curProgress
+			phase := curPhase
+			stats := curStats
+			logMu.Unlock()
+
+			if len(batch) == 0 && pct == lastSentProgress && phase == lastSentPhase {
+				return
+			}
+
+			stats.ElapsedMs = time.Since(startedRender).Milliseconds()
+			payload := blenderJobLogPayload{
+				JobID:    jobID,
+				NodeID:   agentCfg.NodeID,
+				Lines:    batch,
+				Progress: pct,
+				Phase:    phase,
+				Stats:    &stats,
+			}
+			body, mErr := json.Marshal(payload)
+			if mErr != nil {
+				return
+			}
+			resp, _, reqErr := doHubRequest(httpClient, "POST", "/api/agent-hub/agent/job-log", body, "application/json")
+			if reqErr != nil {
+				if !loggedWarn {
+					fmt.Printf("[blender:%s] job-log post failed: %v\n", jobID, reqErr)
+					loggedWarn = true
+				}
+				return
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode >= 400 {
+				if !loggedWarn {
+					fmt.Printf("[blender:%s] job-log endpoint returned HTTP %d\n", jobID, resp.StatusCode)
+					loggedWarn = true
+				}
+				return
+			}
+			lastSentProgress = pct
+			lastSentPhase = phase
+		}
+
+		for {
+			select {
+			case <-ticker.C:
+				flush()
+			case <-stopCh:
+				flush()
+				return
+			}
+		}
+	}()
+
+	// Goroutine 2: liveWatcher (every 1s, uploads live_frame.png & previewFile after 2 stable ticks)
+	var watchMu sync.Mutex
+	watched := []*watchFileState{
+		{path: liveFile, uploadName: "live_frame.png"},
+	}
+	if previewFile != "" && previewName != "" {
+		watched = append(watched, &watchFileState{path: previewFile, uploadName: previewName})
+	}
+
+	bgWG.Add(1)
+	go func() {
+		defer bgWG.Done()
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		var uploadBusy int32
+
+		for {
+			select {
+			case <-ticker.C:
+				if atomic.LoadInt32(&uploadBusy) != 0 {
+					continue
+				}
+				type uploadTarget struct {
+					state *watchFileState
+					size  int64
+					mod   time.Time
+				}
+				var ready []uploadTarget
+
+				watchMu.Lock()
+				for _, w := range watched {
+					st, err := os.Stat(w.path)
+					if err != nil || st.IsDir() || st.Size() == 0 {
+						w.stableTicks = 0
+						continue
+					}
+					sz := st.Size()
+					mod := st.ModTime()
+					if sz == w.uploadedSize && mod.Equal(w.uploadedMod) {
+						continue
+					}
+					if sz == w.lastSeenSize && mod.Equal(w.lastSeenMod) {
+						w.stableTicks++
+					} else {
+						w.lastSeenSize = sz
+						w.lastSeenMod = mod
+						w.stableTicks = 1
+					}
+					if w.stableTicks >= 2 {
+						ready = append(ready, uploadTarget{state: w, size: sz, mod: mod})
+					}
+				}
+				watchMu.Unlock()
+
+				if len(ready) == 0 {
+					continue
+				}
+				if !atomic.CompareAndSwapInt32(&uploadBusy, 0, 1) {
+					continue
+				}
+				bgWG.Add(1)
+				go func(targets []uploadTarget) {
+					defer bgWG.Done()
+					defer atomic.StoreInt32(&uploadBusy, 0)
+					for _, t := range targets {
+						if _, err := uploadSingle(t.state.path, t.state.uploadName); err != nil {
+							fmt.Printf("[blender:%s] live upload (%s) failed: %v\n", jobID, t.state.uploadName, err)
+							continue
+						}
+						watchMu.Lock()
+						t.state.uploadedSize = t.size
+						t.state.uploadedMod = t.mod
+						watchMu.Unlock()
+					}
+				}(ready)
+
+			case <-stopCh:
+				return
+			}
+		}
+	}()
+
+	// Stream stdout+stderr line by line (supports both \n and \r) and keep a 2500-char ring buffer
+	var tailBuf []byte
+	appendTail := func(line string) {
+		if len(tailBuf) > 0 {
+			tailBuf = append(tailBuf, '\n')
+		}
+		tailBuf = append(tailBuf, line...)
+		if len(tailBuf) > 16384 {
+			tailBuf = append([]byte(nil), tailBuf[len(tailBuf)-8192:]...)
+		}
+	}
+	getTail := func() string {
+		r := []rune(string(tailBuf))
+		if len(r) > 2500 {
+			r = r[len(r)-2500:]
+		}
+		return string(r)
+	}
+
+	scanner := bufio.NewScanner(pr)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	scanner.Split(splitBlenderLines)
+
+	for scanner.Scan() {
+		rawLine := strings.TrimSpace(scanner.Text())
+		if rawLine == "" {
+			continue
+		}
+		appendTail(rawLine)
+		shortLine := truncateRunes(rawLine, 400)
+		logMu.Lock()
+		pendingLines = append(pendingLines, shortLine)
+		if len(pendingLines) > 1000 {
+			pendingLines = append([]string(nil), pendingLines[len(pendingLines)-400:]...)
+		}
+		parseLineLocked(shortLine)
+		logMu.Unlock()
+	}
+	_, _ = io.Copy(io.Discard, pr)
+	_ = pr.Close()
+
+	err := <-waitErrCh
+	renderDurationMs := time.Since(startedRender).Milliseconds()
+	atomic.StoreInt64(&finalRenderDurationMs, renderDurationMs)
+
+	close(stopCh)
+	bgWG.Wait()
+
+	if err != nil {
+		msg := getTail()
+		reportJobProgress(jobID, "failed", 0, "Blender error: "+msg)
+		return nil, fmt.Errorf("blender failed: %v (%s)", err, msg)
+	}
+
+	st, statErr := os.Stat(outFile)
+	if statErr != nil {
+		msg := getTail()
+		reportJobProgress(jobID, "failed", 0, "ไม่พบไฟล์ผลลัพธ์ 3D จาก Blender: "+msg)
+		return nil, fmt.Errorf("blender output file missing (%s): %s", outputName, msg)
+	}
+
+	// Ensure latest live_frame.png is uploaded even if Blender exited within <2s of writing it
+	if lSt, lErr := os.Stat(liveFile); lErr == nil && !lSt.IsDir() && lSt.Size() > 0 {
+		w := watched[0]
+		if lSt.Size() != w.uploadedSize || !lSt.ModTime().Equal(w.uploadedMod) {
+			_, _ = uploadSingle(liveFile, "live_frame.png")
+		}
+	}
+
+	logMu.Lock()
+	uploadPct := curProgress
+	logMu.Unlock()
+	if uploadPct < 80 {
+		uploadPct = 80
+	}
+	if uploadPct > 99 {
+		uploadPct = 99
+	}
+	reportJobProgress(jobID, "uploading", uploadPct, "สร้าง 3D Object เสร็จแล้ว กำลังส่งไฟล์กลับไปยัง Homelab...")
+
+	if previewFile != "" {
+		if _, pErr := os.Stat(previewFile); pErr == nil {
+			_, _ = uploadSingle(previewFile, previewName)
+		}
+	}
+
+	upData, upErr := uploadSingle(outFile, outputName)
+	if upErr != nil {
+		reportJobProgress(jobID, "failed", uploadPct, "อัปโหลดไฟล์ 3D กลับไม่สำเร็จ: "+upErr.Error())
+		return nil, upErr
+	}
+
+	if openGui {
+		targetGuiFile := blendSaveFile
+		if _, bErr := os.Stat(targetGuiFile); bErr != nil {
+			targetGuiFile = outFile
+		}
+		guiCmd := exec.Command(specs.BlenderPath, targetGuiFile)
+		guiCmd.Dir = workDir
+		_ = guiCmd.Start()
+	}
+
+	reportJobProgress(jobID, "completed", 100, fmt.Sprintf("สร้าง 3D สำเร็จบน %s (%d ms)", specs.NodeID, renderDurationMs))
+
+	return map[string]interface{}{
+		"jobId":            jobID,
+		"nodeId":           agentCfg.NodeID,
+		"blenderPath":      specs.BlenderPath,
+		"outputName":       outputName,
 		"outputSize":       st.Size(),
 		"renderDurationMs": renderDurationMs,
 		"hubUpload":        upData,

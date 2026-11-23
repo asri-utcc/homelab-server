@@ -1047,7 +1047,7 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  scroll-behavior: smooth;
+  overflow-anchor: auto;
 }
 
 .msg {
@@ -5851,11 +5851,12 @@ body::before {
       msgList.innerHTML = '<div class="msg msg--assistant"><div class="msg__meta"><span class="msg__author" id="welcome-author">⚡ ' + getCoreIdentity().name + '</span><span class="msg__meta-right"><span class="msg__time">🕒 ' + formatMsgTimestamp(Date.now()) + '</span></span></div><div class="msg__body">พร้อมเริ่มบทสนทนาใหม่แล้วครับ พิมพ์หรือกดไมค์สั่งงานได้เลย!</div></div>';
     }
     updateTotalThinkingTime();
-    scrollToBottom();
-    requestAnimationFrame(scrollToBottom);
-    setTimeout(scrollToBottom, 150);
+    autoFollowBottom = true;
+    scrollToBottom(false, true);
+    requestAnimationFrame(() => scrollToBottom(false, false));
+    setTimeout(() => scrollToBottom(false, false), 150);
     msgList.querySelectorAll('img').forEach((img) => {
-      if (!img.complete) img.addEventListener('load', scrollToBottom, { once: true });
+      if (!img.complete) img.addEventListener('load', () => scrollToBottom(false, false), { once: true });
     });
   }
 
@@ -6164,22 +6165,34 @@ body::before {
 
   loadHistory();
   window.addEventListener('load', () => {
-    scrollToBottom();
-    setTimeout(scrollToBottom, 200);
+    scrollToBottom(false, false);
+    setTimeout(() => scrollToBottom(false, false), 200);
   });
 
-  function scrollToBottom(smooth = false) {
+  let autoFollowBottom = true;
+  let isProgrammaticScroll = false;
+  let programmaticScrollTimer = null;
+
+  function isNearBottom(threshold = 72) {
+    if (!msgList) return true;
+    return (msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight) <= threshold;
+  }
+
+  function scrollToBottom(smooth = false, force = false) {
     if (!msgList) return;
+    if (!force && !autoFollowBottom) {
+      updateScrollBottomBtn();
+      return;
+    }
+    if (force) autoFollowBottom = true;
+    isProgrammaticScroll = true;
+    if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
     if (smooth) {
       msgList.scrollTo({ top: msgList.scrollHeight, behavior: 'smooth' });
-      if (msgList.lastElementChild) {
-        msgList.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }
+      programmaticScrollTimer = setTimeout(() => { isProgrammaticScroll = false; }, 500);
     } else {
       msgList.scrollTop = msgList.scrollHeight;
-      if (msgList.lastElementChild) {
-        msgList.lastElementChild.scrollIntoView({ behavior: 'auto', block: 'end' });
-      }
+      programmaticScrollTimer = setTimeout(() => { isProgrammaticScroll = false; }, 32);
     }
     updateScrollBottomBtn();
   }
@@ -6191,10 +6204,24 @@ body::before {
     btnScrollBottom.classList.toggle('is-visible', distFromBottom > 80);
   }
   if (msgList) {
-    msgList.addEventListener('scroll', updateScrollBottomBtn, { passive: true });
+    msgList.addEventListener('touchstart', () => {
+      isProgrammaticScroll = false;
+    }, { passive: true });
+    msgList.addEventListener('wheel', (e) => {
+      if (e.deltaY < 0) {
+        isProgrammaticScroll = false;
+        autoFollowBottom = false;
+      }
+    }, { passive: true });
+    msgList.addEventListener('scroll', () => {
+      if (!isProgrammaticScroll) {
+        autoFollowBottom = isNearBottom(72);
+      }
+      updateScrollBottomBtn();
+    }, { passive: true });
   }
   if (btnScrollBottom) {
-    btnScrollBottom.addEventListener('click', () => scrollToBottom(true));
+    btnScrollBottom.addEventListener('click', () => scrollToBottom(true, true));
   }
 
   function escapeHtml(str) {
@@ -7284,6 +7311,7 @@ body::before {
       updateChatHeaderUI(currentSessionMeta, (currentSessionMeta.messageCount || 0) + 1);
     }
     const directJobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    autoFollowBottom = true;
     const responseBody = createTurnUI(directJobId, prompt, attachedImages);
     isSseActive = true;
 
@@ -8086,9 +8114,8 @@ body::before {
     const syncViewportHeight = () => {
       if (window.innerWidth <= 768 && window.self === window.top) {
         document.body.style.height = window.visualViewport.height + 'px';
-        if (msgList) {
-          const dist = msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight;
-          if (dist < 140) requestAnimationFrame(() => scrollToBottom(false));
+        if (msgList && autoFollowBottom) {
+          requestAnimationFrame(() => scrollToBottom(false, false));
         }
       } else {
         document.body.style.height = '';

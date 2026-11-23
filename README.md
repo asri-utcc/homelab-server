@@ -64,6 +64,27 @@ homelab-server/
 
 ---
 
+## 🛠️ Lab tools
+
+เครื่องมือ Lab ทั้งหมดถกรวมไว้ใน repo นี้เพื่อให้ง่ายต่อการสำรองข้อมูลและติดตั้งใหม่:
+
+| Tool / Directory | Deploy Path (Live) | Symlink (`~/.local/bin/`) | Dependencies |
+| :--- | :--- | :--- | :--- |
+| `motion-studio/` | `~/.local/share/motion-studio` | `motion-studio` -> `bin/motion-studio` | `npm ci` (และ `python -m venv venv && pip install -r requirements.txt` ถ้ามี) |
+| `bg-remove/` | `~/.local/share/bg-remove` | `remove-bg` -> `remove_bg.py` | `python -m venv venv && pip install -r requirements.txt` |
+| `lab-browser/` | `~/.local/share/lab-browser` | `lab-browser` -> `bin/lab-browser.js` | `npm ci` |
+| `skills/` | `~/.gemini/antigravity-cli/skills` | - | - |
+
+### ขั้นตอน Sync จาก Live -> Repo
+```bash
+rsync -a --exclude node_modules --exclude venv --exclude 'core.*' --exclude '*.bak*' --exclude out --exclude '*.mp4' ~/.local/share/motion-studio/ motion-studio/
+rsync -a ~/.local/share/bg-remove/remove_bg.py bg-remove/
+rsync -a --exclude node_modules --exclude auth --exclude profiles --exclude state --exclude '*.bak*' ~/.local/share/lab-browser/ lab-browser/
+rsync -a --exclude '*.bak*' --exclude __pycache__ ~/.gemini/antigravity-cli/skills/ skills/
+```
+
+---
+
 ## 🔒 Security & Privacy Notice
 * ไฟล์รหัสผ่าน, App Password, และ API Token ส่วนตัวทั้งหมดถูกคัดแยกออกไปยัง `.env` / `.gmail.env` และถูก `.gitignore` ไว้เรียบร้อย ปลอดภัยต่อการเก็บไว้บน GitHub
 

@@ -6,6 +6,8 @@ import { SceneVisual } from './sceneVisuals';
 import { FlatCartoonLayout } from './flatCartoon';
 import { IllustratedLayout } from './director/IllustratedLayout';
 import { isIllustratedStyle } from './director/doodleKit';
+import { StyleDirectedLayout } from './styleDirector/StyleDirectedLayout';
+import { hasStyleDirector } from './styleDirector/registry';
 import { getHeroStyleAccent, hasHeroSignature } from './signatures';
 import {
   ResolvedStyleTokens,
@@ -1572,6 +1574,9 @@ export const FamilySceneRenderer: React.FC<FamilySceneRendererProps> = (props) =
   }
   if (props.tokens.family === 'flat-cartoon') {
     return <FlatCartoonLayout {...props} />;
+  }
+  if (hasStyleDirector(props.styleId)) {
+    return <StyleDirectedLayout {...props} />;
   }
   if (props.hasHero || (props.styleId && hasHeroSignature(props.styleId))) {
     return <HeroStyleSceneLayout {...props} />;

@@ -23,3 +23,9 @@ motion-studio/out/
 motion-studio/**/*.mp4
 motion-studio/**/*.wav
 motion-studio/**/*.png.tmp
+venv/
+.venv/
+core.*
+out/
+*.mp4
+*.wav

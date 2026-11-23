@@ -65,14 +65,75 @@ DIRECTION_PROPS = (
 )
 DIRECTION_CAST = ("hero", "interviewer", "boss", "friend", "crowd")
 
+# Style-directed (per-style bespoke shot) catalog — synchronized with src/studio/styleDirector/*
+STYLE_DIRECTOR_SHOTS: dict[str, dict[str, str]] = {
+    "look-15": {
+        "chat-burst": "บับเบิลแชทเด้งรัวสลับซ้ายขวาเหมือนคุยจริง",
+        "typing-reveal": "จุดกำลังพิมพ์ (...) แล้วเด้งข้อความเฉลยคำตอบ",
+        "screenshot-zoom": "ซูมหน้าจอแชทเน้นข้อความสำคัญพร้อมไฮไลต์",
+        "group-chat": "แชทกลุ่มหลายคนโต้ตอบกันหลายชื่อ",
+        "voice-note": "ข้อความเสียงพร้อมคลื่นเสียงวิ่งและคำถอดความ",
+    },
+    "look-24": {
+        "race-bars": "แท่งอันดับวิ่งแข่งขึ้นลงพร้อมตัวเลข",
+        "podium": "แท่นรับรางวัลอันดับ 1-2-3 พร้อมถ้วย/เหรียญ",
+        "top-list-scroll": "ลิสต์อันดับไล่เรียงจากบนลงล่างพร้อมแถบคะแนน",
+        "versus-gap": "เทียบช่องว่างความต่างระหว่างสองอันดับชัดเจน",
+    },
+    "look-27": {
+        "split-duel": "แบ่งจอซ้ายขวาประชันตัวต่อตัวพร้อมสายฟ้า VS",
+        "scoreboard": "ป้ายสกอร์บอร์ดนับแต้มเปรียบเทียบสองฝั่ง",
+        "tug-of-war": "แถบชักเย่อดึงน้ำหนักชี้ฝั่งที่ได้เปรียบ",
+        "verdict": "หน้าสรุปตัดสินผู้ชนะพร้อมตราประทับ",
+    },
+    "look-11": {
+        "cash-tower": "กองธนบัตรซ้อนสูงเป็นตึกตามมูลค่าตัวเลข",
+        "coin-rain": "เหรียญทองโปรยลงมาสะสมพร้อมยอดรวม",
+        "piggy-bank": "กระปุกออมสินหยอดเหรียญแสดงเงินออม",
+        "debt-pit": "หลุมรายจ่าย/หนี้สินที่ดูดเงินลงด้านล่าง",
+    },
+    "look-13": {
+        "receipt-print": "ใบเสร็จค่อยๆ พิมพ์ไหลออกมาจากเครื่องพิมพ์",
+        "itemized-zoom": "ซูมรายการทีละบรรทัดพร้อมราคาต่อหน่วย",
+        "total-stamp": "ยอดสุทธิท้ายใบเสร็จพร้อมตราประทับ PAID/ALERT",
+        "crumple": "ใบเสร็จยับ/ฉีกเน้นจุดรั่วไหลหรือสิ่งที่ควรตัดออก",
+    },
+    "look-14": {
+        "iceberg-reveal": "ภูเขาน้ำแข็งเต็มมุม เผยยอดเหนือน้ำและฐานมหึมาใต้น้ำ",
+        "dive-down": "กล้องดำดิ่งลงใต้ผิวน้ำเปิดชั้นความลับทีละระดับ",
+        "hidden-labels": "ชี้ป้ายอธิบายองค์ประกอบที่ซ่อนอยู่ใต้น้ำ",
+        "tip-only": "โฟกัสเฉพาะยอดน้ำแข็งที่คนทั่วไปมองเห็น",
+    },
+    "look-1": {
+        "glow-portal": "วงแหวนประตูแสงเรืองรองดึงสายตาสู่ใจกลาง",
+        "constellation": "กลุ่มดาวเชื่อมเส้นโนดอธิบายความสัมพันธ์",
+        "orb-core": "ลูกแก้วพลังงานเรืองแสงพร้อมวงโคจรและค่าหลัก",
+        "light-path": "เส้นทางแสงทอดยาวเชื่อมจุดเริ่มต้นสู่เป้าหมาย",
+    },
+    "look-31": {
+        "desk-overhead": "มุมมองจากด้านบนเห็นโต๊ะทำงาน กระดาษ และอุปกรณ์",
+        "sticky-wall": "บอร์ดโพสต์อิทแปะเรียงประเด็นสำคัญ",
+        "folder-open": "แฟ้มเอกสารเปิดกางโชว์ข้อมูลสำคัญข้างใน",
+        "highlight-doc": "แผ่นเอกสารซูมใกล้พร้อมปากกาไฮไลต์ขีดทับคำสำคัญ",
+    },
+    "look-36": {
+        "horizontal-track": "เส้นไทม์ไลน์แนวนอนเลื่อนผ่านหมุดเหตุการณ์",
+        "vertical-scroll": "เส้นไทม์ไลน์แนวตั้งไล่ลำดับปี/ขั้นตอนลงมา",
+        "milestone-zoom": "ซูมหมุดเหตุการณ์สำคัญจุดเดียวพร้อมรายละเอียด",
+        "then-vs-now": "เทียบอดีตกับปัจจุบันบนเส้นเวลาเดียวกัน",
+    },
+}
 
-def sanitize_direction(raw: Any) -> dict[str, Any] | None:
+
+def sanitize_direction(raw: Any, style_id: str | None = None) -> dict[str, Any] | None:
     """Keep only known vocabulary from the AI's per-scene staging directions."""
     if not isinstance(raw, dict):
         return None
     out: dict[str, Any] = {}
+    sid = str(style_id or "").strip().lower()
+    style_shots = STYLE_DIRECTOR_SHOTS.get(sid) or {}
     shot = str(raw.get("shot") or "").strip().lower()
-    if shot in DIRECTION_SHOTS:
+    if shot in DIRECTION_SHOTS or shot in style_shots:
         out["shot"] = shot
     mood = str(raw.get("mood") or "").strip().lower()
     if mood in DIRECTION_MOODS:
@@ -678,7 +739,8 @@ def normalize_script(
                 scene_obj[opt_key] = val
         if scene_obj.get("highlightWord") and not scene_obj.get("highlight"):
             scene_obj["highlight"] = scene_obj["highlightWord"]
-        direction = sanitize_direction(sc.get("direction"))
+        style_id = str(preset.get("id") or request.get("styleId") or "").strip().lower()
+        direction = sanitize_direction(sc.get("direction"), style_id)
         if direction:
             scene_obj["direction"] = direction
         out["scenes"].append(scene_obj)
@@ -790,12 +852,34 @@ def build_script_prompt(
         "- ซีนแรกควรใช้ visual='title' ซีนสุดท้ายใช้ visual='quote' หรือ 'title' และ padAfterSec=1.4\n"
         f"- sfx.name ต้องเลือกจากรายการนี้เท่านั้น: {', '.join(VALID_SFX)}\n"
         "- ห้ามใส่เครื่องหมายพิเศษที่อ่านยากใน narrationPhonetic ให้ถอดคำทับศัพท์เป็นภาษาไทยที่อ่านออกเสียงถูกต้อง\n"
-        + (build_direction_rules(scene_count) if str(preset.get("id") or "") in ILLUSTRATED_STYLES else "")
+        + (
+            build_direction_rules(scene_count, str(preset.get("id") or "").strip().lower())
+            if (
+                str(preset.get("id") or "").strip().lower() in ILLUSTRATED_STYLES
+                or str(preset.get("id") or "").strip().lower() in STYLE_DIRECTOR_SHOTS
+            )
+            else ""
+        )
     )
 
 
-def build_direction_rules(scene_count: int) -> str:
-    """Extra staging instructions for hand-drawn illustrated styles (each scene is its own drawn shot)."""
+def build_direction_rules(scene_count: int, style_id: str | None = None) -> str:
+    """Extra staging instructions for illustrated and style-directed styles."""
+    sid = str(style_id or "").strip().lower()
+    if sid in STYLE_DIRECTOR_SHOTS:
+        shots_map = STYLE_DIRECTOR_SHOTS[sid]
+        shot_ids = ", ".join(shots_map.keys())
+        shot_desc = "\n".join(f"  - {k}: {v}" for k, v in shots_map.items())
+        return (
+            f"\n=== การกำกับช็อตประจำสไตล์ ({sid}) ===\n"
+            "ทุกซีนต้องมี field \"direction\" เพื่อเลือกมุมภาพ/ช็อตที่เหมาะกับเนื้อหาซีนนั้น:\n"
+            '"direction": {"shot": "...", "action": "อธิบายสั้นๆ ว่าซีนนี้เน้นภาพอะไร"}\n'
+            f"- shot ต้องเลือกจากรายการนี้เท่านั้น: {shot_ids}\n"
+            f"{shot_desc}\n"
+            "- ห้ามใช้ช็อตเดียวกันกับซีนติดกัน\n"
+            f"- ใน {scene_count} ซีนให้สลับใช้ช็อตอย่างหลากหลายตามข้อมูลของแต่ละซีน (ตัวเลข/เปรียบเทียบ/ขั้นตอน/สรุป)\n"
+        )
+
     return (
         "\n=== การกำกับภาพ (สไตล์นี้วาดเป็นฉากการ์ตูนลายเส้นแยกทุกซีน) ===\n"
         "ทุกซีนต้องมี field \"direction\" เพื่อบอกว่าซีนนี้ต้องวาดอะไร ตัวละครทำอะไร มีของอะไรในฉาก:\n"

@@ -13,6 +13,7 @@ import { StudioBackground } from './backgrounds';
 import { FamilySceneRenderer } from './families';
 import { StyleSignature, hasHeroSignature } from './signatures';
 import { isIllustratedStyle } from './director/doodleKit';
+import { hasStyleDirector } from './styleDirector/registry';
 import {
   DEFAULT_STUDIO_PROPS,
   ResolvedStyleTokens,
@@ -465,11 +466,13 @@ export const StudioEngine: React.FC<StudioProps> = (props) => {
   const normalizedStyleId = resolvedStyleId.trim().toLowerCase();
   const isFlatCartoon = activeTokens.family === 'flat-cartoon' || normalizedStyleId === 'look-2';
   const isIllustrated = isIllustratedStyle(normalizedStyleId);
-  const hasHero = !isFlatCartoon && !isIllustrated && hasHeroSignature(normalizedStyleId);
+  const isStyleDirected = hasStyleDirector(normalizedStyleId);
+  const isFullScene = isIllustrated || isStyleDirected;
+  const hasHero = !isFlatCartoon && !isFullScene && hasHeroSignature(normalizedStyleId);
   const prevHasHero =
     prevTokens.family !== 'flat-cartoon' &&
     normalizedStyleId !== 'look-2' &&
-    !isIllustrated &&
+    !isFullScene &&
     hasHeroSignature(normalizedStyleId);
 
   return (
@@ -486,7 +489,7 @@ export const StudioEngine: React.FC<StudioProps> = (props) => {
       <StudioBackground tokens={activeTokens} frame={frame} />
 
       {/* Layer 0.5: Style Signature Hero or Underlay (per-style visual identity) */}
-      {resolvedStyleId && !isIllustrated && (
+      {resolvedStyleId && !isFullScene && (
         <StyleSignature
           styleId={resolvedStyleId}
           tokens={activeTokens}
@@ -555,7 +558,7 @@ export const StudioEngine: React.FC<StudioProps> = (props) => {
       </AbsoluteFill>
 
       {/* Layer 1.5: Style Signature Overlay (non-hero styles only; above scene, below subtitles) */}
-      {resolvedStyleId && !hasHero && !isIllustrated && (
+      {resolvedStyleId && !hasHero && !isFullScene && (
         <StyleSignature
           styleId={resolvedStyleId}
           tokens={activeTokens}
@@ -585,11 +588,11 @@ export const StudioEngine: React.FC<StudioProps> = (props) => {
         />
       )}
 
-      {/* Layer 3: Subtitle Layer (Bottom Safe >= 320px) — illustrated styles always use the solid bar so captions stay readable over drawings */}
-      {activeTokens.subtitle.mode === 'floating' && !isIllustrated && (
+      {/* Layer 3: Subtitle Layer (Bottom Safe >= 320px) — illustrated & style-directed styles use solid bar for readability */}
+      {activeTokens.subtitle.mode === 'floating' && !isFullScene && (
         <FloatingSubtitle cues={mergedCues} tokens={activeTokens} />
       )}
-      {(activeTokens.subtitle.mode === 'bar' || (isIllustrated && activeTokens.subtitle.mode === 'floating')) && (
+      {(activeTokens.subtitle.mode === 'bar' || (isFullScene && activeTokens.subtitle.mode === 'floating')) && (
         <SubtitleBar
           cues={mergedCues}
           theme={activeTokens.subtitle.theme}

@@ -2,10 +2,57 @@ import React from 'react';
 import { interpolate, spring } from 'remotion';
 import { THAI_FONT_FAMILY } from '../../components/ThaiFontLoader';
 import type { StudioScene } from '../types';
-import { FitText, SAFE_BOTTOM, STAGE_H, STAGE_W, appear, sceneTexts, stagger } from './kit';
+import { FitText as BaseFitText, SAFE_BOTTOM, STAGE_H, STAGE_W, appear, sceneTexts, stagger } from './kit';
+import type { FitTextProps } from './kit';
 import type { StyleDirectorDef, StyleShotArgs } from './types';
 
 const CONTENT_BOTTOM = SAFE_BOTTOM - 120; // 1420 — keep all cards/text strictly above subtitle zone (y≈1440–1600)
+
+/**
+ * Thai-safe proportional font-size wrapper around kit FitText.
+ * Prevents kit's computeTitleSize() 40–44px floor from inflating small card/bullet text
+ * when Thai sentences exceed 34 characters.
+ */
+function computeSafeFontSizeD(text: string, baseSize: number, minSize: number): number {
+  const len = String(text || '').trim().length;
+  let size = baseSize;
+  if (baseSize >= 70) {
+    if (len > 14) size = Math.round(baseSize * 0.56);
+    else if (len > 9) size = Math.round(baseSize * 0.72);
+    else if (len > 6) size = Math.round(baseSize * 0.86);
+  } else if (baseSize >= 46) {
+    if (len > 55) size = baseSize - 14;
+    else if (len > 40) size = baseSize - 9;
+    else if (len > 28) size = baseSize - 4;
+  } else {
+    if (len > 95) size = baseSize - 6;
+    else if (len > 65) size = baseSize - 4;
+    else if (len > 44) size = baseSize - 2;
+    else if (len > 30) size = baseSize - 1;
+  }
+  return Math.max(minSize, Math.min(baseSize, size));
+}
+
+const FitText: React.FC<FitTextProps> = ({
+  text,
+  baseSize = 48,
+  minSize = 24,
+  lineHeight = 1.3,
+  style,
+  ...rest
+}) => {
+  const safeSize = computeSafeFontSizeD(text, baseSize, minSize);
+  return (
+    <BaseFitText
+      text={text}
+      baseSize={baseSize}
+      minSize={minSize}
+      lineHeight={Math.max(1.28, lineHeight)}
+      style={{ fontSize: safeSize, ...style }}
+      {...rest}
+    />
+  );
+};
 
 // ============================================================================
 // SHARED CONTENT EXTRACTION HELPERS (Batch D — Pure, Deterministic, Zero Deps)
@@ -624,7 +671,7 @@ const HoloTableShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
               <span>NODE 0{i + 1}</span>
               <span style={{ width: 8, height: 8, borderRadius: 99, background: '#67E8F9', boxShadow: '0 0 8px #00E5FF' }} />
             </div>
-            <FitText text={pt} baseSize={26} minSize={19} maxLines={3} color="#F0F9FF" fontWeight={700} align={slot.align} style={{ maxHeight: 112 }} />
+            <FitText text={pt} baseSize={22} minSize={16} maxLines={4} lineHeight={1.3} color="#F0F9FF" fontWeight={700} align={slot.align} />
           </div>
         );
       })}
@@ -868,49 +915,50 @@ const MissionRouteShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
         const isRight = wp.side === 'right';
         const isFinal = i === points.length - 1;
         return (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              top: wp.y - 72,
-              left: isRight ? wp.x + 76 : 58,
-              width: isRight ? STAGE_W - wp.x - 134 : wp.x - 134,
-              padding: '18px 24px',
-              borderRadius: 16,
-              background: isFinal ? 'rgba(34, 24, 8, 0.84)' : 'rgba(6, 24, 52, 0.84)',
-              border: `1.5px solid ${isFinal ? 'rgba(251, 191, 36, 0.78)' : 'rgba(0, 229, 255, 0.62)'}`,
-              boxShadow: isFinal ? '0 0 24px rgba(251, 191, 36, 0.22)' : '0 0 24px rgba(0, 229, 255, 0.18)',
-              opacity: p,
-              transform: `translateX(${interpolate(p, [0, 1], [isRight ? 36 : -36, 0])}px)`,
-            }}
-          >
             <div
+              key={i}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isRight ? 'flex-start' : 'flex-end',
-                gap: 8,
-                marginBottom: 6,
-                fontFamily: THAI_FONT_FAMILY,
-                fontSize: 19,
-                fontWeight: 800,
-                color: isFinal ? '#FBBF24' : '#67E8F9',
-                letterSpacing: 1,
+                position: 'absolute',
+                top: wp.y - 72,
+                left: isRight ? wp.x + 76 : 58,
+                width: isRight ? STAGE_W - wp.x - 134 : wp.x - 134,
+                minHeight: 118,
+                padding: '16px 22px',
+                borderRadius: 16,
+                background: isFinal ? 'rgba(34, 24, 8, 0.84)' : 'rgba(6, 24, 52, 0.84)',
+                border: `1.5px solid ${isFinal ? 'rgba(251, 191, 36, 0.78)' : 'rgba(0, 229, 255, 0.62)'}`,
+                boxShadow: isFinal ? '0 0 24px rgba(251, 191, 36, 0.22)' : '0 0 24px rgba(0, 229, 255, 0.18)',
+                opacity: p,
+                transform: `translateX(${interpolate(p, [0, 1], [isRight ? 36 : -36, 0])}px)`,
               }}
             >
-              <span>{isFinal ? '★ TARGET REACHED' : `CHECKPOINT 0${i + 1}`}</span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: isRight ? 'flex-start' : 'flex-end',
+                  gap: 8,
+                  marginBottom: 6,
+                  fontFamily: THAI_FONT_FAMILY,
+                  fontSize: 19,
+                  fontWeight: 800,
+                  color: isFinal ? '#FBBF24' : '#67E8F9',
+                  letterSpacing: 1,
+                }}
+              >
+                <span>{isFinal ? '★ TARGET REACHED' : `CHECKPOINT 0${i + 1}`}</span>
+              </div>
+              <FitText
+                text={pt}
+                baseSize={23}
+                minSize={17}
+                maxLines={4}
+                lineHeight={1.3}
+                color="#F8FAFC"
+                fontWeight={700}
+                align={isRight ? 'left' : 'right'}
+              />
             </div>
-            <FitText
-              text={pt}
-              baseSize={28}
-              minSize={20}
-              maxLines={3}
-              color="#F8FAFC"
-              fontWeight={700}
-              align={isRight ? 'left' : 'right'}
-              style={{ maxHeight: 116 }}
-            />
-          </div>
         );
       })}
 
@@ -959,8 +1007,8 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
   const titleP = appear(localFrame, 2, 14);
   const sweepDeg = (localFrame * 3.1) % 360;
   const cx = 540;
-  const cy = 635;
-  const maxR = 315;
+  const cy = 585;
+  const maxR = 285;
 
   const progressVal =
     typeof scene.stat?.progress === 'number'
@@ -971,9 +1019,9 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
 
   // Target radar blips positioned within the circular scope
   const blips: ReadonlyArray<{ angle: number; dist: number; code: string }> = [
-    { angle: -42, dist: 210, code: 'T-01' },
-    { angle: 128, dist: 230, code: 'T-02' },
-    { angle: 224, dist: 195, code: 'T-03' },
+    { angle: -42, dist: 190, code: 'T-01' },
+    { angle: 128, dist: 208, code: 'T-02' },
+    { angle: 224, dist: 178, code: 'T-03' },
   ];
 
   return (
@@ -1005,7 +1053,7 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
           <circle r={maxR} fill="url(#holo-rdr-bg)" stroke="#00E5FF" strokeWidth={3} opacity={0.9} />
 
           {/* Concentric range rings */}
-          {[95, 180, 265].map((r) => (
+          {[88, 165, 240].map((r) => (
             <circle key={r} r={r} fill="none" stroke="#38BDF8" strokeWidth={1.6} strokeDasharray="8 8" opacity={0.42} />
           ))}
 
@@ -1080,8 +1128,8 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
           })}
 
           {/* Center Core Lock Ring behind primary number */}
-          <circle r={150} fill="rgba(4, 18, 38, 0.86)" stroke="#00E5FF" strokeWidth={3} filter="url(#holo-rdr-glow)" />
-          <circle r={134} fill="none" stroke="#67E8F9" strokeWidth={1.5} strokeDasharray="10 6" opacity={0.75} />
+          <circle r={138} fill="rgba(4, 18, 38, 0.86)" stroke="#00E5FF" strokeWidth={3} filter="url(#holo-rdr-glow)" />
+          <circle r={124} fill="none" stroke="#67E8F9" strokeWidth={1.5} strokeDasharray="10 6" opacity={0.75} />
         </g>
       </svg>
 
@@ -1121,10 +1169,10 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
       <div
         style={{
           position: 'absolute',
-          top: cy - 102,
-          left: cx - 145,
-          width: 290,
-          height: 204,
+          top: cy - 96,
+          left: cx - 134,
+          width: 268,
+          height: 192,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -1135,9 +1183,9 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
           textShadow: '0 0 28px rgba(0, 229, 255, 0.75)',
         }}
       >
-        <FitText text={metric.big} baseSize={68} minSize={34} maxLines={2} color="#FFFFFF" fontWeight={900} />
+        <FitText text={metric.big} baseSize={64} minSize={32} maxLines={2} color="#FFFFFF" fontWeight={900} />
         {metric.unit ? (
-          <FitText text={metric.unit} baseSize={24} minSize={18} maxLines={1} color="#67E8F9" fontWeight={700} />
+          <FitText text={metric.unit} baseSize={22} minSize={16} maxLines={2} lineHeight={1.28} color="#67E8F9" fontWeight={700} />
         ) : null}
       </div>
 
@@ -1145,14 +1193,12 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
       <div
         style={{
           position: 'absolute',
-          top: 1005,
+          top: 930,
           left: 60,
           right: 60,
-          maxHeight: CONTENT_BOTTOM - 1005,
-          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 12,
+          gap: 14,
         }}
       >
         {points.slice(0, 3).map((pt, i) => {
@@ -1165,7 +1211,8 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 18,
-                padding: '13px 20px',
+                minHeight: 78,
+                padding: '14px 20px',
                 borderRadius: 14,
                 background: 'rgba(6, 22, 46, 0.84)',
                 border: '1.5px solid rgba(0, 229, 255, 0.5)',
@@ -1190,7 +1237,7 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
                 T-0{i + 1}
               </div>
               <div style={{ flex: 1 }}>
-                <FitText text={pt} baseSize={26} minSize={19} maxLines={2} lineHeight={1.26} color="#F0F9FF" fontWeight={700} align="left" style={{ maxHeight: 74 }} />
+                <FitText text={pt} baseSize={22} minSize={17} maxLines={3} lineHeight={1.28} color="#F0F9FF" fontWeight={700} align="left" />
               </div>
               {/* Mini live signal bars */}
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 26, flexShrink: 0 }}>
@@ -1361,11 +1408,9 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
       <div
         style={{
           position: 'absolute',
-          top: 410,
+          top: 390,
           left: 468,
           right: 52,
-          maxHeight: CONTENT_BOTTOM - 410,
-          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           gap: 14,
@@ -1398,7 +1443,8 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
             <div
               key={i}
               style={{
-                padding: '16px 20px',
+                minHeight: 96,
+                padding: '14px 20px',
                 borderRadius: 16,
                 background: 'rgba(6, 22, 48, 0.84)',
                 border: '1.5px solid rgba(0, 229, 255, 0.6)',
@@ -1420,7 +1466,7 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
               >
                 ▸ DATA PANEL 0{i + 1}
               </div>
-              <FitText text={pt} baseSize={27} minSize={20} maxLines={3} lineHeight={1.26} color="#F8FAFC" fontWeight={700} align="left" style={{ maxHeight: 110 }} />
+              <FitText text={pt} baseSize={24} minSize={18} maxLines={4} lineHeight={1.3} color="#F8FAFC" fontWeight={700} align="left" />
             </div>
           );
         })}
@@ -1730,12 +1776,10 @@ const ReliefMapShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
       <div
         style={{
           position: 'absolute',
-          top: 1015,
+          top: 985,
           left: 60,
           right: 60,
-          maxHeight: CONTENT_BOTTOM - 1015,
-          overflow: 'hidden',
-          padding: '18px 24px',
+          padding: '16px 24px',
           borderRadius: 18,
           background: 'linear-gradient(160deg, rgba(46, 15, 16, 0.94) 0%, rgba(26, 9, 10, 0.96) 100%)',
           border: '2px solid rgba(224, 122, 95, 0.65)',
@@ -1796,7 +1840,7 @@ const ReliefMapShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
                 {String.fromCharCode(65 + i)}
               </div>
               <div style={{ flex: 1 }}>
-                <FitText text={pt} baseSize={26} minSize={19} maxLines={2} lineHeight={1.26} color="#FDF6EC" fontWeight={700} align="left" style={{ maxHeight: 72 }} />
+                <FitText text={pt} baseSize={22} minSize={17} maxLines={3} lineHeight={1.28} color="#FDF6EC" fontWeight={700} align="left" />
               </div>
             </div>
           );
@@ -1955,12 +1999,11 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
       <div
         style={{
           position: 'absolute',
-          top: 750,
+          top: 740,
           left: 48,
           width: 472,
-          maxHeight: CONTENT_BOTTOM - 750,
-          overflow: 'hidden',
-          padding: '18px 20px',
+          minHeight: 240,
+          padding: '16px 20px',
           borderRadius: 18,
           background: 'linear-gradient(170deg, rgba(98, 22, 22, 0.92) 0%, rgba(42, 11, 12, 0.96) 100%)',
           border: `2.5px solid ${cmp.winner === 'left' ? '#FBBF24' : '#EF4444'}`,
@@ -1979,7 +2022,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
             borderBottom: '1.5px solid rgba(239, 68, 68, 0.45)',
           }}
         >
-          <FitText text={cmp.leftTitle} baseSize={32} minSize={21} maxLines={2} color="#FCA5A5" fontWeight={800} align="left" />
+          <FitText text={cmp.leftTitle} baseSize={28} minSize={20} maxLines={2} lineHeight={1.28} color="#FCA5A5" fontWeight={800} align="left" />
           {cmp.winner === 'left' ? <span style={{ fontSize: 28, color: '#FBBF24' }}>★</span> : null}
         </div>
         {cmp.leftItems.map((item, i) => {
@@ -1996,7 +2039,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
                 transform: `translateX(${interpolate(p, [0, 1], [-20, 0])}px)`,
               }}
             >
-              <FitText text={item} baseSize={25} minSize={19} maxLines={3} lineHeight={1.26} color="#FDF6EC" fontWeight={700} align="left" style={{ maxHeight: 102 }} />
+              <FitText text={item} baseSize={21} minSize={16} maxLines={3} lineHeight={1.28} color="#FDF6EC" fontWeight={700} align="left" />
             </div>
           );
         })}
@@ -2006,12 +2049,11 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
       <div
         style={{
           position: 'absolute',
-          top: 750,
+          top: 740,
           left: 560,
           width: 472,
-          maxHeight: CONTENT_BOTTOM - 750,
-          overflow: 'hidden',
-          padding: '18px 20px',
+          minHeight: 240,
+          padding: '16px 20px',
           borderRadius: 18,
           background: 'linear-gradient(170deg, rgba(58, 42, 22, 0.92) 0%, rgba(28, 20, 12, 0.96) 100%)',
           border: `2.5px solid ${cmp.winner === 'right' ? '#FEF08A' : '#F59E0B'}`,
@@ -2030,7 +2072,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
             borderBottom: '1.5px solid rgba(245, 158, 11, 0.45)',
           }}
         >
-          <FitText text={cmp.rightTitle} baseSize={32} minSize={21} maxLines={2} color="#FDE68A" fontWeight={800} align="left" />
+          <FitText text={cmp.rightTitle} baseSize={28} minSize={20} maxLines={2} lineHeight={1.28} color="#FDE68A" fontWeight={800} align="left" />
           {cmp.winner === 'right' ? <span style={{ fontSize: 28, color: '#FEF08A' }}>★</span> : null}
         </div>
         {cmp.rightItems.map((item, i) => {
@@ -2047,7 +2089,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
                 transform: `translateX(${interpolate(p, [0, 1], [20, 0])}px)`,
               }}
             >
-              <FitText text={item} baseSize={25} minSize={19} maxLines={3} lineHeight={1.26} color="#FDF6EC" fontWeight={700} align="left" style={{ maxHeight: 102 }} />
+              <FitText text={item} baseSize={21} minSize={16} maxLines={3} lineHeight={1.28} color="#FDF6EC" fontWeight={700} align="left" />
             </div>
           );
         })}
@@ -2216,20 +2258,20 @@ const EraScrollShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
                   textAlign: 'center',
                 }}
               >
-                <FitText text={entry.tag} baseSize={26} minSize={18} maxLines={1} color="#FEF3C7" fontWeight={900} />
+                <FitText text={entry.tag} baseSize={22} minSize={16} maxLines={2} lineHeight={1.28} color="#FEF3C7" fontWeight={900} />
               </div>
 
               {/* Historical chronicle text on warm parchment */}
               <div
                 style={{
                   flex: 1,
-                  padding: '16px 20px',
+                  padding: '14px 20px',
                   borderRadius: 12,
                   background: 'rgba(120, 53, 15, 0.08)',
                   borderLeft: '4px solid #991B1B',
                 }}
               >
-                <FitText text={entry.text} baseSize={30} minSize={21} maxLines={3} color="#2A120E" fontWeight={800} align="left" />
+                <FitText text={entry.text} baseSize={25} minSize={18} maxLines={4} lineHeight={1.3} color="#2A120E" fontWeight={800} align="left" />
               </div>
             </div>
           );
@@ -2368,10 +2410,10 @@ const MonumentShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps }) => {
       <div
         style={{
           position: 'absolute',
-          top: 600,
+          top: 590,
           left: 205,
           right: 205,
-          height: 360,
+          height: 356,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -2382,24 +2424,25 @@ const MonumentShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps }) => {
           textShadow: '0 4px 12px rgba(0, 0, 0, 0.85)',
         }}
       >
-        <FitText text={`“${q.main}”`} baseSize={54} minSize={30} maxLines={4} color="#FEF3C7" fontWeight={800} />
+        <FitText text={`“${q.main}”`} baseSize={52} minSize={28} maxLines={4} lineHeight={1.3} color="#FEF3C7" fontWeight={800} />
       </div>
 
       {/* Attribution / Secondary Key Line inside Tablet Bottom */}
       <div
         style={{
           position: 'absolute',
-          top: 980,
-          left: 215,
-          right: 215,
+          top: 966,
+          left: 198,
+          right: 198,
           opacity: appear(localFrame, 16, 14),
         }}
       >
         <FitText
           text={q.sub || t.subtitle || pts[0] || ''}
-          baseSize={28}
-          minSize={20}
-          maxLines={2}
+          baseSize={20}
+          minSize={15}
+          maxLines={3}
+          lineHeight={1.28}
           color="#F59E0B"
           fontWeight={700}
         />
@@ -2412,7 +2455,7 @@ const MonumentShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps }) => {
           top: 1208,
           left: 118,
           right: 118,
-          height: 112,
+          minHeight: 112,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -2421,9 +2464,10 @@ const MonumentShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps }) => {
       >
         <FitText
           text={pts[1] || t.title || q.main}
-          baseSize={30}
-          minSize={21}
+          baseSize={26}
+          minSize={18}
           maxLines={2}
+          lineHeight={1.28}
           color="#F5E6D3"
           fontWeight={700}
         />
@@ -2526,9 +2570,9 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
   const titleP = appear(localFrame, 2, 14);
   const galRot = localFrame * 0.25;
   const cx = 540;
-  const cy = 635;
-  const targetX = cx + 52;
-  const targetY = cy - 28;
+  const cy = 560;
+  const targetX = cx + 46;
+  const targetY = cy - 24;
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
@@ -2556,13 +2600,13 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
             <stop offset="100%" stopColor="#060D1C" />
           </radialGradient>
           <clipPath id="dt-zoom-planet-clip">
-            <circle cx={cx} cy={cy} r={198} />
+            <circle cx={cx} cy={cy} r={178} />
           </clipPath>
         </defs>
 
         {/* Outer Spiral Galaxy Layer zooming smoothly */}
         <g
-          transform={`translate(${cx}, ${cy}) scale(${interpolate(zoomP, [0, 1], [0.76, 1.06])}) rotate(${galRot})`}
+          transform={`translate(${cx}, ${cy}) scale(${interpolate(zoomP, [0, 1], [0.72, 0.96])}) rotate(${galRot})`}
           opacity={0.78}
         >
           <ellipse cx={0} cy={0} rx={480} ry={255} fill="url(#dt-zoom-galaxy)" />
@@ -2605,15 +2649,15 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
 
         {/* Telescopic Optical Zoom Rings */}
         <g transform={`translate(${cx}, ${cy})`} opacity={0.55}>
-          <circle r={340} fill="none" stroke="#94A3B8" strokeWidth={1.2} strokeDasharray="10 12" />
-          <circle r={268} fill="none" stroke="#38BDF8" strokeWidth={1.6} strokeDasharray="48 18" transform={`rotate(${-localFrame * 0.4})`} />
+          <circle r={300} fill="none" stroke="#94A3B8" strokeWidth={1.2} strokeDasharray="10 12" />
+          <circle r={238} fill="none" stroke="#38BDF8" strokeWidth={1.6} strokeDasharray="48 18" transform={`rotate(${-localFrame * 0.4})`} />
         </g>
 
         {/* Illuminated Planet Sphere emerging into optical focus */}
         <g transform={`translate(${cx}, ${cy}) scale(${interpolate(zoomP, [0, 1], [0.42, 1])}) translate(${-cx}, ${-cy})`}>
           {/* Atmospheric limb halo */}
-          <circle cx={cx} cy={cy} r={212} fill="#38BDF8" opacity={0.18} filter="url(#dt-zoom-glow)" />
-          <circle cx={cx} cy={cy} r={198} fill="url(#dt-zoom-planet)" stroke="#7DD3FC" strokeWidth={2.5} />
+          <circle cx={cx} cy={cy} r={192} fill="#38BDF8" opacity={0.18} filter="url(#dt-zoom-glow)" />
+          <circle cx={cx} cy={cy} r={178} fill="url(#dt-zoom-planet)" stroke="#7DD3FC" strokeWidth={2.5} />
 
           {/* Continents & swirling cloud bands clipped to planet sphere */}
           <g clipPath="url(#dt-zoom-planet-clip)">
@@ -2645,15 +2689,15 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
               opacity={0.18}
             />
             {/* Deep crescent terminator shadow */}
-            <circle cx={cx + 72} cy={cy + 42} r={206} fill="#040812" opacity={0.44} />
+            <circle cx={cx + 66} cy={cy + 38} r={186} fill="#040812" opacity={0.44} />
           </g>
 
           {/* Tilted Planetary Orbital Ring */}
           <ellipse
             cx={cx}
             cy={cy}
-            rx={292}
-            ry={64}
+            rx={262}
+            ry={58}
             fill="none"
             stroke="#FDE68A"
             strokeWidth={2.5}
@@ -2666,20 +2710,20 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
         {/* Precision Data Point Lock on Planet Surface + Leader Beam to Data Panel */}
         <g opacity={reticleP}>
           <circle cx={targetX} cy={targetY} r={10} fill="#F59E0B" filter="url(#dt-zoom-glow)" />
-          <circle cx={targetX} cy={targetY} r={26 + Math.sin(localFrame * 0.14) * 5} fill="none" stroke="#FDE68A" strokeWidth={2.5} />
+          <circle cx={targetX} cy={targetY} r={24 + Math.sin(localFrame * 0.14) * 5} fill="none" stroke="#FDE68A" strokeWidth={2.5} />
           <path
-            d={`M ${targetX - 36} ${targetY} L ${targetX - 18} ${targetY} M ${targetX + 18} ${targetY} L ${targetX + 36} ${targetY} M ${targetX} ${targetY - 36} L ${targetX} ${targetY - 18} M ${targetX} ${targetY + 18} L ${targetX} ${targetY + 36}`}
+            d={`M ${targetX - 34} ${targetY} L ${targetX - 16} ${targetY} M ${targetX + 16} ${targetY} L ${targetX + 34} ${targetY} M ${targetX} ${targetY - 34} L ${targetX} ${targetY - 16} M ${targetX} ${targetY + 16} L ${targetX} ${targetY + 34}`}
             stroke="#FEF08A"
             strokeWidth={2.2}
           />
           <polyline
-            points={`${targetX},${targetY + 36} ${targetX},${cy + 235} ${cx},${cy + 290} ${cx},975`}
+            points={`${targetX},${targetY + 34} ${targetX},${cy + 215} ${cx},${cy + 268} ${cx},895`}
             fill="none"
             stroke="#F59E0B"
             strokeWidth={2.5}
             strokeDasharray="8 6"
           />
-          <circle cx={cx} cy={975} r={6} fill="#FEF08A" />
+          <circle cx={cx} cy={895} r={6} fill="#FEF08A" />
         </g>
       </svg>
 
@@ -2719,11 +2763,9 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
       <div
         style={{
           position: 'absolute',
-          top: 985,
+          top: 905,
           left: 64,
           right: 64,
-          maxHeight: CONTENT_BOTTOM - 985,
-          overflow: 'hidden',
           padding: '18px 24px',
           borderRadius: 20,
           background: 'linear-gradient(160deg, rgba(20, 27, 42, 0.92) 0%, rgba(11, 14, 22, 0.96) 100%)',
@@ -2731,13 +2773,13 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
           boxShadow: '0 16px 40px rgba(0, 0, 0, 0.65)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
+          gap: 12,
           opacity: reticleP,
         }}
       >
         {t.subtitle ? (
           <div style={{ paddingBottom: 8, borderBottom: '1px solid rgba(148, 163, 184, 0.25)' }}>
-            <FitText text={t.subtitle} baseSize={26} minSize={19} maxLines={2} lineHeight={1.26} color="#FDE68A" fontWeight={700} align="left" style={{ maxHeight: 68 }} />
+            <FitText text={t.subtitle} baseSize={22} minSize={17} maxLines={2} lineHeight={1.28} color="#FDE68A" fontWeight={700} align="left" />
           </div>
         ) : null}
 
@@ -2765,7 +2807,7 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
                 }}
               />
               <div style={{ flex: 1 }}>
-                <FitText text={pt} baseSize={25} minSize={18} maxLines={2} lineHeight={1.26} color="#F1F5F9" fontWeight={700} align="left" style={{ maxHeight: 68 }} />
+                <FitText text={pt} baseSize={22} minSize={17} maxLines={3} lineHeight={1.28} color="#F1F5F9" fontWeight={700} align="left" />
               </div>
             </div>
           );
@@ -2920,8 +2962,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
               top: y0 + 20,
               left: 74,
               right: 92,
-              height: bandSpan - 28,
-              overflow: 'hidden',
+              minHeight: bandSpan - 28,
               display: 'flex',
               alignItems: 'center',
               gap: 22,
@@ -2944,7 +2985,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
                 gap: 4,
               }}
             >
-              <FitText text={entry.tag} baseSize={24} minSize={18} maxLines={1} color="#FEF3C7" fontWeight={900} />
+              <FitText text={entry.tag} baseSize={22} minSize={16} maxLines={2} lineHeight={1.28} color="#FEF3C7" fontWeight={900} />
               <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 16, fontWeight: 700, color: st.rim }}>
                 DEPTH {st.depth}
               </span>
@@ -2952,7 +2993,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
 
             {/* Era Description inside rock band */}
             <div style={{ flex: 1, textShadow: '0 3px 10px rgba(0, 0, 0, 0.6)' }}>
-              <FitText text={entry.text} baseSize={28} minSize={19} maxLines={3} lineHeight={1.26} color="#FFFBF5" fontWeight={800} align="left" style={{ maxHeight: bandSpan - 44 }} />
+              <FitText text={entry.text} baseSize={24} minSize={17} maxLines={3} lineHeight={1.3} color="#FFFBF5" fontWeight={800} align="left" />
             </div>
           </div>
         );
@@ -3153,17 +3194,13 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
       {/* Bottom Epoch Scale Milestone Cards (strictly above CONTENT_BOTTOM=1420) */}
       {(() => {
         const hasMetricSub = Boolean(metric.label && metric.label !== t.title);
-        const epochCardH = hasMetricSub ? 300 : 340;
-        const epochTextMaxH = epochCardH - 64;
         return (
           <div
             style={{
               position: 'absolute',
-              top: 1005,
+              top: 990,
               left: 58,
               right: 58,
-              maxHeight: CONTENT_BOTTOM - 1005,
-              overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
               gap: 12,
@@ -3171,10 +3208,10 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
           >
             {hasMetricSub ? (
               <div style={{ textAlign: 'center', marginBottom: 2, opacity: appear(localFrame, 10, 14) }}>
-                <FitText text={metric.label} baseSize={26} minSize={19} maxLines={1} color="#FDE68A" fontWeight={700} style={{ maxHeight: 44 }} />
+                <FitText text={metric.label} baseSize={23} minSize={17} maxLines={2} lineHeight={1.28} color="#FDE68A" fontWeight={700} />
               </div>
             ) : null}
-            <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
               {points.slice(0, 3).map((pt, i) => {
                 const p = stagger(i, localFrame, 7, 14, 14);
                 return (
@@ -3182,8 +3219,7 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
                     key={i}
                     style={{
                       flex: 1,
-                      height: epochCardH,
-                      overflow: 'hidden',
+                      minHeight: 196,
                       padding: '14px 16px',
                       borderRadius: 16,
                       background: 'rgba(17, 22, 34, 0.88)',
@@ -3209,14 +3245,13 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
                     </div>
                     <FitText
                       text={pt}
-                      baseSize={24}
-                      minSize={17}
+                      baseSize={20}
+                      minSize={15}
                       maxLines={4}
                       lineHeight={1.28}
                       color="#F8FAFC"
                       fontWeight={700}
                       align="left"
-                      style={{ maxHeight: epochTextMaxH, overflow: 'hidden' }}
                     />
                   </div>
                 );
@@ -3400,7 +3435,7 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
         const p = stagger(i, localFrame, 8, 8, 14);
         const isRight = spec.labelSide === 'right';
         const boxLeft = isRight ? Math.min(STAGE_W - 496, px + 88) : Math.max(52, px - 88 - 444);
-        const boxTop = Math.min(CONTENT_BOTTOM - 168, Math.max(520, py - 64));
+        const boxTop = Math.min(CONTENT_BOTTOM - 178, Math.max(500, py - 64));
         return (
           <div
             key={i}
@@ -3409,8 +3444,7 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
               left: boxLeft,
               top: boxTop,
               width: 444,
-              maxHeight: 162,
-              overflow: 'hidden',
+              minHeight: 112,
               padding: '14px 18px',
               borderRadius: 16,
               background: 'rgba(13, 18, 32, 0.88)',
@@ -3435,14 +3469,13 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
             </div>
             <FitText
               text={pt}
-              baseSize={26}
-              minSize={19}
+              baseSize={22}
+              minSize={17}
               maxLines={3}
-              lineHeight={1.26}
+              lineHeight={1.28}
               color="#F8FAFC"
               fontWeight={700}
               align={isRight ? 'left' : 'right'}
-              style={{ maxHeight: 104 }}
             />
           </div>
         );

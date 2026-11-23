@@ -517,7 +517,7 @@ const SizeLineupShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
   const fallbackLabels = ['ระดับเริ่มต้น', 'ขนาดกลาง', 'ขนาดใหญ่', 'ขนาดมหึมา'];
   const fallbackScales = ['1x', '2.5x', '5x', '10x'];
 
-  const floorY = 1070;
+  const floorY = 1035;
   const titleP = appear(localFrame, 3, 14);
   const rulerP = appear(localFrame, 6, 18);
   const humanSpring = spring({ frame: Math.max(0, localFrame - 6), fps, config: { damping: 14, stiffness: 140 } });
@@ -751,61 +751,85 @@ const SizeLineupShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
       <div
         style={{
           position: 'absolute',
-          top: 1152,
-          left: 60,
-          right: 60,
-          maxHeight: CONTENT_BOTTOM - 1152,
-          overflow: 'hidden',
+          top: 1116,
+          left: 52,
+          right: 52,
           display: 'grid',
-          gridTemplateColumns: `repeat(${itemCount === 3 ? 3 : 2}, 1fr)`,
+          gridTemplateColumns: `repeat(${itemCount === 3 ? 3 : 2}, minmax(0, 1fr))`,
           gap: 12,
+          alignItems: 'stretch',
         }}
       >
         {slots.map((slot, i) => {
           const p = stagger(i, localFrame, 6, 18, 14);
           const label = pts[i] || fallbackLabels[i];
+          const isThreeCol = itemCount === 3;
           return (
             <div
               key={i}
               style={{
                 opacity: p,
                 transform: `translateY(${interpolate(p, [0, 1], [18, 0])}px)`,
-                background: 'rgba(26, 32, 48, 0.88)',
+                background: 'rgba(26, 32, 48, 0.90)',
                 border: `1.5px solid ${i === slots.length - 1 ? '#38BDF8' : pal.border}`,
                 borderRadius: 18,
-                padding: '12px 16px',
+                padding: isThreeCol ? '12px 14px' : '12px 16px',
                 display: 'flex',
-                alignItems: 'center',
-                gap: 12,
+                flexDirection: isThreeCol ? 'column' : 'row',
+                alignItems: isThreeCol ? 'stretch' : 'flex-start',
+                gap: isThreeCol ? 8 : 12,
                 boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
                 minWidth: 0,
-                overflow: 'hidden',
+                minHeight: isThreeCol ? 132 : 96,
+                height: 'auto',
               }}
             >
               <div
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  background: slot.accent,
-                  color: '#0F172A',
-                  fontFamily: THAI_FONT_FAMILY,
-                  fontSize: 20,
-                  fontWeight: 900,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: 8,
                   flexShrink: 0,
                 }}
               >
-                {i + 1}
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    background: slot.accent,
+                    color: '#0F172A',
+                    fontFamily: THAI_FONT_FAMILY,
+                    fontSize: 18,
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {i + 1}
+                </div>
+                {isThreeCol ? (
+                  <span
+                    style={{
+                      fontFamily: THAI_FONT_FAMILY,
+                      fontSize: 16,
+                      fontWeight: 800,
+                      color: slot.accent,
+                    }}
+                  >
+                    {t.numbers[i] || fallbackScales[i]}
+                  </span>
+                ) : null}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <FitText
                   text={label}
-                  baseSize={25}
-                  minSize={19}
-                  maxLines={2}
+                  baseSize={isThreeCol ? 19 : 21}
+                  minSize={isThreeCol ? 15 : 16}
+                  maxLines={isThreeCol ? 4 : 3}
+                  lineHeight={1.28}
                   color={pal.fg}
                   fontWeight={700}
                   align="left"
@@ -1064,7 +1088,7 @@ const ZoomLadderShot: React.FC<StyleShotArgs> = ({ scene, localFrame, durationFr
             >
               ขั้นที่ {i + 1} • ซูม {t.numbers[i] || zoomTags[i]}
             </div>
-            <FitText text={text} baseSize={27} minSize={20} maxLines={2} color={pal.fg} fontWeight={700} align="left" />
+            <FitText text={text} baseSize={23} minSize={17} maxLines={3} lineHeight={1.28} color={pal.fg} fontWeight={700} align="left" />
           </div>
         );
       })}
@@ -1192,7 +1216,7 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
         <line
           x1={towerX + 90}
           y1={currentLaserY}
-          x2={560}
+          x2={550}
           y2={currentLaserY}
           stroke="#F59E0B"
           strokeWidth={3}
@@ -1206,15 +1230,13 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
       <div
         style={{
           position: 'absolute',
-          top: 410,
-          left: 560,
-          right: 60,
-          maxHeight: CONTENT_BOTTOM - 410,
-          overflow: 'hidden',
+          top: 340,
+          left: 550,
+          right: 52,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'flex-start',
-          gap: 18,
+          gap: 14,
         }}
       >
         <div
@@ -1223,8 +1245,8 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
             transform: `scale(${interpolate(statP, [0, 1], [0.85, 1])})`,
             background: 'linear-gradient(155deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.96))',
             border: '2px solid rgba(56, 189, 248, 0.6)',
-            borderRadius: 28,
-            padding: '24px 24px',
+            borderRadius: 26,
+            padding: '18px 22px',
             boxShadow: '0 22px 44px rgba(0,0,0,0.45)',
             flexShrink: 0,
           }}
@@ -1232,27 +1254,27 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
           <div
             style={{
               fontFamily: THAI_FONT_FAMILY,
-              fontSize: 22,
+              fontSize: 21,
               fontWeight: 700,
               color: '#7DD3FC',
-              marginBottom: 6,
+              marginBottom: 4,
             }}
           >
             ระดับความสูงรวม
           </div>
-          <FitText text={metric.big} baseSize={84} minSize={48} maxLines={1} color="#FDE68A" fontWeight={900} align="left" />
+          <FitText text={metric.big} baseSize={76} minSize={44} maxLines={1} color="#FDE68A" fontWeight={900} align="left" lineHeight={1.1} />
           {metric.unit ? (
             <div style={{ marginTop: 4 }}>
-              <FitText text={metric.unit} baseSize={28} minSize={20} maxLines={1} color="#38BDF8" fontWeight={800} align="left" />
+              <FitText text={metric.unit} baseSize={24} minSize={17} maxLines={2} lineHeight={1.25} color="#38BDF8" fontWeight={800} align="left" />
             </div>
           ) : null}
-          <div style={{ marginTop: 10, borderTop: '1px solid rgba(148,163,184,0.22)', paddingTop: 10 }}>
-            <FitText text={metric.label} baseSize={24} minSize={18} maxLines={2} color={pal.fg} fontWeight={600} align="left" />
+          <div style={{ marginTop: 8, borderTop: '1px solid rgba(148,163,184,0.22)', paddingTop: 8 }}>
+            <FitText text={metric.label} baseSize={22} minSize={16} maxLines={3} lineHeight={1.28} color={pal.fg} fontWeight={600} align="left" />
           </div>
         </div>
 
-        {/* Supporting callout stack (capped & sized so all items fit cleanly <= CONTENT_BOTTOM) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflow: 'hidden' }}>
+        {/* Supporting callout stack (auto-height cards, all fit cleanly <= CONTENT_BOTTOM) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {pts.slice(0, 3).map((pt, i) => {
             const p = stagger(i, localFrame, 7, 20, 14);
             return (
@@ -1261,25 +1283,24 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
                 style={{
                   opacity: p,
                   transform: `translateX(${interpolate(p, [0, 1], [28, 0])}px)`,
-                  background: 'rgba(26, 32, 48, 0.86)',
+                  background: 'rgba(26, 32, 48, 0.88)',
                   borderLeft: `5px solid ${i === 0 ? '#F59E0B' : '#38BDF8'}`,
                   borderRadius: 14,
-                  padding: '12px 16px',
-                  maxHeight: 108,
-                  overflow: 'hidden',
+                  padding: '13px 16px',
+                  minHeight: 74,
+                  height: 'auto',
                   flexShrink: 0,
                 }}
               >
                 <FitText
                   text={pt}
-                  baseSize={23}
-                  minSize={18}
-                  maxLines={2}
-                  lineHeight={1.25}
+                  baseSize={21}
+                  minSize={16}
+                  maxLines={3}
+                  lineHeight={1.28}
                   color={pal.fg}
                   fontWeight={700}
                   align="left"
-                  style={{ maxHeight: 74 }}
                 />
               </div>
             );
@@ -1300,7 +1321,7 @@ const SideBySideGiantShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
   const giantSp = spring({ frame: Math.max(0, localFrame - 14), fps, config: { damping: 13, stiffness: 115 } });
   const arcP = appear(localFrame, 24, 16);
 
-  const floorY = 1085;
+  const floorY = 1055;
   const smallH = Math.max(10, 118 * smallSp);
   const giantH = Math.max(14, 500 * giantSp);
 
@@ -1419,14 +1440,13 @@ const SideBySideGiantShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
       <div
         style={{
           position: 'absolute',
-          top: 1145,
-          left: 56,
-          right: 56,
-          maxHeight: CONTENT_BOTTOM - 1145,
-          overflow: 'hidden',
+          top: 1110,
+          left: 52,
+          right: 52,
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gap: 22,
+          gap: 20,
+          alignItems: 'stretch',
         }}
       >
         <div
@@ -1435,13 +1455,15 @@ const SideBySideGiantShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
             background: 'rgba(26, 32, 48, 0.90)',
             border: '1.8px solid #475569',
             borderRadius: 22,
-            padding: '20px 22px',
+            padding: '16px 20px',
+            minHeight: 120,
+            height: 'auto',
           }}
         >
-          <FitText text={pair.leftTitle} baseSize={30} minSize={22} maxLines={2} color="#CBD5E1" fontWeight={800} align="left" />
+          <FitText text={pair.leftTitle} baseSize={26} minSize={19} maxLines={2} lineHeight={1.28} color="#CBD5E1" fontWeight={800} align="left" />
           {pair.leftItems[0] && pair.leftItems[0] !== pair.leftTitle ? (
-            <div style={{ marginTop: 10 }}>
-              <FitText text={pair.leftItems[0]} baseSize={23} minSize={18} maxLines={2} color={pal.muted} fontWeight={500} align="left" />
+            <div style={{ marginTop: 8 }}>
+              <FitText text={pair.leftItems[0]} baseSize={21} minSize={16} maxLines={3} lineHeight={1.28} color={pal.muted} fontWeight={500} align="left" />
             </div>
           ) : null}
         </div>
@@ -1452,14 +1474,16 @@ const SideBySideGiantShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
             background: 'linear-gradient(150deg, rgba(14, 116, 144, 0.32), rgba(26, 32, 48, 0.94))',
             border: '2px solid #38BDF8',
             borderRadius: 22,
-            padding: '20px 22px',
+            padding: '16px 20px',
+            minHeight: 120,
+            height: 'auto',
             boxShadow: '0 14px 32px rgba(56, 189, 248, 0.16)',
           }}
         >
-          <FitText text={pair.rightTitle} baseSize={30} minSize={22} maxLines={2} color="#FDE68A" fontWeight={800} align="left" />
+          <FitText text={pair.rightTitle} baseSize={26} minSize={19} maxLines={2} lineHeight={1.28} color="#FDE68A" fontWeight={800} align="left" />
           {pair.rightItems[0] && pair.rightItems[0] !== pair.rightTitle ? (
-            <div style={{ marginTop: 10 }}>
-              <FitText text={pair.rightItems[0]} baseSize={23} minSize={18} maxLines={2} color={pal.fg} fontWeight={600} align="left" />
+            <div style={{ marginTop: 8 }}>
+              <FitText text={pair.rightItems[0]} baseSize={21} minSize={16} maxLines={3} lineHeight={1.28} color={pal.fg} fontWeight={600} align="left" />
             </div>
           ) : null}
         </div>
@@ -1755,23 +1779,23 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
       <div
         style={{
           position: 'absolute',
-          top: 1206,
-          left: 64,
-          right: 64,
-          maxHeight: CONTENT_BOTTOM - 1206,
-          overflow: 'hidden',
+          top: 1192,
+          left: 60,
+          right: 60,
+          minHeight: 108,
+          height: 'auto',
           opacity: appear(localFrame, 18, 14),
           background: 'rgba(13, 39, 31, 0.90)',
           border: '1.8px solid rgba(251, 191, 36, 0.55)',
           borderRadius: 22,
-          padding: '16px 26px',
+          padding: '14px 24px',
           boxShadow: '0 16px 34px rgba(0,0,0,0.45)',
         }}
       >
-        <FitText text={metric.label} baseSize={28} minSize={20} maxLines={2} color="#FFFFFF" fontWeight={700} />
+        <FitText text={metric.label} baseSize={26} minSize={19} maxLines={2} lineHeight={1.28} color="#FFFFFF" fontWeight={700} />
         {pts[0] && pts[0] !== metric.label ? (
           <div style={{ marginTop: 6 }}>
-            <FitText text={pts[0]} baseSize={22} minSize={17} maxLines={2} color="#A7F3D0" fontWeight={500} />
+            <FitText text={pts[0]} baseSize={21} minSize={16} maxLines={3} lineHeight={1.28} color="#A7F3D0" fontWeight={500} />
           </div>
         ) : null}
       </div>
@@ -1966,7 +1990,7 @@ const ProgressMountainShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps,
             >
               {isPeak ? '🏆 ยอดเป้าหมาย' : `เช็กพอยต์ ${i + 1}`}
             </div>
-            <FitText text={text} baseSize={26} minSize={19} maxLines={2} color="#FFFFFF" fontWeight={700} align="left" />
+            <FitText text={text} baseSize={22} minSize={16} maxLines={3} lineHeight={1.28} color="#FFFFFF" fontWeight={700} align="left" />
           </div>
         );
       })}
@@ -2141,11 +2165,11 @@ const MedalWallShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
               background: 'linear-gradient(160deg, rgba(20, 66, 52, 0.92), rgba(9, 34, 27, 0.96))',
               border: '1.8px solid rgba(251, 191, 36, 0.6)',
               borderRadius: 20,
-              padding: '16px 20px',
+              padding: '14px 18px',
               boxShadow: '0 14px 26px rgba(0,0,0,0.42)',
             }}
           >
-            <FitText text={text} baseSize={27} minSize={19} maxLines={3} color="#FFFFFF" fontWeight={700} />
+            <FitText text={text} baseSize={24} minSize={17} maxLines={4} lineHeight={1.28} color="#FFFFFF" fontWeight={700} />
           </div>
         );
       })}
@@ -2318,15 +2342,13 @@ const CelebrationBurstShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loca
       <div
         style={{
           position: 'absolute',
-          top: 830,
-          left: 64,
-          right: 64,
-          maxHeight: CONTENT_BOTTOM - 830,
-          overflow: 'hidden',
+          top: 822,
+          left: 60,
+          right: 60,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 18,
+          gap: 14,
         }}
       >
         <div
@@ -2337,14 +2359,14 @@ const CelebrationBurstShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loca
             background: 'linear-gradient(155deg, rgba(20, 66, 52, 0.94), rgba(9, 34, 27, 0.96))',
             border: '2.5px solid #FBBF24',
             borderRadius: 28,
-            padding: '28px 34px',
+            padding: '24px 30px',
             boxShadow: '0 22px 48px rgba(0,0,0,0.52)',
           }}
         >
-          <FitText text={t.title} baseSize={54} minSize={34} maxLines={2} color="#FEF3C7" fontWeight={900} />
+          <FitText text={t.title} baseSize={52} minSize={32} maxLines={2} lineHeight={1.28} color="#FEF3C7" fontWeight={900} />
           {heroPhrase && heroPhrase !== t.title ? (
-            <div style={{ marginTop: 14 }}>
-              <FitText text={heroPhrase} baseSize={34} minSize={22} maxLines={3} color="#FFFFFF" fontWeight={700} />
+            <div style={{ marginTop: 12 }}>
+              <FitText text={heroPhrase} baseSize={32} minSize={20} maxLines={3} lineHeight={1.28} color="#FFFFFF" fontWeight={700} />
             </div>
           ) : null}
         </div>
@@ -2357,19 +2379,21 @@ const CelebrationBurstShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loca
             transform: `translateY(${interpolate(subP, [0, 1], [18, 0])}px)`,
             display: 'flex',
             justifyContent: 'center',
-            gap: 16,
+            gap: 14,
             flexWrap: 'wrap',
           }}
         >
           <div
             style={{
-              padding: '14px 28px',
+              maxWidth: '100%',
+              padding: '12px 26px',
               borderRadius: 999,
               background: 'linear-gradient(90deg, #F59E0B, #FBBF24)',
               color: '#09221B',
               fontFamily: THAI_FONT_FAMILY,
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: 900,
+              textAlign: 'center',
               boxShadow: '0 10px 24px rgba(245, 158, 11, 0.35)',
             }}
           >
@@ -2385,7 +2409,7 @@ const CelebrationBurstShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loca
                 padding: '14px 24px',
               }}
             >
-              <FitText text={pts[0]} baseSize={26} minSize={20} maxLines={2} color="#A7F3D0" fontWeight={600} />
+              <FitText text={pts[0]} baseSize={24} minSize={18} maxLines={3} lineHeight={1.28} color="#A7F3D0" fontWeight={600} />
             </div>
           ) : null}
         </div>
@@ -2478,9 +2502,9 @@ const DonutBuildShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
   const centerSp = spring({ frame: Math.max(0, localFrame - 6), fps, config: { damping: 14, stiffness: 140 } });
 
   const cx = 540;
-  const cy = 635;
-  const outerR = 235;
-  const innerR = 130;
+  const cy = 605;
+  const outerR = 225;
+  const innerR = 126;
   const depthY = 24;
 
   // Compute start/end angles for each slice
@@ -2610,33 +2634,77 @@ const DonutBuildShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
 
         {/* Center 3D Hub Plate */}
         <g transform={`translate(${cx}, ${cy}) scale(${centerSp})`}>
-          <circle cx={0} cy={12} r={126} fill="#080B12" opacity={0.6} />
-          <circle cx={0} cy={0} r={122} fill="#111827" stroke="#334155" strokeWidth={3} />
-          <circle cx={0} cy={0} r={108} fill="none" stroke="#FFFFFF" strokeOpacity={0.14} strokeWidth={1.5} />
-          <text x={0} y={-20} textAnchor="middle" fill="#94A3B8" fontSize={22} fontWeight={700} fontFamily={THAI_FONT_FAMILY}>
-            สัดส่วนรวม
-          </text>
-          <text x={0} y={32} textAnchor="middle" fill="#FFFFFF" fontSize={46} fontWeight={900} fontFamily={THAI_FONT_FAMILY}>
-            {scene.stat?.value ? String(scene.stat.value).slice(0, 8) : '100%'}
-          </text>
-          <text x={0} y={66} textAnchor="middle" fill="#34D399" fontSize={20} fontWeight={700} fontFamily={THAI_FONT_FAMILY}>
-            {(metric.unit || `${slices.length} หมวดหมู่`).slice(0, 14)}
-          </text>
+          <circle cx={0} cy={12} r={122} fill="#080B12" opacity={0.6} />
+          <circle cx={0} cy={0} r={118} fill="#111827" stroke="#334155" strokeWidth={3} />
+          <circle cx={0} cy={0} r={104} fill="none" stroke="#FFFFFF" strokeOpacity={0.14} strokeWidth={1.5} />
         </g>
       </svg>
+
+      {/* Center Hub HTML Overlay (auto-wrapping Thai/English text without SVG truncation) */}
+      <div
+        style={{
+          position: 'absolute',
+          left: cx - 102,
+          top: cy - 102,
+          width: 204,
+          height: 204,
+          borderRadius: 999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '12px 14px',
+          textAlign: 'center',
+          transform: `scale(${centerSp})`,
+          pointerEvents: 'none',
+        }}
+      >
+        <div
+          style={{
+            fontFamily: THAI_FONT_FAMILY,
+            fontSize: 19,
+            fontWeight: 700,
+            color: '#94A3B8',
+            lineHeight: 1.2,
+          }}
+        >
+          สัดส่วนรวม
+        </div>
+        <div style={{ width: '100%', marginTop: 2 }}>
+          <FitText
+            text={scene.stat?.value ? String(scene.stat.value) : '100%'}
+            baseSize={42}
+            minSize={26}
+            maxLines={1}
+            lineHeight={1.1}
+            color="#FFFFFF"
+            fontWeight={900}
+          />
+        </div>
+        <div style={{ width: '100%', marginTop: 4 }}>
+          <FitText
+            text={metric.unit || `${slices.length} หมวดหมู่`}
+            baseSize={17}
+            minSize={13}
+            maxLines={2}
+            lineHeight={1.22}
+            color="#34D399"
+            fontWeight={700}
+          />
+        </div>
+      </div>
 
       {/* Breakdown Legend Cards (safely above CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 985,
-          left: 58,
-          right: 58,
-          maxHeight: CONTENT_BOTTOM - 985,
-          overflow: 'hidden',
+          top: 948,
+          left: 52,
+          right: 52,
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: 14,
+          alignItems: 'stretch',
         }}
       >
         {geom.map((g, i) => {
@@ -2650,28 +2718,34 @@ const DonutBuildShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
                 background: 'rgba(26, 32, 48, 0.92)',
                 border: `1.8px solid ${g.colors.top}`,
                 borderRadius: 20,
-                padding: '14px 18px',
+                padding: '12px 16px',
                 boxShadow: '0 12px 26px rgba(0,0,0,0.38)',
                 minWidth: 0,
-                overflow: 'hidden',
+                minHeight: 120,
+                height: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 16, height: 16, borderRadius: 5, background: g.colors.top }} />
-                  <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 24, fontWeight: 900, color: g.colors.light }}>
-                    {g.pct}%
-                  </span>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 5, background: g.colors.top }} />
+                    <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 23, fontWeight: 900, color: g.colors.light }}>
+                      {g.pct}%
+                    </span>
+                  </div>
+                  {g.rawNumber ? (
+                    <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 18, fontWeight: 700, color: pal.muted }}>
+                      {g.rawNumber}
+                    </span>
+                  ) : null}
                 </div>
-                {g.rawNumber ? (
-                  <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 19, fontWeight: 700, color: pal.muted }}>
-                    {g.rawNumber}
-                  </span>
-                ) : null}
+                <FitText text={g.label} baseSize={21} minSize={16} maxLines={3} lineHeight={1.28} color="#FFFFFF" fontWeight={700} align="left" />
               </div>
-              <FitText text={g.label} baseSize={25} minSize={19} maxLines={2} color="#FFFFFF" fontWeight={700} align="left" />
               {/* Mini animated share bar */}
-              <div style={{ marginTop: 10, height: 7, borderRadius: 99, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+              <div style={{ marginTop: 8, height: 7, borderRadius: 99, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
                 <div style={{ width: `${g.pct * p}%`, height: '100%', background: g.colors.top, borderRadius: 99 }} />
               </div>
             </div>
@@ -2699,10 +2773,10 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
   const cardP = appear(localFrame, 18, 14);
 
   const cx = 540;
-  const cy = 620;
-  const outerR = 228;
-  const innerR = 122;
-  const depthY = 26;
+  const cy = 572;
+  const outerR = 210;
+  const innerR = 112;
+  const depthY = 24;
 
   // Rotate slices so hero slice centers cleanly around 155 deg (lower-right / bottom spotlight)
   const heroSweep = (slices[heroIdx].pct / 100) * 360;
@@ -2726,7 +2800,7 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
   });
 
   const hero = geom[0];
-  const pullDist = 52 * pullSp;
+  const pullDist = 44 * pullSp;
   const heroRad = ((hero.midDeg - 90) * Math.PI) / 180;
   const heroDx = Math.cos(heroRad) * pullDist;
   const heroDy = Math.sin(heroRad) * pullDist;
@@ -2840,14 +2914,14 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
         <g opacity={cardP}>
           <line
             x1={cx + heroDx}
-            y1={cy + heroDy + outerR + 40}
+            y1={cy + heroDy + outerR + 36}
             x2={cx}
-            y2={985}
+            y2={900}
             stroke={hero.colors.light}
             strokeWidth={3.5}
             strokeDasharray="8 6"
           />
-          <circle cx={cx} cy={985} r={8} fill={hero.colors.light} />
+          <circle cx={cx} cy={900} r={8} fill={hero.colors.light} />
         </g>
       </svg>
 
@@ -2855,14 +2929,12 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
       <div
         style={{
           position: 'absolute',
-          top: 980,
-          left: 60,
-          right: 60,
-          maxHeight: CONTENT_BOTTOM - 980,
-          overflow: 'hidden',
+          top: 902,
+          left: 52,
+          right: 52,
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
+          gap: 12,
         }}
       >
         <div
@@ -2871,12 +2943,12 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
             transform: `translateY(${interpolate(cardP, [0, 1], [24, 0])}px)`,
             background: 'linear-gradient(155deg, rgba(16, 185, 129, 0.22), rgba(20, 26, 40, 0.96))',
             border: `2.5px solid ${hero.colors.top}`,
-            borderRadius: 26,
-            padding: '20px 26px',
+            borderRadius: 24,
+            padding: '16px 24px',
             boxShadow: '0 20px 44px rgba(0,0,0,0.48)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <span
               style={{
                 padding: '6px 18px',
@@ -2884,22 +2956,22 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
                 background: hero.colors.top,
                 color: hero.colors.text,
                 fontFamily: THAI_FONT_FAMILY,
-                fontSize: 22,
+                fontSize: 21,
                 fontWeight: 900,
               }}
             >
               ก้อนหลัก • {hero.pct}%
             </span>
             {hero.rawNumber ? (
-              <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 24, fontWeight: 800, color: hero.colors.light }}>
+              <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 23, fontWeight: 800, color: hero.colors.light }}>
                 {hero.rawNumber}
               </span>
             ) : null}
           </div>
-          <FitText text={hero.label} baseSize={38} minSize={24} maxLines={2} color="#FFFFFF" fontWeight={800} align="left" />
+          <FitText text={hero.label} baseSize={32} minSize={21} maxLines={3} lineHeight={1.28} color="#FFFFFF" fontWeight={800} align="left" />
           {t.subtitle && t.subtitle !== hero.label ? (
-            <div style={{ marginTop: 10 }}>
-              <FitText text={t.subtitle} baseSize={25} minSize={19} maxLines={2} color="#CBD5E1" fontWeight={500} align="left" />
+            <div style={{ marginTop: 8 }}>
+              <FitText text={t.subtitle} baseSize={22} minSize={17} maxLines={2} lineHeight={1.28} color="#CBD5E1" fontWeight={500} align="left" />
             </div>
           ) : null}
         </div>
@@ -2908,8 +2980,9 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(${Math.max(2, geom.length - 1)}, 1fr)`,
+            gridTemplateColumns: `repeat(${Math.max(2, geom.length - 1)}, minmax(0, 1fr))`,
             gap: 14,
+            alignItems: 'stretch',
           }}
         >
           {geom.slice(1).map((g, i) => {
@@ -2919,16 +2992,19 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
                 key={`chip-${i}`}
                 style={{
                   opacity: p,
-                  background: 'rgba(26, 32, 48, 0.88)',
+                  background: 'rgba(26, 32, 48, 0.90)',
                   border: `1.5px solid ${g.colors.top}`,
-                  borderRadius: 16,
-                  padding: '12px 16px',
+                  borderRadius: 18,
+                  padding: '14px 18px',
+                  minHeight: 136,
+                  height: 'auto',
+                  minWidth: 0,
                 }}
               >
-                <div style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 24, fontWeight: 900, color: g.colors.light }}>
+                <div style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 24, fontWeight: 900, color: g.colors.light, marginBottom: 4 }}>
                   {g.pct}%
                 </div>
-                <FitText text={g.label} baseSize={22} minSize={17} maxLines={2} color="#E2E8F0" fontWeight={600} align="left" />
+                <FitText text={g.label} baseSize={20} minSize={16} maxLines={4} lineHeight={1.28} color="#E2E8F0" fontWeight={600} align="left" />
               </div>
             );
           })}
@@ -2947,10 +3023,10 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
   const jars = slices.slice(0, jarCount);
 
   const titleP = appear(localFrame, 2, 14);
-  const shelfY = 1040;
+  const shelfY = 990;
   const jarPositions = jarCount === 3 ? [210, 540, 870] : [330, 750];
   const jarW = 220;
-  const jarH = 385;
+  const jarH = 370;
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
@@ -2988,7 +3064,7 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
         <FitText text={t.title} baseSize={50} minSize={32} maxLines={2} color="#FFFFFF" fontWeight={800} />
         {t.subtitle ? (
           <div style={{ marginTop: 6 }}>
-            <FitText text={t.subtitle} baseSize={24} minSize={18} maxLines={1} color={pal.muted} fontWeight={500} />
+            <FitText text={t.subtitle} baseSize={24} minSize={18} maxLines={2} lineHeight={1.28} color={pal.muted} fontWeight={500} />
           </div>
         ) : null}
       </div>
@@ -3119,18 +3195,17 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
         })}
       </svg>
 
-      {/* Jar Category Labels below Shelf (strictly <= CONTENT_BOTTOM, no overflow) */}
+      {/* Jar Category Labels below Shelf (strictly <= CONTENT_BOTTOM, no clipping) */}
       <div
         style={{
           position: 'absolute',
-          top: shelfY + 80,
+          top: shelfY + 72,
           left: 48,
           right: 48,
-          maxHeight: CONTENT_BOTTOM - (shelfY + 80),
-          overflow: 'hidden',
           display: 'grid',
           gridTemplateColumns: `repeat(${jarCount}, minmax(0, 1fr))`,
-          gap: 16,
+          gap: 14,
+          alignItems: 'stretch',
         }}
       >
         {jars.map((jar, i) => {
@@ -3145,29 +3220,29 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
                 background: 'rgba(26, 32, 48, 0.92)',
                 borderTop: `5px solid ${colors.top}`,
                 borderRadius: 18,
-                padding: '14px 14px',
+                padding: '14px 15px',
                 boxShadow: '0 12px 24px rgba(0,0,0,0.4)',
                 minWidth: 0,
-                maxHeight: CONTENT_BOTTOM - (shelfY + 84),
-                overflow: 'hidden',
+                minHeight: 152,
+                height: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
+                gap: 8,
               }}
             >
               <FitText
                 text={jar.label}
-                baseSize={22}
-                minSize={16}
-                maxLines={3}
-                lineHeight={1.25}
+                baseSize={19}
+                minSize={15}
+                maxLines={4}
+                lineHeight={1.28}
                 color="#FFFFFF"
                 fontWeight={800}
-                style={{ overflow: 'hidden', maxHeight: 112 }}
               />
               {jar.rawNumber ? (
-                <div style={{ marginTop: 6, flexShrink: 0 }}>
-                  <FitText text={jar.rawNumber} baseSize={20} minSize={16} maxLines={1} color={colors.light} fontWeight={700} />
+                <div style={{ flexShrink: 0 }}>
+                  <FitText text={jar.rawNumber} baseSize={19} minSize={15} maxLines={1} color={colors.light} fontWeight={700} />
                 </div>
               ) : null}
             </div>
@@ -3193,8 +3268,8 @@ const BudgetStackBarShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, t
   );
 
   const titleP = appear(localFrame, 2, 14);
-  const colTop = 410;
-  const colH = 615;
+  const colTop = 395;
+  const colH = 575;
   const colW = 210;
   const leftX = 165;
   const rightX = 705;
@@ -3369,14 +3444,13 @@ const BudgetStackBarShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, t
       <div
         style={{
           position: 'absolute',
-          top: 1090,
-          left: 58,
-          right: 58,
-          maxHeight: CONTENT_BOTTOM - 1090,
-          overflow: 'hidden',
+          top: 1030,
+          left: 52,
+          right: 52,
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: 14,
+          alignItems: 'stretch',
         }}
       >
         {segments.map((seg, i) => {
@@ -3392,16 +3466,18 @@ const BudgetStackBarShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, t
                 background: 'rgba(26, 32, 48, 0.92)',
                 border: `1.5px solid ${seg.colors.top}`,
                 borderRadius: 18,
-                padding: '14px 18px',
+                padding: '12px 16px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
+                minHeight: 108,
+                height: 'auto',
               }}
             >
-              <div style={{ width: 16, height: 48, borderRadius: 6, background: seg.colors.top, flexShrink: 0 }} />
+              <div style={{ width: 14, height: 48, borderRadius: 6, background: seg.colors.top, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <FitText text={seg.label} baseSize={24} minSize={18} maxLines={2} color="#FFFFFF" fontWeight={700} align="left" />
-                <div style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 19, fontWeight: 800, color: seg.colors.light, marginTop: 4 }}>
+                <FitText text={seg.label} baseSize={21} minSize={16} maxLines={3} lineHeight={1.28} color="#FFFFFF" fontWeight={700} align="left" />
+                <div style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 18, fontWeight: 800, color: seg.colors.light, marginTop: 4 }}>
                   {seg.lPct}% → {seg.rPct}% ({diffText})
                 </div>
               </div>

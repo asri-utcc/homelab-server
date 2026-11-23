@@ -5,6 +5,8 @@ import { BATCH_D } from './batchD';
 import { BATCH_E } from './batchE';
 import { BATCH_F } from './batchF';
 import { BATCH_G } from './batchG';
+import { BATCH_H } from './batchH';
+import { BATCH_I } from './batchI';
 import type { StyleDirectorDef } from './types';
 
 function normalizeId(id?: string): string {
@@ -13,7 +15,7 @@ function normalizeId(id?: string): string {
 
 export const STYLE_DIRECTORS: Record<string, StyleDirectorDef> = {};
 
-for (const def of [...BATCH_A, ...BATCH_B, ...BATCH_C, ...BATCH_D, ...BATCH_E, ...BATCH_F, ...BATCH_G]) {
+for (const def of [...BATCH_A, ...BATCH_B, ...BATCH_C, ...BATCH_D, ...BATCH_E, ...BATCH_F, ...BATCH_G, ...BATCH_H, ...BATCH_I]) {
   const key = normalizeId(def.styleId);
   if (key) {
     STYLE_DIRECTORS[key] = def;

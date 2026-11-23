@@ -6,6 +6,8 @@
 <meta name="color-scheme" content="dark light">
 <title>Home-lab Control Panel</title>
 <link rel="stylesheet" href="/styles.css?v=20261121-bgstar">
+<link rel="stylesheet" href="/launcher-bar.css?v=20261124-launcher">
+<link rel="stylesheet" href="/agent-mini-widget.css?v=20261124-launcher">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -344,6 +346,7 @@
 
   <!-- ════════ VIEW 1: OVERVIEW & QUICK LAUNCH ════════ -->
   <div class="lab-view is-active" id="view-overview" data-view-id="overview">
+    <div class="lab-launcher" id="lab-launcher" aria-label="App Launcher"></div>
     <!-- 3D Galaxy & Zodiac Astrolabe Command Hero -->
     <section class="ov-galaxy-hero" id="ov-galaxy-hero" aria-label="3D Galaxy Linux Server Monitor">
       <canvas id="ov-galaxy-canvas"></canvas>
@@ -567,6 +570,8 @@
         </div>
       </div>
     </section>
+
+    <section class="ov-agent-mini" id="ov-agent-mini" aria-label="Agent Hub nodes"></section>
 
     <!-- Hidden legacy DOM targets so app.js telemetry & charts stay synced without cluttering Overview -->
     <div class="ov-legacy-hidden" style="display:none" aria-hidden="true">
@@ -1763,55 +1768,25 @@
     </span>
     <span class="mob-nav-lbl">บริการ</span>
   </button>
-  <button type="button" class="mobile-nav-btn" data-view="ports" aria-label="พอร์ต">
+  <a class="mobile-nav-btn" href="/gemini" aria-label="แชท AI">
     <span class="mob-ico3d" aria-hidden="true">
       <svg viewBox="0 0 24 24" class="ico3d-svg">
         <defs>
-          <linearGradient id="mg-pt-left" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#6ee7b7"/>
-            <stop offset="100%" stop-color="#059669"/>
-          </linearGradient>
-          <linearGradient id="mg-pt-right" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#10b981"/>
-            <stop offset="100%" stop-color="#064e3b"/>
+          <linearGradient id="mg-ai-chat" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#67e8f9"/>
+            <stop offset="55%" stop-color="#38bdf8"/>
+            <stop offset="100%" stop-color="#a855f7"/>
           </linearGradient>
         </defs>
-        <g class="ico3d-shield">
-          <path d="M12 2.2L4 5.6v5.8c0 5.1 3.4 9.6 8 10.9V2.2z" fill="url(#mg-pt-left)"/>
-          <path d="M12 2.2l8 3.4v5.8c0 5.1-3.4 9.6-8 10.9V2.2z" fill="url(#mg-pt-right)"/>
-          <path d="M12 4.6l-5.6 2.4v4.3c0 3.7 2.4 7 5.6 8.1 3.2-1.1 5.6-4.4 5.6-8.1V7L12 4.6z" fill="none" stroke="#a7f3d0" stroke-width="0.9" opacity="0.8"/>
-          <circle class="ico3d-core" cx="12" cy="11.2" r="2.1" fill="#ecfdf5"/>
-          <rect x="11.2" y="12.4" width="1.6" height="3.2" rx="0.8" fill="#ecfdf5"/>
-        </g>
+        <path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h10a2.5 2.5 0 0 1 2.5 2.5v8A2.5 2.5 0 0 1 17 16h-5.8L7 19.8V16a2.5 2.5 0 0 1-2.5-2.5v-8z" fill="url(#mg-ai-chat)" opacity="0.92"/>
+        <circle cx="9.2" cy="9.5" r="1.15" fill="#0b1220"/>
+        <circle cx="12.2" cy="9.5" r="1.15" fill="#0b1220"/>
+        <circle cx="15.2" cy="9.5" r="1.15" fill="#0b1220"/>
       </svg>
     </span>
-    <span class="mob-nav-lbl">พอร์ต</span>
-  </button>
-  <button type="button" class="mobile-nav-btn" data-view="settings" aria-label="ตั้งค่าระบบ">
-    <span class="mob-ico3d" aria-hidden="true">
-      <svg viewBox="0 0 24 24" class="ico3d-svg">
-        <defs>
-          <linearGradient id="mg-st-gear" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#fde68a"/>
-            <stop offset="50%" stop-color="#f59e0b"/>
-            <stop offset="100%" stop-color="#b45309"/>
-          </linearGradient>
-          <radialGradient id="mg-st-hub" cx="35%" cy="35%" r="70%">
-            <stop offset="0%" stop-color="#ffffff"/>
-            <stop offset="60%" stop-color="#38bdf8"/>
-            <stop offset="100%" stop-color="#0369a1"/>
-          </radialGradient>
-        </defs>
-        <g class="ico3d-gear">
-          <path d="M19.4 13.5c.04-.49.04-1.01 0-1.5l2.06-1.6a.5.5 0 0 0 .12-.64l-1.95-3.38a.5.5 0 0 0-.6-.22l-2.43.98c-.5-.39-1.05-.71-1.65-.96L14.58 3.6a.5.5 0 0 0-.49-.42h-3.9a.5.5 0 0 0-.49.42l-.37 2.58c-.6.25-1.15.57-1.65.96l-2.43-.98a.5.5 0 0 0-.6.22L2.7 9.76a.5.5 0 0 0 .12.64l2.06 1.6c-.04.49-.04 1.01 0 1.5l-2.06 1.6a.5.5 0 0 0-.12.64l1.95 3.38a.5.5 0 0 0 .6.22l2.43-.98c.5.39 1.05.71 1.65.96l.37 2.58a.5.5 0 0 0 .49.42h3.9a.5.5 0 0 0 .49-.42l.37-2.58c.6-.25 1.15-.57 1.65-.96l2.43.98a.5.5 0 0 0 .6-.22l1.95-3.38a.5.5 0 0 0-.12-.64l-2.06-1.6z" fill="url(#mg-st-gear)"/>
-          <circle cx="12" cy="12" r="4.3" fill="#0f172a" stroke="#fef3c7" stroke-width="0.9" opacity="0.95"/>
-        </g>
-        <circle class="ico3d-core" cx="12" cy="12" r="2.2" fill="url(#mg-st-hub)"/>
-      </svg>
-    </span>
-    <span class="mob-nav-lbl">ตั้งค่า</span>
-  </button>
-  <button type="button" class="mobile-nav-btn" data-view="terminal" aria-label="เทอร์มินัล และ AI">
+    <span class="mob-nav-lbl">แชท</span>
+  </a>
+  <button type="button" class="mobile-nav-btn" data-view="terminal" aria-label="เทอร์มินัล">
     <span class="mob-ico3d" aria-hidden="true">
       <svg viewBox="0 0 24 24" class="ico3d-svg">
         <defs>
@@ -1835,10 +1810,16 @@
         <path class="ico3d-spark" d="M18.2 4.2l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7z" fill="url(#mg-tm-spark)"/>
       </svg>
     </span>
-    <span class="mob-nav-lbl">เทอร์มินัล/AI</span>
+    <span class="mob-nav-lbl">เทอร์มินัล</span>
+  </button>
+  <button type="button" class="mobile-nav-btn" data-launcher-open="1" aria-label="แอปทั้งหมด">
+    <span class="mob-ico3d" aria-hidden="true" style="font-size:17px;line-height:1;">🚀</span>
+    <span class="mob-nav-lbl">🚀 แอป</span>
   </button>
 </nav>
 
 <script src="/overview-galaxy.js?v=20261121-bgstar"></script>
+<script src="/launcher-bar.js?v=20261124-launcher"></script>
+<script src="/agent-mini-widget.js?v=20261124-launcher"></script>
 </body>
 </html>

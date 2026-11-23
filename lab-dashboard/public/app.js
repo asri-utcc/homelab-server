@@ -1178,6 +1178,9 @@ function renderLinks(links) {
         if (l.url === '#sec-ports' || l.url === '#ports') {
             href = '#ports';
             extra = ' data-view="ports" data-view-jump="1"';
+        } else if (l.url === '#energy') {
+            href = '#energy';
+            extra = ' data-view="energy" data-view-jump="1"';
         } else if (l.url === '/terminal' || l.url === '#sec-terminal' || l.url === '#terminal') {
             href = '#terminal';
             extra = ' data-view="terminal" data-view-jump="1"';
@@ -1187,6 +1190,8 @@ function renderLinks(links) {
         } else if (l.url === '#services') {
             href = '#services';
             extra = ' data-view="services" data-view-jump="1"';
+        } else if (typeof l.url === 'string' && l.url.startsWith('/')) {
+            extra = '';
         }
         return `<a class="link" href="${href}"${extra}>${ico(l.icon || 'link')}<span>${esc(label)}</span></a>`;
     }).join('');

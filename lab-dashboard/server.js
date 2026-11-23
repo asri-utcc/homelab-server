@@ -1191,6 +1191,10 @@ const LINKS = [
     { id: 'agent-hub', label: 'Agent Hub (ศูนย์ควบคุม PC)', icon: 'server', url: '/agent-hub' },
     { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
     { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
+    { id: 'chat', label: 'AI Chat (แชท)', icon: 'auto', url: '/gemini' },
+    { id: 'energy', label: 'Energy (ค่าไฟ)', icon: 'activity', url: '#energy' },
+    { id: 'cron', label: 'Cron อัตโนมัติ', icon: 'activity', url: '/cron' },
+    { id: 'quota', label: 'AI Quota', icon: 'activity', url: '/quota' },
     { id: 'ports', label: 'Port & Firewall Manager', icon: 'shield', url: '#sec-ports' },
     { id: 'wireguard', label: 'WireGuard VPN UI', icon: 'shield', url: `https://${TAIL_HOST}:51821/` },
     { id: 'emqx', label: 'EMQX Dashboard', icon: 'activity', url: `https://${TAIL_HOST}:18083/` },
@@ -1206,6 +1210,57 @@ const LINKS = [
     { id: 'onepercentbot', label: 'OnePercent Bot (Spot)', icon: 'trending-up', url: `https://${TAIL_HOST}:6015/` },
     { id: 'ddpm', label: 'DDPM LoRa (ปภ.)', icon: 'activity', url: `http://${TAIL_HOST}:3000/` },
 ];
+
+const LAUNCHER_FILE = path.join(__dirname, 'launcher-config.json');
+const DEFAULT_PINNED = ['agent-hub', 'video-studio', 'chat', 'energy', 'terminal'];
+const LAUNCHER_MAX_PINNED = 12;
+const VALID_LINK_IDS = new Set(LINKS.map((l) => l.id));
+
+function sanitizeLauncherPinned(list) {
+    const seen = new Set();
+    const clean = [];
+    for (const item of list) {
+        if (typeof item !== 'string') continue;
+        const id = item.trim();
+        if (!VALID_LINK_IDS.has(id) || seen.has(id)) continue;
+        seen.add(id);
+        clean.push(id);
+        if (clean.length >= LAUNCHER_MAX_PINNED) break;
+    }
+    return clean;
+}
+
+async function readLauncher() {
+    try {
+        const raw = await fsp.readFile(LAUNCHER_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.pinned)) {
+            return { pinned: sanitizeLauncherPinned(DEFAULT_PINNED) };
+        }
+        return { pinned: sanitizeLauncherPinned(parsed.pinned) };
+    } catch (_) {
+        return { pinned: sanitizeLauncherPinned(DEFAULT_PINNED) };
+    }
+}
+
+async function writeLauncher(pinned) {
+    if (!Array.isArray(pinned) || !pinned.every((id) => typeof id === 'string')) {
+        const err = new Error('pinned must be an array of strings');
+        err.statusCode = 400;
+        throw err;
+    }
+    const clean = sanitizeLauncherPinned(pinned);
+    const tmpFile = `${LAUNCHER_FILE}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    const payload = JSON.stringify({ pinned: clean }, null, 2) + '\n';
+    try {
+        await fsp.writeFile(tmpFile, payload, 'utf8');
+        await fsp.rename(tmpFile, LAUNCHER_FILE);
+    } catch (err) {
+        try { await fsp.unlink(tmpFile); } catch (_) { /* ignore */ }
+        throw err;
+    }
+    return clean;
+}
 
 async function energyMetrics() {
     try {
@@ -2672,6 +2727,31 @@ const server = http.createServer(async (req, res) => {
             return;
         }
 
+        if (req.method === 'GET' && p === '/api/launcher') {
+            const { pinned } = await readLauncher();
+            return sendJson(res, 200, { ok: true, pinned, apps: LINKS, defaults: DEFAULT_PINNED });
+        }
+        if ((req.method === 'PUT' || req.method === 'POST') && p === '/api/launcher') {
+            let body;
+            try {
+                body = await readJsonBody(req);
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message || 'Invalid JSON payload' });
+            }
+            if (!body || typeof body !== 'object' || Array.isArray(body)) {
+                return sendJson(res, 400, { ok: false, error: 'Invalid request body' });
+            }
+            const nextPinned = body.reset === true ? DEFAULT_PINNED : body.pinned;
+            try {
+                const pinned = await writeLauncher(nextPinned);
+                return sendJson(res, 200, { ok: true, pinned });
+            } catch (err) {
+                if (err && err.statusCode === 400) {
+                    return sendJson(res, 400, { ok: false, error: err.message });
+                }
+                throw err;
+            }
+        }
         if (req.method === 'POST' && p === '/api/refresh') {
             cache.clear();
             return sendJson(res, 200, { ok: true });

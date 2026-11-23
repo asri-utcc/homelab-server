@@ -34,10 +34,11 @@ const GO_BIN = '/home/dev/.local/bin/go';
 
 const DEFAULT_TOKEN = 'hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b';
 const DEFAULT_HUB_URLS = [
-    'http://192.168.1.123:8090',
-    'https://192.168.1.123',
-    'http://100.93.214.79:8090',
     'https://homelab.tail285279.ts.net',
+    'http://100.93.214.79',
+    'http://100.93.214.79:8090',
+    'http://192.168.1.123',
+    'https://192.168.1.123',
 ];
 
 const ONLINE_THRESHOLD_MS = 18000; // 18 seconds (3.5 heartbeats)
@@ -45,7 +46,7 @@ const ONLINE_THRESHOLD_MS = 18000; // 18 seconds (3.5 heartbeats)
 let hubConfig = {
     token: DEFAULT_TOKEN,
     hubUrls: DEFAULT_HUB_URLS,
-    agentVersion: '1.0.0',
+    agentVersion: '1.0.1',
     createdAt: new Date().toISOString(),
 };
 
@@ -192,10 +193,25 @@ async function compileBinaries(force = false) {
     return buildInProgress;
 }
 
+function ensurePort8090NatRedirect() {
+    const rules = [
+        ['-t', 'nat', '-i', 'tailscale0', '-p', 'tcp', '--dport', '8090', '-j', 'REDIRECT', '--to-ports', '80'],
+        ['-t', 'nat', '-i', 'enp1s0', '-p', 'tcp', '--dport', '8090', '-j', 'REDIRECT', '--to-ports', '80'],
+    ];
+    for (const r of rules) {
+        execFile('sudo', ['iptables', '-t', 'nat', '-C', 'PREROUTING', ...r.slice(2)], (err) => {
+            if (err) {
+                execFile('sudo', ['iptables', '-t', 'nat', '-A', 'PREROUTING', ...r.slice(2)], () => {});
+            }
+        });
+    }
+}
+
 function init() {
     if (initialized) return;
     initialized = true;
     loadStateSync();
+    ensurePort8090NatRedirect();
     compileBinaries(false).catch((err) => {
         console.error('[AgentHub] Initial binary build error:', err.message);
     });
@@ -647,10 +663,12 @@ function buildPowerShellInstaller(originHint) {
         urls.unshift(originHint);
     }
     const urlsStr = urls.join(',');
+    const Endpoints = urls.map((u) => `"${u}"`).join(', ');
     return `# Homelab Worker Agent — One-Click Windows Installer
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-add-type @"
+try {
+    add-type @"
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 public class TrustAllCertsPolicy : ICertificatePolicy {
@@ -659,20 +677,23 @@ public class TrustAllCertsPolicy : ICertificatePolicy {
     }
 }
 "@
-[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+    [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+} catch {}
 
 $InstallDir = Join-Path $env:LOCALAPPDATA "HomelabAgent"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $ExePath = Join-Path $InstallDir "homelab-agent.exe"
 
-$Endpoints = @(${urls.map((u) => `"${u}"`).join(', ')})
+$Endpoints = @(${Endpoints})
 $Downloaded = $false
 foreach ($ep in $Endpoints) {
     try {
         Write-Host "Downloading homelab-agent.exe from $ep ..." -ForegroundColor Cyan
         Invoke-WebRequest -Uri "$ep/api/agent-hub/download/homelab-agent.exe" -OutFile "$ExePath.new" -UseBasicParsing -TimeoutSec 15
         if ((Get-Item "$ExePath.new").Length -gt 500000) {
-            Get-Process -Name "homelab-agent*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            try {
+                Get-Process -Name "homelab-agent*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            } catch {}
             Start-Sleep -Milliseconds 400
             Move-Item -Force "$ExePath.new" $ExePath
             $Downloaded = $true
@@ -782,7 +803,8 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
     const p = url.pathname;
 
     // 1. Public / Token-authenticated binary downloads & installers
-    if (req.method === 'GET' && p.startsWith('/api/agent-hub/download/')) {
+    const isGetOrHead = req.method === 'GET' || req.method === 'HEAD';
+    if (isGetOrHead && p.startsWith('/api/agent-hub/download/')) {
         const fname = path.basename(p.slice('/api/agent-hub/download/'.length));
         const allowed = new Set(['homelab-agent.exe', 'homelab-agent-linux-amd64', 'homelab-agent-darwin-arm64']);
         if (!allowed.has(fname)) {
@@ -804,31 +826,35 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             'Content-Disposition': `attachment; filename="${fname}"`,
             'Cache-Control': 'no-store',
         });
-        fs.createReadStream(filePath).pipe(res);
+        if (req.method === 'HEAD') {
+            res.end();
+        } else {
+            fs.createReadStream(filePath).pipe(res);
+        }
         return true;
     }
 
-    if (req.method === 'GET' && p === '/api/agent-hub/install.ps1') {
+    if (isGetOrHead && p === '/api/agent-hub/install.ps1') {
         const proto = req.headers['x-forwarded-proto'] || 'http';
-        const host = req.headers['x-forwarded-host'] || req.headers.host || '192.168.1.123:8090';
+        const host = req.headers['x-forwarded-host'] || req.headers.host || '100.93.214.79';
         const ps = buildPowerShellInstaller(`${proto}://${host}`);
         res.writeHead(200, {
             'Content-Type': 'text/plain; charset=utf-8',
             'Cache-Control': 'no-store',
         });
-        res.end(ps);
+        res.end(req.method === 'HEAD' ? '' : ps);
         return true;
     }
 
-    if (req.method === 'GET' && p === '/api/agent-hub/install.sh') {
+    if (isGetOrHead && p === '/api/agent-hub/install.sh') {
         const proto = req.headers['x-forwarded-proto'] || 'http';
-        const host = req.headers['x-forwarded-host'] || req.headers.host || '192.168.1.123:8090';
+        const host = req.headers['x-forwarded-host'] || req.headers.host || '100.93.214.79';
         const sh = buildBashInstaller(`${proto}://${host}`);
         res.writeHead(200, {
             'Content-Type': 'text/plain; charset=utf-8',
             'Cache-Control': 'no-store',
         });
-        res.end(sh);
+        res.end(req.method === 'HEAD' ? '' : sh);
         return true;
     }
 
@@ -941,6 +967,42 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
     // 4. Dashboard UI & CLI Control endpoints
     if (req.method === 'GET' && p === '/api/agent-hub/status') {
         sendJson(res, 200, await getHubStatus());
+        return true;
+    }
+
+    if (req.method === 'GET' && p === '/api/agent-hub/mini') {
+        const list = [...nodes.values()]
+            .map(decorateNode)
+            .sort((a, b) => Number(b.online) - Number(a.online));
+        const onlineNodes = list.filter((n) => n.online).length;
+        const miniNodes = list.map((n) => {
+            const specs = n.specs || {};
+            const metrics = n.metrics || {};
+            const memUsed = metrics.memUsed || 0;
+            const memTotal = metrics.memTotal || 0;
+            return {
+                nodeId: n.nodeId,
+                hostname: specs.hostname || n.nodeId,
+                os: specs.os || specs.osCaption || '',
+                online: !!n.online,
+                ageMs: n.ageMs,
+                cpuThreads: specs.cpuThreads || 0,
+                hasNvenc: !!specs.hasNvenc,
+                gpuModel: specs.gpuModel || '',
+                cpuPct: metrics.cpuPct ?? null,
+                memUsed,
+                memTotal,
+                memPct: memTotal ? Math.round((memUsed / memTotal) * 1000) / 10 : null,
+                gpuUtilPct: metrics.gpuUtilPct ?? null,
+                gpuTempC: metrics.gpuTempC ?? null,
+            };
+        });
+        sendJson(res, 200, {
+            ok: true,
+            totalNodes: list.length,
+            onlineNodes,
+            nodes: miniNodes,
+        });
         return true;
     }
 

@@ -212,6 +212,7 @@ body::before {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   pointer-events: none;
   z-index: 0;
 }
@@ -2312,6 +2313,8 @@ body::before {
   .desktop-only { display: none !important; }
   html, body {
     height: 100%;
+    height: 100vh;
+    height: 100dvh;
     width: 100%;
     overflow: hidden;
     overscroll-behavior: none;
@@ -2327,9 +2330,15 @@ body::before {
   .mobile-chat-nav {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex: 1;
     min-width: 0;
+  }
+  .mob-home-btn {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px;
+    text-decoration: none;
   }
   .mobile-chat-meta {
     flex: 1;
@@ -2538,7 +2547,11 @@ body::before {
 
   /* Native Sticky Bottom Composer */
   .core-dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
     margin: 0;
+    margin-bottom: var(--kb-offset, 0px);
     padding: 7px 8px calc(7px + env(safe-area-inset-bottom, 0px)) 8px;
     gap: 6px;
     border-radius: 16px 16px 0 0;
@@ -2570,6 +2583,9 @@ body::before {
     font-size: 16px;
     line-height: 1.4;
     padding: 0;
+  }
+  .field-input, .model-search-input, #qedit-prompt, #memory-editor {
+    font-size: 16px !important;
   }
   .btn-send {
     height: 38px;
@@ -2618,6 +2634,7 @@ body::before {
 
   <!-- Mobile Native Chat App Header (Hidden on Desktop) -->
   <div class="mobile-chat-nav">
+    <a href="/" id="btn-home-mobile" class="mob-icon-btn mob-home-btn" aria-label="กลับหน้าหลัก" title="กลับหน้าหลัก">🏠</a>
     <button type="button" id="btn-sessions-mobile" class="mob-icon-btn" title="รายการแชททั้งหมด">
       <span>💬</span>
       <span class="mob-running-dot" id="sessions-running-badge-mobile" style="display:none;"></span>
@@ -8489,13 +8506,21 @@ body::before {
   }
   if (window.visualViewport) {
     const syncViewportHeight = () => {
-      if (window.innerWidth <= 768 && window.self === window.top) {
-        document.body.style.height = window.visualViewport.height + 'px';
+      if (window.innerWidth <= 768) {
+        if (window.self === window.top) {
+          document.body.style.height = window.visualViewport.height + 'px';
+          document.documentElement.style.setProperty('--kb-offset', '0px');
+        } else {
+          document.body.style.height = '';
+          const kbOffset = Math.max(0, Math.round(window.innerHeight - window.visualViewport.height));
+          document.documentElement.style.setProperty('--kb-offset', kbOffset + 'px');
+        }
         if (msgList && autoFollowBottom) {
           requestAnimationFrame(() => scrollToBottom(false, false));
         }
       } else {
         document.body.style.height = '';
+        document.documentElement.style.setProperty('--kb-offset', '0px');
       }
     };
     window.visualViewport.addEventListener('resize', syncViewportHeight);

@@ -45,7 +45,7 @@
     <div class="au-filters">
       <input type="search" id="au-q" placeholder="ค้นหาคำสั่ง/คำตอบ" autocomplete="off" data-lpignore="true" name="au-q-nofill">
       <input type="search" id="au-file" placeholder="ไฟล์ เช่น gemini.html" autocomplete="off" data-lpignore="true" name="au-file-nofill">
-      <select id="au-source"><option value="all">ทุกแหล่ง</option><option value="chat">แชท</option><option value="recovery">กู้งาน</option><option value="cron">Cron</option><option value="agent-hub">Agent Hub</option></select>
+      <select id="au-source"><option value="all">ทุกแหล่ง</option><option value="chat">แชท</option><option value="recovery">กู้งาน</option><option value="cron">Cron</option><option value="agent-hub">Homelab Agent Hub</option></select>
       <select id="au-status"><option value="all">ทุกสถานะ</option><option value="completed">สำเร็จ</option><option value="crashed_midway">ดับกลางคัน 🔴</option><option value="error">ผิดพลาด</option><option value="aborted">ยกเลิก</option></select>
       <label style="font-size:12px;color:var(--ink-2,#8ceeff)"><input type="checkbox" id="au-unrep"> แตะไฟล์นอกเหนือที่แจ้ง ⚠️</label>
       <input type="date" id="au-from" title="ตั้งแต่"><input type="date" id="au-to" title="ถึง">

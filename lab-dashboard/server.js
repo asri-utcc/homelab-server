@@ -1189,7 +1189,7 @@ async function terminalExec(body = {}) {
 // ── summary assembly ─────────────────────────────────────────────────────────
 const LINKS = [
     { id: 'terminal', label: 'Web Terminal (Cockpit)', icon: 'terminal', url: '/terminal' },
-    { id: 'agent-hub', label: 'Agent Hub (ศูนย์ควบคุม PC)', icon: 'server', url: '/agent-hub' },
+    { id: 'agent-hub', label: 'Homelab Agent Hub (ศูนย์ควบคุม PC)', icon: 'server', url: '/agent-hub' },
     { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
     { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
     { id: 'chat', label: 'AI Chat (แชท)', icon: 'auto', url: '/gemini' },

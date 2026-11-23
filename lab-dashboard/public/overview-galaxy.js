@@ -526,8 +526,8 @@
       })
     },
     {
-      id: 'agent-hub', label: 'AGENT HUB', keywords: 'agent hub worker pc windows asridaytrade exe remote render ศูนย์ควบคุม เครื่องลูก', icon: '🛰️', kind: 'station', ring: 278, speed: 0.0020, angle: 2.1, size: 32, color: '#00e5ff',
-      getTag: () => '🛰️ AGENT HUB',
+      id: 'agent-hub', label: 'HOMELAB AGENT HUB', keywords: 'homelab agent hub worker pc windows asridaytrade exe remote render ศูนย์ควบคุม เครื่องลูก', icon: '🛰️', kind: 'station', ring: 278, speed: 0.0020, angle: 2.1, size: 32, color: '#00e5ff',
+      getTag: () => '🛰️ HOMELAB AGENT HUB',
       getInfo: () => ({
         title: 'สถานีควบคุมเครื่องลูกข่าย (Homelab Agent Hub)',
         status: 'CLUSTER CONTROL',
@@ -536,7 +536,7 @@
           <span style="color:#94a3b8; font-size:11.5px;">รองรับ: รีโมทเทอร์มินัล PowerShell · เปิดอ่าน/แก้ไขโค้ดข้ามเครื่อง · แชร์โหลดเรนเดอร์วิดีโอด้วย GPU NVENC · สั่ง Auto-Update จากศูนย์กลาง</span>
         `,
         actions: [
-          { label: '🛰️ เปิดศูนย์ควบคุม Agent Hub', href: '/agent-hub', sameTab: true },
+          { label: '🛰️ เปิดศูนย์ควบคุม Homelab Agent Hub', href: '/agent-hub', sameTab: true },
           { label: '⬇️ ดาวน์โหลด homelab-agent.exe', href: '/api/agent-hub/download/homelab-agent.exe' }
         ]
       })

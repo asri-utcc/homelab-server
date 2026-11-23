@@ -19,7 +19,7 @@
     ];
 
     const FALLBACK_CORE_APPS = [
-        { id: 'agent-hub', label: 'Agent Hub (ศูนย์ควบคุม PC)', icon: 'server', url: '/agent-hub' },
+        { id: 'agent-hub', label: 'Homelab Agent Hub (ศูนย์ควบคุม PC)', icon: 'server', url: '/agent-hub' },
         { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
         { id: 'terminal', label: 'Web Terminal (Cockpit)', icon: 'terminal', url: '/terminal' },
         { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },

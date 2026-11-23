@@ -136,7 +136,7 @@
 
         const title = document.createElement('div');
         title.className = 'ov-am-title';
-        title.textContent = `🛰️ AGENT HUB · ออนไลน์ ${online}/${total}`;
+        title.textContent = `🛰️ HOMELAB AGENT HUB · ออนไลน์ ${online}/${total}`;
 
         const link = document.createElement('a');
         link.className = 'ov-am-link';
@@ -152,7 +152,7 @@
             empty.className = 'ov-am-empty';
 
             const msg = document.createElement('span');
-            msg.textContent = 'ยังไม่มีเครื่องลูก Agent Hub เชื่อมต่ออยู่';
+            msg.textContent = 'ยังไม่มีเครื่องลูก Homelab Agent Hub เชื่อมต่ออยู่';
 
             const dl = document.createElement('a');
             dl.className = 'ov-am-dl';

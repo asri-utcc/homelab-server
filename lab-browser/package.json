@@ -1,0 +1,13 @@
+{
+  "name": "lab-browser",
+  "version": "1.0.0",
+  "description": "Local headless Chromium browser CLI & session daemon for homelab AI agents",
+  "main": "bin/lab-browser.js",
+  "bin": {
+    "lab-browser": "./bin/lab-browser.js"
+  },
+  "private": true,
+  "dependencies": {
+    "playwright-core": "1.65.1"
+  }
+}

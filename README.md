@@ -23,6 +23,7 @@ homelab-server/
 │   ├── gemini-manager.js   # Background task streaming, Image Uploads Manager & AI State Engine
 │   ├── wireguard-manager.js# WireGuard Peer Policy & IP Manager
 │   └── public/             # Frontend UI, Icons, PWA Manifest, Terminal, Styles
+├── lab-browser/            # Headless Chromium CLI + session daemon (Browser Vision backend ของ lab-dashboard)
 ├── configs/
 │   ├── caddy/
 │   │   └── Caddyfile       # การตั้งค่า Reverse Proxy HTTPS + Let's Encrypt TLS
@@ -65,3 +66,28 @@ homelab-server/
 
 ## 🔒 Security & Privacy Notice
 * ไฟล์รหัสผ่าน, App Password, และ API Token ส่วนตัวทั้งหมดถูกคัดแยกออกไปยัง `.env` / `.gmail.env` และถูก `.gitignore` ไว้เรียบร้อย ปลอดภัยต่อการเก็บไว้บน GitHub
+
+---
+
+## lab-browser
+
+เครื่องมือ Headless Chromium CLI + session daemon ที่ทำหน้าที่เป็น **Browser Vision backend ของ `lab-dashboard`** โดยโค้ดที่ใช้งานจริง (live) อยู่ที่ `~/.local/share/lab-browser` (และ `lab-dashboard/browser-vision-bridge.js` มีการ hardcode path นี้ไว้)
+
+### วิธีติดตั้ง (Restore / Fresh Install)
+
+```bash
+mkdir -p ~/.local/share/lab-browser
+rsync -a lab-browser/ ~/.local/share/lab-browser/ --exclude skill
+cd ~/.local/share/lab-browser && npm ci
+ln -sf ~/.local/share/lab-browser/bin/lab-browser.js ~/.local/bin/lab-browser
+mkdir -p ~/.gemini/antigravity-cli/skills/web-browser && cp lab-browser/skill/SKILL.md ~/.gemini/antigravity-cli/skills/web-browser/
+```
+
+> **หมายเหตุ:** โฟลเดอร์ `auth/` (cookies/storageState ที่ login ร่วมกัน), `state/` และ `profiles/` ถูกกันออกโดย `.gitignore` และไม่ได้เก็บใน git จึงต้อง login ใหม่หลังการติดตั้ง
+
+### วิธี Re-sync เมื่อมีการแก้ไขฝั่ง Live
+
+```bash
+rsync -a --exclude 'node_modules/' --exclude 'auth/' --exclude 'state/' --exclude 'profiles/' --exclude '*.bak*' --exclude '*.log' ~/.local/share/lab-browser/ lab-browser/
+cp ~/.gemini/antigravity-cli/skills/web-browser/SKILL.md lab-browser/skill/SKILL.md
+```

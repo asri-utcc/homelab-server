@@ -10,3 +10,8 @@ ha_token.txt
 __pycache__/
 .telegram.env
 cron-logs/
+
+# lab-browser runtime data (cookies/login = secret)
+lab-browser/auth/
+lab-browser/state/
+lab-browser/profiles/

@@ -12,6 +12,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
+const tokenUsageHelper = require('./token-usage');
 
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
 const HOME_DIR = os.homedir();
@@ -425,7 +426,8 @@ async function streamDeepSeekTurn({ apiKey, model, messages, tools, signal, onCo
     const body = {
         model,
         messages,
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
     };
     if (tools && tools.length > 0) {
         body.tools = tools;
@@ -474,6 +476,7 @@ async function streamDeepSeekTurn({ apiKey, model, messages, tools, signal, onCo
     let reasoning = '';
     const toolCallsMap = new Map();
     let finishReason = null;
+    let usage = null;
 
     const processLine = (line) => {
         const trimmed = line.trim();
@@ -486,6 +489,10 @@ async function streamDeepSeekTurn({ apiKey, model, messages, tools, signal, onCo
             json = JSON.parse(payload);
         } catch (_) {
             return;
+        }
+
+        if (json.usage && typeof json.usage === 'object') {
+            usage = json.usage;
         }
 
         const choice = json.choices && json.choices[0];
@@ -535,7 +542,7 @@ async function streamDeepSeekTurn({ apiKey, model, messages, tools, signal, onCo
         .sort((a, b) => a[0] - b[0])
         .map(([, v]) => v);
 
-    return { content, reasoning, toolCalls, finishReason };
+    return { content, reasoning, toolCalls, finishReason, usage };
 }
 
 function summarizeToolAction(name, argsObj) {
@@ -618,6 +625,14 @@ function runDeepSeekPrompt({ job, prompt, imagePaths = [], mode = 'exec', cwd, m
             let completedWithText = false;
             let emptyRetries = 0;
             const deferredCommands = [];
+            let cumulativeUsage = null;
+            const recordTurnUsage = (rawUsage) => {
+                const norm = tokenUsageHelper.normalizeDeepSeekUsage(rawUsage, model);
+                if (!norm) return;
+                cumulativeUsage = tokenUsageHelper.mergeTokenUsages(cumulativeUsage, norm, 'deepseek-api');
+                job.tokenUsage = cumulativeUsage;
+                try { onChunk('meta', { modelInfo: job.modelInfo || null, tokenUsage: job.tokenUsage }); } catch (_) {}
+            };
             for (let step = 0; step < maxIterations; step++) {
                 if (controller.signal.aborted) break;
 
@@ -656,6 +671,7 @@ function runDeepSeekPrompt({ job, prompt, imagePaths = [], mode = 'exec', cwd, m
                         onChunk('stdout', delta);
                     }
                 });
+                recordTurnUsage(turn.usage);
 
                 if (turn.reasoning && !contentStartedInStep) {
                     pushEvent('think', turn.reasoning.trim().slice(-1200));
@@ -760,6 +776,7 @@ function runDeepSeekPrompt({ job, prompt, imagePaths = [], mode = 'exec', cwd, m
                         onChunk('stdout', delta);
                     }
                 });
+                recordTurnUsage(finalTurn.usage);
                 if (!job.output.trim() && !finalTurn.content) {
                     const warnMsg = `\n⚠️ ครบจำนวนรอบสูงสุด (${maxIterations} รอบ) และไม่ได้รับข้อความสรุปเพิ่มเติม\n`;
                     job.output += warnMsg;

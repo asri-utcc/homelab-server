@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const deepseekAgent = require('./deepseek-agent');
 const aiRouter = require('./ai-router');
 const crossTeam = require('./cross-team-orchestrator');
+const tokenUsageHelper = require('./token-usage');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
@@ -581,8 +582,56 @@ function resolveJobLiveThought(job, sess) {
     return (state && pid) ? attachLivenessToThought(job, state, pid) : state;
 }
 
+function getSessionBadges() {
+    const list = ensureSessionsStoreSync();
+    return {
+        runningSessionIds: [...activeRuns.keys()],
+        unreadSessionIds: list.filter((s) => isSessionUnread(s)).map((s) => s.id)
+    };
+}
+
+function buildJobModelInfo({ model, account = null, auto = false, team = false, teamSummary = null, attempts = null } = {}) {
+    const rawModel = String(model || '').trim();
+    let engine = 'agy';
+    if (team || rawModel === 'cross-team') engine = 'cross-team';
+    else if (rawModel.startsWith('claude-code-')) engine = 'claude-code';
+    else if (deepseekAgent.isDeepSeekModel(rawModel)) engine = 'deepseek';
+    else if (rawModel === aiRouter.AUTO_MODEL_ID) engine = 'auto';
+
+    let accountLabel = null;
+    if (engine === 'agy' && account) {
+        try {
+            const acc = aiRouter.getAgyAccount(account);
+            accountLabel = (acc && acc.label) || String(account);
+        } catch (_) {
+            accountLabel = String(account);
+        }
+    } else if (engine === 'claude-code') {
+        accountLabel = 'Claude Pro';
+    } else if (engine === 'deepseek') {
+        accountLabel = 'DeepSeek API';
+    }
+
+    const label = rawModel === 'cross-team'
+        ? 'Cross-Team AI'
+        : (rawModel ? aiRouter.modelLabel(rawModel) : 'AI Assistant');
+
+    const info = {
+        model: rawModel || null,
+        label,
+        engine,
+        account: account || null,
+        accountLabel,
+        auto: Boolean(auto),
+        team: Boolean(team)
+    };
+    if (teamSummary) info.teamSummary = teamSummary;
+    if (Array.isArray(attempts) && attempts.length > 1) info.attempts = [...attempts];
+    return info;
+}
+
 function getActiveJob(sessionId = null) {
-    const runningSessionIds = [...activeRuns.keys()];
+    const { runningSessionIds, unreadSessionIds } = getSessionBadges();
     if (sessionId) {
         const run = activeRuns.get(sessionId);
         const job = run ? run.job : (lastJobs.get(sessionId) || { id: null, status: 'idle', sessionId });
@@ -593,6 +642,7 @@ function getActiveJob(sessionId = null) {
             sessionId,
             activeRunning: !!run,
             runningSessionIds,
+            unreadSessionIds,
             queue: getQueue(sessionId),
             liveThought: resolveJobLiveThought(job, sess),
             recovery: rec ? sanitizeRecoveryForClient(rec) : (job.recovery || null)
@@ -607,6 +657,7 @@ function getActiveJob(sessionId = null) {
         sessionId: job.sessionId || latestSid,
         activeRunning: activeRuns.size > 0,
         runningSessionIds,
+        unreadSessionIds,
         queue: latestSid ? getQueue(latestSid) : [],
         liveThought: resolveJobLiveThought(job, sess)
     };
@@ -836,6 +887,77 @@ function saveSessionMessagesSync(sessionId, messages) {
     }
 }
 
+function isSessionUnread(sess) {
+    if (!sess || !sess.id) return false;
+    if (activeRuns.has(sess.id)) return false;
+    const completedAt = Number(sess.lastCompletedAt || 0);
+    const viewedAt = Number(sess.lastViewedAt || 0);
+    return completedAt > 0 && completedAt > viewedAt;
+}
+
+function decorateSession(sess) {
+    return {
+        ...sess,
+        pinned: Boolean(sess.pinned),
+        running: activeRuns.has(sess.id),
+        unread: isSessionUnread(sess),
+        lastCompletedAt: sess.lastCompletedAt || null,
+        lastCompletedStatus: sess.lastCompletedStatus || null
+    };
+}
+
+function markSessionCompletedSync(sessionId, { finishedAt = Date.now(), status = 'completed' } = {}) {
+    const sess = getSessionMetaSync(sessionId);
+    if (!sess) return;
+    const ts = Number(finishedAt) || Date.now();
+    sess.lastCompletedAt = Math.max(ts, Number(sess.lastCompletedAt || 0));
+    sess.lastCompletedStatus = status || 'completed';
+    saveSessionsIndexSync();
+}
+
+function markSessionRead(sessionId, read = true) {
+    const sess = getSessionMetaSync(sessionId);
+    if (!sess) throw new Error('ไม่พบ Session นี้');
+    if (read) {
+        sess.lastViewedAt = Math.max(Date.now(), Number(sess.lastCompletedAt || 0));
+    } else {
+        sess.lastViewedAt = 0;
+        if (!sess.lastCompletedAt) {
+            sess.lastCompletedAt = sess.updatedAt || Date.now();
+        }
+    }
+    saveSessionsIndexSync();
+    const listed = listSessions();
+    return {
+        ok: true,
+        session: decorateSession(sess),
+        sessions: listed.sessions,
+        runningSessionIds: listed.runningSessionIds,
+        unreadSessionIds: listed.unreadSessionIds
+    };
+}
+
+function markAllSessionsRead() {
+    const list = ensureSessionsStoreSync();
+    const now = Date.now();
+    let changed = false;
+    for (const sess of list) {
+        if (!sess || !sess.id) continue;
+        if (isSessionUnread(sess)) {
+            sess.lastViewedAt = Math.max(now, Number(sess.lastCompletedAt || 0));
+            changed = true;
+        }
+    }
+    if (changed) saveSessionsIndexSync();
+    const listed = listSessions();
+    return {
+        ok: true,
+        sessions: listed.sessions,
+        runningSessionIds: listed.runningSessionIds,
+        unreadSessionIds: listed.unreadSessionIds
+    };
+}
+
 function listSessions() {
     const list = ensureSessionsStoreSync();
     const sorted = [...list].sort((a, b) => {
@@ -843,14 +965,12 @@ function listSessions() {
         if (pinDiff !== 0) return pinDiff;
         return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
+    const decorated = sorted.map(decorateSession);
     return {
         ok: true,
         runningSessionIds: [...activeRuns.keys()],
-        sessions: sorted.map(s => ({
-            ...s,
-            pinned: Boolean(s.pinned),
-            running: activeRuns.has(s.id)
-        }))
+        unreadSessionIds: decorated.filter((s) => s.unread).map((s) => s.id),
+        sessions: decorated
     };
 }
 
@@ -893,7 +1013,7 @@ function createSession({ title = 'แชทใหม่', model = null, cwd = PR
     list.unshift(sess);
     saveSessionMessagesSync(id, []);
     saveSessionsIndexSync();
-    return { ok: true, session: { ...sess, running: false } };
+    return { ok: true, session: decorateSession(sess) };
 }
 
 function getSession(sessionId) {
@@ -908,7 +1028,7 @@ function getSession(sessionId) {
     const messages = loadSessionMessagesSync(sess.id);
     return {
         ok: true,
-        session: { ...sess, running: activeRuns.has(sess.id) },
+        session: decorateSession(sess),
         messages,
         job: getActiveJob(sess.id)
     };
@@ -922,7 +1042,7 @@ function renameSession(sessionId, title) {
     sess.title = clean;
     sess.updatedAt = Date.now();
     saveSessionsIndexSync();
-    return { ok: true, session: { ...sess, running: activeRuns.has(sess.id) } };
+    return { ok: true, session: decorateSession(sess) };
 }
 
 function togglePinSession(sessionId, pinned) {
@@ -931,7 +1051,14 @@ function togglePinSession(sessionId, pinned) {
     sess.pinned = typeof pinned === 'boolean' ? pinned : !Boolean(sess.pinned);
     sess.pinnedAt = sess.pinned ? Date.now() : null;
     saveSessionsIndexSync();
-    return { ok: true, session: { ...sess, pinned: Boolean(sess.pinned), running: activeRuns.has(sess.id) }, sessions: listSessions().sessions };
+    const listed = listSessions();
+    return {
+        ok: true,
+        session: decorateSession(sess),
+        sessions: listed.sessions,
+        runningSessionIds: listed.runningSessionIds,
+        unreadSessionIds: listed.unreadSessionIds
+    };
 }
 
 function deleteSession(sessionId) {
@@ -958,7 +1085,13 @@ function deleteSession(sessionId) {
     try {
         require('./browser-vision-bridge').closeChatBrowser(sessionId);
     } catch (_) {}
-    return { ok: true, sessions: listSessions().sessions };
+    const listed = listSessions();
+    return {
+        ok: true,
+        sessions: listed.sessions,
+        runningSessionIds: listed.runningSessionIds,
+        unreadSessionIds: listed.unreadSessionIds
+    };
 }
 
 function resolveSessionId(sessionId) {
@@ -986,17 +1119,28 @@ async function persistJobToHistory(job) {
         const startTs = job.startedAt || Date.now();
         const finishTs = job.finishedAt || Date.now();
         const durationMs = Math.max(0, finishTs - startTs);
+        const assistantFields = {
+            role: 'assistant',
+            content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]'),
+            timestamp: finishTs,
+            durationMs
+        };
+        if (job.modelInfo) assistantFields.modelInfo = job.modelInfo;
+        if (job.tokenUsage) assistantFields.tokenUsage = job.tokenUsage;
+
         if (secondLast && secondLast.role === 'user' && secondLast.content === promptText && last && last.role === 'assistant') {
             if (!secondLast.timestamp) secondLast.timestamp = startTs;
-            last.content = outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]');
+            last.content = assistantFields.content;
             last.timestamp = finishTs;
             last.durationMs = durationMs;
+            if (assistantFields.modelInfo) last.modelInfo = assistantFields.modelInfo;
+            if (assistantFields.tokenUsage) last.tokenUsage = assistantFields.tokenUsage;
         } else if (last && last.role === 'user' && last.content === promptText) {
             if (!last.timestamp) last.timestamp = startTs;
-            history.push({ role: 'assistant', content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]'), timestamp: finishTs, durationMs });
+            history.push(assistantFields);
         } else {
             history.push({ role: 'user', content: promptText, timestamp: startTs });
-            history.push({ role: 'assistant', content: outputText || (job.error ? `❌ ${job.error}` : '[ไม่มีผลลัพธ์จากคำสั่ง]'), timestamp: finishTs, durationMs });
+            history.push(assistantFields);
         }
         saveSessionMessagesSync(sid, history);
     } catch (e) {
@@ -1282,6 +1426,13 @@ function executeAuto(params, onChunk, onDone) {
                 console.error('[GeminiManager] finalizeFailedJobRecovery(auto) error:', e.message);
             }
         }
+        const isUserAborted = aborted || code === 130 || Boolean(job && job.status === 'aborted');
+        if (!isUserAborted) {
+            markSessionCompletedSync(sid, {
+                finishedAt: (job && job.finishedAt) || placeholder.finishedAt || Date.now(),
+                status: code === 0 ? 'completed' : 'error'
+            });
+        }
         persistJobToHistory({ ...job }).catch((e) => {
             console.error('[GeminiManager] Failed to persist auto job:', e.message);
         });
@@ -1362,8 +1513,14 @@ function executeAuto(params, onChunk, onDone) {
                     agyAccount: c.engine === 'agy' ? c.account : null,
                     routeBanner: banner,
                     routerDirective: aiRouter.directiveFor(decision, c),
-                    deferPersist: true
+                    deferPersist: true,
+                    isAuto: true,
+                    attempts: [...tried]
                 }, (type, payload) => {
+                    if (type === 'meta' && payload && typeof payload === 'object') {
+                        if (payload.modelInfo) placeholder.modelInfo = payload.modelInfo;
+                        if (payload.tokenUsage) placeholder.tokenUsage = payload.tokenUsage;
+                    }
                     if (type === 'thought' && payload && typeof payload === 'object') {
                         maxSteps = Math.max(maxSteps, payload.stepsCount || 0);
                         observedSteps = Math.max(observedSteps, maxSteps);
@@ -1556,7 +1713,7 @@ function buildBrowserVisionPrompt(rawPrompt, sessionId, browserVision) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '', browserVision = false, fromRecovery = false }, onChunk, onDone) {
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '', browserVision = false, fromRecovery = false, isAuto = false, attempts = null }, onChunk, onDone) {
     const sid0 = resolveSessionId(sessionId);
     if (!fromRecovery && !deferPersist) {
         clearRecoveryForSession(sid0);
@@ -1622,12 +1779,16 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         model,
         agyAccount: agyAccount || null,
         usedModel: model,
-        usedAccount: agyAccount || (typeof model === 'string' && model.startsWith('claude-code-') ? 'claude-pro' : null),
+        usedAccount: agyAccount || (typeof model === 'string' && model.startsWith('claude-code-') ? 'claude-pro' : (deepseekAgent.isDeepSeekModel(model) ? 'deepseek' : null)),
+        modelInfo: null,
+        tokenUsage: null,
         steps: [],
         deferPersist: Boolean(deferPersist)
     };
+    job.modelInfo = buildJobModelInfo({ model, account: job.usedAccount, auto: isAuto, attempts });
     activeJob = job;
     lastJobs.set(sid, job);
+    try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: null }); } catch (_) {}
     if (routeBanner) {
         try { onChunk('stdout', routeBanner); } catch (_) {}
     }
@@ -1792,6 +1953,50 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             emitClaudeThought(null, true);
         }, 2000);
 
+        const claudeMsgUsages = new Map();
+        let inFlightMsgId = null;
+        let inFlightRawUsage = null;
+        let claudeResultUsage = null;
+        let claudeCostUsd = null;
+        let claudeTurns = 0;
+        let lastClaudeMetaAt = 0;
+
+        const syncClaudeTokenUsage = (force = false) => {
+            let thinkingSum = 0;
+            let acc = null;
+            for (const mu of claudeMsgUsages.values()) {
+                thinkingSum += Number(mu.thinkingTokens || 0);
+                acc = tokenUsageHelper.mergeTokenUsages(acc, mu, 'claude-stream');
+            }
+            if (inFlightRawUsage && (!inFlightMsgId || !claudeMsgUsages.has(inFlightMsgId))) {
+                const liveNorm = tokenUsageHelper.normalizeClaudeUsage(inFlightRawUsage, 1, null, model);
+                if (liveNorm) {
+                    thinkingSum += Number(liveNorm.thinkingTokens || 0);
+                    acc = tokenUsageHelper.mergeTokenUsages(acc, liveNorm, 'claude-stream');
+                }
+            }
+            if (claudeResultUsage) {
+                const resNorm = tokenUsageHelper.normalizeClaudeUsage(
+                    claudeResultUsage,
+                    claudeTurns || claudeMsgUsages.size || 1,
+                    claudeCostUsd,
+                    model
+                );
+                if (resNorm) {
+                    if (thinkingSum > resNorm.thinkingTokens) resNorm.thinkingTokens = thinkingSum;
+                    acc = resNorm;
+                }
+            }
+            if (acc) {
+                job.tokenUsage = acc;
+                const now = Date.now();
+                if (force || (now - lastClaudeMetaAt) >= 400) {
+                    lastClaudeMetaAt = now;
+                    try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage }); } catch (_) {}
+                }
+            }
+        };
+
         const processClaudeLine = (rawLine) => {
             const line = rawLine.trim();
             if (!line) return;
@@ -1822,9 +2027,19 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             if (obj.type === 'stream_event' && obj.event) {
                 const ev = obj.event;
                 if (ev.type === 'message_start') {
+                    if (ev.message && ev.message.usage) {
+                        inFlightMsgId = ev.message.id || `m_${claudeMsgUsages.size + 1}`;
+                        inFlightRawUsage = { ...ev.message.usage };
+                        syncClaudeTokenUsage(false);
+                    }
                     if (job.output && !job.output.endsWith('\n')) {
                         job.output += '\n\n';
                         onChunk('stdout', '\n\n');
+                    }
+                } else if (ev.type === 'message_delta') {
+                    if (ev.usage) {
+                        inFlightRawUsage = { ...(inFlightRawUsage || {}), ...ev.usage };
+                        syncClaudeTokenUsage(false);
                     }
                 } else if (ev.type === 'content_block_start' && ev.content_block) {
                     const cb = ev.content_block;
@@ -1882,6 +2097,18 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
 
             if (obj.type === 'assistant' && obj.message && Array.isArray(obj.message.content)) {
+                if (obj.message.usage) {
+                    const msgKey = obj.message.id || `msg_${claudeMsgUsages.size + 1}`;
+                    const norm = tokenUsageHelper.normalizeClaudeUsage(obj.message.usage, 1, null, obj.message.model || model);
+                    if (norm) {
+                        claudeMsgUsages.set(msgKey, norm);
+                        if (inFlightMsgId === msgKey) {
+                            inFlightMsgId = null;
+                            inFlightRawUsage = null;
+                        }
+                        syncClaudeTokenUsage(true);
+                    }
+                }
                 let updated = false;
                 for (const block of obj.message.content) {
                     if (!block) continue;
@@ -1924,6 +2151,10 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
 
             if (obj.type === 'result') {
+                if (obj.usage) claudeResultUsage = obj.usage;
+                if (typeof obj.total_cost_usd === 'number') claudeCostUsd = obj.total_cost_usd;
+                if (obj.num_turns) claudeTurns = Number(obj.num_turns || 0);
+                syncClaudeTokenUsage(true);
                 const dur = obj.duration_ms ? `${(obj.duration_ms / 1000).toFixed(1)}s` : '';
                 const cost = typeof obj.total_cost_usd === 'number' ? `$${obj.total_cost_usd.toFixed(4)}` : '';
                 pushClaudeEvent('status', `completed turns=${obj.num_turns || 1}${dur ? ' time=' + dur : ''}${cost ? ' cost=' + cost : ''}`);
@@ -1965,8 +2196,11 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             job.status = 'error';
             job.error = err.message;
             job.finishedAt = Date.now();
+            syncClaudeTokenUsage(true);
+            try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
             lastJobs.set(sid, job);
             if (!job.deferPersist) {
+                markSessionCompletedSync(sid, { finishedAt: job.finishedAt, status: 'error' });
                 try { await finalizeFailedJobRecovery(job, { stderrTail: claudeStderrTail }); } catch (_) {}
             }
             onDone(1, err.message);
@@ -1997,9 +2231,14 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                 }
             }
             job.finishedAt = Date.now();
+            syncClaudeTokenUsage(true);
+            try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
             lastJobs.set(sid, job);
             if (!job.deferPersist && effectiveCode !== 0 && job.status !== 'aborted') {
                 try { await finalizeFailedJobRecovery(job, { stderrTail: claudeStderrTail }); } catch (_) {}
+            }
+            if (!job.deferPersist && job.status !== 'aborted') {
+                markSessionCompletedSync(sid, { finishedAt: job.finishedAt, status: job.status });
             }
             if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist Claude job:', err.message);
@@ -2047,8 +2286,12 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             onDone: async (code, errMsg) => {
                 activeRuns.delete(sid);
                 lastJobs.set(sid, job);
+                try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
                 if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
                     try { await finalizeFailedJobRecovery(job, {}); } catch (_) {}
+                }
+                if (!job.deferPersist && job.status !== 'aborted') {
+                    markSessionCompletedSync(sid, { finishedAt: job.finishedAt || Date.now(), status: code === 0 ? 'completed' : 'error' });
                 }
                 if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                     console.error('[GeminiManager] Failed to persist DeepSeek job:', err.message);
@@ -2202,7 +2445,22 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         const brainPoll = beforeBrains ? setInterval(detectConvId, 500) : null;
         let lastAgyThoughtSig = '';
         let lastAgyHeartbeatAt = 0;
+        let lastAgyTokenSig = '';
         job._routeBannerLen = (routeBanner || '').length;
+        const refreshAgyTokens = (forceEmit = false) => {
+            const liveMeta = getSessionMetaSync(sid) || sessMeta;
+            const activeConvId = (liveMeta && liveMeta.agyConvs && liveMeta.agyConvs[agyAcc.id])
+                || (liveMeta && liveMeta.agyConversationId)
+                || convId;
+            const usage = tokenUsageHelper.readAgyTurnUsage(job.startedAt || 0, activeConvId, agyBrain);
+            if (!usage) return;
+            const tSig = `${usage.calls}:${usage.totalTokens}`;
+            if (forceEmit || tSig !== lastAgyTokenSig) {
+                lastAgyTokenSig = tSig;
+                job.tokenUsage = usage;
+                try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage }); } catch (_) {}
+            }
+        };
         const thoughtPoll = setInterval(() => {
             const liveMeta = getSessionMetaSync(sid) || sessMeta;
             const activeConvId = (liveMeta && liveMeta.agyConvs && liveMeta.agyConvs[agyAcc.id])
@@ -2227,6 +2485,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                 if (Array.isArray(state.steps) && state.steps.length) job.steps = [...state.steps];
                 try { onChunk('thought', state); } catch (_) {}
             }
+            refreshAgyTokens(false);
         }, 300);
 
         child.stdout.on('data', (d) => {
@@ -2253,8 +2512,11 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             job.status = 'error';
             job.error = err.message;
             job.finishedAt = Date.now();
+            refreshAgyTokens(true);
+            try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
             lastJobs.set(sid, job);
             if (!job.deferPersist) {
+                markSessionCompletedSync(sid, { finishedAt: job.finishedAt, status: 'error' });
                 try { await finalizeFailedJobRecovery(job, { stderrTail: agyStderrTail }); } catch (_) {}
             }
             onDone(1, err.message);
@@ -2265,6 +2527,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             if (brainPoll) clearInterval(brainPoll);
             clearInterval(thoughtPoll);
             detectConvId();
+            refreshAgyTokens(true);
             job.liveThought = null;
             job._stderrTail = agyStderrTail;
             activeRuns.delete(sid);
@@ -2276,10 +2539,14 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                 }
             }
             job.finishedAt = Date.now();
+            try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
             lastJobs.set(sid, job);
 
             if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
                 try { await finalizeFailedJobRecovery(job, { stderrTail: agyStderrTail }); } catch (_) {}
+            }
+            if (!job.deferPersist && job.status !== 'aborted') {
+                markSessionCompletedSync(sid, { finishedAt: job.finishedAt, status: job.status });
             }
             if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist background job:', err.message);
@@ -2360,6 +2627,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         activeJob.status = 'error';
         activeJob.error = err.message;
         activeJob.finishedAt = Date.now();
+        markSessionCompletedSync(sid, { finishedAt: activeJob.finishedAt, status: 'error' });
         onDone(1, err.message);
         setTimeout(() => {
             processNextInQueue();
@@ -2376,6 +2644,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
         }
         activeJob.finishedAt = Date.now();
+        if (activeJob.status !== 'aborted') {
+            markSessionCompletedSync(sid, { finishedAt: activeJob.finishedAt, status: activeJob.status });
+        }
 
         // Background auto-persistence to disk
         persistJobToHistory({ ...activeJob }).catch((err) => {
@@ -2476,6 +2747,8 @@ async function saveHistory(messages, sessionId = null) {
                 out.durationMs = ex.durationMs;
                 if (ex.timestamp) out.timestamp = ex.timestamp;
             }
+            if (!out.modelInfo && ex.modelInfo) out.modelInfo = ex.modelInfo;
+            if (!out.tokenUsage && ex.tokenUsage) out.tokenUsage = ex.tokenUsage;
         }
         return out;
     });
@@ -2495,6 +2768,9 @@ async function clearHistory(sessionId = null) {
             sess.needsAgyBridge = false;
             sess.needsClaudeBridge = false;
             sess.title = 'แชทใหม่';
+            sess.lastCompletedAt = null;
+            sess.lastCompletedStatus = null;
+            sess.lastViewedAt = Date.now();
             sess.updatedAt = Date.now();
             saveSessionsIndexSync();
         }
@@ -4033,6 +4309,8 @@ module.exports = {
     getSession,
     renameSession,
     togglePinSession,
+    markSessionRead,
+    markAllSessionsRead,
     deleteSession,
     scheduleAutoTitling,
     getRecoveryState,

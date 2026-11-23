@@ -26,6 +26,7 @@ const path = require('path');
 const os = require('os');
 const aiRouter = require('./ai-router');
 const deepseekAgent = require('./deepseek-agent');
+const tokenUsageHelper = require('./token-usage');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
@@ -717,6 +718,30 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
         let currentToolName = '';
         let currentToolJson = '';
         let timedOut = null;
+        const msgUsages = new Map();
+        let resultUsage = null;
+        let resultCostUsd = null;
+        let resultTurns = 0;
+
+        const computeClaudeUsage = () => {
+            let thinkingSum = 0;
+            let msgAcc = null;
+            for (const mu of msgUsages.values()) {
+                thinkingSum += Number(mu.thinkingTokens || 0);
+                msgAcc = tokenUsageHelper.mergeTokenUsages(msgAcc, mu, 'claude-stream');
+            }
+            if (resultUsage) {
+                const norm = tokenUsageHelper.normalizeClaudeUsage(
+                    resultUsage,
+                    resultTurns || msgUsages.size || 1,
+                    resultCostUsd,
+                    candidate.model
+                );
+                if (norm && thinkingSum > norm.thinkingTokens) norm.thinkingTokens = thinkingSum;
+                return norm;
+            }
+            return msgAcc;
+        };
 
         const wd = makeWatchdog({
             hardMs: timeoutMs,
@@ -780,6 +805,11 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
             }
 
             if (obj.type === 'assistant' && obj.message && Array.isArray(obj.message.content)) {
+                if (obj.message.usage) {
+                    const msgKey = obj.message.id || `msg_${msgUsages.size + 1}`;
+                    const norm = tokenUsageHelper.normalizeClaudeUsage(obj.message.usage, 1, null, obj.message.model || candidate.model);
+                    if (norm) msgUsages.set(msgKey, norm);
+                }
                 for (const block of obj.message.content) {
                     if (block && block.type === 'text' && block.text && !emittedDeltas) {
                         output += block.text;
@@ -789,6 +819,9 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
             }
 
             if (obj.type === 'result') {
+                if (obj.usage) resultUsage = obj.usage;
+                if (typeof obj.total_cost_usd === 'number') resultCostUsd = obj.total_cost_usd;
+                if (obj.num_turns) resultTurns = Number(obj.num_turns || 0);
                 if (obj.is_error) {
                     resultIsError = true;
                     resultErrorText = String(obj.result || 'Claude Code returned error');
@@ -827,7 +860,8 @@ function runClaudeSubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs
                 stderr: stderrTail,
                 error: failed ? (crashed ? aiRouter.summarizeCrashError(stderrTail, 'claude-code', `exit code ${code}`) : (resultErrorText || stderrTail.trim() || `exit code ${code}`)) : null,
                 crashed,
-                stepsCount
+                stepsCount,
+                usage: computeClaudeUsage()
             });
         });
     });
@@ -872,6 +906,7 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, i
         let lastSeenSteps = 0;
         let lastTranscriptSig = '';
         let wd = null; // ตั้งค่าด้านล่าง (poller เรียก wd.touch() เมื่อ transcript ขยับ)
+        const agyStartedAt = Date.now();
 
         // Lightweight brain transcript poller so live tool calls show up in UI timeline
         const pollBrain = setInterval(() => {
@@ -962,13 +997,15 @@ function runAgySubprocess(candidate, { prompt, cwd, readOnly, mode, timeoutMs, i
             }
             const cleanOut = output.trim();
             const failed = code !== 0 || crashed || !cleanOut;
+            const usage = myBrainId ? tokenUsageHelper.readAgyTurnUsage(agyStartedAt, myBrainId, brainDir) : null;
             finishOnce({
                 ok: !failed,
                 output: cleanOut,
                 stderr: stderrTail,
                 error: failed ? (crashed ? 'agy binary crashed (SIGSEGV/RAM cache)' : (stderrTail.trim().slice(0, 260) || `exit code ${code}`)) : null,
                 crashed,
-                stepsCount
+                stepsCount,
+                usage
             });
         });
     });
@@ -1027,7 +1064,8 @@ function runDeepSeekSubprocess(candidate, { prompt, cwd, readOnly, mode, timeout
                         stderr: '',
                         error: failed ? (errMsg || `exit code ${code}`) : null,
                         crashed: false,
-                        stepsCount
+                        stepsCount,
+                        usage: fakeJob.tokenUsage || null
                     });
                 }
             });
@@ -1072,11 +1110,12 @@ async function runWithFailover(candidates, {
     let lastSteps = 0;
     const tried = [];
     let lastError = 'ไม่มีโมเดลที่พร้อมใช้งาน';
+    let stageUsage = null;
 
     const queue = [...(candidates || [])];
     while (queue.length > 0 && attempts < MAX_FAILOVER_ATTEMPTS) {
         if (abortCtx.aborted) {
-            return { ok: false, aborted: true, error: 'aborted', output: '', candidate: null, tried, durationMs: Date.now() - startedAt };
+            return { ok: false, aborted: true, error: 'aborted', output: '', candidate: null, tried, durationMs: Date.now() - startedAt, usage: stageUsage };
         }
         const c = queue.shift();
         if (!c) continue;
@@ -1089,12 +1128,15 @@ async function runWithFailover(candidates, {
         onThoughtEvent('status', `${rolePrefix} กำลังรันด้วย ${c.label} (${c.accountLabel})...`);
 
         const res = await runner(c, { prompt, cwd, readOnly, mode, timeoutMs, idleMs, rolePrefix: `${rolePrefix} [${c.label}]`, onThoughtEvent, abortCtx, claimedBrains });
+        if (res.usage) {
+            stageUsage = tokenUsageHelper.mergeTokenUsages(stageUsage, res.usage, 'cross-team');
+        }
         lastSteps = Math.max(lastSteps, res.stepsCount || 0);
         if (res.aborted || abortCtx.aborted) {
-            return { ok: false, aborted: true, error: 'aborted', output: res.output || '', candidate: c, tried, durationMs: Date.now() - startedAt };
+            return { ok: false, aborted: true, error: 'aborted', output: res.output || '', candidate: c, tried, durationMs: Date.now() - startedAt, usage: stageUsage };
         }
         if (res.ok) {
-            return { ok: true, output: res.output, candidate: c, tried, stepsCount: res.stepsCount || 0, durationMs: Date.now() - startedAt };
+            return { ok: true, output: res.output, candidate: c, tried, stepsCount: res.stepsCount || 0, durationMs: Date.now() - startedAt, usage: stageUsage };
         }
 
         lastError = res.error || 'unknown error';
@@ -1263,7 +1305,8 @@ async function runWorkerWave(tasks, {
             candidate: res.candidate,
             tried: res.tried || [],
             stepsCount: res.stepsCount || 0,
-            durationMs: res.durationMs || 0
+            durationMs: res.durationMs || 0,
+            usage: res.usage || null
         };
         completed.set(task.id, record);
         const who = res.candidate ? `${res.candidate.label} (${res.candidate.accountLabel})` : task.model;
@@ -1429,6 +1472,37 @@ function runCrossTeamPipeline({
     };
 
     const pipelineStart = Date.now();
+    let teamUsage = null;
+    const teamModels = { architect: null, workers: [], reviewer: null };
+    const emitTeamMeta = () => {
+        const parts = [];
+        if (teamModels.architect) parts.push(`Arch:${teamModels.architect}`);
+        if (teamModels.workers.length) {
+            const uniqW = [...new Set(teamModels.workers)];
+            parts.push(`Work:${uniqW.join('+')}`);
+        }
+        if (teamModels.reviewer) parts.push(`Rev:${teamModels.reviewer}`);
+        const modelInfo = {
+            model: 'cross-team',
+            label: 'Cross-Team AI',
+            engine: 'cross-team',
+            account: null,
+            accountLabel: parts.length ? parts.join(' · ') : 'ทีมข้ามค่าย 3 ด่าน',
+            auto: true,
+            team: true,
+            teamSummary: parts.join(' · ')
+        };
+        if (job) {
+            job.modelInfo = modelInfo;
+            if (teamUsage) job.tokenUsage = teamUsage;
+        }
+        try { onChunk('meta', { modelInfo, tokenUsage: teamUsage }); } catch (_) {}
+    };
+    const addStageUsage = (u) => {
+        if (!u) return;
+        teamUsage = tokenUsageHelper.mergeTokenUsages(teamUsage, u, 'cross-team');
+    };
+    emitTeamMeta();
 
     (async () => {
         const workersAvailLabel = (teamPlan.workerAccounts || []).length >= 2
@@ -1472,6 +1546,11 @@ function runCrossTeamPipeline({
             runner
         });
 
+        if (archRes.usage) addStageUsage(archRes.usage);
+        if (archRes.candidate) {
+            teamModels.architect = archRes.candidate.label || archRes.candidate.model;
+            emitTeamMeta();
+        }
         if (archRes.aborted || abortCtx.aborted) {
             return onDone(130, 'aborted', { stage: 'architect' });
         }
@@ -1538,6 +1617,12 @@ function runCrossTeamPipeline({
             runner
         });
 
+        for (const wr of wave1.results) {
+            if (wr.usage) addStageUsage(wr.usage);
+            if (wr.candidate) teamModels.workers.push(wr.candidate.label || wr.candidate.model);
+        }
+        emitTeamMeta();
+
         if (abortCtx.aborted) {
             return onDone(130, 'aborted', { stage: 'workers' });
         }
@@ -1590,6 +1675,11 @@ function runCrossTeamPipeline({
                 runner
             });
 
+            if (revRes.usage) addStageUsage(revRes.usage);
+            if (revRes.candidate) {
+                teamModels.reviewer = revRes.candidate.label || revRes.candidate.model;
+                emitTeamMeta();
+            }
             if (revRes.aborted || abortCtx.aborted) {
                 return onDone(130, 'aborted', { stage: 'reviewer' });
             }
@@ -1637,6 +1727,11 @@ function runCrossTeamPipeline({
                 if (abortCtx.aborted) {
                     return onDone(130, 'aborted', { stage: 'rework' });
                 }
+                for (const wr of rwWave.results) {
+                    if (wr.usage) addStageUsage(wr.usage);
+                    if (wr.candidate) teamModels.workers.push(wr.candidate.label || wr.candidate.model);
+                }
+                emitTeamMeta();
                 for (const t of verdict.reworkTasks) {
                     for (const f of t.files) allTargetFiles.push(f);
                 }

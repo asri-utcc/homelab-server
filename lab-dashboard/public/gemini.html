@@ -865,6 +865,12 @@ body::before {
   color: #fde68a;
   box-shadow: 0 0 10px rgba(251, 191, 36, 0.18);
 }
+.sessions-filter-tab[data-filter="unread"].is-active {
+  background: rgba(244, 63, 94, 0.16);
+  border-color: rgba(251, 113, 133, 0.65);
+  color: #fda4af;
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.2);
+}
 .sessions-section-label {
   font-family: var(--mono);
   font-size: 10.5px;
@@ -905,6 +911,41 @@ body::before {
 .session-row--active {
   border-color: rgba(0, 229, 255, 0.65);
   background: rgba(0, 229, 255, 0.12);
+}
+.session-row--unread {
+  border-color: rgba(251, 113, 133, 0.58);
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.11), rgba(4, 16, 26, 0.86));
+  box-shadow: inset 3px 0 0 #fb7185, 0 0 14px rgba(244, 63, 94, 0.12);
+}
+.session-row--unread:hover {
+  border-color: rgba(251, 113, 133, 0.85);
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.16), rgba(6, 22, 36, 0.9));
+}
+.session-row--unread.session-row--pinned {
+  border-color: rgba(251, 113, 133, 0.62);
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.1), rgba(251, 191, 36, 0.08) 55%, rgba(4, 16, 26, 0.86));
+}
+.session-unread-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: rgba(244, 63, 94, 0.22);
+  color: #fda4af;
+  border: 1px solid rgba(251, 113, 133, 0.62);
+  white-space: nowrap;
+}
+.session-unread-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fb7185;
+  box-shadow: 0 0 6px #fb7185;
+  animation: pulse-dot 1.4s infinite ease-in-out;
 }
 .btn-session-pin {
   padding: 3px 8px;
@@ -989,6 +1030,21 @@ body::before {
   color: #fde68a;
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 6px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.chat-total-tokens-badge {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #a5f3fc;
+  background: rgba(0, 229, 255, 0.10);
+  border: 1px solid rgba(0, 229, 255, 0.28);
   border-radius: 6px;
   padding: 2px 8px;
   display: inline-flex;
@@ -1090,6 +1146,8 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--ink-muted);
@@ -1098,9 +1156,81 @@ body::before {
   border-bottom: 1px solid rgba(0, 229, 255, 0.12);
   letter-spacing: 0.05em;
 }
-.msg__author { font-weight: 700; color: var(--cyan); }
+.msg__meta-left {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.msg__author { font-weight: 700; color: var(--cyan); white-space: nowrap; }
 .msg--user .msg__author { color: var(--green); }
-.msg__meta-right { display: inline-flex; align-items: center; gap: 8px; }
+.msg__model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #7dd3fc;
+  background: rgba(14, 165, 233, 0.13);
+  border: 1px solid rgba(56, 189, 248, 0.30);
+}
+.msg__model-badge.is-claude {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.14);
+  border-color: rgba(251, 146, 60, 0.34);
+}
+.msg__model-badge.is-deepseek {
+  color: #67e8f9;
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(34, 211, 238, 0.34);
+}
+.msg__model-badge.is-team {
+  color: #e9d5ff;
+  background: rgba(168, 85, 247, 0.16);
+  border-color: rgba(192, 132, 252, 0.36);
+}
+.msg__model-badge.is-argon {
+  color: #d8b4fe;
+  background: rgba(147, 51, 234, 0.14);
+  border-color: rgba(168, 85, 247, 0.32);
+}
+.msg__token-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 5px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+}
+.msg__token-badge.is-med {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(251, 191, 36, 0.30);
+}
+.msg__token-badge.is-high {
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(251, 113, 133, 0.34);
+}
+.msg__token-sub {
+  font-weight: 500;
+  opacity: 0.85;
+  font-size: 10px;
+}
+.msg__meta-right { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
 .msg__time {
   display: inline-flex;
   align-items: center;
@@ -2442,6 +2572,24 @@ body::before {
     justify-content: center;
     box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
   }
+  .mob-unread-dot {
+    position: absolute;
+    bottom: -3px;
+    right: -3px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: #f43f5e;
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 6px rgba(244, 63, 94, 0.75);
+  }
   .mob-model-btn {
     height: 34px;
     padding: 0 8px;
@@ -2535,8 +2683,9 @@ body::before {
     padding: 10px 12px;
     border-radius: 16px 16px 16px 4px;
   }
-  .msg__meta { font-size: 10px; margin-bottom: 5px; padding-bottom: 4px; }
-  .msg__time, .msg__duration { font-size: 9.5px; padding: 1px 5px; }
+  .msg__meta { font-size: 10px; margin-bottom: 5px; padding-bottom: 4px; gap: 4px 6px; }
+  .msg__time, .msg__duration, .msg__model-badge, .msg__token-badge { font-size: 9.5px; padding: 1px 5px; }
+  .msg__token-sub { font-size: 9px; }
   .msg__body { font-size: 14.5px; line-height: 1.55; }
   .btn-scroll-bottom {
     right: 12px;
@@ -2638,6 +2787,7 @@ body::before {
     <button type="button" id="btn-sessions-mobile" class="mob-icon-btn" title="รายการแชททั้งหมด">
       <span>💬</span>
       <span class="mob-running-dot" id="sessions-running-badge-mobile" style="display:none;"></span>
+      <span class="mob-unread-dot" id="sessions-unread-badge-mobile" style="display:none;"></span>
     </button>
     <div class="mobile-chat-meta">
       <div class="mobile-chat-title-line" id="btn-mobile-rename" title="แตะเพื่อเปลี่ยนชื่อหัวข้อแชท">
@@ -2679,7 +2829,7 @@ body::before {
 
     <button type="button" id="btn-memory" class="btn" style="display:none;">🧠 ความจำ</button>
     <button type="button" id="btn-config" class="btn" style="display:none;">🔑 คีย์</button>
-    <button type="button" id="btn-sessions" class="btn desktop-only" title="ดูรายการแชททั้งหมดและสลับ Session">💬 แชท <span id="sessions-running-badge" style="display:none;margin-left:4px;padding:1px 5px;border-radius:10px;background:rgba(52,211,153,0.22);color:#34d399;font-size:10px;"></span></button>
+    <button type="button" id="btn-sessions" class="btn desktop-only" title="ดูรายการแชททั้งหมดและสลับ Session">💬 แชท <span id="sessions-running-badge" style="display:none;margin-left:4px;padding:1px 5px;border-radius:10px;background:rgba(52,211,153,0.22);color:#34d399;font-size:10px;"></span><span id="sessions-unread-badge" style="display:none;margin-left:4px;padding:1px 6px;border-radius:10px;background:rgba(244,63,94,0.22);color:#fda4af;border:1px solid rgba(251,113,133,0.55);font-size:10px;font-weight:700;"></span></button>
     <button type="button" id="btn-new-chat" class="btn desktop-only" title="เปิดห้องแชทใหม่ (Session ใหม่)">➕ แชทใหม่</button>
     <a href="/quota" class="btn desktop-only" style="text-decoration:none;" title="เปิดหน้า AI Quota Monitor (Gemini / Claude / DeepSeek)">📊 โควตา</a>
     <button type="button" id="btn-clear" class="btn btn--danger desktop-only" title="ล้างข้อความในห้องแชทนี้">🧹 ล้าง</button>
@@ -2839,6 +2989,7 @@ body::before {
           </span>
           <span class="chat-msg-count-badge" id="chat-msg-count-badge" title="จำนวนข้อความในห้องแชทนี้">0 ข้อความ</span>
           <span class="chat-total-time-badge" id="chat-total-time-badge" style="display:none;" title="เวลารวมที่ AI ใช้คิดคำตอบทั้งหมดในห้องแชทนี้">⏱️ AI คิดรวม 0 วิ</span>
+          <span class="chat-total-tokens-badge" id="chat-total-tokens-badge" style="display:none;" title="ยอดรวมโทเคนทั้งหมดที่ใช้ในห้องแชทนี้">🪙 รวม 0 tok</span>
         </div>
       </div>
 
@@ -2947,6 +3098,7 @@ body::before {
     <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
       <span>💬 ประวัติการสนทนา (Sessions)</span>
       <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" id="btn-sessions-mark-all-read" class="btn" style="display:none; padding:5px 9px; font-size:11px; border-color:rgba(251,113,133,0.45); color:#fda4af;" title="ทำเครื่องหมายว่าอ่านแล้วทั้งหมด">✓ อ่านทั้งหมด</button>
         <button type="button" id="btn-modal-new-chat" class="btn btn--primary" style="padding:5px 10px; font-size:12px;">➕ แชทใหม่</button>
         <button type="button" id="btn-modal-sessions-x" style="background:none; border:none; color:var(--ink-muted); font-size:18px; cursor:pointer; padding:2px 8px;" title="ปิดหน้าต่าง">✕</button>
       </div>
@@ -2954,6 +3106,7 @@ body::before {
     <input type="search" id="sessions-search" name="sessions_search_filter" autocomplete="off" data-lpignore="true" readonly onfocus="this.removeAttribute('readonly')" class="field-input" placeholder="🔍 ค้นหาชื่อแชทหรือข้อความ..." style="margin-bottom:8px;" />
     <div class="sessions-filter-tabs" id="sessions-filter-tabs">
       <button type="button" class="sessions-filter-tab is-active" data-filter="all">💬 ทั้งหมด (<span id="sessions-count-all">0</span>)</button>
+      <button type="button" class="sessions-filter-tab" data-filter="unread">🔔 ยังไม่ได้อ่าน (<span id="sessions-count-unread">0</span>)</button>
       <button type="button" class="sessions-filter-tab" data-filter="pinned">⭐ ปักหมุด / โปรด (<span id="sessions-count-pinned">0</span>)</button>
     </div>
     <div id="sessions-list" style="max-height: 390px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
@@ -5711,8 +5864,125 @@ body::before {
     return parts.join(' ');
   }
 
+  function formatTokensCompact(n) {
+    const num = Number(n || 0);
+    if (!Number.isFinite(num) || num <= 0) return '0';
+    if (num < 1000) return String(Math.round(num));
+    if (num < 100000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    if (num < 1000000) return Math.round(num / 1000) + 'k';
+    return (num / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+  }
+
+  function inferModelInfoFromContent(rawContent) {
+    const txt = String(rawContent || '').trimStart();
+    if (!txt) return null;
+    // Match Auto Router banner: "> 🧠 Auto → **Model** · Account (...)" or "> ↪️ ... → **Model** · Account (...)"
+    const autoMatch = txt.match(/^>\s*(?:🧠\s*Auto|↪️[^\n]*?)\s*→\s*\*\*([^*]+)\*\*\s*(?:·\s*([^(\n]+?))?(?:\s*\(|$)/m);
+    if (autoMatch) {
+      const label = autoMatch[1].trim();
+      const acc = autoMatch[2] ? autoMatch[2].trim() : null;
+      let engine = 'agy';
+      if (/claude/i.test(label)) engine = 'claude-code';
+      else if (/deepseek/i.test(label)) engine = 'deepseek';
+      return { model: null, label, engine, accountLabel: acc, auto: true, team: false };
+    }
+    // Match Cross-Team banner: "> 🤝 ทีม AI ข้ามค่าย ..."
+    if (/^>\s*🤝\s*(?:ทีม AI ข้ามค่าย|Cross-Team)/m.test(txt)) {
+      return { model: 'cross-team', label: 'Cross-Team AI', engine: 'cross-team', accountLabel: 'ทีมข้ามค่าย 3 ด่าน', auto: true, team: true };
+    }
+    return null;
+  }
+
+  function applyAssistantMetaBadges(msgEl, modelInfo, tokenUsage) {
+    if (!msgEl || !msgEl.classList || !msgEl.classList.contains('msg--assistant')) return;
+    let metaLeft = msgEl.querySelector('.msg__meta-left');
+    if (!metaLeft) {
+      const meta = msgEl.querySelector('.msg__meta');
+      const author = msgEl.querySelector('.msg__author');
+      if (meta && author) {
+        metaLeft = document.createElement('span');
+        metaLeft.className = 'msg__meta-left';
+        meta.insertBefore(metaLeft, author);
+        metaLeft.appendChild(author);
+      }
+    }
+    if (!metaLeft) return;
+
+    if (modelInfo && typeof modelInfo === 'object' && (modelInfo.label || modelInfo.model)) {
+      msgEl.dataset.modelInfo = JSON.stringify(modelInfo);
+      let modelBadge = metaLeft.querySelector('.msg__model-badge');
+      if (!modelBadge) {
+        modelBadge = document.createElement('span');
+        modelBadge.className = 'msg__model-badge';
+        metaLeft.appendChild(modelBadge);
+      }
+      const label = modelInfo.label || getModelReadableName(modelInfo.model);
+      const engine = String(modelInfo.engine || '');
+      modelBadge.classList.remove('is-claude', 'is-deepseek', 'is-team', 'is-argon');
+      if (engine === 'cross-team' || modelInfo.team) modelBadge.classList.add('is-team');
+      else if (engine === 'claude-code' || /claude/i.test(label)) modelBadge.classList.add('is-claude');
+      else if (engine === 'deepseek' || /deepseek/i.test(label)) modelBadge.classList.add('is-deepseek');
+      else if (/argon/i.test(label)) modelBadge.classList.add('is-argon');
+
+      const icon = modelInfo.team ? '🤝' : (modelInfo.auto ? '🧠' : (engine === 'claude-code' ? '🟠' : (engine === 'deepseek' ? '🌊' : '⚡')));
+      const accSuffix = modelInfo.accountLabel ? ` · ${modelInfo.accountLabel}` : '';
+      modelBadge.textContent = `${icon} ${label}${accSuffix}`;
+
+      const tipLines = [`ผู้ตอบ: ${label}${accSuffix}`];
+      if (modelInfo.model && modelInfo.model !== label) tipLines.push(`Model ID: ${modelInfo.model}`);
+      tipLines.push(modelInfo.auto ? 'เลือกโดย: 🧠 Auto สมองกลาง' : 'เลือกโดย: กำหนดเอง');
+      if (Array.isArray(modelInfo.attempts) && modelInfo.attempts.length > 1) {
+        tipLines.push(`ลำดับลองสลับโมเดล: ${modelInfo.attempts.join(' → ')}`);
+      }
+      modelBadge.title = tipLines.join('\n');
+    }
+
+    if (tokenUsage && typeof tokenUsage === 'object' && Number(tokenUsage.totalTokens || 0) > 0) {
+      msgEl.dataset.tokenUsage = JSON.stringify(tokenUsage);
+      let tokBadge = metaLeft.querySelector('.msg__token-badge');
+      if (!tokBadge) {
+        tokBadge = document.createElement('span');
+        tokBadge.className = 'msg__token-badge';
+        metaLeft.appendChild(tokBadge);
+      }
+      const total = Number(tokenUsage.totalTokens || 0);
+      const inp = Number(tokenUsage.inputTokens || 0);
+      const cacheR = Number(tokenUsage.cacheReadTokens || 0);
+      const cacheW = Number(tokenUsage.cacheWriteTokens || 0);
+      const out = Number(tokenUsage.outputTokens || 0);
+      const think = Number(tokenUsage.thinkingTokens || 0);
+      const calls = Number(tokenUsage.calls || 0);
+
+      tokBadge.classList.remove('is-med', 'is-high');
+      if (total >= 100000) tokBadge.classList.add('is-high');
+      else if (total >= 25000) tokBadge.classList.add('is-med');
+
+      const subParts = [];
+      if (inp > 0) subParts.push(`รับ ${formatTokensCompact(inp)}`);
+      if (cacheR > 0) subParts.push(`แคช ${formatTokensCompact(cacheR)}`);
+      if (out > 0) subParts.push(`ออก ${formatTokensCompact(out)}`);
+      if (think > 0) subParts.push(`คิด ${formatTokensCompact(think)}`);
+      const subText = subParts.length ? ` (${subParts.join(' · ')})` : '';
+      tokBadge.innerHTML = `🪙 ${escapeHtml(formatTokensCompact(total))} tok${subText ? `<span class="msg__token-sub">${escapeHtml(subText)}</span>` : ''}`;
+
+      const tip = [
+        `รวมทั้งหมด: ${total.toLocaleString('en-US')} tokens${calls > 0 ? ` (${calls} รอบเรียกโมเดล)` : ''}`,
+        `• Input ใหม่: ${inp.toLocaleString('en-US')} tok`,
+        cacheR > 0 ? `• Cache Read: ${cacheR.toLocaleString('en-US')} tok` : null,
+        cacheW > 0 ? `• Cache Write: ${cacheW.toLocaleString('en-US')} tok` : null,
+        `• Output: ${out.toLocaleString('en-US')} tok`,
+        think > 0 ? `• Thinking (ใน Output): ${think.toLocaleString('en-US')} tok` : null,
+        tokenUsage.contextTokens > 0 ? `• Context ล่าสุด: ${Number(tokenUsage.contextTokens).toLocaleString('en-US')} tok` : null,
+        typeof tokenUsage.costUsd === 'number' && tokenUsage.costUsd > 0 ? `• ประเมินค่าใช้จ่าย: $${tokenUsage.costUsd.toFixed(4)}` : null
+      ].filter(Boolean);
+      tokBadge.title = tip.join('\n');
+    }
+    updateTotalThinkingTime();
+  }
+
   function updateTotalThinkingTime() {
     let totalMs = 0;
+    let totalTokens = 0;
     const msgs = document.querySelectorAll('.msg');
     let lastUserTs = null;
     msgs.forEach((m) => {
@@ -5725,6 +5995,12 @@ body::before {
           dur = ts - lastUserTs;
         }
         if (dur > 0) totalMs += dur;
+        if (m.dataset.tokenUsage) {
+          try {
+            const tu = JSON.parse(m.dataset.tokenUsage);
+            if (tu && Number(tu.totalTokens) > 0) totalTokens += Number(tu.totalTokens);
+          } catch (_) {}
+        }
         lastUserTs = null;
       }
     });
@@ -5736,6 +6012,16 @@ body::before {
       } else {
         badge.textContent = '⏱️ AI คิดรวม 0 วิ';
         badge.style.display = 'none';
+      }
+    }
+    const tokTotalBadge = document.getElementById('chat-total-tokens-badge');
+    if (tokTotalBadge) {
+      if (totalTokens > 0) {
+        tokTotalBadge.textContent = `🪙 รวม ${formatTokensCompact(totalTokens)} tok`;
+        tokTotalBadge.title = `ยอดรวมโทเคนทั้งหมดในห้องแชทนี้: ${totalTokens.toLocaleString('en-US')} tokens`;
+        tokTotalBadge.style.display = 'inline-flex';
+      } else {
+        tokTotalBadge.style.display = 'none';
       }
     }
     syncMobileChatSub(totalMs);
@@ -5947,10 +6233,41 @@ body::before {
     }
   }
 
-  function updateRunningSessionsBadge(runningIds) {
+  let bgSessionsWatchTimer = null;
+  let lastKnownRunningIds = [];
+  let lastKnownUnreadIds = [];
+
+  function syncBackgroundSessionsWatch(runningCount) {
+    const isModalOpen = Boolean(modalSessions && modalSessions.classList.contains('is-open'));
+    const shouldWatch = runningCount > 0 || isModalOpen;
+    if (shouldWatch && !bgSessionsWatchTimer) {
+      bgSessionsWatchTimer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/gemini/sessions');
+          if (!res.ok) return;
+          const d = await res.json();
+          if (d && d.ok && Array.isArray(d.sessions)) {
+            cachedSessions = d.sessions;
+            updateSessionStatusBadges(d.runningSessionIds || [], d.unreadSessionIds || []);
+            if (modalSessions && modalSessions.classList.contains('is-open')) {
+              renderSessionsList();
+            }
+          }
+        } catch (_) {}
+      }, 3000);
+    } else if (!shouldWatch && bgSessionsWatchTimer) {
+      clearInterval(bgSessionsWatchTimer);
+      bgSessionsWatchTimer = null;
+    }
+  }
+
+  function updateSessionStatusBadges(runningIds, unreadIds) {
+    if (Array.isArray(runningIds)) lastKnownRunningIds = runningIds;
+    if (Array.isArray(unreadIds)) lastKnownUnreadIds = unreadIds;
+
     const badge = document.getElementById('sessions-running-badge');
     const mobBadge = document.getElementById('sessions-running-badge-mobile');
-    const count = Array.isArray(runningIds) ? runningIds.length : 0;
+    const count = lastKnownRunningIds.length;
     if (badge) {
       if (count > 0) {
         badge.textContent = count + ' ⏳';
@@ -5967,6 +6284,77 @@ body::before {
         mobBadge.style.display = 'none';
       }
     }
+
+    const unreadBadge = document.getElementById('sessions-unread-badge');
+    const mobUnreadBadge = document.getElementById('sessions-unread-badge-mobile');
+    const unreadCount = lastKnownUnreadIds.length;
+    if (unreadBadge) {
+      if (unreadCount > 0) {
+        unreadBadge.textContent = `🔔 ${unreadCount}`;
+        unreadBadge.title = `มี ${unreadCount} แชทที่ AI คิดเสร็จแล้วและยังไม่ได้เปิดอ่าน`;
+        unreadBadge.style.display = 'inline-block';
+      } else {
+        unreadBadge.style.display = 'none';
+      }
+    }
+    if (mobUnreadBadge) {
+      if (unreadCount > 0) {
+        mobUnreadBadge.textContent = String(unreadCount);
+        mobUnreadBadge.style.display = 'inline-flex';
+      } else {
+        mobUnreadBadge.style.display = 'none';
+      }
+    }
+
+    syncBackgroundSessionsWatch(count);
+  }
+
+  function updateRunningSessionsBadge(runningIds, unreadIds) {
+    updateSessionStatusBadges(runningIds, unreadIds);
+  }
+
+  async function markSessionRead(sid) {
+    if (!sid) return;
+    if (Array.isArray(cachedSessions)) {
+      const item = cachedSessions.find(s => s.id === sid);
+      if (item) item.unread = false;
+    }
+    if (Array.isArray(lastKnownUnreadIds) && lastKnownUnreadIds.includes(sid)) {
+      updateSessionStatusBadges(lastKnownRunningIds, lastKnownUnreadIds.filter(id => id !== sid));
+    }
+    try {
+      const res = await fetch('/api/gemini/sessions/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sid })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d && d.ok) {
+          if (Array.isArray(d.sessions)) cachedSessions = d.sessions;
+          updateSessionStatusBadges(d.runningSessionIds || [], d.unreadSessionIds || []);
+          if (modalSessions && modalSessions.classList.contains('is-open')) {
+            renderSessionsList();
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  async function markAllSessionsRead() {
+    try {
+      const res = await fetch('/api/gemini/sessions/read-all', { method: 'POST' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d && d.ok) {
+          if (Array.isArray(d.sessions)) cachedSessions = d.sessions;
+          updateSessionStatusBadges(d.runningSessionIds || [], d.unreadSessionIds || []);
+          if (modalSessions && modalSessions.classList.contains('is-open')) {
+            renderSessionsList();
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   function renderSessionMessages(messages) {
@@ -5983,7 +6371,7 @@ body::before {
           }
           prevUserTs = null;
         }
-        appendMessage(m.role, m.content, false, m.images || [], m.timestamp, dur);
+        appendMessage(m.role, m.content, false, m.images || [], m.timestamp, dur, null, m.modelInfo || null, m.tokenUsage || null);
       });
     } else {
       msgList.innerHTML = '<div class="msg msg--assistant"><div class="msg__meta"><span class="msg__author" id="welcome-author">⚡ ' + getCoreIdentity().name + '</span><span class="msg__meta-right"><span class="msg__time">🕒 ' + formatMsgTimestamp(Date.now()) + '</span></span></div><div class="msg__body">พร้อมเริ่มบทสนทนาใหม่แล้วครับ พิมพ์หรือกดไมค์สั่งงานได้เลย!</div></div>';
@@ -6015,8 +6403,11 @@ body::before {
         }
         updateChatHeaderUI(data.session, (data.messages || []).length);
         renderSessionMessages(data.messages || []);
-        if (data.job && data.job.runningSessionIds) {
-          updateRunningSessionsBadge(data.job.runningSessionIds);
+        if (data.job) {
+          updateSessionStatusBadges(data.job.runningSessionIds || [], data.job.unreadSessionIds || []);
+        }
+        if (data.session.unread && document.visibilityState === 'visible') {
+          markSessionRead(data.session.id);
         }
         fetchQueue();
         if (!Array.isArray(cachedSessions) || cachedSessions.length === 0) {
@@ -6066,9 +6457,10 @@ body::before {
       }
       updateChatHeaderUI(data.session, (data.messages || []).length);
       renderSessionMessages(data.messages || []);
-      if (data.job && data.job.runningSessionIds) {
-        updateRunningSessionsBadge(data.job.runningSessionIds);
+      if (data.job) {
+        updateSessionStatusBadges(data.job.runningSessionIds || [], data.job.unreadSessionIds || []);
       }
+      markSessionRead(sid);
       renderQueue(data.job && Array.isArray(data.job.queue) ? data.job.queue : []);
       fetchQueue();
       if (data.job && data.job.status === 'running') {
@@ -6077,6 +6469,9 @@ body::before {
         const lastMsg = allMsgs[allMsgs.length - 1];
         const skipUser = Boolean(lastMsg && lastMsg.classList.contains('msg--user') && (lastMsg.querySelector('.msg__body')?.dataset.raw || '').trim() === (data.job.prompt || '').trim());
         currentTurnResponseBody = createTurnUI(data.job.id, data.job.prompt, data.job.images || [], data.job.startedAt, skipUser);
+        if (currentTurnResponseBody && currentTurnResponseBody.parentElement && (data.job.modelInfo || data.job.tokenUsage)) {
+          applyAssistantMetaBadges(currentTurnResponseBody.parentElement, data.job.modelInfo, data.job.tokenUsage);
+        }
         if (data.job.output) {
           setBodyContent(currentTurnResponseBody, data.job.output, false);
         }
@@ -6133,15 +6528,22 @@ body::before {
     const q = (sessionsSearchEl ? sessionsSearchEl.value : '').trim().toLowerCase();
     const allFiltered = cachedSessions.filter(s => !q || (s.title || '').toLowerCase().includes(q) || (s.lastMessage || '').toLowerCase().includes(q));
     const pinnedCount = cachedSessions.filter(s => isSessionPinned(s)).length;
+    const unreadCount = cachedSessions.filter(s => !s.running && Boolean(s.unread)).length;
 
     const countAllEl = document.getElementById('sessions-count-all');
+    const countUnreadEl = document.getElementById('sessions-count-unread');
     const countPinnedEl = document.getElementById('sessions-count-pinned');
+    const markAllReadBtn = document.getElementById('btn-sessions-mark-all-read');
     if (countAllEl) countAllEl.textContent = String(cachedSessions.length);
+    if (countUnreadEl) countUnreadEl.textContent = String(unreadCount);
     if (countPinnedEl) countPinnedEl.textContent = String(pinnedCount);
+    if (markAllReadBtn) markAllReadBtn.style.display = unreadCount > 0 ? 'inline-flex' : 'none';
 
     let items = allFiltered;
     if (sessionsFilterMode === 'pinned') {
       items = allFiltered.filter(s => isSessionPinned(s));
+    } else if (sessionsFilterMode === 'unread') {
+      items = allFiltered.filter(s => !s.running && Boolean(s.unread));
     }
 
     items = [...items].sort((a, b) => {
@@ -6153,7 +6555,9 @@ body::before {
     if (!items.length) {
       const emptyMsg = sessionsFilterMode === 'pinned'
         ? 'ยังไม่มีแชทที่ปักหมุดไว้ — กด ☆ ที่รายการแชทเพื่อปักหมุดหัวข้อที่สนใจได้เลย'
-        : 'ไม่พบแชทที่ค้นหา';
+        : (sessionsFilterMode === 'unread'
+          ? 'ไม่มีแชทที่ยังไม่ได้อ่าน — คุณเปิดดูผลลัพธ์ครบหมดแล้ว ✨'
+          : 'ไม่พบแชทที่ค้นหา');
       sessionsListEl.innerHTML = `<div style="text-align:center;color:var(--ink-muted);padding:24px 12px;font-size:12.5px;">${emptyMsg}</div>`;
       return;
     }
@@ -6167,6 +6571,7 @@ body::before {
     items.forEach((s) => {
       const isCur = s.id === currentSessionId;
       const isPin = isSessionPinned(s);
+      const isUnread = !s.running && Boolean(s.unread);
 
       if (sessionsFilterMode === 'all' && hasPinned && hasUnpinned) {
         if (isPin && !shownPinnedHdr) {
@@ -6186,12 +6591,19 @@ body::before {
       }
 
       const row = document.createElement('div');
-      row.className = 'session-row' + (isCur ? ' session-row--active' : (isPin ? ' session-row--pinned' : ''));
+      row.className = 'session-row'
+        + (isCur ? ' session-row--active' : (isPin ? ' session-row--pinned' : ''))
+        + (isUnread ? ' session-row--unread' : '');
       const left = document.createElement('div');
       left.style.cssText = 'flex:1;min-width:0;';
+      const unreadTitle = s.lastCompletedStatus === 'error'
+        ? 'งานจบแบบมี Error · ยังไม่ได้เปิดดูผลลัพธ์'
+        : 'AI คิดเสร็จแล้ว · ยังไม่ได้เปิดดูผลลัพธ์';
       const statusBadge = s.running
         ? '<span style="flex-shrink:0;font-size:10px;padding:1px 6px;border-radius:10px;background:rgba(52,211,153,0.2);color:#34d399;border:1px solid rgba(52,211,153,0.45);white-space:nowrap;">🟢 กำลังทำงาน...</span>'
-        : (isCur ? '<span style="flex-shrink:0;font-size:10px;padding:1px 6px;border-radius:10px;background:rgba(0,229,255,0.18);color:#00e5ff;white-space:nowrap;">กำลังเปิด</span>' : '');
+        : (isUnread
+          ? `<span class="session-unread-badge" title="${unreadTitle}"><span class="session-unread-badge__dot"></span>ยังไม่ได้อ่าน</span>`
+          : (isCur ? '<span style="flex-shrink:0;font-size:10px;padding:1px 6px;border-radius:10px;background:rgba(0,229,255,0.18);color:#00e5ff;white-space:nowrap;">กำลังเปิด</span>' : ''));
       const pinPrefix = isPin ? '<span style="flex-shrink:0;font-size:12px;" title="ปักหมุดไว้">⭐</span>' : '';
       left.innerHTML = `<div style="display:flex;align-items:center;gap:6px;min-width:0;">${pinPrefix}<span style="font-weight:700;font-size:13.5px;color:#e6f4f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;">${escHtml(s.title || 'แชทใหม่')}</span>${statusBadge}</div><div style="font-size:11px;color:var(--ink-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.messageCount || 0} ข้อความ · ${escHtml(s.model || '')} · ${formatRelTime(s.updatedAt)}</div>`;
       left.addEventListener('click', () => switchToSession(s.id));
@@ -6268,20 +6680,27 @@ body::before {
     if (!modalSessions) return;
     if (sessionsSearchEl) sessionsSearchEl.value = '';
     modalSessions.classList.add('is-open');
+    syncBackgroundSessionsWatch(lastKnownRunningIds.length);
     try {
       const res = await fetch('/api/gemini/sessions');
       const d = await res.json();
       if (d && d.ok) {
         cachedSessions = d.sessions || [];
-        updateRunningSessionsBadge(d.runningSessionIds || []);
+        updateSessionStatusBadges(d.runningSessionIds || [], d.unreadSessionIds || []);
         if (currentSessionMeta) updateChatHeaderUI(currentSessionMeta);
         renderSessionsList();
       }
     } catch (_) {}
   }
 
+  function closeSessionsModal() {
+    if (modalSessions) modalSessions.classList.remove('is-open');
+    syncBackgroundSessionsWatch(lastKnownRunningIds.length);
+  }
+
   document.getElementById('btn-sessions')?.addEventListener('click', openSessionsModal);
   document.getElementById('btn-sessions-mobile')?.addEventListener('click', openSessionsModal);
+  document.getElementById('btn-sessions-mark-all-read')?.addEventListener('click', markAllSessionsRead);
   document.getElementById('btn-new-chat')?.addEventListener('click', createNewChat);
   document.getElementById('btn-new-chat-mobile')?.addEventListener('click', createNewChat);
   document.getElementById('btn-modal-new-chat')?.addEventListener('click', createNewChat);
@@ -6297,8 +6716,8 @@ body::before {
   });
   document.getElementById('btn-rename-topic')?.addEventListener('click', promptRenameCurrentChat);
   document.getElementById('chat-topic-title')?.addEventListener('click', promptRenameCurrentChat);
-  document.getElementById('btn-modal-sessions-x')?.addEventListener('click', () => modalSessions?.classList.remove('is-open'));
-  modalSessions?.addEventListener('click', (e) => { if (e.target === modalSessions) modalSessions.classList.remove('is-open'); });
+  document.getElementById('btn-modal-sessions-x')?.addEventListener('click', closeSessionsModal);
+  modalSessions?.addEventListener('click', (e) => { if (e.target === modalSessions) closeSessionsModal(); });
   sessionsSearchEl?.addEventListener('input', renderSessionsList);
 
   loadHistory();
@@ -6816,7 +7235,7 @@ body::before {
     }
   }
 
-  function appendMessage(role, content, save = true, images = [], timestamp = null, durationMs = null, pendingStartedAt = null) {
+  function appendMessage(role, content, save = true, images = [], timestamp = null, durationMs = null, pendingStartedAt = null, modelInfo = null, tokenUsage = null) {
     const el = document.createElement('div');
     el.className = 'msg ' + (role === 'user' ? 'msg--user' : 'msg--assistant');
     const msgTime = timestamp ? Number(timestamp) : Date.now();
@@ -6834,10 +7253,13 @@ body::before {
 
     const meta = document.createElement('div');
     meta.className = 'msg__meta';
+    const metaLeft = document.createElement('span');
+    metaLeft.className = 'msg__meta-left';
     const authorName = (role === 'user') ? 'คุณ' : getCoreIdentity().name;
     const authorSpan = document.createElement('span');
     authorSpan.className = 'msg__author';
     authorSpan.textContent = authorName;
+    metaLeft.appendChild(authorSpan);
     const metaRight = document.createElement('span');
     metaRight.className = 'msg__meta-right';
     const timeSpan = document.createElement('span');
@@ -6872,9 +7294,15 @@ body::before {
       });
       metaRight.appendChild(speakBtn);
     }
-    meta.appendChild(authorSpan);
+    meta.appendChild(metaLeft);
     meta.appendChild(metaRight);
     el.appendChild(meta);
+    if (role !== 'user') {
+      const effectiveModelInfo = modelInfo || inferModelInfoFromContent(content);
+      if (effectiveModelInfo || tokenUsage) {
+        applyAssistantMetaBadges(el, effectiveModelInfo, tokenUsage);
+      }
+    }
 
     if (cleanImgs.length > 0) {
       const imgWrap = document.createElement('div');
@@ -6925,6 +7353,12 @@ body::before {
       const entry = { role: isUser ? 'user' : 'assistant', content: text, timestamp: ts };
       if (!isUser && m.dataset.durationMs) {
         entry.durationMs = Number(m.dataset.durationMs);
+      }
+      if (!isUser && m.dataset.modelInfo) {
+        try { entry.modelInfo = JSON.parse(m.dataset.modelInfo); } catch (_) {}
+      }
+      if (!isUser && m.dataset.tokenUsage) {
+        try { entry.tokenUsage = JSON.parse(m.dataset.tokenUsage); } catch (_) {}
       }
       if (images.length > 0) entry.images = images;
       items.push(entry);
@@ -7386,7 +7820,7 @@ body::before {
         const res = await fetch('/api/gemini/job?sessionId=' + encodeURIComponent(currentSessionId || ''));
         if (!res.ok) return;
         const job = await res.json();
-        if (job.runningSessionIds) updateRunningSessionsBadge(job.runningSessionIds);
+        updateSessionStatusBadges(job.runningSessionIds || [], job.unreadSessionIds || []);
 
         if (job.queue) {
           renderQueue(job.queue);
@@ -7417,9 +7851,12 @@ body::before {
             }
           }
 
-          // Update live elapsed thinking timer on assistant bubble
+          // Update live model & token badges + elapsed thinking timer on assistant bubble
           if (currentTurnResponseBody && currentTurnResponseBody.parentElement) {
             const msgEl = currentTurnResponseBody.parentElement;
+            if (job.modelInfo || job.tokenUsage) {
+              applyAssistantMetaBadges(msgEl, job.modelInfo, job.tokenUsage);
+            }
             const timeEl = msgEl.querySelector('.msg__time');
             const startTs = job.startedAt || Number(msgEl.dataset.startedAt || 0);
             if (timeEl && startTs && !msgEl.dataset.durationMs) {
@@ -7435,6 +7872,9 @@ body::before {
           // Current job is finished (completed, error, aborted, or idle)
           if (currentTurnResponseBody && job.output && (!(currentTurnResponseBody.dataset.raw) || currentTurnResponseBody.dataset.raw.length < job.output.length)) {
             setBodyContent(currentTurnResponseBody, job.output, false);
+          }
+          if (currentTurnResponseBody && currentTurnResponseBody.parentElement && (job.modelInfo || job.tokenUsage)) {
+            applyAssistantMetaBadges(currentTurnResponseBody.parentElement, job.modelInfo, job.tokenUsage);
           }
           if (currentTurnResponseBody) {
             markAssistantMessageDone(currentTurnResponseBody, job.finishedAt || Date.now(), job.startedAt);
@@ -7467,7 +7907,7 @@ body::before {
       const res = await fetch('/api/gemini/job?sessionId=' + encodeURIComponent(currentSessionId || ''));
       if (!res.ok) return;
       const job = await res.json();
-      if (job.runningSessionIds) updateRunningSessionsBadge(job.runningSessionIds);
+      updateSessionStatusBadges(job.runningSessionIds || [], job.unreadSessionIds || []);
       if (job.queue) renderQueue(job.queue);
 
       if (job.status === 'running') {
@@ -7512,6 +7952,9 @@ body::before {
         if (job.liveThought) {
           updateThinkingBar(job.liveThought);
         }
+        if (body && body.parentElement && (job.modelInfo || job.tokenUsage)) {
+          applyAssistantMetaBadges(body.parentElement, job.modelInfo, job.tokenUsage);
+        }
         if (job.output && job.output.trim().length > 0) {
           setBodyContent(body, job.output, false);
         }
@@ -7519,6 +7962,8 @@ body::before {
         startBackgroundJobPolling();
       } else if (!isRunning && msgList.children.length === 0) {
         loadHistory();
+      } else if (!isRunning && document.visibilityState === 'visible' && currentSessionId && Array.isArray(job.unreadSessionIds) && job.unreadSessionIds.includes(currentSessionId)) {
+        markSessionRead(currentSessionId);
       }
     } catch (_) {}
   }
@@ -7766,6 +8211,10 @@ body::before {
               const payload = JSON.parse(line.slice(6));
               if (payload.type === 'thought' && payload.text) {
                 updateThinkingBar(payload.text);
+              } else if (payload.type === 'meta' && payload.text) {
+                if (responseBody && responseBody.parentElement) {
+                  applyAssistantMetaBadges(responseBody.parentElement, payload.text.modelInfo, payload.text.tokenUsage);
+                }
               } else if (payload.type === 'stdout' || payload.type === 'stderr') {
                 fullOutput += payload.text;
                 setBodyContent(responseBody, fullOutput, false);
@@ -7773,6 +8222,9 @@ body::before {
               } else if (payload.exitCode !== undefined) {
                 if (payload.error) fullOutput += '\n\n[Process exited: ' + payload.error + ']';
                 setBodyContent(responseBody, fullOutput, false);
+                if (responseBody && responseBody.parentElement && (payload.modelInfo || payload.tokenUsage)) {
+                  applyAssistantMetaBadges(responseBody.parentElement, payload.modelInfo, payload.tokenUsage);
+                }
               }
             } catch (_) {}
           }
@@ -8135,6 +8587,9 @@ body::before {
     btnSend.style.display = 'inline-flex';
     btnAbort.style.display = 'none';
     finalizeThinkingBar();
+    if (currentSessionId && document.visibilityState === 'visible') {
+      markSessionRead(currentSessionId);
+    }
     if (autoTtsEnabled && finishedBody && finishedBody.closest) {
       const msgEl = finishedBody.closest('.msg--assistant');
       if (msgEl) speakMessage(msgEl);

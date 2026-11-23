@@ -2309,6 +2309,21 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, 400, { ok: false, error: err.message });
             }
         }
+        if (req.method === 'POST' && p === '/api/gemini/sessions/read') {
+            const body = await readJsonBody(req);
+            try {
+                return sendJson(res, 200, geminiManager.markSessionRead(body.id, body.unread !== true));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/gemini/sessions/read-all') {
+            try {
+                return sendJson(res, 200, geminiManager.markAllSessionsRead());
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
         if (req.method === 'POST' && p === '/api/gemini/sessions/delete') {
             const body = await readJsonBody(req);
             try {
@@ -2602,7 +2617,14 @@ const server = http.createServer(async (req, res) => {
                     (exitCode, error) => {
                         cleanup();
                         const recovery = geminiManager.getRecoveryState(sessionId || null);
-                        sendEvent('done', { exitCode, error, recovery });
+                        const latestJob = sessionId ? geminiManager.getActiveJob(sessionId) : null;
+                        sendEvent('done', {
+                            exitCode,
+                            error,
+                            recovery,
+                            modelInfo: (latestJob && latestJob.modelInfo) || null,
+                            tokenUsage: (latestJob && latestJob.tokenUsage) || null
+                        });
                         res.end();
                     }
                 );

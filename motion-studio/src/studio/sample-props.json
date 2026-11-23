@@ -1,0 +1,252 @@
+{
+  "title": "6 ความลับของเครื่องมือสร้างวิดีโออัจฉริยะ StudioEngine",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "totalFrames": 540,
+  "styleId": "look-1",
+  "style": {
+    "id": "look-1",
+    "name": "Glow World",
+    "family": "glow-world",
+    "palette": {
+      "bg": "#120B38",
+      "bg2": "#25196E",
+      "surface": "#1B1252",
+      "fg": "#FFFFFF",
+      "muted": "#C4C9F2",
+      "accent": "#FFD166",
+      "accent2": "#3BE3C6",
+      "border": "#4639A6"
+    },
+    "bgTreatment": "starfield",
+    "motionIntensity": 1.0,
+    "transition": "lightLeak",
+    "subtitle": {
+      "mode": "karaoke",
+      "accentColor": "#FFD166",
+      "theme": "dark"
+    },
+    "cardRadius": 28,
+    "vignette": 0.42,
+    "grain": 0.06,
+    "glowIntensity": 0.8
+  },
+  "scenes": [
+    {
+      "id": "s1-hook",
+      "index": 0,
+      "badge": "01 · GLOW WORLD",
+      "title": "เปลี่ยนไอเดียให้เป็นคลิปเรืองแสงระดับสตูดิโอ",
+      "subtitle": "ขับเคลื่อนทุกซีนด้วยโครงสร้าง JSON เดียว รองรับภาษาไทยคมชัดทุกเฟรม",
+      "highlight": "คลิปเรืองแสง",
+      "visual": "title",
+      "icon": "spark",
+      "bullets": [
+        "รองรับ 46 สไตล์ภาพ",
+        "ซิงก์เสียงพากย์แม่นยำ"
+      ],
+      "startFrame": 0,
+      "endFrame": 90,
+      "durationFrames": 90,
+      "cues": [
+        {
+          "text": "เปลี่ยนแนวคิดให้เป็นคลิปเรืองแสงระดับสตูดิโอ",
+          "highlight": "คลิปเรืองแสง",
+          "startFrame": 6,
+          "endFrame": 84
+        }
+      ]
+    },
+    {
+      "id": "s2-editorial",
+      "index": 1,
+      "family": "editorial-paper",
+      "badge": "02 · EDITORIAL PAPER",
+      "title": "จัดวางข้อมูลซับซ้อนให้อ่านง่ายแบบนิตยสาร",
+      "highlight": "อ่านง่าย",
+      "visual": "bullets",
+      "bullets": [
+        "ใช้ฟอนต์ไทยออฟไลน์ คมชัด สระไม่แหว่งและไม่ทับกัน",
+        "แบ่งระยะปลอดภัยแนวตั้ง บน 180px ล่าง 320px ครบมาตรฐาน",
+        "ปรับโทนสีและจังหวะแอนิเมชันได้จาก StyleTokens"
+      ],
+      "startFrame": 90,
+      "endFrame": 180,
+      "durationFrames": 90,
+      "cues": [
+        {
+          "text": "จัดวางหัวข้อและประเด็นสำคัญให้อ่านง่ายสบายตาแบบนิตยสาร",
+          "highlight": "อ่านง่ายสบายตา",
+          "startFrame": 96,
+          "endFrame": 174
+        }
+      ]
+    },
+    {
+      "id": "s3-databoard",
+      "index": 2,
+      "family": "data-board",
+      "badge": "03 · DATA BOARD",
+      "title": "โชว์ตัวเลขสำคัญให้โดดเด่นสะดุดตาทันที",
+      "highlight": "ตัวเลขสำคัญ",
+      "visual": "stat",
+      "stat": {
+        "value": "46+",
+        "numericValue": 46,
+        "suffix": "+",
+        "unit": "สไตล์พร้อมใช้",
+        "label": "คลังสไตล์โมชันกราฟิกที่สลับใช้งานได้ในคลิกเดียว",
+        "delta": "ครอบคลุม 6 ตระกูลเลย์เอาต์",
+        "progress": 90
+      },
+      "startFrame": 180,
+      "endFrame": 270,
+      "durationFrames": 90,
+      "cues": [
+        {
+          "text": "เลือกใช้ได้ทันทีกว่า 46 สไตล์ ครบทุกแนวงาน",
+          "highlight": "46 สไตล์",
+          "startFrame": 186,
+          "endFrame": 264
+        }
+      ]
+    },
+    {
+      "id": "s4-kinetic",
+      "index": 3,
+      "family": "kinetic-type",
+      "badge": "04 · KINETIC TYPE",
+      "title": "เทียบให้ชัดระหว่างทำมือกับระบบอัตโนมัติ",
+      "highlight": "เทียบให้ชัด",
+      "visual": "compare",
+      "compare": {
+        "leftTitle": "ตัดต่อแบบเดิม",
+        "leftItems": [
+          "ใช้เวลาหลายชั่วโมงต่อคลิป",
+          "จัดซับไทยและคีย์เฟรมเองทั้งหมด",
+          "เปลี่ยนสไตล์ทีหลังทำได้ยาก"
+        ],
+        "rightTitle": "StudioEngine",
+        "rightItems": [
+          "เรนเดอร์ไวจากบท JSON เดียว",
+          "ซับไทยซิงก์เสียงพากย์อัตโนมัติ",
+          "สลับ 46 สไตล์ได้ทันทีในคลิกเดียว"
+        ],
+        "winner": "right"
+      },
+      "startFrame": 270,
+      "endFrame": 360,
+      "durationFrames": 90,
+      "cues": [
+        {
+          "text": "เทียบชัดๆ ว่า StudioEngine ช่วยประหยัดเวลาแค่ไหน",
+          "highlight": "StudioEngine",
+          "startFrame": 276,
+          "endFrame": 354
+        }
+      ]
+    },
+    {
+      "id": "s5-iso3d",
+      "index": 4,
+      "family": "iso-3d",
+      "badge": "05 · ISO 3D FLOW",
+      "title": "เล่าขั้นตอนการทำงานทีละสเต็ปอย่างเป็นระบบ",
+      "highlight": "ทีละสเต็ป",
+      "visual": "steps",
+      "steps": [
+        {
+          "step": "01",
+          "title": "พิมพ์หัวข้อและเลือกสไตล์ภาพ",
+          "detail": "เลือกจากคลัง 46 สไตล์ หรือเรียนรู้จากคลิปตัวอย่าง"
+        },
+        {
+          "step": "02",
+          "title": "สร้างบทและเสียงพากย์ไทยอัตโนมัติ",
+          "detail": "ได้ไฟล์เสียงมาสเตอร์พร้อมไทม์ไลน์แม่นยำรายเฟรม"
+        },
+        {
+          "step": "03",
+          "title": "เรนเดอร์และส่งคลิปพร้อมใช้งาน",
+          "detail": "ได้วิดีโอแนวตั้ง 1080×1920 พร้อมเสียงและซับไตเติล"
+        }
+      ],
+      "startFrame": 360,
+      "endFrame": 450,
+      "durationFrames": 90,
+      "cues": [
+        {
+          "text": "ครบวงจรใน 3 ขั้นตอน จนได้คลิปพร้อมลงทันที",
+          "highlight": "3 ขั้นตอน",
+          "startFrame": 366,
+          "endFrame": 444
+        }
+      ]
+    },
+    {
+      "id": "s6-doccard",
+      "index": 5,
+      "family": "documentary-card",
+      "badge": "06 · DOCUMENTARY CARD",
+      "title": "ปิดท้ายด้วยประโยคจำที่ผู้ชมอยากแชร์ต่อ",
+      "highlight": "ประโยคจำ",
+      "visual": "quote",
+      "source": "Homelab Motion Video Studio",
+      "quote": {
+        "text": "งานวิดีโอที่ดีไม่ใช่แค่ภาพสวย แต่คือการเล่าเรื่องที่คมชัด อ่านง่าย และตรงจังหวะในทุกวินาที",
+        "author": "StudioEngine Hybrid Architecture",
+        "role": "6 Layout Families × 8 Visuals × 46+ Styles"
+      },
+      "startFrame": 450,
+      "endFrame": 540,
+      "durationFrames": 90,
+      "cues": [
+        {
+          "text": "เล่าเรื่องให้คมชัด อ่านง่าย และตรงจังหวะในทุกวินาที",
+          "highlight": "ทุกวินาที",
+          "startFrame": 456,
+          "endFrame": 534
+        }
+      ]
+    }
+  ],
+  "cues": [
+    {
+      "text": "เปลี่ยนแนวคิดให้เป็นคลิปเรืองแสงระดับสตูดิโอ",
+      "highlight": "คลิปเรืองแสง",
+      "startFrame": 6,
+      "endFrame": 84
+    },
+    {
+      "text": "จัดวางหัวข้อและประเด็นสำคัญให้อ่านง่ายสบายตาแบบนิตยสาร",
+      "highlight": "อ่านง่ายสบายตา",
+      "startFrame": 96,
+      "endFrame": 174
+    },
+    {
+      "text": "เลือกใช้ได้ทันทีกว่า 46 สไตล์ ครบทุกแนวงาน",
+      "highlight": "46 สไตล์",
+      "startFrame": 186,
+      "endFrame": 264
+    },
+    {
+      "text": "เทียบชัดๆ ว่า StudioEngine ช่วยประหยัดเวลาแค่ไหน",
+      "highlight": "StudioEngine",
+      "startFrame": 276,
+      "endFrame": 354
+    },
+    {
+      "text": "ครบวงจรใน 3 ขั้นตอน จนได้คลิปพร้อมลงทันที",
+      "highlight": "3 ขั้นตอน",
+      "startFrame": 366,
+      "endFrame": 444
+    },
+    {
+      "text": "เล่าเรื่องให้คมชัด อ่านง่าย และตรงจังหวะในทุกวินาที",
+      "highlight": "ทุกวินาที",
+      "startFrame": 456,
+      "endFrame": 534
+    }
+  ]
+}

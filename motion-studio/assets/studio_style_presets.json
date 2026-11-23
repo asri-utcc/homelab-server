@@ -1,0 +1,1799 @@
+{
+  "version": 1,
+  "presets": {
+    "look-1": {
+      "id": "look-1",
+      "num": 1,
+      "enName": "Glow World",
+      "thName": "โลกเรืองแสง",
+      "category": "ลุคช่อง YouTube",
+      "summary": "เปลี่ยนแนวคิดนามธรรมให้เป็นฉากภาพวาดเรืองแสง",
+      "tokens": {
+        "family": "glow-world",
+        "palette": {
+          "bg": "#0B0E1E",
+          "bgSecondary": "#161B38",
+          "fg": "#F4F7FF",
+          "muted": "#9AA5CE",
+          "accent": "#140C40",
+          "accent2": "#2A1E78",
+          "cardBg": "#141933",
+          "border": "#2A3466"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 14,
+          "springStiffness": 140,
+          "transitionType": "spring",
+          "parallaxStrength": 0.65,
+          "glowIntensity": 0.75
+        },
+        "background": {
+          "pattern": "radial",
+          "vignette": 0.45,
+          "grain": 0.12
+        },
+        "promptHints": "เล่าเรื่องสไตล์ โลกเรืองแสง (Glow World) เน้นเปลี่ยนแนวคิดนามธรรมให้เป็นฉากภาพวาดเรืองแสง ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ glow-world"
+      }
+    },
+    "look-2": {
+      "id": "look-2",
+      "num": 2,
+      "enName": "Flat Cartoon",
+      "thName": "การ์ตูนแบน",
+      "category": "ลุคช่อง YouTube",
+      "summary": "เล่าเรื่องธุรกิจหรือเหตุการณ์สมมติผ่านตัวละครการ์ตูน",
+      "tokens": {
+        "family": "flat-cartoon",
+        "palette": {
+          "bg": "#E3EDF6",
+          "bgSecondary": "#CFE0F0",
+          "fg": "#2B2452",
+          "muted": "#5A5882",
+          "accent": "#30ABD5",
+          "accent2": "#DF1690",
+          "cardBg": "#FFFFFF",
+          "border": "#2B2452"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 14,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.2,
+          "glowIntensity": 0
+        },
+        "background": {
+          "pattern": "flat",
+          "vignette": 0,
+          "grain": 0
+        },
+        "promptHints": "เล่าเป็นเหตุการณ์ที่มีตัวละครทำอะไรบางอย่างในออฟฟิศหรือฉากชีวิตจริง สไตล์การ์ตูนแบน (The Infographics Show) เลือก visual stat/compare/quote/steps/bullets ให้ตัวละครแสดงอารมณ์ตกใจ ดีใจ คิด หรือชี้กราฟบนไวต์บอร์ด ใช้ภาษาไทยกระชับ สนุก เข้าใจง่าย"
+      }
+    },
+    "look-3": {
+      "id": "look-3",
+      "num": 3,
+      "enName": "Hologram",
+      "thName": "โฮโลแกรม",
+      "category": "ลุคช่อง YouTube",
+      "summary": "พาคนดูไล่ตามแผน กลยุทธ์ หรือเส้นทางทีละขั้น",
+      "tokens": {
+        "family": "glow-world",
+        "palette": {
+          "bg": "#0B0E1E",
+          "bgSecondary": "#161B38",
+          "fg": "#F4F7FF",
+          "muted": "#9AA5CE",
+          "accent": "#03070D",
+          "accent2": "#172734",
+          "cardBg": "#141933",
+          "border": "#2A3466"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 14,
+          "springStiffness": 140,
+          "transitionType": "spring",
+          "parallaxStrength": 0.65,
+          "glowIntensity": 0.75
+        },
+        "background": {
+          "pattern": "radial",
+          "vignette": 0.45,
+          "grain": 0.12
+        },
+        "promptHints": "เล่าเรื่องสไตล์ โฮโลแกรม (Hologram) เน้นพาคนดูไล่ตามแผน กลยุทธ์ หรือเส้นทางทีละขั้น ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ glow-world"
+      }
+    },
+    "look-4": {
+      "id": "look-4",
+      "num": 4,
+      "enName": "Red Relief",
+      "thName": "แผนที่นูนสีแดง",
+      "category": "ลุคช่อง YouTube",
+      "summary": "เล่าเหตุการณ์ประวัติศาสตร์บนแผนที่นูน",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#030303",
+          "accent2": "#0A0A0A",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ แผนที่นูนสีแดง (Red Relief) เน้นเล่าเหตุการณ์ประวัติศาสตร์บนแผนที่นูน ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-5": {
+      "id": "look-5",
+      "num": 5,
+      "enName": "Ink Doodle",
+      "thName": "ลายเส้นหมึก",
+      "category": "ลุคช่อง YouTube",
+      "summary": "เล่าเรื่องแบบไม่โชว์หน้าด้วยภาพวาดหมึก",
+      "tokens": {
+        "family": "editorial-paper",
+        "palette": {
+          "bg": "#FAF6EE",
+          "bgSecondary": "#EFE8D8",
+          "fg": "#1E1B18",
+          "muted": "#6B6257",
+          "accent": "#1D1B1A",
+          "accent2": "#A9E2EC",
+          "cardBg": "#FFFFFF",
+          "border": "#DCD2C0"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "minimal"
+        },
+        "motion": {
+          "springDamping": 18,
+          "springStiffness": 160,
+          "transitionType": "slide",
+          "parallaxStrength": 0.3,
+          "glowIntensity": 0.05
+        },
+        "background": {
+          "pattern": "dots",
+          "vignette": 0.15,
+          "grain": 0.2
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ลายเส้นหมึก (Ink Doodle) เน้นเล่าเรื่องแบบไม่โชว์หน้าด้วยภาพวาดหมึก ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ editorial-paper"
+      }
+    },
+    "look-6": {
+      "id": "look-6",
+      "num": 6,
+      "enName": "Deep Time",
+      "thName": "กาลเวลาอันยาวนาน",
+      "category": "ลุคช่อง YouTube",
+      "summary": "เปิดเรื่องที่มีสเกลใหญ่ เช่น อวกาศและประวัติศาสตร์โลก",
+      "tokens": {
+        "family": "documentary-card",
+        "palette": {
+          "bg": "#111317",
+          "bgSecondary": "#1B1F26",
+          "fg": "#F2F4F8",
+          "muted": "#9CA3AF",
+          "accent": "#070504",
+          "accent2": "#613821",
+          "cardBg": "#181C23",
+          "border": "#2D3340"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "bold-bar"
+        },
+        "motion": {
+          "springDamping": 20,
+          "springStiffness": 150,
+          "transitionType": "wipe",
+          "parallaxStrength": 0.45,
+          "glowIntensity": 0.25
+        },
+        "background": {
+          "pattern": "noise",
+          "vignette": 0.55,
+          "grain": 0.35
+        },
+        "promptHints": "เล่าเรื่องสไตล์ กาลเวลาอันยาวนาน (Deep Time) เน้นเปิดเรื่องที่มีสเกลใหญ่ เช่น อวกาศและประวัติศาสตร์โลก ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ documentary-card"
+      }
+    },
+    "look-7": {
+      "id": "look-7",
+      "num": 7,
+      "enName": "Neon Silhouette",
+      "thName": "เงาดำขอบนีออน",
+      "category": "ลุคช่อง YouTube",
+      "summary": "ทำคลิปคำถามสมมติด้วยเงาดำและขอบเรืองแสง",
+      "tokens": {
+        "family": "kinetic-type",
+        "palette": {
+          "bg": "#121212",
+          "bgSecondary": "#1E1E1E",
+          "fg": "#FFFFFF",
+          "muted": "#A1A1AA",
+          "accent": "#48304F",
+          "accent2": "#170F1D",
+          "cardBg": "#1A1A1A",
+          "border": "#3F3F46"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "karaoke"
+        },
+        "motion": {
+          "springDamping": 12,
+          "springStiffness": 220,
+          "transitionType": "zoom",
+          "parallaxStrength": 0.4,
+          "glowIntensity": 0.3
+        },
+        "background": {
+          "pattern": "lines",
+          "vignette": 0.3,
+          "grain": 0.15
+        },
+        "promptHints": "เล่าเรื่องสไตล์ เงาดำขอบนีออน (Neon Silhouette) เน้นทำคลิปคำถามสมมติด้วยเงาดำและขอบเรืองแสง ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ kinetic-type"
+      }
+    },
+    "look-8": {
+      "id": "look-8",
+      "num": 8,
+      "enName": "POV Doodle",
+      "thName": "ดูเดิลมุมมองบุคคล",
+      "category": "ลุคช่อง YouTube",
+      "summary": "เล่าเหตุการณ์จากมุมมองบุคคลที่หนึ่งด้วยลายเส้น",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#33201C",
+          "accent2": "#B2B392",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ดูเดิลมุมมองบุคคล (POV Doodle) เน้นเล่าเหตุการณ์จากมุมมองบุคคลที่หนึ่งด้วยลายเส้น ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-9": {
+      "id": "look-9",
+      "num": 9,
+      "enName": "Blue Grid",
+      "thName": "ตารางสีน้ำเงิน",
+      "category": "ลุคช่อง YouTube",
+      "summary": "อธิบายกลไกหรือการทำงานด้วยภาพเขียนเทคนิค",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#1E5A9C",
+          "accent2": "#0B417D",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ตารางสีน้ำเงิน (Blue Grid) เน้นอธิบายกลไกหรือการทำงานด้วยภาพเขียนเทคนิค ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-10": {
+      "id": "look-10",
+      "num": 10,
+      "enName": "Product turntable",
+      "thName": "แท่นหมุนสินค้า",
+      "category": "งาน 3D",
+      "summary": "หมุนโชว์สินค้าและพาคนดูสำรวจจุดเด่นรอบชิ้นงาน",
+      "tokens": {
+        "family": "editorial-paper",
+        "palette": {
+          "bg": "#FAF6EE",
+          "bgSecondary": "#EFE8D8",
+          "fg": "#1E1B18",
+          "muted": "#6B6257",
+          "accent": "#090A0C",
+          "accent2": "#16181C",
+          "cardBg": "#FFFFFF",
+          "border": "#DCD2C0"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "minimal"
+        },
+        "motion": {
+          "springDamping": 18,
+          "springStiffness": 160,
+          "transitionType": "slide",
+          "parallaxStrength": 0.3,
+          "glowIntensity": 0.05
+        },
+        "background": {
+          "pattern": "dots",
+          "vignette": 0.15,
+          "grain": 0.2
+        },
+        "promptHints": "เล่าเรื่องสไตล์ แท่นหมุนสินค้า (Product turntable) เน้นหมุนโชว์สินค้าและพาคนดูสำรวจจุดเด่นรอบชิ้นงาน ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ editorial-paper"
+      }
+    },
+    "look-11": {
+      "id": "look-11",
+      "num": 11,
+      "enName": "Money stack",
+      "thName": "กองเงิน",
+      "category": "งาน 3D",
+      "summary": "ทำให้ตัวเลขรายได้ เงินออม หรือหนี้มองเห็นเป็นกอง",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#F3F5F7",
+          "accent2": "#E3E7EB",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ กองเงิน (Money stack) เน้นทำให้ตัวเลขรายได้ เงินออม หรือหนี้มองเห็นเป็นกอง ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-12": {
+      "id": "look-12",
+      "num": 12,
+      "enName": "Card flip",
+      "thName": "พลิกบัตร",
+      "category": "งาน 3D",
+      "summary": "เปิดเผยข้อเสนอด้วยจังหวะพลิกบัตร",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#EEF0F3",
+          "accent2": "#E0E3E8",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ พลิกบัตร (Card flip) เน้นเปิดเผยข้อเสนอด้วยจังหวะพลิกบัตร ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-13": {
+      "id": "look-13",
+      "num": 13,
+      "enName": "Receipt",
+      "thName": "ใบเสร็จ",
+      "category": "งาน 3D",
+      "summary": "แจกแจงค่าใช้จ่ายด้วยใบเสร็จที่ค่อย ๆ พิมพ์ออกมา",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#06090F",
+          "accent2": "#11192B",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ใบเสร็จ (Receipt) เน้นแจกแจงค่าใช้จ่ายด้วยใบเสร็จที่ค่อย ๆ พิมพ์ออกมา ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-14": {
+      "id": "look-14",
+      "num": 14,
+      "enName": "Iceberg",
+      "thName": "ภูเขาน้ำแข็ง",
+      "category": "งาน 3D",
+      "summary": "เปรียบเทียบสิ่งที่เห็นกับรายละเอียดที่ซ่อนอยู่",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#F2F8FC",
+          "accent2": "#CFE5F4",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ภูเขาน้ำแข็ง (Iceberg) เน้นเปรียบเทียบสิ่งที่เห็นกับรายละเอียดที่ซ่อนอยู่ ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-15": {
+      "id": "look-15",
+      "num": 15,
+      "enName": "Text thread",
+      "thName": "แชตข้อความ",
+      "category": "งาน 3D",
+      "summary": "เล่าเรื่องหรือเปิดเผยข้อมูลผ่านข้อความสนทนา",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#EDF1F7",
+          "accent2": "#D2D9E5",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ แชตข้อความ (Text thread) เน้นเล่าเรื่องหรือเปิดเผยข้อมูลผ่านข้อความสนทนา ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-16": {
+      "id": "look-16",
+      "num": 16,
+      "enName": "Scale lineup",
+      "thName": "เรียงเทียบขนาด",
+      "category": "งาน 3D",
+      "summary": "เรียงสิ่งของให้เห็นความต่างของขนาด",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#F1F2F4",
+          "accent2": "#D6DBE1",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ เรียงเทียบขนาด (Scale lineup) เน้นเรียงสิ่งของให้เห็นความต่างของขนาด ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-17": {
+      "id": "look-17",
+      "num": 17,
+      "enName": "Milestone trophy",
+      "thName": "ถ้วยรางวัล",
+      "category": "งาน 3D",
+      "summary": "ฉลองยอดถึงเป้าหมายด้วยฉากถ้วยรางวัล",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#144234",
+          "accent2": "#09221B",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ถ้วยรางวัล (Milestone trophy) เน้นฉลองยอดถึงเป้าหมายด้วยฉากถ้วยรางวัล ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-18": {
+      "id": "look-18",
+      "num": 18,
+      "enName": "Donut breakdown",
+      "thName": "โดนัทแจกแจง",
+      "category": "งาน 3D",
+      "summary": "อธิบายสัดส่วนงบประมาณด้วยกราฟโดนัท",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#FFFFFF",
+          "accent2": "#111418",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ โดนัทแจกแจง (Donut breakdown) เน้นอธิบายสัดส่วนงบประมาณด้วยกราฟโดนัท ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-19": {
+      "id": "look-19",
+      "num": 19,
+      "enName": "Globe arcs",
+      "thName": "เส้นโค้งบนลูกโลก",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "เล่าเส้นทางระหว่างเมืองหรือประเทศบนลูกโลก",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#0E1830",
+          "accent2": "#05070C",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ เส้นโค้งบนลูกโลก (Globe arcs) เน้นเล่าเส้นทางระหว่างเมืองหรือประเทศบนลูกโลก ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-20": {
+      "id": "look-20",
+      "num": 20,
+      "enName": "Laptop reveal",
+      "thName": "เปิดฝาแล็ปท็อป",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "เปิดตัวเว็บไซต์หรือสินค้าดิจิทัลผ่านหน้าจอแล็ปท็อป",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#F5F5F7",
+          "accent2": "#E4E6EA",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ เปิดฝาแล็ปท็อป (Laptop reveal) เน้นเปิดตัวเว็บไซต์หรือสินค้าดิจิทัลผ่านหน้าจอแล็ปท็อป ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-21": {
+      "id": "look-21",
+      "num": 21,
+      "enName": "Isometric flow",
+      "thName": "ไอโซเมตริกโฟลว์",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "จำลองขั้นตอนของระบบหรือซัพพลายเชนเป็นฉากไอโซเมตริก",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#EEF2F7",
+          "accent2": "#E3E9F1",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ไอโซเมตริกโฟลว์ (Isometric flow) เน้นจำลองขั้นตอนของระบบหรือซัพพลายเชนเป็นฉากไอโซเมตริก ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-22": {
+      "id": "look-22",
+      "num": 22,
+      "enName": "Notification stack",
+      "thName": "กองแจ้งเตือน",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "โชว์ยอดขายหรือยอดสมัครผ่านการแจ้งเตือนที่ไหลเข้ามา",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#0F4C5C",
+          "accent2": "#0E2A5A",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ กองแจ้งเตือน (Notification stack) เน้นโชว์ยอดขายหรือยอดสมัครผ่านการแจ้งเตือนที่ไหลเข้ามา ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-23": {
+      "id": "look-23",
+      "num": 23,
+      "enName": "Before and after slider",
+      "thName": "สไลเดอร์ก่อน-หลัง",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "ให้คนดูเห็นการเปลี่ยนแปลงก่อนและหลังในภาพเดียว",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#EEF1F6",
+          "accent2": "#E6EAF1",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ สไลเดอร์ก่อน-หลัง (Before and after slider) เน้นให้คนดูเห็นการเปลี่ยนแปลงก่อนและหลังในภาพเดียว ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-24": {
+      "id": "look-24",
+      "num": 24,
+      "enName": "Ranking bars",
+      "thName": "แท่งจัดอันดับ",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "จัดอันดับข้อมูลให้คนดูเทียบความต่างได้ทันที",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#FFFFFF",
+          "accent2": "#111418",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ แท่งจัดอันดับ (Ranking bars) เน้นจัดอันดับข้อมูลให้คนดูเทียบความต่างได้ทันที ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-25": {
+      "id": "look-25",
+      "num": 25,
+      "enName": "Social post receipt",
+      "thName": "โพสต์โซเชียลเป็นหลักฐาน",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "ยกโพสต์จริงเป็นหลักฐานประกอบเรื่องที่กำลังเล่า",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#F1F3F6",
+          "accent2": "#E7EBF0",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ โพสต์โซเชียลเป็นหลักฐาน (Social post receipt) เน้นยกโพสต์จริงเป็นหลักฐานประกอบเรื่องที่กำลังเล่า ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-26": {
+      "id": "look-26",
+      "num": 26,
+      "enName": "Day counter",
+      "thName": "ตัวนับวัน",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "พาคนดูตามความคืบหน้าของชาเลนจ์ทีละวัน",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#FFFFFF",
+          "accent2": "#F3F3F1",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ตัวนับวัน (Day counter) เน้นพาคนดูตามความคืบหน้าของชาเลนจ์ทีละวัน ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-27": {
+      "id": "look-27",
+      "num": 27,
+      "enName": "Versus",
+      "thName": "ประชันกัน",
+      "category": "เปรียบเทียบและข้อมูล",
+      "summary": "เทียบสองตัวเลือกด้วยภาพแบบประชันกัน",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#0B0D12",
+          "accent2": "#3D7BFF",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ประชันกัน (Versus) เน้นเทียบสองตัวเลือกด้วยภาพแบบประชันกัน ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-28": {
+      "id": "look-28",
+      "num": 28,
+      "enName": "3D Map Route",
+      "thName": "เส้นทางบนแผนที่ 3D",
+      "category": "เทคนิคคลิป",
+      "summary": "พาคนดูเดินทางตามเส้นทางบนแผนที่ 3D",
+      "tokens": {
+        "family": "iso-3d",
+        "palette": {
+          "bg": "#131722",
+          "bgSecondary": "#1E2436",
+          "fg": "#F1F5F9",
+          "muted": "#94A3B8",
+          "accent": "#ECEAE4",
+          "accent2": "#F7F7F5",
+          "cardBg": "#1A2030",
+          "border": "#2E3852"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 15,
+          "springStiffness": 155,
+          "transitionType": "spring",
+          "parallaxStrength": 0.6,
+          "glowIntensity": 0.4
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.3,
+          "grain": 0.08
+        },
+        "promptHints": "เล่าเรื่องสไตล์ เส้นทางบนแผนที่ 3D (3D Map Route) เน้นพาคนดูเดินทางตามเส้นทางบนแผนที่ 3D ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ iso-3d"
+      }
+    },
+    "look-29": {
+      "id": "look-29",
+      "num": 29,
+      "enName": "Exploded Teardown",
+      "thName": "แยกชิ้นส่วน",
+      "category": "เทคนิคคลิป",
+      "summary": "แยกชิ้นส่วนสินค้าให้เห็นว่าข้างในประกอบด้วยอะไร",
+      "tokens": {
+        "family": "editorial-paper",
+        "palette": {
+          "bg": "#FAF6EE",
+          "bgSecondary": "#EFE8D8",
+          "fg": "#1E1B18",
+          "muted": "#6B6257",
+          "accent": "#2A2D33",
+          "accent2": "#0A0A0C",
+          "cardBg": "#FFFFFF",
+          "border": "#DCD2C0"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "minimal"
+        },
+        "motion": {
+          "springDamping": 18,
+          "springStiffness": 160,
+          "transitionType": "slide",
+          "parallaxStrength": 0.3,
+          "glowIntensity": 0.05
+        },
+        "background": {
+          "pattern": "dots",
+          "vignette": 0.15,
+          "grain": 0.2
+        },
+        "promptHints": "เล่าเรื่องสไตล์ แยกชิ้นส่วน (Exploded Teardown) เน้นแยกชิ้นส่วนสินค้าให้เห็นว่าข้างในประกอบด้วยอะไร ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ editorial-paper"
+      }
+    },
+    "look-30": {
+      "id": "look-30",
+      "num": 30,
+      "enName": "Ink Wash",
+      "thName": "ภาพหมึกจีน",
+      "category": "เทคนิคคลิป",
+      "summary": "เปิดคลิปด้วยชื่อเรื่องที่ปรากฏพร้อมหมึกกระจาย",
+      "tokens": {
+        "family": "editorial-paper",
+        "palette": {
+          "bg": "#FAF6EE",
+          "bgSecondary": "#EFE8D8",
+          "fg": "#1E1B18",
+          "muted": "#6B6257",
+          "accent": "#EEEAE0",
+          "accent2": "#1B1A18",
+          "cardBg": "#FFFFFF",
+          "border": "#DCD2C0"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "minimal"
+        },
+        "motion": {
+          "springDamping": 18,
+          "springStiffness": 160,
+          "transitionType": "slide",
+          "parallaxStrength": 0.3,
+          "glowIntensity": 0.05
+        },
+        "background": {
+          "pattern": "dots",
+          "vignette": 0.15,
+          "grain": 0.2
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ภาพหมึกจีน (Ink Wash) เน้นเปิดคลิปด้วยชื่อเรื่องที่ปรากฏพร้อมหมึกกระจาย ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ editorial-paper"
+      }
+    },
+    "look-31": {
+      "id": "look-31",
+      "num": 31,
+      "enName": "Paper Desk",
+      "thName": "เอกสารบนโต๊ะ",
+      "category": "เทคนิคคลิป",
+      "summary": "อธิบายทีละประเด็นด้วยเอกสารและโน้ตบนโต๊ะ",
+      "tokens": {
+        "family": "editorial-paper",
+        "palette": {
+          "bg": "#FAF6EE",
+          "bgSecondary": "#EFE8D8",
+          "fg": "#1E1B18",
+          "muted": "#6B6257",
+          "accent": "#2D684C",
+          "accent2": "#327354",
+          "cardBg": "#FFFFFF",
+          "border": "#DCD2C0"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "minimal"
+        },
+        "motion": {
+          "springDamping": 18,
+          "springStiffness": 160,
+          "transitionType": "slide",
+          "parallaxStrength": 0.3,
+          "glowIntensity": 0.05
+        },
+        "background": {
+          "pattern": "dots",
+          "vignette": 0.15,
+          "grain": 0.2
+        },
+        "promptHints": "เล่าเรื่องสไตล์ เอกสารบนโต๊ะ (Paper Desk) เน้นอธิบายทีละประเด็นด้วยเอกสารและโน้ตบนโต๊ะ ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ editorial-paper"
+      }
+    },
+    "look-32": {
+      "id": "look-32",
+      "num": 32,
+      "enName": "Headline Highlight",
+      "thName": "ไฮไลต์พาดหัว",
+      "category": "เทคนิคคลิป",
+      "summary": "พาคนดูจับใจความจากพาดหัวข่าวและข้อความที่ไฮไลต์",
+      "tokens": {
+        "family": "kinetic-type",
+        "palette": {
+          "bg": "#121212",
+          "bgSecondary": "#1E1E1E",
+          "fg": "#FFFFFF",
+          "muted": "#A1A1AA",
+          "accent": "#15181C",
+          "accent2": "#E9EAEC",
+          "cardBg": "#1A1A1A",
+          "border": "#3F3F46"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "karaoke"
+        },
+        "motion": {
+          "springDamping": 12,
+          "springStiffness": 220,
+          "transitionType": "zoom",
+          "parallaxStrength": 0.4,
+          "glowIntensity": 0.3
+        },
+        "background": {
+          "pattern": "lines",
+          "vignette": 0.3,
+          "grain": 0.15
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ไฮไลต์พาดหัว (Headline Highlight) เน้นพาคนดูจับใจความจากพาดหัวข่าวและข้อความที่ไฮไลต์ ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ kinetic-type"
+      }
+    },
+    "look-33": {
+      "id": "look-33",
+      "num": 33,
+      "enName": "Stat Chart",
+      "thName": "กราฟสถิติ",
+      "category": "เทคนิคคลิป",
+      "summary": "เล่าแนวโน้มหรือตัวเลขการเงินด้วยกราฟเคลื่อนไหว",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#0A0B0D",
+          "accent2": "#F4F5F6",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ กราฟสถิติ (Stat Chart) เน้นเล่าแนวโน้มหรือตัวเลขการเงินด้วยกราฟเคลื่อนไหว ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-34": {
+      "id": "look-34",
+      "num": 34,
+      "enName": "App Mockup",
+      "thName": "ม็อกอัปแอป",
+      "category": "เทคนิคคลิป",
+      "summary": "เปิดตัวแอปพร้อมโชว์หน้าจอและฟีเจอร์สำคัญ",
+      "tokens": {
+        "family": "editorial-paper",
+        "palette": {
+          "bg": "#FAF6EE",
+          "bgSecondary": "#EFE8D8",
+          "fg": "#1E1B18",
+          "muted": "#6B6257",
+          "accent": "#dfe6ee",
+          "accent2": "#cfd8e2",
+          "cardBg": "#FFFFFF",
+          "border": "#DCD2C0"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "minimal"
+        },
+        "motion": {
+          "springDamping": 18,
+          "springStiffness": 160,
+          "transitionType": "slide",
+          "parallaxStrength": 0.3,
+          "glowIntensity": 0.05
+        },
+        "background": {
+          "pattern": "dots",
+          "vignette": 0.15,
+          "grain": 0.2
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ม็อกอัปแอป (App Mockup) เน้นเปิดตัวแอปพร้อมโชว์หน้าจอและฟีเจอร์สำคัญ ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ editorial-paper"
+      }
+    },
+    "look-35": {
+      "id": "look-35",
+      "num": 35,
+      "enName": "Screen-Recording Zoom",
+      "thName": "ซูมจอบันทึกหน้าจอ",
+      "category": "เทคนิคคลิป",
+      "summary": "ซูมไปที่ปุ่มหรือช่องสำคัญในคลิปสอนใช้โปรแกรม",
+      "tokens": {
+        "family": "editorial-paper",
+        "palette": {
+          "bg": "#FAF6EE",
+          "bgSecondary": "#EFE8D8",
+          "fg": "#1E1B18",
+          "muted": "#6B6257",
+          "accent": "#E3EFE9",
+          "accent2": "#B8D7D6",
+          "cardBg": "#FFFFFF",
+          "border": "#DCD2C0"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "minimal"
+        },
+        "motion": {
+          "springDamping": 18,
+          "springStiffness": 160,
+          "transitionType": "slide",
+          "parallaxStrength": 0.3,
+          "glowIntensity": 0.05
+        },
+        "background": {
+          "pattern": "dots",
+          "vignette": 0.15,
+          "grain": 0.2
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ซูมจอบันทึกหน้าจอ (Screen-Recording Zoom) เน้นซูมไปที่ปุ่มหรือช่องสำคัญในคลิปสอนใช้โปรแกรม ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ editorial-paper"
+      }
+    },
+    "look-36": {
+      "id": "look-36",
+      "num": 36,
+      "enName": "Timeline",
+      "thName": "ไทม์ไลน์",
+      "category": "เทคนิคคลิป",
+      "summary": "จัดเหตุการณ์หรือขั้นตอนให้เห็นลำดับเวลาชัดขึ้น",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#F5F6F8",
+          "accent2": "#E3E6EB",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ไทม์ไลน์ (Timeline) เน้นจัดเหตุการณ์หรือขั้นตอนให้เห็นลำดับเวลาชัดขึ้น ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-37": {
+      "id": "look-37",
+      "num": 37,
+      "enName": "Glow Orb",
+      "thName": "ลูกแก้วเรืองแสง",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "เปิดคลิปด้วยลูกแก้วเรืองแสงและข้อความสั้น",
+      "tokens": {
+        "family": "glow-world",
+        "palette": {
+          "bg": "#0B0E1E",
+          "bgSecondary": "#161B38",
+          "fg": "#F4F7FF",
+          "muted": "#9AA5CE",
+          "accent": "#070304",
+          "accent2": "#13050B",
+          "cardBg": "#141933",
+          "border": "#2A3466"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 14,
+          "springStiffness": 140,
+          "transitionType": "spring",
+          "parallaxStrength": 0.65,
+          "glowIntensity": 0.75
+        },
+        "background": {
+          "pattern": "radial",
+          "vignette": 0.45,
+          "grain": 0.12
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ลูกแก้วเรืองแสง (Glow Orb) เน้นเปิดคลิปด้วยลูกแก้วเรืองแสงและข้อความสั้น ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ glow-world"
+      }
+    },
+    "look-38": {
+      "id": "look-38",
+      "num": 38,
+      "enName": "Frosted Glass UI",
+      "thName": "UI กระจกฝ้า",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "โชว์ข้อความหรือหน้าจอด้วยเลเยอร์กระจกฝ้า",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#FF8A5C",
+          "accent2": "#1F5A6E",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ UI กระจกฝ้า (Frosted Glass UI) เน้นโชว์ข้อความหรือหน้าจอด้วยเลเยอร์กระจกฝ้า ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-39": {
+      "id": "look-39",
+      "num": 39,
+      "enName": "Apple One-Take",
+      "thName": "ช็อตเดียวแบบ Apple",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "เปิดตัวสินค้าหรือฟีเจอร์ด้วยโมชั่นต่อเนื่องช็อตเดียว",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#EEEEEC",
+          "accent2": "#111113",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ช็อตเดียวแบบ Apple (Apple One-Take) เน้นเปิดตัวสินค้าหรือฟีเจอร์ด้วยโมชั่นต่อเนื่องช็อตเดียว ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-40": {
+      "id": "look-40",
+      "num": 40,
+      "enName": "Retro CRT Glow",
+      "thName": "จอทีวีหลอดเรืองแสง",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "ทำอินโทรย้อนยุคด้วยภาพและแสงแบบจอ CRT",
+      "tokens": {
+        "family": "glow-world",
+        "palette": {
+          "bg": "#0B0E1E",
+          "bgSecondary": "#161B38",
+          "fg": "#F4F7FF",
+          "muted": "#9AA5CE",
+          "accent": "#07090F",
+          "accent2": "#0B0E16",
+          "cardBg": "#141933",
+          "border": "#2A3466"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 14,
+          "springStiffness": 140,
+          "transitionType": "spring",
+          "parallaxStrength": 0.65,
+          "glowIntensity": 0.75
+        },
+        "background": {
+          "pattern": "radial",
+          "vignette": 0.45,
+          "grain": 0.12
+        },
+        "promptHints": "เล่าเรื่องสไตล์ จอทีวีหลอดเรืองแสง (Retro CRT Glow) เน้นทำอินโทรย้อนยุคด้วยภาพและแสงแบบจอ CRT ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ glow-world"
+      }
+    },
+    "look-41": {
+      "id": "look-41",
+      "num": 41,
+      "enName": "Oscilloscope",
+      "thName": "ออสซิลโลสโคป",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "เปลี่ยนเส้นคลื่นเป็นภาพเคลื่อนไหวแบบออสซิลโลสโคป",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#030805",
+          "accent2": "#0D2216",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ออสซิลโลสโคป (Oscilloscope) เน้นเปลี่ยนเส้นคลื่นเป็นภาพเคลื่อนไหวแบบออสซิลโลสโคป ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-42": {
+      "id": "look-42",
+      "num": 42,
+      "enName": "Magazine Layout and Note",
+      "thName": "หน้านิตยสารกับโน้ต",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "อธิบายไอเดียด้วยภาพหน้ากระดาษและโน้ตประกอบ",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#EAEDED",
+          "accent2": "#1B1E25",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ หน้านิตยสารกับโน้ต (Magazine Layout and Note) เน้นอธิบายไอเดียด้วยภาพหน้ากระดาษและโน้ตประกอบ ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-43": {
+      "id": "look-43",
+      "num": 43,
+      "enName": "Blue Editorial",
+      "thName": "บลูเอดิทอเรียล",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "เล่นจังหวะตัวอักษรบนเลย์เอาต์แบบนิตยสาร",
+      "tokens": {
+        "family": "kinetic-type",
+        "palette": {
+          "bg": "#121212",
+          "bgSecondary": "#1E1E1E",
+          "fg": "#FFFFFF",
+          "muted": "#A1A1AA",
+          "accent": "#2433F0",
+          "accent2": "#F4F5FA",
+          "cardBg": "#1A1A1A",
+          "border": "#3F3F46"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "karaoke"
+        },
+        "motion": {
+          "springDamping": 12,
+          "springStiffness": 220,
+          "transitionType": "zoom",
+          "parallaxStrength": 0.4,
+          "glowIntensity": 0.3
+        },
+        "background": {
+          "pattern": "lines",
+          "vignette": 0.3,
+          "grain": 0.15
+        },
+        "promptHints": "เล่าเรื่องสไตล์ บลูเอดิทอเรียล (Blue Editorial) เน้นเล่นจังหวะตัวอักษรบนเลย์เอาต์แบบนิตยสาร ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ kinetic-type"
+      }
+    },
+    "look-44": {
+      "id": "look-44",
+      "num": 44,
+      "enName": "Risograph",
+      "thName": "ภาพพิมพ์ริโซ",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "ทำโปสเตอร์เคลื่อนไหวด้วยผิวสัมผัสแบบภาพพิมพ์",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#EDEFEE",
+          "accent2": "#FF48B0",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ภาพพิมพ์ริโซ (Risograph) เน้นทำโปสเตอร์เคลื่อนไหวด้วยผิวสัมผัสแบบภาพพิมพ์ ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    },
+    "look-45": {
+      "id": "look-45",
+      "num": 45,
+      "enName": "Swiss Grid",
+      "thName": "กริดสวิส",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "ขึ้นประโยคเด่นด้วยตัวอักษรและรูปทรงบนกริดสวิส",
+      "tokens": {
+        "family": "kinetic-type",
+        "palette": {
+          "bg": "#121212",
+          "bgSecondary": "#1E1E1E",
+          "fg": "#FFFFFF",
+          "muted": "#A1A1AA",
+          "accent": "#F0F0E8",
+          "accent2": "#101010",
+          "cardBg": "#1A1A1A",
+          "border": "#3F3F46"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "karaoke"
+        },
+        "motion": {
+          "springDamping": 12,
+          "springStiffness": 220,
+          "transitionType": "zoom",
+          "parallaxStrength": 0.4,
+          "glowIntensity": 0.3
+        },
+        "background": {
+          "pattern": "lines",
+          "vignette": 0.3,
+          "grain": 0.15
+        },
+        "promptHints": "เล่าเรื่องสไตล์ กริดสวิส (Swiss Grid) เน้นขึ้นประโยคเด่นด้วยตัวอักษรและรูปทรงบนกริดสวิส ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ kinetic-type"
+      }
+    },
+    "look-46": {
+      "id": "look-46",
+      "num": 46,
+      "enName": "Pencil to Blueprint",
+      "thName": "ดินสอสู่พิมพ์เขียว",
+      "category": "กราฟิกเคลื่อนไหว",
+      "summary": "เผยขั้นตอนจากภาพสเก็ตช์สู่พิมพ์เขียวทางเทคนิค",
+      "tokens": {
+        "family": "data-board",
+        "palette": {
+          "bg": "#0F172A",
+          "bgSecondary": "#1E293B",
+          "fg": "#F8FAFC",
+          "muted": "#94A3B8",
+          "accent": "#ECECE6",
+          "accent2": "#25262B",
+          "cardBg": "#162033",
+          "border": "#334155"
+        },
+        "typography": {
+          "fontFamily": "Noto Sans Thai, Kanit, sans-serif",
+          "titleWeight": 800,
+          "subtitleStyle": "pill"
+        },
+        "motion": {
+          "springDamping": 16,
+          "springStiffness": 180,
+          "transitionType": "slide",
+          "parallaxStrength": 0.25,
+          "glowIntensity": 0.2
+        },
+        "background": {
+          "pattern": "grid",
+          "vignette": 0.2,
+          "grain": 0.05
+        },
+        "promptHints": "เล่าเรื่องสไตล์ ดินสอสู่พิมพ์เขียว (Pencil to Blueprint) เน้นเผยขั้นตอนจากภาพสเก็ตช์สู่พิมพ์เขียวทางเทคนิค ใช้ภาษาที่กระชับ ชัดเจน และจังหวะภาพแบบ data-board"
+      }
+    }
+  }
+}

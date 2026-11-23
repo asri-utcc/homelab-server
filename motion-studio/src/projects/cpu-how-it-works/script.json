@@ -1,0 +1,113 @@
+{
+  "title": "CPU ทำงานยังไง? — 3 ขั้นตอนในเสี้ยววินาที",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "voice": "gemini:Charon",
+  "ttsModel": "gemini-2.5-flash-preview-tts",
+  "ttsStyle": "storytelling",
+  "ttsPrompt": "Narrate as a calm, charismatic, warm Thai tech documentary storyteller with a confident, smooth tone. Speak fluently at a crisp, engaging Thai narration pace (~14-15 syllables per second) with brief natural breaths between clauses and NO slow dragging or long dramatic pauses. Pronounce Thai and technology terms cleanly and naturally.",
+  "masterPreset": "light",
+  "speed": 1.12,
+  "leadInSec": 0.35,
+  "holdEndSec": 1.6,
+  "scenes": [
+    {
+      "id": "s1_hook",
+      "badge": "HOOK",
+      "title": "คลิกแค่เสี้ยววินาที",
+      "subtitle": "ข้างในซีพียูเกิดอะไรขึ้น?",
+      "narration": "แค่คลิกเมาส์ครั้งเดียว ข้างในซีพียูทำงานเป็นพันล้านรอบต่อวินาที แต่มันคิดยังไง?",
+      "narrationPhonetic": "แค่คลิกเมาส์ครั้งเดียว ข้างใน ซีพียู ทำงานเป็นพันล้านรอบต่อวินาที แต่มันคิดยังไง?",
+      "padAfterSec": 0.35,
+      "subtitles": [
+        {
+          "text": "แค่คลิกเมาส์ครั้งเดียว",
+          "highlight": "คลิกเมาส์"
+        },
+        {
+          "text": "ซีพียูทำงานพันล้านรอบต่อวินาที",
+          "highlight": "พันล้านรอบ"
+        },
+        {
+          "text": "แต่มันคิดได้ยังไง?",
+          "highlight": "คิดได้ยังไง"
+        }
+      ],
+      "sfx": [
+        { "name": "soft_impact", "offsetSec": 0.15, "volume": 0.25 },
+        { "name": "spark", "offsetSec": 1.7, "volume": 0.22 }
+      ]
+    },
+    {
+      "id": "s2_fetch",
+      "badge": "01 · FETCH",
+      "title": "ดึงคำสั่งจากหน่วยความจำ",
+      "subtitle": "Fetch from RAM",
+      "narration": "เริ่มจากดึงคำสั่ง จากแรมเข้ามาเก็บไว้ เหมือนหยิบสูตรอาหารมาวางบนโต๊ะ",
+      "narrationPhonetic": "เริ่มจากดึงคำสั่ง จากแรมเข้ามาเก็บไว้ เหมือนหยิบสูตรอาหารมาวางบนโต๊ะ",
+      "padAfterSec": 0.35,
+      "subtitles": [
+        {
+          "text": "1. ดึงคำสั่งจากแรมเข้ามาเก็บไว้",
+          "highlight": "ดึงคำสั่ง"
+        },
+        {
+          "text": "เหมือนหยิบสูตรอาหารมาวางบนโต๊ะ",
+          "highlight": "สูตรอาหาร"
+        }
+      ],
+      "sfx": [
+        { "name": "riser", "offsetSec": 0.0, "volume": 0.22 },
+        { "name": "pop", "offsetSec": 1.3, "volume": 0.24 }
+      ]
+    },
+    {
+      "id": "s3_decode",
+      "badge": "02 · DECODE",
+      "title": "แปลรหัส 0 กับ 1 ให้เป็นคำสั่ง",
+      "subtitle": "Control Unit Decode",
+      "narration": "ต่อมา ชุดควบคุมจะแปลรหัสศูนย์กับหนึ่ง ว่าคำสั่งนี้ต้องบวกเลข หรือย้ายข้อมูล",
+      "narrationPhonetic": "ต่อมา ชุดควบคุมจะแปลรหัส ศูนย์ กับ หนึ่ง ว่าคำสั่งนี้ต้องบวกเลข หรือย้ายข้อมูล",
+      "padAfterSec": 0.35,
+      "subtitles": [
+        {
+          "text": "2. แปลรหัส 0 กับ 1 ด้วยชุดควบคุม",
+          "highlight": "0 กับ 1"
+        },
+        {
+          "text": "แยกว่าต้องบวกเลข หรือย้ายข้อมูล",
+          "highlight": "บวกเลข"
+        }
+      ],
+      "sfx": [
+        { "name": "shimmer", "offsetSec": 0.15, "volume": 0.24 },
+        { "name": "click", "offsetSec": 2.2, "volume": 0.22 }
+      ]
+    },
+    {
+      "id": "s4_execute_clock",
+      "badge": "03 · EXECUTE",
+      "title": "ทำตามจังหวะนาฬิกา พันล้านครั้ง/วิ",
+      "subtitle": "ALU & Clock Cycle",
+      "narration": "สุดท้าย หน่วยคำนวณลงมือทำตามจังหวะนาฬิกา วนซ้ำสามขั้นตอนนี้ หลายพันล้านครั้งในหนึ่งวินาที",
+      "narrationPhonetic": "สุดท้าย หน่วยคำนวณลงมือทำตามจังหวะนาฬิกา วนซ้ำสามขั้นตอนนี้ หลายพันล้านครั้งในหนึ่งวินาที",
+      "padAfterSec": 1.6,
+      "subtitles": [
+        {
+          "text": "3. หน่วยคำนวณทำตามจังหวะนาฬิกา",
+          "highlight": "หน่วยคำนวณ"
+        },
+        {
+          "text": "วนซ้ำ 3 ขั้นตอนนี้ พันล้านครั้ง/วิ",
+          "highlight": "พันล้านครั้ง"
+        }
+      ],
+      "sfx": [
+        { "name": "soft_impact", "offsetSec": 0.15, "volume": 0.25 },
+        { "name": "chime", "offsetSec": 2.9, "volume": 0.26 },
+        { "name": "spark", "offsetSec": 4.4, "volume": 0.22 }
+      ]
+    }
+  ]
+}

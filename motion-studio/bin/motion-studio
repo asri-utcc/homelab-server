@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE="/home/dev/.local/share/motion-studio"
+VENV_PY="$BASE/venv/bin/python"
+CHROME_BIN="/home/dev/.cache/ms-playwright/chromium_headless_shell-1255/chrome-headless-shell-linux64/chrome-headless-shell"
+# NOTE: use chrome-headless-shell, NOT full Chrome — full Chrome 159 drops raster tiles (dark flickering blocks) in Remotion frame captures
+OUTPUT_DIR="/home/dev/.gemini/outputs/videos"
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  doctor)
+    python3 - << 'PYEOF'
+import json, os, shutil, subprocess
+base = "/home/dev/.local/share/motion-studio"
+chrome = "/home/dev/.cache/ms-playwright/chromium_headless_shell-1255/chrome-headless-shell-linux64/chrome-headless-shell"
+venv_py = os.path.join(base, "venv/bin/python")
+assets = os.path.join(base, "assets/audio")
+catalog = os.path.join(base, "assets/styles_catalog.json")
+
+def ver(cmd):
+    try:
+        return subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=5).strip().splitlines()[0]
+    except Exception as e:
+        return f"ERR: {e}"
+
+styles_count = 0
+if os.path.exists(catalog):
+    styles_count = len(json.load(open(catalog, encoding="utf-8")))
+
+import sys
+sys.path.insert(0, os.path.join(base, "scripts"))
+try:
+    from tts_pipeline import find_gemini_api_key
+    g_key, g_src = find_gemini_api_key()
+except Exception:
+    g_key, g_src = "", ""
+
+audio_files = sorted(os.listdir(assets)) if os.path.isdir(assets) else []
+res = {
+    "ok": all([
+        os.path.exists(chrome),
+        os.path.exists(venv_py),
+        os.path.exists(os.path.join(base, "node_modules/remotion")),
+        shutil.which("ffmpeg") is not None,
+        styles_count >= 46,
+    ]),
+    "node": ver(["node", "-v"]),
+    "ffmpeg": ver(["ffmpeg", "-version"]),
+    "chromium": {"path": chrome, "exists": os.path.exists(chrome)},
+    "remotionInstalled": os.path.exists(os.path.join(base, "node_modules/remotion")),
+    "threeInstalled": os.path.exists(os.path.join(base, "node_modules/three")),
+    "edgeTts": ver([os.path.join(base, "venv/bin/edge-tts"), "--version"]),
+    "geminiTts": {"configured": bool(g_key), "keySource": g_src or None},
+    "stylesCatalogCount": styles_count,
+    "audioAssets": audio_files,
+    "outputDir": "/home/dev/.gemini/outputs/videos",
+}
+print(json.dumps(res, ensure_ascii=False, indent=2))
+PYEOF
+    ;;
+
+  tts)
+    exec "$VENV_PY" "$BASE/scripts/tts_pipeline.py" "$@"
+    ;;
+
+  credit)
+    exec "$VENV_PY" "$BASE/scripts/credit_ledger.py" "$@"
+    ;;
+
+  gemini-test)
+    exec "$VENV_PY" "$BASE/scripts/test_gemini_tts.py" "$@"
+    ;;
+
+  render)
+    comp="${1:-}"
+    if [[ -z "$comp" ]]; then
+      echo '{"ok":false,"error":"Usage: motion-studio render <CompositionId> -o <out.mp4> [--props <file.json>] [--still <frame>]"}' >&2
+      exit 1
+    fi
+    shift
+    out=""
+    props=""
+    still=""
+    concurrency="2"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -o|--output) out="$2"; shift 2 ;;
+        --props) props="$2"; shift 2 ;;
+        --still) still="$2"; shift 2 ;;
+        --concurrency) concurrency="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    if [[ -z "$out" ]]; then
+      mkdir -p "$OUTPUT_DIR"
+      out="$OUTPUT_DIR/${comp}_$(date +%Y%m%d-%H%M%S).mp4"
+    fi
+    mkdir -p "$(dirname "$out")"
+    cd "$BASE"
+    args=(--browser-executable="$CHROME_BIN" --gl=angle --concurrency="$concurrency")
+    if [[ -n "$props" ]]; then
+      args+=(--props="$props")
+    fi
+    if [[ -n "$still" ]]; then
+      exec npx remotion still src/index.ts "$comp" "$out" --frame="$still" "${args[@]}"
+    else
+      exec npx remotion render src/index.ts "$comp" "$out" --codec=h264 --pixel-format=yuv420p --crf=18 "${args[@]}"
+    fi
+    ;;
+
+  mix)
+    exec "$VENV_PY" "$BASE/scripts/mix_audio.py" "$@"
+    ;;
+
+  preview)
+    exec "$VENV_PY" "$BASE/scripts/make_preview.py" "$@"
+    ;;
+
+  loudness)
+    target="${1:-}"
+    if [[ -z "$target" ]]; then
+      echo '{"ok":false,"error":"Usage: motion-studio loudness <file.mp4>"}' >&2
+      exit 1
+    fi
+    python3 - "$target" << 'PYEOF'
+import json, re, subprocess, sys
+path = sys.argv[1]
+p = subprocess.run(
+    ["ffmpeg", "-hide_banner", "-i", path, "-af", "ebur128=framelog=quiet:peak=true", "-f", "null", "-"],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+)
+if p.returncode != 0:
+    err = p.stderr.strip().splitlines()[-1] if p.stderr.strip() else "ffmpeg failed"
+    print(json.dumps({"ok": False, "error": err}, ensure_ascii=False))
+    sys.exit(p.returncode)
+m_i = re.findall(r"I:\s*([-+]?\d+(?:\.\d+)?)\s*LUFS", p.stderr)
+m_tp = re.findall(r"Peak:\s*([-+]?\d+(?:\.\d+)?)\s*dBFS", p.stderr)
+res = {
+    "ok": True,
+    "file": path,
+    "integratedLufs": float(m_i[-1]) if m_i else None,
+    "truePeak": float(m_tp[-1]) if m_tp else None,
+}
+print(json.dumps(res, ensure_ascii=False, indent=2))
+PYEOF
+    ;;
+
+  send-telegram)
+    exec "$VENV_PY" "$BASE/scripts/send_telegram_video.py" "$@"
+    ;;
+
+  styles)
+    python3 - "$@" << 'PYEOF'
+import argparse, json
+p = argparse.ArgumentParser()
+p.add_argument("--category", default="")
+p.add_argument("--search", default="")
+p.add_argument("--id", default="")
+a = p.parse_args()
+data = json.load(open("/home/dev/.local/share/motion-studio/assets/styles_catalog.json", encoding="utf-8"))
+if a.id:
+    hit = [x for x in data if x["id"] == a.id]
+    print(json.dumps(hit[0] if hit else {"ok": False, "error": "Not found"}, ensure_ascii=False, indent=2))
+else:
+    res = []
+    for x in data:
+        if a.category and a.category.lower() not in x["category"].lower():
+            continue
+        blob = f"{x['id']} {x['enName']} {x['thName']} {x['summary']} {x['category']}".lower()
+        if a.search and a.search.lower() not in blob:
+            continue
+        res.append({"id": x["id"], "enName": x["enName"], "thName": x["thName"], "category": x["category"], "ref": x["refFile"], "summary": x["summary"]})
+    print(json.dumps({"count": len(res), "styles": res}, ensure_ascii=False, indent=2))
+PYEOF
+    ;;
+
+  thumbs)
+    mkdir -p /home/dev/.gemini/outputs/video-studio
+    cd "$BASE"
+    MOTION_CHROME_BIN="${MOTION_CHROME_BIN:-$CHROME_BIN}" exec flock /home/dev/.gemini/outputs/video-studio/render.lock node scripts/gen_style_thumbs.mjs "$@"
+    ;;
+
+  clean)
+    days=7
+    if [[ "${1:-}" == "--days" && -n "${2:-}" ]]; then days="$2"; fi
+    find "$OUTPUT_DIR" -type f -mtime "+$days" -print -delete 2>/dev/null || true
+    echo "{\"ok\":true,\"cleanedOlderThanDays\":$days}"
+    ;;
+
+  *)
+    cat << 'USAGE'
+motion-studio — Homelab Remotion + Thai TTS + 46-Style Motion Video Engine
+
+Commands:
+  doctor                                   Check dependencies, Chromium, Remotion, TTS, assets
+  styles [--category X] [--search Y] [--id look-21]
+                                           Browse or search the 46-style visual catalog
+  tts <script.json> -o <dir> [--voice gemini:Aoede|vachana:th_f_1|th-TH-PremwadeeNeural] [--style spiritual|documentary|explainer] [--model gemini-2.5-flash-preview-tts]
+                                           Generate Thai voiceover + mastered audio + synced timeline.json + .srt
+  credit [--check-alert]                   Show estimated Gemini API TTS credit balance (THB) & low-balance status
+  gemini-test [--voices Aoede,Sulafat,Kore,Charon] [--style spiritual] [--send-telegram]
+                                           Quick A/B test of Gemini 2.5 TTS voices (optional Telegram delivery)
+  render <CompId> -o <out.mp4> [--props timeline.json] [--still <frame>]
+                                           Render MP4 (or still frame) with local Chromium
+  thumbs [--only <id>] [--force] [--custom-only] [--frame <n>] [--scale <float>]
+                                           Generate 9:16 style preview thumbnails via Remotion renderStill
+  mix <video.mp4> <timeline.json> -o <final.mp4> [--bgm warm_tech|story_cinematic|dawn_ambient|none] [--duck-db 12] [--lufs -14]
+                                           Mix narration + sidechain-ducked BGM + SFX + loudnorm into final MP4
+  preview <video.mp4> -o <dir> [--prefix name] [--timeline timeline.json]
+                                           Generate QA Storyboard PNG + Animated GIF preview
+  loudness <file.mp4>                      Measure integrated LUFS and true peak via ffmpeg ebur128
+  send-telegram <video.mp4> "<caption>"    Send finished MP4 directly to Telegram
+  clean [--days 7]                         Clean old files in /home/dev/.gemini/outputs/videos
+USAGE
+    ;;
+esac

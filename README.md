@@ -91,3 +91,28 @@ mkdir -p ~/.gemini/antigravity-cli/skills/web-browser && cp lab-browser/skill/SK
 rsync -a --exclude 'node_modules/' --exclude 'auth/' --exclude 'state/' --exclude 'profiles/' --exclude '*.bak*' --exclude '*.log' ~/.local/share/lab-browser/ lab-browser/
 cp ~/.gemini/antigravity-cli/skills/web-browser/SKILL.md lab-browser/skill/SKILL.md
 ```
+
+---
+
+## motion-studio
+
+เครื่องมือสร้างวิดีโอและ Motion Graphics (Remotion + Thai TTS) โดยโค้ดที่ใช้งานจริง (live) อยู่ที่ `~/.local/share/motion-studio` (ไฟล์ `bin/motion-studio` และ `lab-dashboard` / PM2 เรียกใช้ path นี้โดยตรง)
+
+### วิธีติดตั้ง (Restore / Fresh Install)
+
+```bash
+mkdir -p ~/.local/share/motion-studio
+rsync -a motion-studio/ ~/.local/share/motion-studio/
+cd ~/.local/share/motion-studio
+npm ci
+python3 -m venv venv && venv/bin/pip install edge-tts pillow
+ln -sf ~/.local/share/motion-studio/bin/motion-studio ~/.local/bin/motion-studio
+```
+
+> **หมายเหตุ:** โฟลเดอร์ `node_modules/`, `venv/`, `out/`, `core.*` และไฟล์เรนเดอร์ชั่วคราว (`*.mp4`, `*.wav`, `*.png.tmp`) ถูกกันออกโดย `.gitignore` และไม่ได้เก็บใน git
+
+### วิธี Re-sync เมื่อมีการแก้ไขฝั่ง Live
+
+```bash
+./scripts/sync-motion-studio.sh
+```

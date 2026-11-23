@@ -15,3 +15,11 @@ cron-logs/
 lab-browser/auth/
 lab-browser/state/
 lab-browser/profiles/
+
+# motion-studio runtime/build artifacts
+motion-studio/venv/
+motion-studio/core*
+motion-studio/out/
+motion-studio/**/*.mp4
+motion-studio/**/*.wav
+motion-studio/**/*.png.tmp

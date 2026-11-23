@@ -97,8 +97,8 @@ const CODE_HINT_RE = /code|โค้ด|bug|บั๊ก|แก้|fix|script|�
 // page-cached binary (see homelab RAM notes). Evicting the file from page cache reloads it from disk.
 const CRASH_RE = /unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|segmentation (fault|violation)|illegal instruction|oh no: Bun has crashed|panic\(main thread\)|Segmentation fault at address|bun\.report\/\d+\.\d+|={20,}\r?\nBun v\d+\.\d+/i;
 const AUTH_OR_BILLING_RE = /\b401\b|\b402\b|\b403\b|invalid_grant|please sign in|not logged in|run \/login|unauthori[sz]ed|forbidden|invalid.?api.?key|insufficient.?balance|payment.?required|subscription|upgrade|ineligible|credit balance/i;
-const QUOTA_OR_LIMIT_RE = /\b429\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|hit your limit|usage limit|limit reached|โควตา/i;
-const RETRYABLE_ERR_RE = /\b429\b|\b402\b|\b403\b|\b401\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|overloaded|capacity|insufficient.?balance|payment.?required|credit|please sign in|not logged in|run \/login|unauthori[sz]ed|forbidden|invalid.?api.?key|invalid_grant|subscription|upgrade|hit your limit|usage limit|limit reached|expired|model.?not.?found|not.?available|ineligible|โควตา/i;
+const QUOTA_OR_LIMIT_RE = /\b429\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|hit your limit|usage limit|limit reached|session limit|5-?hour\s+limit|out of (?:extra )?usage|resets?\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)|โควตา/i;
+const RETRYABLE_ERR_RE = /\b429\b|\b402\b|\b403\b|\b401\b|quota|resource[_ ]?exhausted|exhausted|rate.?limit|too many requests|overloaded|capacity|insufficient.?balance|payment.?required|credit|please sign in|not logged in|run \/login|unauthori[sz]ed|forbidden|invalid.?api.?key|invalid_grant|subscription|upgrade|hit your limit|usage limit|limit reached|session limit|5-?hour\s+limit|out of (?:extra )?usage|expired|model.?not.?found|not.?available|ineligible|โควตา/i;
 
 const AUTH_COOLDOWN_MS = 15 * 60 * 1000;
 const QUOTA_COOLDOWN_MS = 3 * 60 * 1000;
@@ -1079,6 +1079,63 @@ function isRetryableFailure(errorText, outputText, stderrText = '') {
     return RETRYABLE_ERR_RE.test(err) || RETRYABLE_ERR_RE.test(out) || RETRYABLE_ERR_RE.test(stderr) || (!out && !!(err || stderr));
 }
 
+function isQuotaOrLimitError(errorText, outputText = '', stderrText = '') {
+    const err = String(errorText || '');
+    const stderr = String(stderrText || '');
+    const outTail = String(outputText || '').slice(-1500);
+    return QUOTA_OR_LIMIT_RE.test(err) || QUOTA_OR_LIMIT_RE.test(stderr) || QUOTA_OR_LIMIT_RE.test(outTail);
+}
+
+/**
+ * Pick ranked healthy alternative models for manual/auto handoff when a model stops mid-task.
+ */
+async function pickAlternativeCandidates({
+    prompt = '',
+    hasImages = false,
+    excludeEngine = null,
+    excludeModel = null,
+    excludeAccount = null,
+    sessionId = null,
+    history = []
+} = {}) {
+    let cls;
+    try {
+        cls = await classifyTask(String(prompt || ''), { history, sessionId, hasImages });
+    } catch (_) {
+        cls = { type: CODE_HINT_RE.test(String(prompt || '')) ? 'code' : 'chat', complexity: 60, level: 2, tier: 'high' };
+    }
+    const candidates = await buildCandidates(cls, { hasImages });
+    const exEng = excludeEngine || (excludeModel ? engineOf(excludeModel) : null);
+    const exGroup = (exEng === 'agy' && excludeModel && excludeAccount)
+        ? `agy@${excludeAccount}:${agyPoolId(excludeModel)}`
+        : null;
+
+    const filtered = candidates.filter((c) => {
+        if (exEng === 'claude-code' && c.engine === 'claude-code') return false;
+        if (exEng === 'deepseek' && c.engine === 'deepseek') return false;
+        if (exGroup && c.engine === 'agy' && `agy@${c.account}:${agyPoolId(c.model)}` === exGroup) return false;
+        if (excludeModel && c.model === excludeModel && (!excludeAccount || c.account === excludeAccount)) return false;
+        return true;
+    });
+
+    return {
+        ok: filtered.length > 0,
+        classification: cls,
+        candidates: filtered.map((c) => ({
+            model: c.model,
+            engine: c.engine,
+            account: c.account,
+            accountLabel: c.accountLabel,
+            label: c.label,
+            remainingPct: c.remainingPct ?? null,
+            budget: c.budget || null,
+            paid: Boolean(c.paid),
+            balance: c.balance ?? null,
+            budgetText: formatBudget(c)
+        }))
+    };
+}
+
 function formatTeamBanner(decision, { architect, workersLabel, reviewer } = {}) {
     const cls = (decision && decision.classification) || {};
     const tp = (decision && decision.teamPlan) || {};
@@ -1216,7 +1273,10 @@ module.exports = {
     formatTeamBanner,
     directiveFor,
     TIER_TH,
+    QUOTA_OR_LIMIT_RE,
     isRetryableFailure,
+    isQuotaOrLimitError,
+    pickAlternativeCandidates,
     isBinaryCrash,
     summarizeCrashError,
     healBinaryCache,

@@ -2246,6 +2246,83 @@ body::before {
 .btn-q-act:hover { border-color: var(--cyan); color: #fff; }
 .btn-q-act--danger:hover { border-color: var(--critical); color: var(--critical); }
 
+/* ── Quota Recovery & Model Handoff Tray ───────────────────────────────── */
+.recovery-tray {
+  margin: 0 18px 6px 18px;
+  background: rgba(18, 12, 4, 0.95);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.14);
+  flex-shrink: 0;
+}
+.recovery-tray.is-armed {
+  background: rgba(4, 18, 24, 0.95);
+  border-color: rgba(0, 229, 255, 0.5);
+  box-shadow: 0 4px 20px rgba(0, 229, 255, 0.14);
+}
+.recovery-tray__header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  padding: 8px 12px;
+  background: rgba(251, 191, 36, 0.1);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.22);
+}
+.recovery-tray.is-armed .recovery-tray__header {
+  background: rgba(0, 229, 255, 0.1);
+  border-bottom-color: rgba(0, 229, 255, 0.22);
+}
+.recovery-tray__title {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: #fcd34d;
+}
+.recovery-tray.is-armed .recovery-tray__title { color: var(--cyan); }
+.recovery-badge {
+  background: rgba(245, 158, 11, 0.22); border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fde68a; font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 800;
+}
+.recovery-tray.is-armed .recovery-badge {
+  background: rgba(0, 229, 255, 0.18); border-color: rgba(0, 229, 255, 0.55); color: #67e8f9;
+}
+.recovery-tray__body {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 9px 12px;
+}
+.recovery-tray__info {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1;
+}
+.recovery-countdown {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-1); font-weight: 600;
+}
+.recovery-sub {
+  font-size: 11px; color: var(--ink-muted);
+}
+.recovery-tray__actions {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.recovery-select {
+  font-family: var(--mono); font-size: 11px; padding: 6px 8px; border-radius: 4px;
+  background: rgba(2, 12, 18, 0.92); border: 1px solid var(--border); color: var(--ink-1);
+  max-width: 230px; cursor: pointer;
+}
+.btn-recovery-handoff {
+  font-family: var(--mono); font-size: 11.5px; font-weight: 700; padding: 6px 12px;
+  border-radius: 4px; border: 1px solid rgba(52, 211, 153, 0.65);
+  background: rgba(16, 185, 129, 0.2); color: #6ee7b7; cursor: pointer; transition: all 0.15s ease;
+}
+.btn-recovery-handoff:hover { background: rgba(16, 185, 129, 0.34); color: #fff; }
+.btn-recovery-handoff:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-recovery-toggle {
+  font-family: var(--mono); font-size: 11px; padding: 6px 10px; border-radius: 4px;
+  background: var(--panel); border: 1px solid var(--border); color: var(--ink-1); cursor: pointer;
+}
+.btn-recovery-toggle:hover { border-color: var(--cyan); color: #fff; }
+@media (max-width: 640px) {
+  .recovery-tray { margin: 0 10px 6px 10px; }
+  .recovery-select { max-width: 100%; width: 100%; }
+  .recovery-tray__actions { width: 100%; }
+  .btn-recovery-handoff { flex: 1; }
+}
+
 /* ── Tablet & Mobile Responsive ──────────────────────────────────────────── */
 @media (max-width: 960px) {
   .core-workspace {
@@ -2840,6 +2917,30 @@ body::before {
       </div>
 
       <button type="button" id="btn-scroll-bottom" class="btn-scroll-bottom" title="เลื่อนลงล่างสุด (End)">⬇ ล่างสุด</button>
+
+      <!-- Quota Recovery & Model Handoff Tray -->
+      <div class="recovery-tray" id="recovery-tray" style="display:none;">
+        <div class="recovery-tray__header">
+          <div class="recovery-tray__title">
+            <span class="recovery-badge" id="recovery-badge">⏳ RECOVERY</span>
+            <span id="recovery-title-text">งานหยุดชั่วคราว</span>
+          </div>
+          <button type="button" id="btn-recovery-dismiss" class="btn-queue-tool" title="ซ่อนแถบนี้">✕ ปิด</button>
+        </div>
+        <div class="recovery-tray__body">
+          <div class="recovery-tray__info">
+            <div class="recovery-countdown" id="recovery-countdown-text">กำลังเตรียมข้อมูล...</div>
+            <div class="recovery-sub" id="recovery-sub-text"></div>
+          </div>
+          <div class="recovery-tray__actions">
+            <select id="recovery-model-select" class="recovery-select" autocomplete="off" title="เลือกโมเดลที่จะทำต่อทันที">
+              <option value="best">🧠 สมองกลางเลือกตัวที่ดีที่สุดให้</option>
+            </select>
+            <button type="button" id="btn-recovery-handoff" class="btn-recovery-handoff" title="ส่งบริบททั้งหมดให้โมเดลอื่นทำต่อทันทีโดยไม่ต้องรอ">🔄 ทำต่อด้วยโมเดลอื่น</button>
+            <button type="button" id="btn-recovery-toggle" class="btn-recovery-toggle" style="display:none;">⏸️ ยกเลิก Auto-Resume</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Persistent Autonomous Task Queue Tray -->
       <div class="queue-tray" id="queue-tray" style="display:none;">
@@ -6001,6 +6102,7 @@ body::before {
         if (data.job && data.job.runningSessionIds) {
           updateRunningSessionsBadge(data.job.runningSessionIds);
         }
+        renderRecoveryTray(data.job && data.job.recovery ? data.job.recovery : null);
         fetchQueue();
         if (!Array.isArray(cachedSessions) || cachedSessions.length === 0) {
           fetch('/api/gemini/sessions').then(r => r.json()).then(d => {
@@ -6053,6 +6155,7 @@ body::before {
         updateRunningSessionsBadge(data.job.runningSessionIds);
       }
       renderQueue(data.job && Array.isArray(data.job.queue) ? data.job.queue : []);
+      renderRecoveryTray(data.job && data.job.recovery ? data.job.recovery : null);
       fetchQueue();
       if (data.job && data.job.status === 'running') {
         currentTurnJobId = data.job.id;
@@ -7437,6 +7540,7 @@ body::before {
           currentTurnResponseBody = null;
           finishRun();
           persistHistory();
+          renderRecoveryTray(job.recovery || null);
         }
       } catch (err) {
         console.warn('Poll job error:', err);
@@ -7500,8 +7604,11 @@ body::before {
         }
 
         startBackgroundJobPolling();
-      } else if (!isRunning && msgList.children.length === 0) {
-        loadHistory();
+      } else if (!isRunning) {
+        renderRecoveryTray(job && job.recovery ? job.recovery : null);
+        if (msgList.children.length === 0) {
+          loadHistory();
+        }
       }
     } catch (_) {}
   }
@@ -7633,6 +7740,287 @@ body::before {
     });
   }
 
+  // ── Quota Recovery & Model Handoff Tray ───────────────────────────────────
+  const recoveryTrayEl = document.getElementById('recovery-tray');
+  const recoveryBadgeEl = document.getElementById('recovery-badge');
+  const recoveryTitleEl = document.getElementById('recovery-title-text');
+  const recoveryCountdownEl = document.getElementById('recovery-countdown-text');
+  const recoverySubEl = document.getElementById('recovery-sub-text');
+  const recoverySelectEl = document.getElementById('recovery-model-select');
+  const btnRecoveryHandoff = document.getElementById('btn-recovery-handoff');
+  const btnRecoveryToggle = document.getElementById('btn-recovery-toggle');
+  const btnRecoveryDismiss = document.getElementById('btn-recovery-dismiss');
+
+  let currentRecoveryState = null;
+  let recoveryCountdownTimer = null;
+  let recoveryWatchTimer = null;
+  let lastHandoffOptionsKey = '';
+
+  function formatCountdownTh(ms) {
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h} ชม. ${m} นาที ${s} วิ`;
+    if (m > 0) return `${m} นาที ${s} วิ`;
+    return `${s} วิ`;
+  }
+
+  function updateRecoveryCountdownUI() {
+    if (!currentRecoveryState || !recoveryCountdownEl) return;
+    const r = currentRecoveryState;
+    if (r.armed) {
+      if (r.resumeAt) {
+        const rem = r.resumeAt - Date.now();
+        const resetTimeStr = new Date(r.resumeAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        if (rem > 0) {
+          recoveryCountdownEl.textContent = `⏳ จะทำงานต่ออัตโนมัติเวลา ${resetTimeStr} น. (อีก ${formatCountdownTh(rem)})`;
+        } else {
+          recoveryCountdownEl.textContent = '🔄 ถึงเวลารีเซ็ตแล้ว — กำลังตรวจสอบโควตาเพื่อทำงานต่ออัตโนมัติ...';
+        }
+      } else {
+        recoveryCountdownEl.textContent = '🔄 กำลังตรวจเช็กโควตาอัตโนมัติทุก 3 นาที — เมื่อปลดลิมิตจะทำงานต่อทันที';
+      }
+    } else if (r.isQuotaLimit) {
+      recoveryCountdownEl.textContent = '⏸️ ยกเลิก Auto-Resume แล้ว (กดตั้งเวลาใหม่ หรือเลือกทำต่อด้วยโมเดลอื่นได้ทันที)';
+    } else {
+      recoveryCountdownEl.textContent = `⚠️ หยุดกลางทางหลังทำไปแล้ว ${r.stepsCount || 0} ขั้น — เลือกโมเดลอื่นเพื่อสานต่อจากจุดเดิมได้ทันที`;
+    }
+  }
+
+  async function refreshHandoffOptions(rec) {
+    if (!recoverySelectEl || !rec) return;
+    const key = `${rec.sessionId}|${rec.jobId}|${rec.model}`;
+    if (key === lastHandoffOptionsKey) return;
+    lastHandoffOptionsKey = key;
+    try {
+      const res = await fetch('/api/gemini/handoff-options?sessionId=' + encodeURIComponent(rec.sessionId || currentSessionId || ''));
+      const d = await res.json();
+      if (!d || !d.ok) return;
+      const opts = [];
+      const cands = Array.isArray(d.candidates) ? d.candidates : [];
+      if (cands.length > 0) {
+        const top = cands[0];
+        opts.push(`<option value="best" data-account="">🧠 แนะนำ: ${escapeHtml(top.label)} (${escapeHtml(top.accountLabel)})</option>`);
+        cands.forEach((c) => {
+          const tag = c.budgetText ? ` · ${c.budgetText}` : '';
+          opts.push(`<option value="${escapeHtml(c.model)}" data-account="${escapeHtml(c.account || '')}">${escapeHtml(c.label)} · ${escapeHtml(c.accountLabel)}${escapeHtml(tag)}</option>`);
+        });
+      } else {
+        opts.push('<option value="best" data-account="">🧠 สมองกลางเลือกตัวที่ดีที่สุดให้</option>');
+      }
+      recoverySelectEl.innerHTML = opts.join('');
+    } catch (_) {}
+  }
+
+  function renderRecoveryTray(recovery) {
+    if (recoveryCountdownTimer) { clearInterval(recoveryCountdownTimer); recoveryCountdownTimer = null; }
+    if (recoveryWatchTimer) { clearInterval(recoveryWatchTimer); recoveryWatchTimer = null; }
+    currentRecoveryState = recovery || null;
+
+    if (!recoveryTrayEl) return;
+    if (!recovery || isRunning) {
+      recoveryTrayEl.style.display = 'none';
+      return;
+    }
+
+    recoveryTrayEl.style.display = 'block';
+    recoveryTrayEl.classList.toggle('is-armed', Boolean(recovery.armed));
+    if (recoveryBadgeEl) {
+      recoveryBadgeEl.textContent = recovery.armed
+        ? '⏱️ AUTO-RESUME ARMED'
+        : (recovery.isQuotaLimit ? '⏳ QUOTA LIMIT' : '⚠️ STOPPED MID-TASK');
+    }
+    if (recoveryTitleEl) {
+      const stepTxt = recovery.stepsCount > 0 ? ` · ทำไปแล้ว ${recovery.stepsCount} ขั้น` : '';
+      recoveryTitleEl.textContent = recovery.isQuotaLimit
+        ? `ชนลิมิตโควตา (${recovery.modelLabel || recovery.model})${stepTxt}`
+        : `งานหยุดกลางคัน (${recovery.modelLabel || recovery.model})${stepTxt}`;
+    }
+    if (recoverySubEl) {
+      const parts = [];
+      if (recovery.lastCheckMsg) parts.push(recovery.lastCheckMsg);
+      else if (recovery.errorText) parts.push(String(recovery.errorText).slice(0, 120));
+      if (recovery.armed) parts.push('หากรอได้ปล่อยทิ้งไว้ได้เลย เดี๋ยวระบบต่อให้เอง · หากรอไม่ไหวกด "ทำต่อด้วยโมเดลอื่น" ได้ทันที');
+      recoverySubEl.textContent = parts.join(' — ');
+    }
+    if (btnRecoveryToggle) {
+      if (recovery.isQuotaLimit) {
+        btnRecoveryToggle.style.display = 'inline-flex';
+        btnRecoveryToggle.textContent = recovery.armed ? '⏸️ ยกเลิก Auto-Resume' : '⏱️ ตั้ง Auto-Resume อัตโนมัติ';
+      } else {
+        btnRecoveryToggle.style.display = 'none';
+      }
+    }
+
+    updateRecoveryCountdownUI();
+    refreshHandoffOptions(recovery);
+
+    if (recovery.armed) {
+      recoveryCountdownTimer = setInterval(updateRecoveryCountdownUI, 1000);
+      recoveryWatchTimer = setInterval(async () => {
+        if (isRunning || !currentRecoveryState || !currentRecoveryState.armed) return;
+        try {
+          const res = await fetch('/api/gemini/job?sessionId=' + encodeURIComponent(currentSessionId || ''));
+          if (!res.ok) return;
+          const job = await res.json();
+          if (job.status === 'running') {
+            renderRecoveryTray(null);
+            checkActiveJobOnResume();
+          } else if (job.recovery) {
+            const prevKey = `${currentRecoveryState.armed}|${currentRecoveryState.resumeAt}|${currentRecoveryState.lastCheckMsg}`;
+            const nextKey = `${job.recovery.armed}|${job.recovery.resumeAt}|${job.recovery.lastCheckMsg}`;
+            if (prevKey !== nextKey) renderRecoveryTray(job.recovery);
+          } else {
+            renderRecoveryTray(null);
+          }
+        } catch (_) {}
+      }, 5000);
+    }
+  }
+
+  async function consumeSseResponse(res, responseBody) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullOutput = '';
+    let doneRecovery = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (line.startsWith(':')) continue;
+        if (line.startsWith('data: ')) {
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.type === 'thought' && payload.text) {
+              updateThinkingBar(payload.text);
+            } else if (payload.type === 'stdout' || payload.type === 'stderr') {
+              fullOutput += payload.text;
+              setBodyContent(responseBody, fullOutput, false);
+              scrollToBottom();
+            } else if (payload.exitCode !== undefined) {
+              if (payload.error) fullOutput += '\n\n[Process exited: ' + payload.error + ']';
+              setBodyContent(responseBody, fullOutput, false);
+              if (payload.recovery) doneRecovery = payload.recovery;
+            } else if (payload.error && !payload.type) {
+              fullOutput += '\n\n❌ Error: ' + payload.error;
+              setBodyContent(responseBody, fullOutput, false);
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    markAssistantMessageDone(responseBody, Date.now());
+    finalizeThinkingBar();
+    persistHistory();
+
+    try {
+      const qRes = await fetch('/api/gemini/queue?sessionId=' + encodeURIComponent(currentSessionId || '')).then(r => r.json()).catch(() => ({ queue: [] }));
+      if (qRes.queue && qRes.queue.length > 0) {
+        renderQueue(qRes.queue);
+        isSseActive = false;
+        startBackgroundJobPolling();
+        return;
+      }
+    } catch (_) {}
+
+    finishRun();
+    if (doneRecovery) {
+      renderRecoveryTray(doneRecovery);
+    } else {
+      try {
+        const jRes = await fetch('/api/gemini/job?sessionId=' + encodeURIComponent(currentSessionId || '')).then(r => r.json()).catch(() => null);
+        if (jRes && jRes.recovery) renderRecoveryTray(jRes.recovery);
+      } catch (_) {}
+    }
+  }
+
+  async function startHandoffStream() {
+    if (isRunning || !currentRecoveryState) return;
+    const selOpt = recoverySelectEl && recoverySelectEl.selectedOptions && recoverySelectEl.selectedOptions[0];
+    const targetModel = (selOpt && selOpt.value) || 'best';
+    const targetAccount = (selOpt && selOpt.dataset && selOpt.dataset.account) || '';
+    const prevLabel = currentRecoveryState.modelLabel || currentRecoveryState.model || 'โมเดลก่อนหน้า';
+    const nextLabel = selOpt ? selOpt.textContent.replace(/^🧠 แนะนำ:\s*/, '').split(' · ')[0] : 'โมเดลอื่น';
+    const displayPrompt = `🔄 ทำต่อด้วย ${nextLabel} (ส่งไม้ต่อจาก ${prevLabel})`;
+
+    renderRecoveryTray(null);
+    const directJobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    autoFollowBottom = true;
+    const responseBody = createTurnUI(directJobId, displayPrompt, []);
+    isSseActive = true;
+    startBackgroundJobPolling();
+
+    try {
+      if (activeStreamAbortController) {
+        try { activeStreamAbortController.abort(); } catch (_) {}
+      }
+      activeStreamAbortController = new AbortController();
+      const res = await fetch('/api/gemini/handoff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: activeStreamAbortController.signal,
+        body: JSON.stringify({
+          sessionId: currentSessionId,
+          jobId: directJobId,
+          targetModel,
+          targetAccount: targetAccount || undefined
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setBodyContent(responseBody, '❌ Error: ' + (err.error || 'Request failed with status ' + res.status), false);
+        finishRun();
+        return;
+      }
+      await consumeSseResponse(res, responseBody);
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      console.warn('Handoff SSE interrupted:', e);
+      isSseActive = false;
+      startBackgroundJobPolling();
+    }
+  }
+
+  if (btnRecoveryHandoff) {
+    btnRecoveryHandoff.addEventListener('click', startHandoffStream);
+  }
+  if (btnRecoveryToggle) {
+    btnRecoveryToggle.addEventListener('click', async () => {
+      if (!currentRecoveryState) return;
+      const endpoint = currentRecoveryState.armed ? '/api/gemini/auto-resume/cancel' : '/api/gemini/auto-resume/arm';
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: currentSessionId })
+        });
+        const d = await res.json();
+        if (d && d.ok) renderRecoveryTray(d.recovery || null);
+      } catch (_) {}
+    });
+  }
+  if (btnRecoveryDismiss) {
+    btnRecoveryDismiss.addEventListener('click', async () => {
+      renderRecoveryTray(null);
+      try {
+        await fetch('/api/gemini/recovery/dismiss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: currentSessionId })
+        });
+      } catch (_) {}
+    });
+  }
+
   async function sendPrompt(text) {
     if (typeof stopVoiceListening === 'function') {
       stopVoiceListening(true);
@@ -7681,6 +8069,7 @@ body::before {
       return;
     }
 
+    renderRecoveryTray(null);
     promptInput.value = '';
     if (typeof autoResizePromptInput === 'function') autoResizePromptInput();
     if (currentSessionMeta && (!currentSessionMeta.title || currentSessionMeta.title === 'แชทใหม่' || currentSessionMeta.title === 'New Chat')) {
@@ -7694,8 +8083,6 @@ body::before {
 
     // Start background thoughts polling so live thinking tray updates immediately even during SSE
     startBackgroundJobPolling();
-
-    let fullOutput = '';
 
     try {
       const cwd = selCwd.value;
@@ -7727,57 +8114,7 @@ body::before {
         return;
       }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          if (line.startsWith(':')) {
-            // Heartbeat / keepalive comment from server - keep connection open
-            continue;
-          }
-          if (line.startsWith('data: ')) {
-            try {
-              const payload = JSON.parse(line.slice(6));
-              if (payload.type === 'thought' && payload.text) {
-                updateThinkingBar(payload.text);
-              } else if (payload.type === 'stdout' || payload.type === 'stderr') {
-                fullOutput += payload.text;
-                setBodyContent(responseBody, fullOutput, false);
-                scrollToBottom();
-              } else if (payload.exitCode !== undefined) {
-                if (payload.error) fullOutput += '\n\n[Process exited: ' + payload.error + ']';
-                setBodyContent(responseBody, fullOutput, false);
-              }
-            } catch (_) {}
-          }
-        }
-      }
-
-      markAssistantMessageDone(responseBody, Date.now());
-      finalizeThinkingBar();
-      persistHistory();
-
-      // Check if queue has more items waiting on server:
-      try {
-        const qRes = await fetch('/api/gemini/queue?sessionId=' + encodeURIComponent(currentSessionId || '')).then(r => r.json()).catch(() => ({ queue: [] }));
-        if (qRes.queue && qRes.queue.length > 0) {
-          renderQueue(qRes.queue);
-          isSseActive = false;
-          startBackgroundJobPolling();
-          return;
-        }
-      } catch (_) {}
-
-      finishRun();
+      await consumeSseResponse(res, responseBody);
     } catch (e) {
       if (e && e.name === 'AbortError') return;
       console.warn('SSE stream interrupted (screen off, background, or network switch):', e);

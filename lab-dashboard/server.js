@@ -2441,6 +2441,12 @@ const server = http.createServer(async (req, res) => {
             '.json': 'application/json; charset=utf-8',
             '.csv': 'text/csv; charset=utf-8',
             '.zip': 'application/zip',
+            '.glb': 'model/gltf-binary',
+            '.gltf': 'model/gltf+json',
+            '.stl': 'model/stl',
+            '.obj': 'text/plain; charset=utf-8',
+            '.fbx': 'application/octet-stream',
+            '.blend': 'application/octet-stream',
         };
         async function resolveAllowedLocalFile(rawPath, allowedExts, maxBytes, label = 'File') {
             const clean = String(rawPath || '').replace(/^file:\/\//i, '').trim();
@@ -2548,6 +2554,82 @@ const server = http.createServer(async (req, res) => {
             const sid = url.searchParams.get('sessionId') || null;
             return sendJson(res, 200, geminiManager.getActiveJob(sid));
         }
+        if (req.method === 'GET' && p === '/api/gemini/handoff-options') {
+            const sid = url.searchParams.get('sessionId') || null;
+            return sendJson(res, 200, await geminiManager.getHandoffOptions(sid));
+        }
+        if (req.method === 'POST' && p === '/api/gemini/auto-resume/cancel') {
+            const body = await readJsonBody(req).catch(() => ({}));
+            return sendJson(res, 200, geminiManager.cancelAutoResume((body && body.sessionId) || null));
+        }
+        if (req.method === 'POST' && p === '/api/gemini/auto-resume/arm') {
+            const body = await readJsonBody(req).catch(() => ({}));
+            try {
+                return sendJson(res, 200, await geminiManager.armAutoResume((body && body.sessionId) || null));
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/gemini/recovery/dismiss') {
+            const body = await readJsonBody(req).catch(() => ({}));
+            return sendJson(res, 200, geminiManager.dismissRecovery((body && body.sessionId) || null));
+        }
+
+        async function runGeminiSse(res, sessionId, startFn) {
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'Cache-Control': 'no-cache, no-transform',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+            });
+            const keepaliveTimer = setInterval(() => {
+                if (res.writableEnded || res.destroyed) {
+                    clearInterval(keepaliveTimer);
+                    return;
+                }
+                try { res.write(': keepalive\n\n'); } catch (_) { clearInterval(keepaliveTimer); }
+            }, 8000);
+            const sendEvent = (type, data) => {
+                if (res.writableEnded) return;
+                res.write(`data: ${JSON.stringify(data)}\n\n`);
+            };
+            const cleanup = () => { clearInterval(keepaliveTimer); };
+            res.on('close', cleanup);
+            res.on('finish', cleanup);
+            try {
+                await startFn(
+                    (type, text) => sendEvent('chunk', { type, text }),
+                    (exitCode, error) => {
+                        cleanup();
+                        const recovery = geminiManager.getRecoveryState(sessionId || null);
+                        sendEvent('done', { exitCode, error, recovery });
+                        res.end();
+                    }
+                );
+            } catch (err) {
+                cleanup();
+                sendEvent('error', { error: err.message });
+                res.end();
+            }
+        }
+
+        if (req.method === 'POST' && p === '/api/gemini/handoff') {
+            const body = await readJsonBody(req).catch(() => ({}));
+            await runGeminiSse(res, body.sessionId || null, (onChunk, onDone) =>
+                geminiManager.handoffToAnotherModel(
+                    {
+                        sessionId: body.sessionId || null,
+                        jobId: body.jobId,
+                        targetModel: body.targetModel || 'best',
+                        targetAccount: /^g\d{1,2}$/.test(String(body.targetAccount || '')) ? String(body.targetAccount) : null,
+                        browserVision: body.browserVision === true
+                    },
+                    onChunk,
+                    onDone
+                )
+            );
+            return;
+        }
         if (req.method === 'POST' && p === '/api/gemini/chat') {
             const body = await readJsonBody(req);
             const images = Array.isArray(body.images) ? body.images : [];
@@ -2556,38 +2638,7 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, 400, { error: 'Prompt cannot be empty' });
             }
 
-            res.writeHead(200, {
-                'Content-Type': 'text/event-stream; charset=utf-8',
-                'Cache-Control': 'no-cache, no-transform',
-                'Connection': 'keep-alive',
-                'X-Accel-Buffering': 'no',
-            });
-
-            // Prevent proxy/Caddy/browser idle timeouts with periodic keepalive comments
-            const keepaliveTimer = setInterval(() => {
-                if (res.writableEnded || res.destroyed) {
-                    clearInterval(keepaliveTimer);
-                    return;
-                }
-                try {
-                    res.write(': keepalive\n\n');
-                } catch (_) {
-                    clearInterval(keepaliveTimer);
-                }
-            }, 8000);
-
-            const sendEvent = (type, data) => {
-                if (res.writableEnded) return;
-                res.write(`data: ${JSON.stringify(data)}\n\n`);
-            };
-
-            const cleanup = () => {
-                clearInterval(keepaliveTimer);
-            };
-            res.on('close', cleanup);
-            res.on('finish', cleanup);
-
-            try {
+            await runGeminiSse(res, body.sessionId || null, (onChunk, onDone) =>
                 geminiManager.executePrompt(
                     {
                         sessionId: body.sessionId || null,
@@ -2601,20 +2652,10 @@ const server = http.createServer(async (req, res) => {
                         resetSession: Boolean(body.resetSession),
                         browserVision: body.browserVision === true
                     },
-                    (type, text) => {
-                        sendEvent('chunk', { type, text });
-                    },
-                    (exitCode, error) => {
-                        cleanup();
-                        sendEvent('done', { exitCode, error });
-                        res.end();
-                    }
-                );
-            } catch (err) {
-                cleanup();
-                sendEvent('error', { error: err.message });
-                res.end();
-            }
+                    onChunk,
+                    onDone
+                )
+            );
             return;
         }
         if (p === '/gemini' || p === '/gemini/') {

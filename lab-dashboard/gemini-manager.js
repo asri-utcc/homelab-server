@@ -49,12 +49,15 @@ const SESSIONS_INDEX_FILE = path.join(GEMINI_DIR, 'webui-sessions.json');
 const SESSIONS_DIR = path.join(GEMINI_DIR, 'sessions');
 const BRAIN_DIR = path.join(GEMINI_DIR, 'antigravity-cli/brain');
 const PREFS_FILE = path.join(GEMINI_DIR, 'webui-prefs.json');
+const AUTO_RESUME_FILE = path.join(GEMINI_DIR, 'auto-resume.json');
 
 let activeChild = null;
 let shouldResetSession = false;
 const sessionActiveByCwd = {};
 const activeRuns = new Map(); // sessionId -> { child, job }
 const lastJobs = new Map();   // sessionId -> last job object
+const autoResumeMap = new Map(); // sessionId -> recovery/auto-resume state
+const autoResumeTimers = new Map(); // sessionId -> Timeout handle
 
 let taskQueue = [];
 // คิวงานแยกตามห้องแชท: ทุกรายการมี sessionId, แต่ละห้องรันคิวของตัวเองอิสระ
@@ -584,13 +587,15 @@ function getActiveJob(sessionId = null) {
         const run = activeRuns.get(sessionId);
         const job = run ? run.job : (lastJobs.get(sessionId) || { id: null, status: 'idle', sessionId });
         const sess = getSessionMetaSync(sessionId);
+        const rec = autoResumeMap.get(sessionId) || null;
         return {
             ...job,
             sessionId,
             activeRunning: !!run,
             runningSessionIds,
             queue: getQueue(sessionId),
-            liveThought: resolveJobLiveThought(job, sess)
+            liveThought: resolveJobLiveThought(job, sess),
+            recovery: rec ? sanitizeRecoveryForClient(rec) : (job.recovery || null)
         };
     }
     const latestSid = runningSessionIds[0] || null;
@@ -937,6 +942,7 @@ function deleteSession(sessionId) {
         abortActive(sessionId);
     }
     lastJobs.delete(sessionId);
+    clearRecoveryForSession(sessionId);
     if (taskQueue.some((t) => t.sessionId === sessionId)) {
         taskQueue = taskQueue.filter((t) => t.sessionId !== sessionId);
         saveQueue();
@@ -1025,6 +1031,8 @@ function init() {
             processNextInQueue();
         }, 3000);
     }
+
+    loadAutoResumeStoreSync();
 }
 init();
 
@@ -1249,7 +1257,7 @@ function executeAuto(params, onChunk, onDone) {
     lastJobs.set(sid, placeholder);
     try { onChunk('thought', placeholder.liveThought); } catch (_) {}
 
-    const finish = (code, err, job) => {
+    const finish = async (code, err, job) => {
         if (finished) return;
         finished = true;
         if (job === placeholder) {
@@ -1263,6 +1271,16 @@ function executeAuto(params, onChunk, onDone) {
         if (meta) {
             meta.model = aiRouter.AUTO_MODEL_ID;
             saveSessionsIndexSync();
+        }
+        if (code !== 0 && code !== 130 && !aborted && !(job && job.status === 'aborted')) {
+            try {
+                await finalizeFailedJobRecovery(job || placeholder, {
+                    isAuto: true,
+                    stderrTail: (job && job._stderrTail) || ''
+                });
+            } catch (e) {
+                console.error('[GeminiManager] finalizeFailedJobRecovery(auto) error:', e.message);
+            }
         }
         persistJobToHistory({ ...job }).catch((e) => {
             console.error('[GeminiManager] Failed to persist auto job:', e.message);
@@ -1538,11 +1556,15 @@ function buildBrowserVisionPrompt(rawPrompt, sessionId, browserVision) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '', browserVision = false }, onChunk, onDone) {
-    if (model === aiRouter.AUTO_MODEL_ID) {
-        return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession, browserVision }, onChunk, onDone);
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '', browserVision = false, fromRecovery = false }, onChunk, onDone) {
+    const sid0 = resolveSessionId(sessionId);
+    if (!fromRecovery && !deferPersist) {
+        clearRecoveryForSession(sid0);
     }
-    const sid = resolveSessionId(sessionId);
+    if (model === aiRouter.AUTO_MODEL_ID) {
+        return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession, browserVision, fromRecovery }, onChunk, onDone);
+    }
+    const sid = sid0;
     if (activeRuns.has(sid)) {
         throw new Error('แชทนี้กำลังประมวลผลอยู่ กรุณารอสักครู่หรือกด "➕ แชทใหม่" เพื่อคุยอีกห้องพร้อมกัน');
     }
@@ -1599,6 +1621,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         cwd: safeCwd,
         model,
         agyAccount: agyAccount || null,
+        usedModel: model,
+        usedAccount: agyAccount || (typeof model === 'string' && model.startsWith('claude-code-') ? 'claude-pro' : null),
+        steps: [],
         deferPersist: Boolean(deferPersist)
     };
     activeJob = job;
@@ -1931,19 +1956,24 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             if (!claudeCrashSuppressed) onChunk('stderr', str);
         });
 
-        child.on('error', (err) => {
+        child.on('error', async (err) => {
             clearInterval(claudeHeartbeatTimer);
             activeRuns.delete(sid);
             job.liveThought = null;
+            job.steps = [...claudeSteps];
+            job._stderrTail = claudeStderrTail;
             job.status = 'error';
             job.error = err.message;
             job.finishedAt = Date.now();
             lastJobs.set(sid, job);
+            if (!job.deferPersist) {
+                try { await finalizeFailedJobRecovery(job, { stderrTail: claudeStderrTail }); } catch (_) {}
+            }
             onDone(1, err.message);
             setTimeout(() => { processNextInQueue(); }, 600);
         });
 
-        child.on('close', (code) => {
+        child.on('close', async (code) => {
             clearInterval(claudeHeartbeatTimer);
             if (claudeStdoutBuf.trim()) {
                 processClaudeLine(claudeStdoutBuf);
@@ -1951,6 +1981,8 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
             activeRuns.delete(sid);
             job.liveThought = null;
+            job.steps = [...claudeSteps];
+            job._stderrTail = claudeStderrTail;
             const effectiveCode = (code === 0 && job.error) ? 1 : code;
             job.exitCode = effectiveCode;
             if (job.status !== 'aborted') {
@@ -1966,6 +1998,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             }
             job.finishedAt = Date.now();
             lastJobs.set(sid, job);
+            if (!job.deferPersist && effectiveCode !== 0 && job.status !== 'aborted') {
+                try { await finalizeFailedJobRecovery(job, { stderrTail: claudeStderrTail }); } catch (_) {}
+            }
             if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist Claude job:', err.message);
             });
@@ -2009,9 +2044,12 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             model,
             history: sessionHistory,
             onChunk,
-            onDone: (code, errMsg) => {
+            onDone: async (code, errMsg) => {
                 activeRuns.delete(sid);
                 lastJobs.set(sid, job);
+                if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
+                    try { await finalizeFailedJobRecovery(job, {}); } catch (_) {}
+                }
                 if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                     console.error('[GeminiManager] Failed to persist DeepSeek job:', err.message);
                 });
@@ -2186,6 +2224,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                 lastAgyThoughtSig = sig;
                 lastAgyHeartbeatAt = now;
                 job.liveThought = state;
+                if (Array.isArray(state.steps) && state.steps.length) job.steps = [...state.steps];
                 try { onChunk('thought', state); } catch (_) {}
             }
         }, 300);
@@ -2197,41 +2236,51 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             onChunk('stdout', str);
         });
 
+        let agyStderrTail = '';
         child.stderr.on('data', (d) => {
             const str = d.toString('utf8');
             job._lastSignalAt = Date.now();
+            agyStderrTail = (agyStderrTail + str).slice(-4000);
             onChunk('stderr', str);
         });
 
-        child.on('error', (err) => {
+        child.on('error', async (err) => {
             if (brainPoll) clearInterval(brainPoll);
             clearInterval(thoughtPoll);
             job.liveThought = null;
+            job._stderrTail = agyStderrTail;
             activeRuns.delete(sid);
             job.status = 'error';
             job.error = err.message;
             job.finishedAt = Date.now();
             lastJobs.set(sid, job);
+            if (!job.deferPersist) {
+                try { await finalizeFailedJobRecovery(job, { stderrTail: agyStderrTail }); } catch (_) {}
+            }
             onDone(1, err.message);
             setTimeout(() => { processNextInQueue(); }, 600);
         });
 
-        child.on('close', (code) => {
+        child.on('close', async (code) => {
             if (brainPoll) clearInterval(brainPoll);
             clearInterval(thoughtPoll);
             detectConvId();
             job.liveThought = null;
+            job._stderrTail = agyStderrTail;
             activeRuns.delete(sid);
             job.exitCode = code;
             if (job.status !== 'aborted') {
                 job.status = (code === 0) ? 'completed' : 'error';
                 if (code !== 0 && !job.error) {
-                    job.error = `Exit code ${code}`;
+                    job.error = agyStderrTail.trim() || `Exit code ${code}`;
                 }
             }
             job.finishedAt = Date.now();
             lastJobs.set(sid, job);
 
+            if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
+                try { await finalizeFailedJobRecovery(job, { stderrTail: agyStderrTail }); } catch (_) {}
+            }
             if (!job.deferPersist) persistJobToHistory({ ...job }).catch((err) => {
                 console.error('[GeminiManager] Failed to persist background job:', err.message);
             });
@@ -2451,6 +2500,7 @@ async function clearHistory(sessionId = null) {
         }
         saveSessionMessagesSync(sid, []);
         lastJobs.delete(sid);
+        clearRecoveryForSession(sid);
         return { ok: true, sessionId: sid };
     } catch (e) {
         return { ok: false, error: e.message };
@@ -3351,6 +3401,604 @@ async function getClaudeWebQuota(opts) {
     }
 }
 
+// ── Quota Limit Recovery: Auto-Resume & Model Handoff ────────────────────────
+function engineOfModel(model) {
+    const m = String(model || '');
+    if (m.startsWith('claude-code-')) return 'claude-code';
+    if (deepseekAgent.isDeepSeekModel(m)) return 'deepseek';
+    if (m === aiRouter.AUTO_MODEL_ID) return 'auto';
+    return 'agy';
+}
+
+function saveAutoResumeStoreSync() {
+    try {
+        fs.mkdirSync(GEMINI_DIR, { recursive: true });
+        const arr = [...autoResumeMap.values()].filter((r) => r && r.sessionId);
+        fs.writeFileSync(AUTO_RESUME_FILE, JSON.stringify(arr, null, 2), { mode: 0o600 });
+    } catch (e) {
+        console.error('[GeminiManager] saveAutoResumeStoreSync error:', e.message);
+    }
+}
+
+function loadAutoResumeStoreSync() {
+    if (process.env.GEMINI_NO_QUEUE_AUTORUN === '1') return;
+    try {
+        if (!fs.existsSync(AUTO_RESUME_FILE)) return;
+        const raw = JSON.parse(fs.readFileSync(AUTO_RESUME_FILE, 'utf8'));
+        if (!Array.isArray(raw)) return;
+        const now = Date.now();
+        let restored = 0;
+        for (const rec of raw) {
+            if (!rec || !rec.sessionId) continue;
+            // Prune stale records older than 24 hours
+            if (rec.createdAt && (now - rec.createdAt) > 24 * 3600 * 1000) continue;
+            autoResumeMap.set(rec.sessionId, rec);
+            if (rec.armed) {
+                restored++;
+                scheduleAutoResumeTimer(rec);
+            }
+        }
+        if (restored > 0) {
+            console.log(`[GeminiManager] Restored ${restored} armed auto-resume task(s) from disk`);
+        }
+    } catch (e) {
+        console.error('[GeminiManager] loadAutoResumeStoreSync error:', e.message);
+    }
+}
+
+function clearAutoResumeTimer(sessionId) {
+    const t = autoResumeTimers.get(sessionId);
+    if (t) {
+        clearTimeout(t);
+        autoResumeTimers.delete(sessionId);
+    }
+}
+
+function clearRecoveryForSession(sessionId) {
+    if (!sessionId) return;
+    clearAutoResumeTimer(sessionId);
+    if (autoResumeMap.has(sessionId)) {
+        autoResumeMap.delete(sessionId);
+        saveAutoResumeStoreSync();
+    }
+}
+
+function sanitizeRecoveryForClient(rec) {
+    if (!rec) return null;
+    return {
+        sessionId: rec.sessionId,
+        jobId: rec.jobId,
+        model: rec.model,
+        modelLabel: rec.modelLabel || aiRouter.modelLabel(rec.model),
+        agyAccount: rec.agyAccount || null,
+        engine: rec.engine,
+        isQuotaLimit: Boolean(rec.isQuotaLimit),
+        stepsCount: Array.isArray(rec.steps) ? rec.steps.length : 0,
+        steps: Array.isArray(rec.steps) ? rec.steps.slice(-15) : [],
+        errorText: rec.errorText || '',
+        armed: Boolean(rec.armed),
+        resumeAt: rec.resumeAt || null,
+        resetSource: rec.resetSource || null,
+        retryCount: rec.retryCount || 0,
+        lastCheckMsg: rec.lastCheckMsg || null,
+        createdAt: rec.createdAt || Date.now(),
+        updatedAt: rec.updatedAt || Date.now()
+    };
+}
+
+function getRecoveryState(sessionId) {
+    const sid = resolveSessionId(sessionId);
+    const rec = autoResumeMap.get(sid);
+    return rec ? sanitizeRecoveryForClient(rec) : null;
+}
+
+function parseResetTimeFromText(text) {
+    const raw = String(text || '');
+    if (!raw) return null;
+    const now = Date.now();
+    const bufferMs = 45 * 1000;
+
+    // 1) Explicit ISO timestamp
+    const isoMatch = raw.match(/resets?(?:\s+at)?\s+(\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)/i);
+    if (isoMatch) {
+        const ms = Date.parse(isoMatch[1]);
+        if (!Number.isNaN(ms) && ms > now && (ms - now) <= 8 * 24 * 3600 * 1000) {
+            return { resumeAt: ms + bufferMs, source: 'error_text' };
+        }
+    }
+
+    // 2) Relative duration: "try again in 45 minutes" / "resets in 2 hours 15 minutes"
+    const relMatch = raw.match(/(?:resets?|try again|wait|available)\s+(?:in\s+)?(?:(\d+)\s*(?:hours?|hrs?|h)\s*)?(?:(\d+)\s*(?:minutes?|mins?|m)\s*)?(?:(\d+)\s*(?:seconds?|secs?|s))?/i);
+    if (relMatch && (relMatch[1] || relMatch[2] || relMatch[3])) {
+        const ms = ((Number(relMatch[1] || 0) * 3600) + (Number(relMatch[2] || 0) * 60) + Number(relMatch[3] || 0)) * 1000;
+        if (ms >= 5000 && ms <= 24 * 3600 * 1000) {
+            return { resumeAt: now + ms + bufferMs, source: 'error_text' };
+        }
+    }
+
+    // 3) Clock time: "resets 6am (Asia/Bangkok)" or "resets 14:30" or "resets at 11:15pm"
+    const clkMatch = raw.match(/resets?(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?/i);
+    if (clkMatch) {
+        let hour = Number(clkMatch[1]);
+        const min = Number(clkMatch[2] || 0);
+        const ampm = clkMatch[3] ? clkMatch[3].toLowerCase() : null;
+        const tz = clkMatch[4] ? clkMatch[4].trim() : '';
+        if (ampm === 'pm' && hour < 12) hour += 12;
+        if (ampm === 'am' && hour === 12) hour = 0;
+        if (hour >= 0 && hour <= 23 && min >= 0 && min <= 59) {
+            const d = new Date(now);
+            if (/utc|gmt/i.test(tz)) {
+                d.setUTCHours(hour, min, 0, 0);
+            } else {
+                d.setHours(hour, min, 0, 0);
+            }
+            let targetMs = d.getTime();
+            if (targetMs <= now) targetMs += 24 * 3600 * 1000;
+            if (targetMs > now && (targetMs - now) <= 25 * 3600 * 1000) {
+                return { resumeAt: targetMs + bufferMs, source: 'error_text' };
+            }
+        }
+    }
+
+    return null;
+}
+
+async function resolveQuotaResetTime({ engine, model, agyAccount, errorText, outputText, stderrText }) {
+    const combined = [errorText, stderrText, String(outputText || '').slice(-1500)].filter(Boolean).join('\n');
+    const parsedFromText = parseResetTimeFromText(combined);
+    const now = Date.now();
+    const bufferMs = 45 * 1000;
+
+    try {
+        if (engine === 'claude-code') {
+            const cw = await Promise.race([
+                getClaudeWebQuota({ force: true }),
+                new Promise((resolve) => setTimeout(() => resolve(null), 3500))
+            ]);
+            if (cw && cw.ok) {
+                const fh = cw.fiveHour;
+                const wk = cw.weekly;
+                const pick = (fh && fh.remainingPct <= 5 && fh.resetTime)
+                    ? fh.resetTime
+                    : ((wk && wk.remainingPct <= 5 && wk.resetTime) ? wk.resetTime : (fh && fh.resetTime));
+                if (pick) {
+                    const ms = Date.parse(pick);
+                    if (!Number.isNaN(ms) && ms > now) {
+                        return { resumeAt: ms + bufferMs, source: 'quota_api' };
+                    }
+                }
+            }
+        } else if (engine === 'agy') {
+            const q = await Promise.race([
+                getQuotaSummary({ accountId: agyAccount || 'g1' }),
+                new Promise((resolve) => setTimeout(() => resolve(null), 3500))
+            ]);
+            if (q && q.ok && Array.isArray(q.pools)) {
+                const pid = aiRouter.agyPoolId(model || '');
+                const pool = q.pools.find((p) => p.id === pid) || q.pools[0];
+                const rt = (pool && pool.fiveHour && pool.fiveHour.resetTime) || (pool && pool.resetTime);
+                if (rt) {
+                    const ms = Date.parse(rt);
+                    if (!Number.isNaN(ms) && ms > now) {
+                        return { resumeAt: ms + bufferMs, source: 'quota_api' };
+                    }
+                }
+            }
+        }
+    } catch (_) {}
+
+    return parsedFromText || { resumeAt: null, source: 'poll' };
+}
+
+function scheduleAutoResumeTimer(rec) {
+    if (!rec || !rec.sessionId) return;
+    clearAutoResumeTimer(rec.sessionId);
+    if (!rec.armed) return;
+
+    const now = Date.now();
+    // Cap polling lifetime at 12h if reset time is unknown
+    if (!rec.resumeAt && rec.createdAt && (now - rec.createdAt) > 12 * 3600 * 1000) {
+        rec.armed = false;
+        rec.lastCheckMsg = 'หมดเวลาเฝ้ารอปลดลิมิตอัตโนมัติ (12 ชม.)';
+        saveAutoResumeStoreSync();
+        return;
+    }
+
+    let delay;
+    if (rec.resumeAt) {
+        const remaining = rec.resumeAt - now;
+        if (remaining <= 0) {
+            delay = 3000;
+        } else {
+            // Wake every <= 5 minutes so system sleep or long setTimeout limits never miss target
+            delay = Math.min(remaining, 5 * 60 * 1000);
+        }
+    } else {
+        delay = 3 * 60 * 1000; // poll every 3 min when reset time is unknown
+    }
+
+    const timer = setTimeout(() => {
+        autoResumeTimers.delete(rec.sessionId);
+        onAutoResumeTick(rec.sessionId).catch((err) => {
+            console.error(`[GeminiManager] Auto-resume tick error [${rec.sessionId}]:`, err.message);
+        });
+    }, delay);
+    if (typeof timer.unref === 'function') timer.unref();
+    autoResumeTimers.set(rec.sessionId, timer);
+}
+
+async function checkQuotaRecovered(rec) {
+    try {
+        if (rec.engine === 'claude-code') {
+            const cw = await getClaudeWebQuota({ force: true });
+            if (cw && cw.ok && cw.fiveHour) {
+                if (cw.fiveHour.remainingPct <= 2) {
+                    return {
+                        ready: false,
+                        nextResumeAt: cw.fiveHour.resetTime ? (Date.parse(cw.fiveHour.resetTime) + 45 * 1000) : (Date.now() + 90 * 1000),
+                        msg: `โควตา Claude 5h ยังอยู่ที่ ${cw.fiveHour.remainingPct}%`
+                    };
+                }
+                return { ready: true };
+            }
+            // If quota API unreachable and resumeAt has elapsed, go ahead and try
+            return { ready: Boolean(rec.resumeAt && Date.now() >= rec.resumeAt) };
+        }
+        if (rec.engine === 'agy') {
+            const q = await getQuotaSummary({ accountId: rec.agyAccount || 'g1' });
+            if (q && q.ok && Array.isArray(q.pools)) {
+                const pid = aiRouter.agyPoolId(rec.model || '');
+                const pool = q.pools.find((p) => p.id === pid);
+                if (pool && pool.remainingPct <= 2) {
+                    const rt = (pool.fiveHour && pool.fiveHour.resetTime) || pool.resetTime;
+                    return {
+                        ready: false,
+                        nextResumeAt: rt ? (Date.parse(rt) + 45 * 1000) : (Date.now() + 2 * 60 * 1000),
+                        msg: `โควตา ${pool.name} ยังอยู่ที่ ${pool.remainingPct}%`
+                    };
+                }
+                return { ready: true };
+            }
+            return { ready: Boolean(rec.resumeAt && Date.now() >= rec.resumeAt) };
+        }
+        if (rec.engine === 'auto') {
+            const alt = await aiRouter.pickAlternativeCandidates({ prompt: rec.prompt, sessionId: rec.sessionId });
+            if (alt && alt.ok && alt.candidates.length > 0) return { ready: true };
+            return { ready: false, nextResumeAt: Date.now() + 3 * 60 * 1000, msg: 'ยังไม่มีโมเดลที่พร้อมใช้งาน' };
+        }
+    } catch (_) {}
+    return { ready: Boolean(rec.resumeAt && Date.now() >= rec.resumeAt) };
+}
+
+function buildRecoveryDirective({ originalPrompt, failedModelLabel, steps, partialOutput, errorText, isAutoResume }) {
+    const stepList = Array.isArray(steps) && steps.length > 0
+        ? steps.slice(-20).map((s, i) => `${i + 1}. ${s}`).join('\n')
+        : '(ยังไม่มีการใช้เครื่องมือ หรือยังไม่บันทึกขั้นตอน)';
+    const tail = String(partialOutput || '').trim().slice(-1500);
+    const header = isAutoResume
+        ? '[⏱️ Auto-Resume หลังปลดลิมิตโควตา]'
+        : '[🔄 ส่งไม้ต่อจากโมเดลก่อนหน้าที่หยุดกลางคัน]';
+    const lines = [
+        header,
+        `โมเดลก่อนหน้า: ${failedModelLabel}${errorText ? ` (หยุดเพราะ: ${String(errorText).replace(/\s+/g, ' ').slice(0, 140)})` : ''}`,
+        '',
+        'คำสั่งเดิมของผู้ใช้:',
+        String(originalPrompt || '').slice(0, 3000),
+        '',
+        `สิ่งที่ทำไปแล้วในรอบก่อน (${Array.isArray(steps) ? steps.length : 0} ขั้นตอน):`,
+        stepList
+    ];
+    if (tail) {
+        lines.push('', 'ผลลัพธ์ล่าสุดก่อนหยุด:', tail);
+    }
+    lines.push(
+        '',
+        'แนวทางสำคัญ:',
+        '- ตรวจสอบสถานะไฟล์/ระบบปัจจุบันก่อนลงมือแก้ไข เพื่อไม่ให้ทำซ้ำหรือทับงานที่ทำเสร็จไปแล้ว',
+        '- ดำเนินการต่อจากจุดที่ค้างอยู่ให้เสร็จสมบูรณ์'
+    );
+    return lines.join('\n');
+}
+
+async function onAutoResumeTick(sessionId) {
+    const rec = autoResumeMap.get(sessionId);
+    if (!rec || !rec.armed) return;
+
+    const now = Date.now();
+    if (rec.resumeAt && now < rec.resumeAt) {
+        scheduleAutoResumeTimer(rec);
+        return;
+    }
+
+    if (activeRuns.has(sessionId)) {
+        // Room is busy; re-check shortly
+        rec.resumeAt = now + 15 * 1000;
+        scheduleAutoResumeTimer(rec);
+        return;
+    }
+
+    const chk = await checkQuotaRecovered(rec);
+    if (!chk.ready) {
+        if (rec.resumeAt) {
+            rec.retryCount = (rec.retryCount || 0) + 1;
+            if (rec.retryCount > 8) {
+                rec.armed = false;
+                rec.lastCheckMsg = chk.msg || 'โควตายังไม่รีเซ็ตหลังตรวจสอบซ้ำ 8 ครั้ง — กรุณากดทำต่อด้วยโมเดลอื่นหรือส่งคำสั่งใหม่';
+                rec.updatedAt = Date.now();
+                saveAutoResumeStoreSync();
+                return;
+            }
+        }
+        rec.resumeAt = chk.nextResumeAt || (Date.now() + 3 * 60 * 1000);
+        rec.lastCheckMsg = chk.msg || null;
+        rec.updatedAt = Date.now();
+        saveAutoResumeStoreSync();
+        scheduleAutoResumeTimer(rec);
+        return;
+    }
+
+    // Quota recovered! Trigger resume now
+    autoResumeMap.delete(sessionId);
+    saveAutoResumeStoreSync();
+    aiRouter.clearCooldowns();
+
+    const sessMeta = getSessionMetaSync(sessionId);
+    const failedLabel = rec.modelLabel || aiRouter.modelLabel(rec.model);
+    const directive = buildRecoveryDirective({
+        originalPrompt: rec.prompt,
+        failedModelLabel: failedLabel,
+        steps: rec.steps,
+        partialOutput: rec.partialOutput,
+        errorText: rec.errorText,
+        isAutoResume: true
+    });
+    const resumePrompt = `⏱️ [Auto-Resume หลังปลดลิมิต] โควตา ${failedLabel} รีเซ็ตแล้ว — ดำเนินการต่อจากจุดที่ค้างให้เสร็จสมบูรณ์`;
+
+    console.log(`[GeminiManager] Auto-resuming session ${sessionId} on ${rec.model} (${rec.agyAccount || 'default'})`);
+    try {
+        executePrompt(
+            {
+                sessionId,
+                prompt: resumePrompt,
+                images: Array.isArray(rec.images) ? rec.images : [],
+                mode: rec.mode || (sessMeta && sessMeta.mode) || 'exec',
+                cwd: rec.cwd || (sessMeta && sessMeta.cwd) || PROJECTS_BASE,
+                model: rec.model,
+                agyAccount: rec.engine === 'agy' ? rec.agyAccount : null,
+                routerDirective: directive,
+                fromRecovery: true
+            },
+            () => {},
+            () => {}
+        );
+    } catch (err) {
+        console.error(`[GeminiManager] Auto-resume launch failed [${sessionId}]:`, err.message);
+    }
+}
+
+async function finalizeFailedJobRecovery(job, { isAuto = false, stderrTail = '' } = {}) {
+    if (!job || !job.sessionId) return null;
+    const sid = job.sessionId;
+    if (job.status === 'aborted' || job.exitCode === 130 || job.exitCode === 0) return null;
+
+    const errText = String(job.error || '');
+    const rawOut = String(job.output || '');
+    const body = job._routeBannerLen ? rawOut.slice(job._routeBannerLen) : rawOut;
+    const isQuotaLimit = aiRouter.isQuotaOrLimitError(errText, body, stderrTail);
+    const steps = Array.isArray(job.steps) ? job.steps : [];
+
+    if (!isQuotaLimit && steps.length === 0) return null;
+
+    const failedModel = job.usedModel || job.model || getDefaultModel();
+    const failedEngine = engineOfModel(failedModel);
+    const failedAccount = job.usedAccount || job.agyAccount || (failedEngine === 'claude-code' ? 'claude-pro' : null);
+
+    let resetInfo = { resumeAt: null, source: null };
+    if (isQuotaLimit) {
+        resetInfo = await resolveQuotaResetTime({
+            engine: failedEngine,
+            model: failedModel,
+            agyAccount: failedAccount,
+            errorText: errText,
+            outputText: body,
+            stderrText: stderrTail
+        });
+    }
+
+    const now = Date.now();
+    const rec = {
+        sessionId: sid,
+        jobId: job.id,
+        model: failedModel,
+        modelLabel: failedModel === aiRouter.AUTO_MODEL_ID ? 'Auto (ทุกโมเดล)' : aiRouter.modelLabel(failedModel),
+        agyAccount: failedAccount,
+        engine: failedEngine,
+        mode: job.mode || 'exec',
+        cwd: job.cwd || PROJECTS_BASE,
+        prompt: job.prompt || '',
+        images: Array.isArray(job.images) ? job.images : [],
+        steps: steps.slice(-30),
+        partialOutput: body.slice(-2500),
+        errorText: errText.slice(0, 300),
+        isQuotaLimit,
+        isAuto,
+        armed: Boolean(isQuotaLimit),
+        resumeAt: resetInfo ? resetInfo.resumeAt : null,
+        resetSource: resetInfo ? resetInfo.source : null,
+        retryCount: 0,
+        lastCheckMsg: null,
+        createdAt: now,
+        updatedAt: now
+    };
+
+    autoResumeMap.set(sid, rec);
+    saveAutoResumeStoreSync();
+    if (rec.armed) {
+        scheduleAutoResumeTimer(rec);
+    }
+
+    const clientRec = sanitizeRecoveryForClient(rec);
+    job.recovery = clientRec;
+    return clientRec;
+}
+
+async function getHandoffOptions(sessionId) {
+    const sid = resolveSessionId(sessionId);
+    const rec = autoResumeMap.get(sid) || null;
+    const job = lastJobs.get(sid) || null;
+    const promptText = (rec && rec.prompt) || (job && job.prompt) || '';
+    const hasImages = Boolean((rec && rec.images && rec.images.length) || (job && job.images && job.images.length));
+    const exModel = (rec && rec.model) || (job && (job.usedModel || job.model)) || null;
+    const exEngine = (rec && rec.engine) || (exModel ? engineOfModel(exModel) : null);
+    const exAccount = (rec && rec.agyAccount) || (job && (job.usedAccount || job.agyAccount)) || null;
+
+    const alt = await aiRouter.pickAlternativeCandidates({
+        prompt: promptText,
+        hasImages,
+        excludeEngine: exEngine === 'auto' ? null : exEngine,
+        excludeModel: exModel === aiRouter.AUTO_MODEL_ID ? null : exModel,
+        excludeAccount: exAccount,
+        sessionId: sid
+    });
+
+    return {
+        ok: true,
+        recovery: rec ? sanitizeRecoveryForClient(rec) : null,
+        candidates: alt.candidates || []
+    };
+}
+
+function cancelAutoResume(sessionId) {
+    const sid = resolveSessionId(sessionId);
+    clearAutoResumeTimer(sid);
+    const rec = autoResumeMap.get(sid);
+    if (!rec) return { ok: true, recovery: null };
+    rec.armed = false;
+    rec.updatedAt = Date.now();
+    saveAutoResumeStoreSync();
+    const lj = lastJobs.get(sid);
+    const clientRec = sanitizeRecoveryForClient(rec);
+    if (lj) lj.recovery = clientRec;
+    return { ok: true, recovery: clientRec };
+}
+
+async function armAutoResume(sessionId) {
+    const sid = resolveSessionId(sessionId);
+    const rec = autoResumeMap.get(sid);
+    if (!rec) throw new Error('ไม่พบงานที่หยุดชั่วคราวในห้องแชทนี้');
+    rec.armed = true;
+    rec.retryCount = 0;
+    rec.lastCheckMsg = null;
+    if (!rec.resumeAt || rec.resumeAt <= Date.now()) {
+        const resetInfo = await resolveQuotaResetTime({
+            engine: rec.engine,
+            model: rec.model,
+            agyAccount: rec.agyAccount,
+            errorText: rec.errorText,
+            outputText: rec.partialOutput,
+            stderrText: ''
+        });
+        rec.resumeAt = resetInfo ? resetInfo.resumeAt : null;
+        rec.resetSource = resetInfo ? resetInfo.source : 'poll';
+    }
+    rec.updatedAt = Date.now();
+    saveAutoResumeStoreSync();
+    scheduleAutoResumeTimer(rec);
+    const lj = lastJobs.get(sid);
+    const clientRec = sanitizeRecoveryForClient(rec);
+    if (lj) lj.recovery = clientRec;
+    return { ok: true, recovery: clientRec };
+}
+
+function dismissRecovery(sessionId) {
+    const sid = resolveSessionId(sessionId);
+    clearRecoveryForSession(sid);
+    const lj = lastJobs.get(sid);
+    if (lj) lj.recovery = null;
+    return { ok: true };
+}
+
+async function handoffToAnotherModel({ sessionId = null, jobId = null, targetModel = 'best', targetAccount = null, browserVision = false } = {}, onChunk, onDone) {
+    const sid = resolveSessionId(sessionId);
+    if (activeRuns.has(sid)) {
+        throw new Error('แชทนี้กำลังประมวลผลอยู่ กรุณารอสักครู่');
+    }
+
+    const rec = autoResumeMap.get(sid) || null;
+    const lj = lastJobs.get(sid) || null;
+    const sessMeta = getSessionMetaSync(sid);
+    const hist = loadSessionMessagesSync(sid);
+    const lastUser = [...hist].reverse().find((m) => m && m.role === 'user' && m.content);
+
+    const originalPrompt = (rec && rec.prompt) || (lj && lj.prompt) || (lastUser && lastUser.content) || '';
+    if (!originalPrompt) {
+        throw new Error('ไม่พบคำสั่งเดิมสำหรับส่งต่อให้โมเดลอื่น');
+    }
+    const images = (rec && rec.images) || (lj && lj.images) || [];
+    const failedModel = (rec && rec.model) || (lj && (lj.usedModel || lj.model)) || (sessMeta && sessMeta.model) || '';
+    const failedEngine = (rec && rec.engine) || engineOfModel(failedModel);
+    const failedAccount = (rec && rec.agyAccount) || (lj && (lj.usedAccount || lj.agyAccount)) || null;
+    const failedLabel = (rec && rec.modelLabel) || (failedModel ? aiRouter.modelLabel(failedModel) : 'โมเดลก่อนหน้า');
+
+    let chosenModel = (targetModel && targetModel !== 'best') ? String(targetModel) : null;
+    let chosenAccount = targetAccount || null;
+
+    if (!chosenModel) {
+        const alt = await aiRouter.pickAlternativeCandidates({
+            prompt: originalPrompt,
+            hasImages: images.length > 0,
+            excludeEngine: failedEngine === 'auto' ? null : failedEngine,
+            excludeModel: failedModel === aiRouter.AUTO_MODEL_ID ? null : failedModel,
+            excludeAccount: failedAccount,
+            sessionId: sid
+        });
+        if (!alt.ok || !alt.candidates.length) {
+            throw new Error('ยังไม่มีโมเดลสำรองที่พร้อมใช้งานในขณะนี้ (โควตา/เครดิตทุกตัวอาจยังไม่พอ)');
+        }
+        chosenModel = alt.candidates[0].model;
+        chosenAccount = alt.candidates[0].engine === 'agy' ? alt.candidates[0].account : null;
+    }
+
+    // Disarm & clear pending recovery before starting handoff
+    clearRecoveryForSession(sid);
+    if (lj) lj.recovery = null;
+
+    if (sessMeta) {
+        sessMeta.needsAgyBridge = true;
+        sessMeta.needsClaudeBridge = true;
+        saveSessionsIndexSync();
+    }
+
+    const chosenLabel = aiRouter.modelLabel(chosenModel);
+    const directive = buildRecoveryDirective({
+        originalPrompt,
+        failedModelLabel: failedLabel,
+        steps: (rec && rec.steps) || (lj && lj.steps) || [],
+        partialOutput: (rec && rec.partialOutput) || (lj && lj.output) || '',
+        errorText: (rec && rec.errorText) || (lj && lj.error) || '',
+        isAutoResume: false
+    });
+    const displayPrompt = `🔄 ทำต่อด้วย ${chosenLabel} (ส่งไม้ต่อจาก ${failedLabel})`;
+
+    return executePrompt(
+        {
+            sessionId: sid,
+            jobId,
+            prompt: displayPrompt,
+            images,
+            mode: (rec && rec.mode) || (lj && lj.mode) || (sessMeta && sessMeta.mode) || 'exec',
+            cwd: (rec && rec.cwd) || (lj && lj.cwd) || (sessMeta && sessMeta.cwd) || PROJECTS_BASE,
+            model: chosenModel,
+            agyAccount: chosenAccount,
+            routerDirective: directive,
+            browserVision: Boolean(browserVision),
+            fromRecovery: true
+        },
+        onChunk,
+        onDone
+    );
+}
+
 aiRouter.setQuotaProvider(getQuotaSummary);
 aiRouter.setProviderQuotaProvider(getProviderQuotas);
 
@@ -3386,5 +4034,11 @@ module.exports = {
     renameSession,
     togglePinSession,
     deleteSession,
-    scheduleAutoTitling
+    scheduleAutoTitling,
+    getRecoveryState,
+    getHandoffOptions,
+    handoffToAnotherModel,
+    cancelAutoResume,
+    armAutoResume,
+    dismissRecovery
 };

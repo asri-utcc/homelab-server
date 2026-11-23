@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	AgentVersion   = "1.0.4"
+	AgentVersion   = "1.0.5"
 	DefaultHubURLs = "https://homelab.tail285279.ts.net,http://100.93.214.79,http://100.93.214.79:8090,http://192.168.1.123,https://192.168.1.123"
 	DefaultToken   = "hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b"
 )
@@ -2319,8 +2319,12 @@ func handleRenderRemotion(p map[string]interface{}) (map[string]interface{}, err
 			if lockHash != "" {
 				_ = os.WriteFile(lockHashFile, []byte(lockHash+"\n"), 0644)
 			}
+		}
 
-			// Ensure chrome-headless-shell is available; non-fatal if it fails
+		browserReadyFile := filepath.Join(projDir, ".browser_ready")
+		_, brReadyErr := os.Stat(browserReadyFile)
+		if needInstall || brReadyErr != nil {
+			reportJobProgress(jobID, "installing", 12, "กำลังเตรียม Remotion browser (chrome-headless-shell)...")
 			brCtx, brCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer brCancel()
 			brCmd := exec.CommandContext(brCtx, npxPath, "remotion", "browser", "ensure")
@@ -2328,8 +2332,10 @@ func handleRenderRemotion(p map[string]interface{}) (map[string]interface{}, err
 			brCmd.Env = cmdEnv
 			brCmd.SysProcAttr = hideWindowAttr()
 			if brOut, brErr := brCmd.CombinedOutput(); brErr != nil {
-				fmt.Printf("[remotion:%s] browser ensure warning: %v (%s)\n", jobID, brErr, tailString(strings.TrimSpace(string(brOut)), 500))
+				msg := tailString(strings.TrimSpace(string(brOut)), 1500)
+				return fmt.Errorf("remotion browser ensure failed: %v (%s)", brErr, msg)
 			}
+			_ = os.WriteFile(browserReadyFile, []byte(time.Now().Format(time.RFC3339)+"\n"), 0644)
 		}
 		return nil
 	}(); err != nil {

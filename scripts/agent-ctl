@@ -338,13 +338,22 @@ def main() -> int:
         node_id = job.get("nodeId") or args.node
         print(f"[render-node] {node_id}", flush=True)
 
+        def warn_no_cancel():
+            print(
+                f"Warning: remote job {job_id} could not be cancelled (no hub cancel endpoint)",
+                file=sys.stderr,
+                flush=True,
+            )
+
         start_t = time.time()
         last_update_t = start_t
-        last_progress = None
+        last_activity = None
+        last_status = ""
         while True:
             now = time.time()
             if now - start_t > args.timeout:
                 print(f"Error: remote render timed out after {args.timeout}s", file=sys.stderr, flush=True)
+                warn_no_cancel()
                 return 4
 
             jres = hub_request("GET", f"/api/agent-hub/jobs/{job_id}", timeout=15)
@@ -353,8 +362,12 @@ def main() -> int:
                 status = j.get("status", "")
                 progress = j.get("progress", 0) or 0
                 message = j.get("message", "") or ""
-                if progress != last_progress:
-                    last_progress = progress
+                updated_at = j.get("updatedAt")
+                last_status = status
+
+                activity = (progress, status, message, updated_at)
+                if activity != last_activity:
+                    last_activity = activity
                     last_update_t = now
                     print(f"Rendered {round(progress)}/100 ({status}) {message}", flush=True)
 
@@ -363,15 +376,23 @@ def main() -> int:
                     if ok and os.path.isfile(args.output) and os.path.getsize(args.output) > 10240:
                         return 0
                     print("Error: downloaded output file missing or <= 10KB", file=sys.stderr, flush=True)
+                    warn_no_cancel()
                     return 4
 
                 if status == "failed":
                     err = j.get("error") or message or "remote render failed"
                     print(f"Error: {err}", file=sys.stderr, flush=True)
+                    warn_no_cancel()
                     return 4
 
-            if now - last_update_t > 300:
-                print("Error: remote render stalled (no progress update for >300s)", file=sys.stderr, flush=True)
+            stall_threshold = 1500 if last_status in ("downloading", "installing") else 300
+            if now - last_update_t > stall_threshold:
+                print(
+                    f"Error: remote render stalled (no activity for >{stall_threshold}s)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                warn_no_cancel()
                 return 4
 
             time.sleep(2)

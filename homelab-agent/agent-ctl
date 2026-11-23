@@ -14,13 +14,21 @@ Usage:
   agent-ctl write <nodeId> <remotePath> <localFileOrContent> [--from-file <localPath>]
   agent-ctl edit <nodeId> <remotePath> --target "<old>" --replace "<new>"
   agent-ctl render <nodeId|auto> [--input <localPath>] [--test] [--nvenc]
+  agent-ctl remotion --props <file.json> -o <out.mp4> [--comp StudioEngine] [--node <id|auto>] [--concurrency <n>] [--timeout <sec>]
+  agent-ctl blender --script <file.py> [--node <id|auto>] [--live-session <bv>] [--wait]
   agent-ctl update <nodeId>
+
+Blender Live Helpers (available inside bpy scripts):
+  live_snapshot(label="")      Save current viewport/render frame to BLENDER_LIVE_FILE
+  live_progress(pct, msg="")   Emit LAB_PROGRESS <pct> <msg> for live progress bar
 """
 
 import argparse
 import json
 import os
+import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -66,6 +74,25 @@ def hub_request(method: str, path: str, body: dict | None = None, timeout: int =
             return {"ok": False, "error": f"HTTP {e.code}: {err_body}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def hub_download(path: str, dest_path: str, timeout: int = 120) -> bool:
+    url = HUB_BASE.rstrip("/") + path
+    req = urllib.request.Request(url, headers={"X-Agent-Token": get_token()}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                return False
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            with open(dest_path, "wb") as f:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        return True
+    except Exception:
+        return False
 
 
 def run_node_cmd(node_id: str, action: str, payload: dict, timeout_sec: int = 45) -> dict:
@@ -143,6 +170,28 @@ def main() -> int:
     p_render.add_argument("--test", action="store_true", help="Run a 5s 1080x1920 test render")
     p_render.add_argument("--duration", type=int, default=5)
     p_render.add_argument("--crf", type=int, default=20)
+
+    p_remotion = sub.add_parser("remotion", help="Dispatch a distributed Remotion render job")
+    p_remotion.add_argument("--props", required=True, help="Path to local props.json")
+    p_remotion.add_argument("--comp", default="StudioEngine", help="Remotion composition ID (default: StudioEngine)")
+    p_remotion.add_argument("-o", "--output", required=True, help="Local output .mp4 path")
+    p_remotion.add_argument("--node", default="auto", help="Target node ID or 'auto' (default: auto)")
+    p_remotion.add_argument("--concurrency", type=int, default=None, help="Render concurrency")
+    p_remotion.add_argument("--timeout", type=int, default=3600, help="Wait timeout in seconds (default: 3600)")
+
+    p_blender = sub.add_parser(
+        "blender",
+        help="Dispatch a Blender 3D job with live streaming (bpy scripts can call live_snapshot(label) & live_progress(pct, msg))",
+    )
+    p_blender.add_argument("--script", required=True, help="Path to local .py Blender script")
+    p_blender.add_argument("--node", default="auto", help="Target node ID or 'auto' (default: auto)")
+    p_blender.add_argument("--output", default="", help="Output .glb filename")
+    p_blender.add_argument("--preview", default="", help="Preview .png filename")
+    p_blender.add_argument("--gpu", action="store_true", help="Prefer GPU node")
+    p_blender.add_argument("--live-session", dest="live_session", default="", help="Browser Vision session name (e.g. bv_xxx)")
+    p_blender.add_argument("--wait", action="store_true", help="Wait for completion, stream progress, and download outputs")
+    p_blender.add_argument("--timeout", type=int, default=1800, help="Wait timeout in seconds (default: 1800)")
+    p_blender.add_argument("--out-dir", dest="out_dir", default="/home/dev/.gemini/outputs/3d", help="Local output directory")
 
     p_upd = sub.add_parser("update", help="Trigger self-update on a remote node")
     p_upd.add_argument("node")
@@ -268,6 +317,194 @@ def main() -> int:
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0 if res.get("ok") else 1
+
+    if args.cmd == "remotion":
+        payload = {
+            "nodeId": args.node,
+            "propsPath": os.path.abspath(args.props),
+            "compositionId": args.comp,
+            "outputName": os.path.basename(args.output),
+        }
+        if args.concurrency is not None:
+            payload["concurrency"] = args.concurrency
+        res = hub_request("POST", "/api/agent-hub/remotion-jobs", payload, timeout=30)
+        if not res.get("ok") or not (res.get("job") or {}).get("jobId"):
+            reason = res.get("error") or res.get("code") or "hub unavailable"
+            print(f"[render-node] none: {reason}", file=sys.stderr, flush=True)
+            return 3
+
+        job = res["job"]
+        job_id = job["jobId"]
+        node_id = job.get("nodeId") or args.node
+        print(f"[render-node] {node_id}", flush=True)
+
+        def warn_no_cancel():
+            print(
+                f"Warning: remote job {job_id} could not be cancelled (no hub cancel endpoint)",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        start_t = time.time()
+        last_update_t = start_t
+        last_activity = None
+        last_status = ""
+        while True:
+            now = time.time()
+            if now - start_t > args.timeout:
+                print(f"Error: remote render timed out after {args.timeout}s", file=sys.stderr, flush=True)
+                warn_no_cancel()
+                return 4
+
+            jres = hub_request("GET", f"/api/agent-hub/jobs/{job_id}", timeout=15)
+            if jres.get("ok") and jres.get("job"):
+                j = jres["job"]
+                status = j.get("status", "")
+                progress = j.get("progress", 0) or 0
+                message = j.get("message", "") or ""
+                updated_at = j.get("updatedAt")
+                last_status = status
+
+                activity = (progress, status, message, updated_at)
+                if activity != last_activity:
+                    last_activity = activity
+                    last_update_t = now
+                    print(f"Rendered {round(progress)}/100 ({status}) {message}", flush=True)
+
+                if status == "completed":
+                    ok = hub_download(f"/api/agent-hub/jobs/{job_id}/output", args.output, timeout=600)
+                    if ok and os.path.isfile(args.output) and os.path.getsize(args.output) > 10240:
+                        return 0
+                    print("Error: downloaded output file missing or <= 10KB", file=sys.stderr, flush=True)
+                    warn_no_cancel()
+                    return 4
+
+                if status == "failed":
+                    err = j.get("error") or message or "remote render failed"
+                    print(f"Error: {err}", file=sys.stderr, flush=True)
+                    warn_no_cancel()
+                    return 4
+
+            stall_threshold = 1500 if last_status in ("downloading", "installing") else 300
+            if now - last_update_t > stall_threshold:
+                print(
+                    f"Error: remote render stalled (no activity for >{stall_threshold}s)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                warn_no_cancel()
+                return 4
+
+            time.sleep(2)
+
+    if args.cmd == "blender":
+        if not os.path.isfile(args.script):
+            print(f"Error: script file not found: {args.script}", file=sys.stderr)
+            return 1
+        with open(args.script, "r", encoding="utf-8") as f:
+            script_text = f.read()
+
+        payload = {
+            "script": script_text,
+            "nodeId": args.node,
+            "preferGpu": args.gpu,
+        }
+        if args.output:
+            payload["outputName"] = args.output
+        if args.preview:
+            payload["previewName"] = args.preview
+
+        res = hub_request("POST", "/api/agent-hub/blender-jobs", payload, timeout=30)
+        if not res.get("ok") or not (res.get("job") or {}).get("jobId"):
+            print(f"Error: {res.get('error') or 'Failed to create blender job'}", file=sys.stderr)
+            return 1
+
+        job = res["job"]
+        job_id = job["jobId"]
+        node_id = job.get("nodeId", args.node)
+        local_monitor_url = f"{HUB_BASE.rstrip('/')}/api/agent-hub/jobs/{job_id}/monitor"
+        ts_monitor_url = f"https://homelab.tail285279.ts.net/api/agent-hub/jobs/{job_id}/monitor"
+
+        print(f"Job ID: {job_id} | Node: {node_id}", flush=True)
+        print(f"Monitor (Local): {local_monitor_url}", flush=True)
+        print(f"Monitor (Tailscale): {ts_monitor_url}", flush=True)
+
+        if args.live_session:
+            try:
+                proc = subprocess.run(
+                    [
+                        "/home/dev/.local/bin/lab-browser",
+                        "session",
+                        "open",
+                        local_monitor_url,
+                        "--new-tab",
+                        "--session",
+                        args.live_session,
+                        "--shared-auth",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if proc.returncode != 0:
+                    print(f"Warning: lab-browser returned {proc.returncode}: {proc.stderr.strip()}", file=sys.stderr, flush=True)
+            except Exception as e:
+                print(f"Warning: failed to open Browser Vision tab: {e}", file=sys.stderr, flush=True)
+
+        if not args.wait:
+            return 0
+
+        deadline = time.time() + max(1, args.timeout)
+        last_state = None
+        while time.time() < deadline:
+            st = hub_request("GET", f"/api/agent-hub/jobs/{job_id}/live-status", timeout=15)
+            if not st.get("ok"):
+                time.sleep(2)
+                continue
+            status = st.get("status", "unknown")
+            progress = st.get("progress", 0)
+            phase = st.get("phase", "")
+            msg = st.get("message", "")
+            state = (status, progress, phase, msg)
+            if state != last_state:
+                phase_str = f"[{phase}] " if phase else ""
+                msg_str = f" - {msg}" if msg else ""
+                print(f"[{status}] {progress}% {phase_str}{msg_str}", flush=True)
+                last_state = state
+
+            if status == "completed":
+                out_name = args.output or job.get("outputName") or f"{job_id}.glb"
+                prev_name = args.preview or job.get("previewName") or f"{job_id}_preview.png"
+                out_path = os.path.join(args.out_dir, os.path.basename(out_name))
+                prev_path = os.path.join(args.out_dir, os.path.basename(prev_name))
+
+                if not hub_download(f"/api/agent-hub/jobs/{job_id}/output", out_path):
+                    print(f"Error: failed to download output to {out_path}", file=sys.stderr)
+                    return 1
+                if not hub_download(f"/api/agent-hub/jobs/{job_id}/preview", prev_path):
+                    prev_path = None
+
+                summary = {
+                    "ok": True,
+                    "jobId": job_id,
+                    "node": node_id,
+                    "status": "completed",
+                    "output": out_path,
+                    "preview": prev_path,
+                    "monitorUrl": ts_monitor_url,
+                }
+                print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
+                return 0
+
+            if status == "failed":
+                err = st.get("error") or st.get("message") or "Blender job failed"
+                print(f"Error: {err}", file=sys.stderr)
+                return 1
+
+            time.sleep(2)
+
+        print(f"Error: timed out after {args.timeout}s waiting for job {job_id}", file=sys.stderr)
+        return 1
 
     if args.cmd == "update":
         res = run_node_cmd(args.node, "self-update", {}, timeout_sec=60)

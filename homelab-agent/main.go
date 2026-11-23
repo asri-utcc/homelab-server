@@ -1,8 +1,10 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -30,7 +32,7 @@ import (
 )
 
 var (
-	AgentVersion   = "1.0.3"
+	AgentVersion   = "1.0.4"
 	DefaultHubURLs = "https://homelab.tail285279.ts.net,http://100.93.214.79,http://100.93.214.79:8090,http://192.168.1.123,https://192.168.1.123"
 	DefaultToken   = "hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b"
 )
@@ -639,6 +641,9 @@ func executeCommand(cmd AgentCommand) (map[string]interface{}, error) {
 
 	case "render.blender":
 		return handleRenderBlender(cmd.Payload)
+
+	case "render.remotion":
+		return handleRenderRemotion(cmd.Payload)
 
 	case "self-update":
 		return handleSelfUpdate(cmd.Payload)
@@ -1928,6 +1933,563 @@ func handleRenderBlender(p map[string]interface{}) (map[string]interface{}, erro
 		"jobId":            jobID,
 		"nodeId":           agentCfg.NodeID,
 		"blenderPath":      specs.BlenderPath,
+		"outputName":       outputName,
+		"outputSize":       st.Size(),
+		"renderDurationMs": renderDurationMs,
+		"hubUpload":        upData,
+	}, nil
+}
+
+var (
+	reRemotionRendered = regexp.MustCompile(`Rendered\s+(\d+)\s*/\s*(\d+)`)
+	remotionSetupMu    sync.Mutex
+)
+
+func detectNodeTool(tool string, nodePath string) string {
+	var names []string
+	if runtime.GOOS == "windows" {
+		names = []string{tool + ".cmd", tool + ".exe", tool}
+	} else {
+		names = []string{tool}
+	}
+	for _, n := range names {
+		if p, err := exec.LookPath(n); err == nil && p != "" {
+			return p
+		}
+	}
+	var dirs []string
+	if nodePath != "" {
+		dirs = append(dirs, filepath.Dir(nodePath))
+	}
+	if runtime.GOOS == "windows" {
+		home, _ := os.UserHomeDir()
+		localAppData := os.Getenv("LOCALAPPDATA")
+		progFiles := os.Getenv("ProgramFiles")
+		dirs = append(dirs,
+			filepath.Join(progFiles, "nodejs"),
+			filepath.Join(localAppData, "Microsoft", "WinGet", "Links"),
+			filepath.Join(home, "scoop", "shims"),
+			`C:\ProgramData\chocolatey\bin`,
+		)
+	}
+	for _, d := range dirs {
+		if d == "" {
+			continue
+		}
+		for _, n := range names {
+			cand := filepath.Join(d, n)
+			if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+				return cand
+			}
+		}
+	}
+	return ""
+}
+
+func buildRemotionEnv(paths ...string) []string {
+	env := os.Environ()
+	var extraDirs []string
+	seen := map[string]bool{}
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		d := filepath.Dir(p)
+		key := d
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(d)
+		}
+		if d != "" && d != "." && !seen[key] {
+			seen[key] = true
+			extraDirs = append(extraDirs, d)
+		}
+	}
+	if len(extraDirs) == 0 {
+		return env
+	}
+	sep := string(os.PathListSeparator)
+	prefix := strings.Join(extraDirs, sep)
+	updated := false
+	for i, kv := range env {
+		idx := strings.IndexByte(kv, '=')
+		if idx <= 0 {
+			continue
+		}
+		k := kv[:idx]
+		if strings.EqualFold(k, "PATH") {
+			env[i] = k + "=" + prefix + sep + kv[idx+1:]
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		env = append(env, "PATH="+prefix)
+	}
+	return env
+}
+
+func downloadHubToFile(rawURL string, destPath string) error {
+	var resp *http.Response
+	var err error
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		req, reqErr := http.NewRequest("GET", rawURL, nil)
+		if reqErr != nil {
+			return reqErr
+		}
+		req.Header.Set("X-Agent-Token", agentCfg.Token)
+		req.Header.Set("X-Agent-Node", agentCfg.NodeID)
+		req.Header.Set("X-Agent-Version", AgentVersion)
+		resp, err = transferClient.Do(req)
+	} else {
+		resp, _, err = doHubRequest(transferClient, "GET", rawURL, nil, "")
+	}
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("download %s returned HTTP %d: %s", rawURL, resp.StatusCode, strings.TrimSpace(string(snippet)))
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return err
+	}
+	tmpPath := destPath + ".tmp"
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(f, resp.Body)
+	closeErr := f.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return closeErr
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(destPath)
+		if err2 := os.Rename(tmpPath, destPath); err2 != nil {
+			_ = os.Remove(tmpPath)
+			return err2
+		}
+	}
+	return nil
+}
+
+func extractTarGzSafe(tgzPath string, destDir string) error {
+	absDest, err := filepath.Abs(destDir)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(absDest, 0755); err != nil {
+		return err
+	}
+
+	f, err := os.Open(tgzPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+	destPrefix := absDest + string(os.PathSeparator)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if hdr.Typeflag == tar.TypeXHeader || hdr.Typeflag == tar.TypeXGlobalHeader {
+			continue
+		}
+
+		rawName := strings.ReplaceAll(hdr.Name, "\\", "/")
+		if rawName == "" {
+			continue
+		}
+		if strings.HasPrefix(rawName, "/") || filepath.IsAbs(hdr.Name) || (len(rawName) >= 2 && rawName[1] == ':') {
+			return fmt.Errorf("unsafe tar entry (absolute path): %s", hdr.Name)
+		}
+		for _, seg := range strings.Split(rawName, "/") {
+			if seg == ".." {
+				return fmt.Errorf("unsafe tar entry (path traversal): %s", hdr.Name)
+			}
+		}
+
+		rel := filepath.Clean(filepath.FromSlash(rawName))
+		if rel == "." {
+			continue
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+			return fmt.Errorf("unsafe tar entry (escapes dest): %s", hdr.Name)
+		}
+		if rel == "node_modules" || strings.HasPrefix(rel, "node_modules"+string(os.PathSeparator)) {
+			continue
+		}
+
+		targetPath := filepath.Join(absDest, rel)
+		absTarget, err := filepath.Abs(targetPath)
+		if err != nil {
+			return err
+		}
+		if absTarget != absDest && !strings.HasPrefix(absTarget, destPrefix) {
+			return fmt.Errorf("unsafe tar entry (outside dest): %s", hdr.Name)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(absTarget, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(absTarget), 0755); err != nil {
+				return err
+			}
+			mode := os.FileMode(0644)
+			if hdr.Mode > 0 {
+				mode = (os.FileMode(hdr.Mode) & 0777) | 0200
+			}
+			out, err := os.OpenFile(absTarget, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+			if err != nil {
+				return err
+			}
+			_, copyErr := io.Copy(out, tr)
+			closeErr := out.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+		}
+	}
+	return nil
+}
+
+func fileSHA256(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func tailString(s string, maxRunes int) string {
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[len(r)-maxRunes:])
+}
+
+func handleRenderRemotion(p map[string]interface{}) (map[string]interface{}, error) {
+	atomic.AddInt32(&activeJobsCount, 1)
+	defer atomic.AddInt32(&activeJobsCount, -1)
+
+	specs := getSpecs()
+	if specs.NodePath == "" {
+		specs = refreshStaticSpecs(specs.InstallDir)
+	}
+
+	jobID := strings.TrimSpace(getString(p, "jobId", fmt.Sprintf("rjob-%d", time.Now().Unix())))
+	if jobID == "" {
+		jobID = fmt.Sprintf("rjob-%d", time.Now().Unix())
+	}
+	bundleURL := strings.TrimSpace(getString(p, "bundleUrl", ""))
+	bundleHash := strings.TrimSpace(getString(p, "bundleHash", ""))
+	propsURL := strings.TrimSpace(getString(p, "propsUrl", ""))
+	compositionID := strings.TrimSpace(getString(p, "compositionId", "StudioEngine"))
+	if compositionID == "" {
+		compositionID = "StudioEngine"
+	}
+	outputName := strings.TrimSpace(getString(p, "outputName", jobID+".mp4"))
+	if outputName == "" {
+		outputName = jobID + ".mp4"
+	}
+	outputName = filepath.Base(outputName)
+	concurrency := getInt(p, "concurrency", 4)
+	if concurrency <= 0 {
+		concurrency = 4
+	}
+	crf := getInt(p, "crf", 18)
+	if crf <= 0 {
+		crf = 18
+	}
+
+	npmPath := detectNodeTool("npm", specs.NodePath)
+	npxPath := detectNodeTool("npx", specs.NodePath)
+	if npmPath == "" || npxPath == "" {
+		err := fmt.Errorf("nodejs/npm/npx is not installed on node %s (node=%q npm=%q npx=%q)", agentCfg.NodeID, specs.NodePath, npmPath, npxPath)
+		reportJobProgress(jobID, "failed", 0, err.Error())
+		return nil, err
+	}
+	if propsURL == "" {
+		err := fmt.Errorf("missing propsUrl for render.remotion")
+		reportJobProgress(jobID, "failed", 0, err.Error())
+		return nil, err
+	}
+
+	cmdEnv := buildRemotionEnv(specs.NodePath, npmPath, npxPath)
+	projDir := filepath.Join(specs.InstallDir, "remotion", "motion-studio")
+	workDir := filepath.Join(specs.InstallDir, "jobs", jobID)
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		reportJobProgress(jobID, "failed", 0, "สร้างโฟลเดอร์งานไม่สำเร็จ: "+err.Error())
+		return nil, err
+	}
+	defer os.RemoveAll(workDir)
+
+	// Serialize project bundle extraction and npm ci across concurrent jobs
+	if err := func() error {
+		remotionSetupMu.Lock()
+		defer remotionSetupMu.Unlock()
+
+		if err := os.MkdirAll(projDir, 0755); err != nil {
+			return err
+		}
+
+		hashFile := filepath.Join(projDir, ".bundle_hash")
+		curBundleHash := ""
+		if b, err := os.ReadFile(hashFile); err == nil {
+			curBundleHash = strings.TrimSpace(string(b))
+		}
+
+		if bundleURL != "" && (bundleHash == "" || curBundleHash != bundleHash) {
+			shortHash := bundleHash
+			if len(shortHash) > 12 {
+				shortHash = shortHash[:12]
+			}
+			reportJobProgress(jobID, "downloading", 5, fmt.Sprintf("กำลังดาวน์โหลด Remotion bundle (%s)...", shortHash))
+			tgzPath := filepath.Join(workDir, "bundle.tar.gz")
+			if err := downloadHubToFile(bundleURL, tgzPath); err != nil {
+				return fmt.Errorf("bundle download failed: %w", err)
+			}
+			if err := extractTarGzSafe(tgzPath, projDir); err != nil {
+				return fmt.Errorf("bundle extract failed: %w", err)
+			}
+			_ = os.Remove(tgzPath)
+			if bundleHash != "" {
+				_ = os.WriteFile(hashFile, []byte(bundleHash+"\n"), 0644)
+			}
+		}
+
+		lockPath := filepath.Join(projDir, "package-lock.json")
+		lockHash := fileSHA256(lockPath)
+		if lockHash == "" {
+			lockHash = fileSHA256(filepath.Join(projDir, "package.json"))
+		}
+		lockHashFile := filepath.Join(projDir, ".lock_hash")
+		curLockHash := ""
+		if b, err := os.ReadFile(lockHashFile); err == nil {
+			curLockHash = strings.TrimSpace(string(b))
+		}
+
+		_, binErr := os.Stat(filepath.Join(projDir, "node_modules", ".bin"))
+		needInstall := binErr != nil || (lockHash != "" && curLockHash != lockHash)
+		if needInstall {
+			reportJobProgress(jobID, "installing", 10, "npm ci ...")
+			ciCtx, ciCancel := context.WithTimeout(context.Background(), 20*time.Minute)
+			defer ciCancel()
+
+			ciCmd := exec.CommandContext(ciCtx, npmPath, "ci", "--no-audit", "--no-fund")
+			ciCmd.Dir = projDir
+			ciCmd.Env = cmdEnv
+			ciCmd.SysProcAttr = hideWindowAttr()
+			ciOut, ciErr := ciCmd.CombinedOutput()
+			if ciErr != nil {
+				msg := tailString(strings.TrimSpace(string(ciOut)), 2000)
+				return fmt.Errorf("npm ci failed: %v (%s)", ciErr, msg)
+			}
+			if lockHash != "" {
+				_ = os.WriteFile(lockHashFile, []byte(lockHash+"\n"), 0644)
+			}
+
+			// Ensure chrome-headless-shell is available; non-fatal if it fails
+			brCtx, brCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer brCancel()
+			brCmd := exec.CommandContext(brCtx, npxPath, "remotion", "browser", "ensure")
+			brCmd.Dir = projDir
+			brCmd.Env = cmdEnv
+			brCmd.SysProcAttr = hideWindowAttr()
+			if brOut, brErr := brCmd.CombinedOutput(); brErr != nil {
+				fmt.Printf("[remotion:%s] browser ensure warning: %v (%s)\n", jobID, brErr, tailString(strings.TrimSpace(string(brOut)), 500))
+			}
+		}
+		return nil
+	}(); err != nil {
+		reportJobProgress(jobID, "failed", 0, err.Error())
+		return nil, err
+	}
+
+	propsFile := filepath.Join(workDir, "props.json")
+	if err := downloadHubToFile(propsURL, propsFile); err != nil {
+		reportJobProgress(jobID, "failed", 0, "ดาวน์โหลด props.json ไม่สำเร็จ: "+err.Error())
+		return nil, fmt.Errorf("props download failed: %w", err)
+	}
+
+	outFile := filepath.Join(workDir, outputName)
+	args := []string{
+		"remotion", "render",
+		"src/index.ts",
+		compositionID,
+		outFile,
+		"--props=" + propsFile,
+		"--codec=h264",
+		"--pixel-format=yuv420p",
+		fmt.Sprintf("--crf=%d", crf),
+		fmt.Sprintf("--concurrency=%d", concurrency),
+		"--gl=angle",
+	}
+
+	reportJobProgress(jobID, "rendering", 15, fmt.Sprintf("กำลังเรนเดอร์ Remotion (%s) บน %s...", compositionID, specs.NodeID))
+
+	renderCtx, renderCancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer renderCancel()
+
+	startedRender := time.Now()
+	rCmd := exec.CommandContext(renderCtx, npxPath, args...)
+	rCmd.Dir = projDir
+	rCmd.Env = cmdEnv
+	rCmd.SysProcAttr = hideWindowAttr()
+
+	pr, pw := io.Pipe()
+	rCmd.Stdout = pw
+	rCmd.Stderr = pw
+
+	if err := rCmd.Start(); err != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		reportJobProgress(jobID, "failed", 0, "Remotion start error: "+err.Error())
+		return nil, fmt.Errorf("remotion start failed: %w", err)
+	}
+
+	waitErrCh := make(chan error, 1)
+	go func() {
+		wErr := rCmd.Wait()
+		_ = pw.Close()
+		waitErrCh <- wErr
+	}()
+
+	var lastLines []string
+	var lastReportAt time.Time
+	lastReportedCur := -1
+
+	scanner := bufio.NewScanner(pr)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	scanner.Split(splitBlenderLines)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		lastLines = append(lastLines, line)
+		if len(lastLines) > 30 {
+			lastLines = lastLines[len(lastLines)-30:]
+		}
+		if m := reRemotionRendered.FindStringSubmatch(line); len(m) == 3 {
+			cur, errC := strconv.Atoi(m[1])
+			total, errT := strconv.Atoi(m[2])
+			if errC == nil && errT == nil && total > 0 {
+				frac := float64(cur) / float64(total)
+				if frac < 0 {
+					frac = 0
+				}
+				if frac > 1 {
+					frac = 1
+				}
+				pct := math.Round((15.0+frac*80.0)*10) / 10
+				now := time.Now()
+				if cur != lastReportedCur && (lastReportAt.IsZero() || now.Sub(lastReportAt) >= 1500*time.Millisecond || cur == total) {
+					reportJobProgress(jobID, "rendering", pct, fmt.Sprintf("Rendered %d/%d", cur, total))
+					lastReportAt = now
+					lastReportedCur = cur
+				}
+			}
+		}
+	}
+	_, _ = io.Copy(io.Discard, pr)
+	_ = pr.Close()
+
+	renderErr := <-waitErrCh
+	renderDurationMs := time.Since(startedRender).Milliseconds()
+
+	if renderErr != nil {
+		errTail := tailString(strings.Join(lastLines, "\n"), 2500)
+		reportJobProgress(jobID, "failed", 0, "Remotion error: "+errTail)
+		return nil, fmt.Errorf("remotion render failed: %v (%s)", renderErr, errTail)
+	}
+
+	st, statErr := os.Stat(outFile)
+	if statErr != nil || st.Size() == 0 {
+		errTail := tailString(strings.Join(lastLines, "\n"), 2500)
+		reportJobProgress(jobID, "failed", 0, "ไม่พบไฟล์ผลลัพธ์ MP4 จาก Remotion: "+errTail)
+		return nil, fmt.Errorf("remotion output file missing (%s): %s", outputName, errTail)
+	}
+
+	reportJobProgress(jobID, "uploading", 95, "เรนเดอร์ Remotion เสร็จแล้ว กำลังส่งไฟล์ MP4 กลับไปยัง Homelab...")
+
+	outBytes, err := os.ReadFile(outFile)
+	if err != nil {
+		reportJobProgress(jobID, "failed", 95, "อ่านไฟล์ผลลัพธ์ไม่สำเร็จ: "+err.Error())
+		return nil, err
+	}
+
+	var mpBuf bytes.Buffer
+	mw := multipart.NewWriter(&mpBuf)
+	_ = mw.WriteField("jobId", jobID)
+	_ = mw.WriteField("nodeId", agentCfg.NodeID)
+	_ = mw.WriteField("encoder", "remotion")
+	_ = mw.WriteField("renderDurationMs", fmt.Sprintf("%d", renderDurationMs))
+	fw, err := mw.CreateFormFile("file", outputName)
+	if err != nil {
+		reportJobProgress(jobID, "failed", 95, "สร้าง multipart upload ไม่สำเร็จ: "+err.Error())
+		return nil, err
+	}
+	if _, err := fw.Write(outBytes); err != nil {
+		reportJobProgress(jobID, "failed", 95, "เขียนข้อมูลอัปโหลดไม่สำเร็จ: "+err.Error())
+		return nil, err
+	}
+	mw.Close()
+
+	upPath := fmt.Sprintf("/api/agent-hub/agent/job-upload?jobId=%s&nodeId=%s&filename=%s",
+		url.QueryEscape(jobID), url.QueryEscape(agentCfg.NodeID), url.QueryEscape(outputName))
+	upResp, _, upErr := doHubRequest(transferClient, "POST", upPath, mpBuf.Bytes(), mw.FormDataContentType())
+	if upErr != nil {
+		reportJobProgress(jobID, "failed", 95, "อัปโหลดไฟล์กลับไม่สำเร็จ: "+upErr.Error())
+		return nil, upErr
+	}
+	defer upResp.Body.Close()
+	var upData map[string]interface{}
+	_ = json.NewDecoder(upResp.Body).Decode(&upData)
+	if upResp.StatusCode >= 400 {
+		err := fmt.Errorf("upload returned HTTP %d", upResp.StatusCode)
+		reportJobProgress(jobID, "failed", 95, "อัปโหลดไฟล์กลับไม่สำเร็จ: "+err.Error())
+		return nil, err
+	}
+
+	reportJobProgress(jobID, "completed", 100, fmt.Sprintf("เรนเดอร์ Remotion สำเร็จบน %s (%d ms)", specs.NodeID, renderDurationMs))
+
+	return map[string]interface{}{
+		"jobId":            jobID,
+		"nodeId":           agentCfg.NodeID,
+		"compositionId":    compositionID,
 		"outputName":       outputName,
 		"outputSize":       st.Size(),
 		"renderDurationMs": renderDurationMs,

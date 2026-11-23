@@ -104,9 +104,20 @@ PYEOF
     if [[ -n "$props" ]]; then
       args+=(--props="$props")
     fi
+    if [[ -z "$still" && -n "$props" && "${MOTION_REMOTE_RENDER:-auto}" != "off" && -x /home/dev/.local/bin/agent-ctl ]]; then
+      node_arg="${MOTION_REMOTE_RENDER:-auto}"
+      rc=0
+      /home/dev/.local/bin/agent-ctl remotion --props "$props" --comp "$comp" -o "$out" --node "$node_arg" || rc=$?
+      if [[ "$rc" -eq 0 && -s "$out" ]]; then
+        exit 0
+      fi
+      echo "[render-node] homelab (fallback: remote rc=$rc)"
+      rm -f "$out"
+    fi
     if [[ -n "$still" ]]; then
       exec npx remotion still src/index.ts "$comp" "$out" --frame="$still" "${args[@]}"
     else
+      echo "[render-node] homelab"
       exec npx remotion render src/index.ts "$comp" "$out" --codec=h264 --pixel-format=yuv420p --crf=18 "${args[@]}"
     fi
     ;;

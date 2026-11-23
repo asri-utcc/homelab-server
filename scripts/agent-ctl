@@ -14,6 +14,7 @@ Usage:
   agent-ctl write <nodeId> <remotePath> <localFileOrContent> [--from-file <localPath>]
   agent-ctl edit <nodeId> <remotePath> --target "<old>" --replace "<new>"
   agent-ctl render <nodeId|auto> [--input <localPath>] [--test] [--nvenc]
+  agent-ctl remotion --props <file.json> -o <out.mp4> [--comp StudioEngine] [--node <id|auto>] [--concurrency <n>] [--timeout <sec>]
   agent-ctl blender --script <file.py> [--node <id|auto>] [--live-session <bv>] [--wait]
   agent-ctl update <nodeId>
 
@@ -170,6 +171,14 @@ def main() -> int:
     p_render.add_argument("--duration", type=int, default=5)
     p_render.add_argument("--crf", type=int, default=20)
 
+    p_remotion = sub.add_parser("remotion", help="Dispatch a distributed Remotion render job")
+    p_remotion.add_argument("--props", required=True, help="Path to local props.json")
+    p_remotion.add_argument("--comp", default="StudioEngine", help="Remotion composition ID (default: StudioEngine)")
+    p_remotion.add_argument("-o", "--output", required=True, help="Local output .mp4 path")
+    p_remotion.add_argument("--node", default="auto", help="Target node ID or 'auto' (default: auto)")
+    p_remotion.add_argument("--concurrency", type=int, default=None, help="Render concurrency")
+    p_remotion.add_argument("--timeout", type=int, default=3600, help="Wait timeout in seconds (default: 3600)")
+
     p_blender = sub.add_parser(
         "blender",
         help="Dispatch a Blender 3D job with live streaming (bpy scripts can call live_snapshot(label) & live_progress(pct, msg))",
@@ -308,6 +317,64 @@ def main() -> int:
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0 if res.get("ok") else 1
+
+    if args.cmd == "remotion":
+        payload = {
+            "nodeId": args.node,
+            "propsPath": os.path.abspath(args.props),
+            "compositionId": args.comp,
+            "outputName": os.path.basename(args.output),
+        }
+        if args.concurrency is not None:
+            payload["concurrency"] = args.concurrency
+        res = hub_request("POST", "/api/agent-hub/remotion-jobs", payload, timeout=30)
+        if not res.get("ok") or not (res.get("job") or {}).get("jobId"):
+            reason = res.get("error") or res.get("code") or "hub unavailable"
+            print(f"[render-node] none: {reason}", file=sys.stderr, flush=True)
+            return 3
+
+        job = res["job"]
+        job_id = job["jobId"]
+        node_id = job.get("nodeId") or args.node
+        print(f"[render-node] {node_id}", flush=True)
+
+        start_t = time.time()
+        last_update_t = start_t
+        last_progress = None
+        while True:
+            now = time.time()
+            if now - start_t > args.timeout:
+                print(f"Error: remote render timed out after {args.timeout}s", file=sys.stderr, flush=True)
+                return 4
+
+            jres = hub_request("GET", f"/api/agent-hub/jobs/{job_id}", timeout=15)
+            if jres.get("ok") and jres.get("job"):
+                j = jres["job"]
+                status = j.get("status", "")
+                progress = j.get("progress", 0) or 0
+                message = j.get("message", "") or ""
+                if progress != last_progress:
+                    last_progress = progress
+                    last_update_t = now
+                    print(f"Rendered {round(progress)}/100 ({status}) {message}", flush=True)
+
+                if status == "completed":
+                    ok = hub_download(f"/api/agent-hub/jobs/{job_id}/output", args.output, timeout=600)
+                    if ok and os.path.isfile(args.output) and os.path.getsize(args.output) > 10240:
+                        return 0
+                    print("Error: downloaded output file missing or <= 10KB", file=sys.stderr, flush=True)
+                    return 4
+
+                if status == "failed":
+                    err = j.get("error") or message or "remote render failed"
+                    print(f"Error: {err}", file=sys.stderr, flush=True)
+                    return 4
+
+            if now - last_update_t > 300:
+                print("Error: remote render stalled (no progress update for >300s)", file=sys.stderr, flush=True)
+                return 4
+
+            time.sleep(2)
 
     if args.cmd == "blender":
         if not os.path.isfile(args.script):

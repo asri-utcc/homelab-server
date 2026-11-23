@@ -74,7 +74,7 @@ let initialized = false;
 let buildInProgress = null;
 
 function ensureDirsSync() {
-    for (const d of [HUB_ROOT, BIN_DIR, JOBS_DIR]) {
+    for (const d of [HUB_ROOT, BIN_DIR, JOBS_DIR, BUNDLES_DIR]) {
         if (!fs.existsSync(d)) {
             fs.mkdirSync(d, { recursive: true });
         }
@@ -290,6 +290,7 @@ function isPublicOrAgentAuthorized(req, uriPath) {
         return true;
     }
 
+    // Covers /api/agent-hub/agent/*, /api/agent-hub/jobs/*, /api/agent-hub/bundles/*, etc.
     if (p.startsWith('/api/agent-hub/')) {
         const tok = extractTokenFromReq(req, parsedUrl);
         if (tok && verifyAgentToken(tok)) return true;
@@ -666,6 +667,224 @@ async function createBlenderJob(opts = {}) {
         outputName,
         previewName,
         openGui: job.openGui,
+    });
+    job.commandId = cmd.id;
+    return job;
+}
+
+const REMOTION_BUNDLE_ITEMS = [
+    'src',
+    'public',
+    'package.json',
+    'package-lock.json',
+    'remotion.config.ts',
+    'tsconfig.json',
+    'assets/fonts',
+];
+const ACTIVE_RENDER_STATUSES = new Set(['queued', 'downloading', 'installing', 'rendering']);
+let motionBundleCache = { hash: '', filePath: '', expiresAt: 0 };
+let motionBundleInFlight = null;
+
+function selectBestRemotionNode(preferredNodeId = '') {
+    const pref = String(preferredNodeId || '').trim().toLowerCase();
+    const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+    if (pref && pref !== 'auto') {
+        const found = allOnline.find((n) => n.nodeId === pref);
+        return found || null;
+    }
+
+    const busyNodes = new Set();
+    for (const j of renderJobs.values()) {
+        if (j && j.nodeId && ACTIVE_RENDER_STATUSES.has(j.status)) {
+            busyNodes.add(String(j.nodeId).trim().toLowerCase());
+        }
+    }
+
+    const capable = allOnline.filter((n) => {
+        const caps = (n.specs && n.specs.capabilities) || [];
+        if (!caps.includes('remotion-render')) return false;
+        if (busyNodes.has(n.nodeId)) return false;
+        if (n.metrics && (n.metrics.rendering || n.metrics.busy || (Number(n.metrics.activeRenderJobs) || 0) > 0)) {
+            return false;
+        }
+        return true;
+    });
+    if (capable.length === 0) return null;
+
+    capable.sort((a, b) => {
+        const aNv = a.specs && a.specs.hasNvenc ? 1000 : 0;
+        const bNv = b.specs && b.specs.hasNvenc ? 1000 : 0;
+        const aThreads = ((a.specs && a.specs.cpuThreads) || 1) * 20;
+        const bThreads = ((b.specs && b.specs.cpuThreads) || 1) * 20;
+        const aLoad = (a.metrics && a.metrics.cpuPct) || 0;
+        const bLoad = (b.metrics && b.metrics.cpuPct) || 0;
+        return (bNv + bThreads - bLoad) - (aNv + aThreads - aLoad);
+    });
+    return capable[0];
+}
+
+async function collectBundleFileEntries(baseDir, relItems) {
+    const entries = [];
+    async function walk(relPath) {
+        const fullPath = path.join(baseDir, relPath);
+        const st = await fsp.lstat(fullPath);
+        if (st.isDirectory()) {
+            const names = await fsp.readdir(fullPath);
+            names.sort();
+            for (const name of names) {
+                await walk(path.posix.join(relPath.split(path.sep).join('/'), name));
+            }
+        } else if (st.isFile() || st.isSymbolicLink()) {
+            entries.push(`${relPath}|${Math.trunc(st.mtimeMs)}|${st.size}`);
+        }
+    }
+    for (const item of relItems) {
+        await walk(item);
+    }
+    entries.sort();
+    return entries;
+}
+
+async function ensureMotionBundle() {
+    const now = Date.now();
+    if (motionBundleCache.hash && now < motionBundleCache.expiresAt && fs.existsSync(motionBundleCache.filePath)) {
+        return { hash: motionBundleCache.hash, filePath: motionBundleCache.filePath };
+    }
+    if (motionBundleInFlight) return motionBundleInFlight;
+
+    motionBundleInFlight = (async () => {
+        await fsp.mkdir(BUNDLES_DIR, { recursive: true });
+        const items = REMOTION_BUNDLE_ITEMS.filter((rel) => fs.existsSync(path.join(MOTION_STUDIO_DIR, rel)));
+        if (items.length === 0) {
+            throw new Error(`ไม่พบไฟล์โปรเจกต์ motion-studio ใน ${MOTION_STUDIO_DIR}`);
+        }
+
+        const entries = await collectBundleFileEntries(MOTION_STUDIO_DIR, items);
+        const hasher = crypto.createHash('sha1');
+        for (const line of entries) {
+            hasher.update(line);
+            hasher.update('\n');
+        }
+        const hash = hasher.digest('hex').slice(0, 16);
+        const outPath = path.join(BUNDLES_DIR, `motion-studio-${hash}.tar.gz`);
+
+        if (!fs.existsSync(outPath)) {
+            const tmpPath = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+            try {
+                await execFileAsync('tar', ['-czf', tmpPath, '-C', MOTION_STUDIO_DIR, ...items], { timeout: 120000 });
+                await fsp.rename(tmpPath, outPath);
+            } catch (err) {
+                await fsp.unlink(tmpPath).catch(() => {});
+                throw err;
+            }
+        }
+
+        // Prune old bundles, keeping the 3 most recent
+        try {
+            const files = (await fsp.readdir(BUNDLES_DIR))
+                .filter((f) => /^motion-studio-[a-f0-9]{16}\.tar\.gz$/.test(f));
+            if (files.length > 3) {
+                const withStat = await Promise.all(
+                    files.map(async (f) => {
+                        const full = path.join(BUNDLES_DIR, f);
+                        const st = await fsp.stat(full).catch(() => null);
+                        return { full, mtimeMs: st ? st.mtimeMs : 0 };
+                    })
+                );
+                withStat.sort((a, b) => b.mtimeMs - a.mtimeMs);
+                for (const old of withStat.slice(3)) {
+                    if (old.full !== outPath) {
+                        await fsp.unlink(old.full).catch(() => {});
+                    }
+                }
+            }
+        } catch (_) {}
+
+        motionBundleCache = { hash, filePath: outPath, expiresAt: Date.now() + 60000 };
+        return { hash, filePath: outPath };
+    })().finally(() => {
+        motionBundleInFlight = null;
+    });
+
+    return motionBundleInFlight;
+}
+
+async function createRemotionJob(opts = {}) {
+    const node = selectBestRemotionNode(opts.nodeId);
+    if (!node) {
+        const err = new Error('ไม่มีเครื่อง Worker Agent ที่ออนไลน์และพร้อมเรนเดอร์ Remotion ในขณะนี้');
+        err.code = 'NO_NODE';
+        throw err;
+    }
+
+    if (!opts.propsPath) {
+        throw new Error('ต้องระบุ propsPath สำหรับงานเรนเดอร์ Remotion');
+    }
+    const srcPropsPath = path.resolve(String(opts.propsPath));
+    const allowedRoots = ['/home/dev/.gemini/', '/tmp/'];
+    if (!allowedRoots.some((root) => srcPropsPath.startsWith(root))) {
+        throw new Error(`ไม่อนุญาตให้เข้าถึง propsPath นอกขอบเขต: ${srcPropsPath}`);
+    }
+    if (!fs.existsSync(srcPropsPath)) {
+        throw new Error(`ไม่พบไฟล์ props: ${srcPropsPath}`);
+    }
+    const realPropsPath = fs.realpathSync(srcPropsPath);
+    if (!allowedRoots.some((root) => realPropsPath.startsWith(root))) {
+        throw new Error(`ไม่อนุญาตให้เข้าถึง propsPath นอกขอบเขต (symlink): ${srcPropsPath}`);
+    }
+
+    const { hash } = await ensureMotionBundle();
+
+    const jobId = `rmjob_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
+    const jobDir = path.join(JOBS_DIR, jobId);
+    await fsp.mkdir(jobDir, { recursive: true });
+
+    const inputFilePath = path.join(jobDir, 'input.json');
+    await fsp.copyFile(realPropsPath, inputFilePath);
+
+    const bundleUrl = `/api/agent-hub/bundles/${hash}.tar.gz`;
+    const propsUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/input`;
+    const compositionId = String(opts.compositionId || 'StudioEngine').trim() || 'StudioEngine';
+    const outputName = String(opts.outputName || `${jobId}.mp4`).trim() || `${jobId}.mp4`;
+    const concurrency = Number(opts.concurrency) || ((node.specs && node.specs.cpuThreads >= 12) ? 6 : 4);
+    const crf = Number(opts.crf) || 18;
+
+    const job = {
+        jobId,
+        kind: 'remotion',
+        nodeId: node.nodeId,
+        hostname: (node.specs && node.specs.hostname) || node.nodeId,
+        status: 'queued',
+        progress: 0,
+        message: `ส่งงาน Remotion ไปยัง ${node.nodeId} แล้ว`,
+        compositionId,
+        bundleHash: hash,
+        bundleUrl,
+        concurrency,
+        crf,
+        inputFilePath,
+        inputUrl: propsUrl,
+        outputName,
+        outputFilePath: '',
+        downloadUrl: '',
+        encoder: 'remotion',
+        renderDurationMs: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    renderJobs.set(jobId, job);
+    await saveJobs();
+
+    const { cmd } = enqueueCommand(node.nodeId, 'render.remotion', {
+        jobId,
+        bundleUrl,
+        bundleHash: hash,
+        propsUrl,
+        compositionId,
+        outputName,
+        concurrency,
+        crf,
     });
     job.commandId = cmd.id;
     return job;
@@ -1200,7 +1419,43 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         }
     }
 
-    // 3. Job Input / Output / Preview / Live file streaming & Live Monitor (accessible by Agent Token, Localhost, or Dashboard Session)
+    // 3. Job Input / Output / Preview / Live file streaming, Bundle download & Live Monitor (accessible by Agent Token, Localhost, or Dashboard Session)
+    const bundleMatch = p.match(/^\/api\/agent-hub\/bundles\/([a-f0-9]{16})\.tar\.gz$/);
+    if (isGetOrHead && bundleMatch) {
+        const [, hash] = bundleMatch;
+        const filePath = path.join(BUNDLES_DIR, `motion-studio-${hash}.tar.gz`);
+        if (!fs.existsSync(filePath)) {
+            sendJson(res, 404, { ok: false, error: 'Bundle not found' });
+            return true;
+        }
+        const st = await fsp.stat(filePath);
+        res.writeHead(200, {
+            'Content-Type': 'application/gzip',
+            'Content-Length': String(st.size),
+            'Content-Disposition': `attachment; filename="motion-studio-${hash}.tar.gz"`,
+            'Cache-Control': 'private, max-age=3600',
+        });
+        if (req.method === 'HEAD') {
+            res.end();
+        } else {
+            fs.createReadStream(filePath).pipe(res);
+        }
+        return true;
+    }
+
+    const jobStatusMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)$/);
+    if (req.method === 'GET' && jobStatusMatch) {
+        const [, jobId] = jobStatusMatch;
+        const job = renderJobs.get(jobId);
+        if (!job) {
+            sendJson(res, 404, { ok: false, error: 'Render job not found' });
+            return true;
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        sendJson(res, 200, { ok: true, job });
+        return true;
+    }
+
     const jobFileMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/(input|output|preview|live)$/);
     if (req.method === 'GET' && jobFileMatch) {
         const [, jobId, kind] = jobFileMatch;
@@ -1225,6 +1480,7 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         const ext = path.extname(fname).toLowerCase();
         const mimeMap = {
             '.mp4': 'video/mp4',
+            '.json': 'application/json; charset=utf-8',
             '.png': 'image/png',
             '.jpg': 'image/jpeg',
             '.jpeg': 'image/jpeg',
@@ -1399,6 +1655,21 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         return true;
     }
 
+    if (req.method === 'POST' && p === '/api/agent-hub/remotion-jobs') {
+        const body = await readJsonBody(req, 1024 * 1024);
+        try {
+            const job = await createRemotionJob(body);
+            sendJson(res, 200, { ok: true, job });
+        } catch (err) {
+            if (err && err.code === 'NO_NODE') {
+                sendJson(res, 409, { ok: false, code: 'NO_NODE', error: err.message });
+            } else {
+                sendJson(res, 400, { ok: false, error: err.message });
+            }
+        }
+        return true;
+    }
+
     if (req.method === 'DELETE' && p.startsWith('/api/agent-hub/nodes/')) {
         const nodeId = decodeURIComponent(p.slice('/api/agent-hub/nodes/'.length)).trim().toLowerCase();
         const existed = nodes.delete(nodeId);
@@ -1424,4 +1695,6 @@ module.exports = {
     selectBestRenderNode,
     createBlenderJob,
     selectBestBlenderNode,
+    createRemotionJob,
+    selectBestRemotionNode,
 };

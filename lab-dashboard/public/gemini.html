@@ -4118,6 +4118,7 @@ body::before {
             <div class="bv-popover-anchor">
               <button type="button" class="bv-icon-btn" id="bv-more-btn" title="เมนูเพิ่มเติม">⋯</button>
               <div class="bv-popover" id="bv-more-popover" style="min-width:210px;">
+                <button type="button" class="bv-menu-item" id="bv-menu-auto-open">⚡ เด้งเปิดอัตโนมัติ: เปิด</button>
                 <button type="button" class="bv-menu-item" id="bv-menu-reconnect">🔄 เชื่อมต่อสตรีมใหม่</button>
                 <button type="button" class="bv-menu-item bv-menu-item--danger" id="bv-menu-close-browser">🛑 ปิดเบราว์เซอร์ห้องนี้</button>
               </div>
@@ -9335,7 +9336,7 @@ body::before {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: activeStreamAbortController.signal,
-        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession, browserVision: window.BrowserVision?.isOpenFor(currentSessionId) === true })
+        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession, browserVision: (window.BrowserVision?.isOpenFor(currentSessionId) === true) || (window.BrowserVision?.isAutoOpenEnabled?.() === true) })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -9376,12 +9377,14 @@ body::before {
               const payload = JSON.parse(line.slice(6));
               if (payload.type === 'thought' && payload.text) {
                 updateThinkingBar(payload.text);
+                window.BrowserVision?.noteStreamText?.(payload.text, currentSessionId);
               } else if (payload.type === 'meta' && payload.text) {
                 if (responseBody && responseBody.parentElement) {
                   applyAssistantMetaBadges(responseBody.parentElement, payload.text.modelInfo, payload.text.tokenUsage);
                 }
               } else if (payload.type === 'stdout' || payload.type === 'stderr') {
                 fullOutput += payload.text;
+                window.BrowserVision?.noteStreamText?.(payload.text, currentSessionId);
                 setBodyContent(responseBody, fullOutput, false);
                 scrollToBottom();
               } else if (payload.exitCode !== undefined) {
@@ -10290,6 +10293,7 @@ body::before {
 
   const LS_SPLIT_KEY = 'bv_split';
   const LS_ROOMS_KEY = 'bv_open_rooms';
+  const LS_AUTO_KEY = 'bv_auto_open';
   const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000];
   const SENSITIVE_LABELS = {
     password: '🔐 หน้าล็อกอิน (รหัสผ่าน)',
@@ -10337,6 +10341,7 @@ body::before {
   const pauseBtn = document.getElementById('bv-pause-btn');
   const moreBtn = document.getElementById('bv-more-btn');
   const morePopover = document.getElementById('bv-more-popover');
+  const menuAutoOpen = document.getElementById('bv-menu-auto-open');
   const menuReconnect = document.getElementById('bv-menu-reconnect');
   const menuCloseBrowser = document.getElementById('bv-menu-close-browser');
   const closeBtn = document.getElementById('bv-close-btn');
@@ -10380,12 +10385,46 @@ body::before {
   let cursorHideTimer = null;
   let annotationActive = false;
   let lastMouseMoveSent = 0;
+  let autoPollTimer = null;
+  let autoDismissedRun = false;
+  let autoBaseline = null;
+  let autoPollInFlight = false;
+  let autoWatchSeq = 0;
 
   const messageListeners = new Map(); // type -> Set<cb>
   const annotationToggleListeners = new Set();
   const sessionChangeListeners = new Set();
 
   // ── Storage helpers ────────────────────────────────────────────────────────
+  function isAutoOpenEnabled() {
+    try {
+      return localStorage.getItem(LS_AUTO_KEY) !== '0';
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function updateAutoOpenMenuUI() {
+    if (!menuAutoOpen) return;
+    menuAutoOpen.textContent = isAutoOpenEnabled()
+      ? '⚡ เด้งเปิดอัตโนมัติ: เปิด'
+      : '⚡ เด้งเปิดอัตโนมัติ: ปิด';
+  }
+
+  function setAutoOpenEnabled(on) {
+    const enabled = Boolean(on);
+    try {
+      localStorage.setItem(LS_AUTO_KEY, enabled ? '1' : '0');
+    } catch (_) {}
+    updateAutoOpenMenuUI();
+    if (!enabled) {
+      stopAutoWatch();
+    } else if (coreThinking && !isOpen && !autoDismissedRun) {
+      startAutoWatch();
+    }
+    return enabled;
+  }
+
   function readOpenRooms() {
     try {
       const raw = localStorage.getItem(LS_ROOMS_KEY);
@@ -10960,6 +10999,7 @@ body::before {
     if (!id) return;
     activeChatId = id;
     isOpen = true;
+    stopAutoWatch();
     writeOpenRoom(id, true);
     loadSavedSplit();
     if (coreShell) coreShell.classList.add('is-browser-open');
@@ -10998,8 +11038,114 @@ body::before {
   }
 
   function toggle() {
-    if (isOpen) closeView(true);
-    else open(getActiveChatId());
+    if (isOpen) {
+      autoDismissedRun = coreThinking;
+      stopAutoWatch();
+      closeView(true);
+    } else {
+      open(getActiveChatId());
+    }
+  }
+
+  function getClientBrowserSessionName(chatId) {
+    const id = String(chatId || '').trim();
+    if (!id) return '';
+    const candidate = 'bv_' + id;
+    if (/^[A-Za-z0-9_-]+$/.test(id) && candidate.length <= 32) {
+      return candidate;
+    }
+    return '';
+  }
+
+  function stopAutoWatch() {
+    autoWatchSeq += 1;
+    if (autoPollTimer) {
+      clearInterval(autoPollTimer);
+      autoPollTimer = null;
+    }
+    autoBaseline = null;
+    autoPollInFlight = false;
+  }
+
+  async function fetchAutoSessionStatus(chatId) {
+    try {
+      const res = await fetch('/api/browser-vision/session?chat=' + encodeURIComponent(chatId), { cache: 'no-store' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data && data.ok ? data : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function autoOpen(id) {
+    const targetId = String(id || getActiveChatId() || '').trim();
+    if (!targetId || isOpen || autoDismissedRun || !isAutoOpenEnabled()) return false;
+    open(targetId);
+    stopAutoWatch();
+    if (statusPill) {
+      statusPill.title = '🌐 เปิด Browser Vision อัตโนมัติ (AI กำลังใช้เบราว์เซอร์)';
+    }
+    return true;
+  }
+
+  function startAutoWatch() {
+    if (!isAutoOpenEnabled() || isOpen || autoDismissedRun) return;
+    const chatId = getActiveChatId();
+    if (!chatId) return;
+    stopAutoWatch();
+    const seq = autoWatchSeq;
+    autoPollInFlight = true;
+    fetchAutoSessionStatus(chatId).then((data) => {
+      if (seq !== autoWatchSeq) return;
+      autoPollInFlight = false;
+      autoBaseline = {
+        alive: Boolean(data && data.alive),
+        url: (data && data.status && data.status.url) ? String(data.status.url) : ''
+      };
+    }).catch(() => {
+      if (seq === autoWatchSeq) {
+        autoPollInFlight = false;
+        autoBaseline = { alive: false, url: '' };
+      }
+    });
+    autoPollTimer = setInterval(async () => {
+      if (seq !== autoWatchSeq) {
+        stopAutoWatch();
+        return;
+      }
+      if (!isAutoOpenEnabled() || isOpen || autoDismissedRun || getActiveChatId() !== chatId) {
+        stopAutoWatch();
+        return;
+      }
+      if (autoPollInFlight || !autoBaseline) return;
+      autoPollInFlight = true;
+      try {
+        const data = await fetchAutoSessionStatus(chatId);
+        if (seq !== autoWatchSeq || !data) return;
+        if (!isAutoOpenEnabled() || isOpen || autoDismissedRun || getActiveChatId() !== chatId) return;
+        const alive = Boolean(data.alive);
+        const curUrl = (data.status && data.status.url) ? String(data.status.url) : '';
+        const urlChanged = Boolean(curUrl && curUrl !== autoBaseline.url);
+        if (alive && (!autoBaseline.alive || urlChanged)) {
+          autoOpen(chatId);
+        }
+      } catch (_) {
+      } finally {
+        if (seq === autoWatchSeq) autoPollInFlight = false;
+      }
+    }, 2500);
+  }
+
+  function noteStreamText(text, chatId) {
+    if (!text || typeof text !== 'string') return false;
+    if (!isAutoOpenEnabled() || isOpen || autoDismissedRun) return false;
+    const targetId = String(chatId || getActiveChatId() || '').trim();
+    if (!targetId) return false;
+    const sessName = getClientBrowserSessionName(targetId);
+    const matched = /lab-browser\S*\s+session\b/.test(text) || (sessName && text.includes(sessName));
+    if (!matched) return false;
+    return autoOpen(targetId);
   }
 
   function onSessionChanged(newSessionId, meta) {
@@ -11012,6 +11158,7 @@ body::before {
     }
     const shouldBeOpen = Boolean(readOpenRooms()[nextId]);
     if (changed) {
+      stopAutoWatch();
       closeSocketOnly();
       resetFrameState();
       sessionChangeListeners.forEach((cb) => {
@@ -11025,6 +11172,9 @@ body::before {
     } else if (isOpen) {
       closeView(false);
     }
+    if (changed && coreThinking && !isOpen) {
+      startAutoWatch();
+    }
   }
 
   function onRoomMetaUpdated(sess, roomLabel) {
@@ -11035,12 +11185,24 @@ body::before {
   }
 
   function onCoreThinking(thinking) {
+    const prevThinking = coreThinking;
     coreThinking = Boolean(thinking);
     if (corePill) {
       corePill.classList.toggle('is-thinking', coreThinking);
     }
     if (corePillText) {
       corePillText.textContent = coreThinking ? '🔥 THINKING' : '⚡ CORE READY';
+    }
+    if (coreThinking) {
+      if (!prevThinking) {
+        autoDismissedRun = false;
+        startAutoWatch();
+      } else if (!autoPollTimer && !isOpen && !autoDismissedRun) {
+        startAutoWatch();
+      }
+    } else {
+      stopAutoWatch();
+      autoDismissedRun = false;
     }
     updateStatusUI();
   }
@@ -11299,7 +11461,13 @@ body::before {
   // ── Event Bindings ─────────────────────────────────────────────────────────
   if (btnToggleDesktop) btnToggleDesktop.addEventListener('click', toggle);
   if (btnToggleMobile) btnToggleMobile.addEventListener('click', toggle);
-  if (closeBtn) closeBtn.addEventListener('click', () => closeView(true));
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      autoDismissedRun = coreThinking;
+      stopAutoWatch();
+      closeView(true);
+    });
+  }
 
   if (mobTabChat) mobTabChat.addEventListener('click', () => setMobileTab('chat'));
   if (mobTabBrowser) mobTabBrowser.addEventListener('click', () => setMobileTab('browser'));
@@ -11368,7 +11536,16 @@ body::before {
       e.stopPropagation();
       const willOpen = !morePopover.classList.contains('is-open');
       closeAllPopovers();
-      if (willOpen) morePopover.classList.add('is-open');
+      if (willOpen) {
+        updateAutoOpenMenuUI();
+        morePopover.classList.add('is-open');
+      }
+    });
+  }
+  if (menuAutoOpen) {
+    menuAutoOpen.addEventListener('click', () => {
+      setAutoOpenEnabled(!isAutoOpenEnabled());
+      closeAllPopovers();
     });
   }
   if (menuReconnect) {
@@ -11405,6 +11582,9 @@ body::before {
     toggle,
     isOpen: () => isOpen,
     isOpenFor,
+    isAutoOpenEnabled,
+    setAutoOpenEnabled,
+    noteStreamText,
     mapPoint,
     viewportToStage,
     getRenderedImageRect,
@@ -11430,11 +11610,14 @@ body::before {
       pauseReason,
       aiBusy,
       annotationActive,
+      autoDismissedRun,
+      autoWatching: Boolean(autoPollTimer),
       viewport: { ...viewport }
     })
   };
 
   // Restore saved split & per-room open state on initial page load
+  updateAutoOpenMenuUI();
   loadSavedSplit();
   const initialId = getActiveChatId();
   if (initialId && readOpenRooms()[initialId]) {

@@ -40,6 +40,8 @@ def evict_page_cache(path: str) -> None:
             os.close(fd)
     except OSError as exc:
         print(f"[AUTO] page-cache evict failed: {exc}", file=sys.stderr)
+_AUDIT: dict = {}
+AUDIT_INGEST_URLS = [u for u in (os.environ.get("AUDIT_INGEST_URL"), "http://172.17.0.1:8090/api/audit/ingest", "http://127.0.0.1:8090/api/audit/ingest") if u]
 NOTIFY_SCRIPT = "/home/dev/projects/notify-telegram.py"
 DEFAULT_MODEL = "gemini-3.8-flash-low"
 DEFAULT_TIMEOUT = 180
@@ -261,6 +263,8 @@ def _run_auto_queue(prompt: str, cands: list[dict], timeout: int) -> tuple[str, 
 
 
 def run_model(prompt: str, model: str, timeout: int, route_prompt: str = "", min_level: int = 1) -> tuple[str, str]:
+    _AUDIT["aiInvoked"] = True
+    _AUDIT["model"] = model
     """Run a prompt on a fixed model (with crash-heal + auto failover), or on 'auto' via the AI Router."""
     if model != AUTO_MODEL:
         try:
@@ -311,6 +315,7 @@ def format_for_telegram(text: str) -> str:
 
 
 def send_telegram(message: str) -> bool:
+    _AUDIT["telegramSent"] = True
     formatted = format_for_telegram(message)
     chunks = [formatted[i : i + 3800] for i in range(0, len(formatted), 3800)] or [formatted]
     all_ok = True
@@ -389,7 +394,7 @@ def build_filter_prompt(user_prompt: str, cmd: str, exit_code: int, output: str,
     )
 
 
-def main() -> int:
+def _main() -> int:
     parser = argparse.ArgumentParser(description="AI-powered Cron Runner")
     parser.add_argument("--job-file", default="", help="Path to JSON job config file")
     parser.add_argument("--mode", choices=["ai", "script_ai"], default="script_ai")
@@ -494,6 +499,59 @@ def main() -> int:
     if not no_telegram and reply.strip():
         send_telegram(reply)
     return 0
+
+
+class _Tee:
+    """Mirror stdout/stderr into a bounded buffer so the audit record has an output tail."""
+    def __init__(self, stream, buf):
+        self._s, self._b = stream, buf
+
+    def write(self, data):
+        self._b.append(data)
+        return self._s.write(data)
+
+    def flush(self):
+        return self._s.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._s, name)
+
+
+def main() -> int:
+    """Run the cron job, then post an audit record (the server filters routine [OK] runs)."""
+    import time
+    import urllib.request
+    buf: list = []
+    started = int(time.time() * 1000)
+    sys.stdout, sys.stderr = _Tee(sys.stdout, buf), _Tee(sys.stderr, buf)
+    code, err = 1, None
+    try:
+        code = _main()
+    except SystemExit as e:
+        code = e.code if isinstance(e.code, int) else 1
+    except Exception as e:  # noqa: BLE001
+        err = str(e)
+        raise
+    finally:
+        try:
+            if os.environ.get("AUDIT_MANUAL") != "1":  # manual runs are logged by cron-manager itself
+                tail = "".join(buf)[-2000:]
+                body = {
+                    "source": "cron", "name": os.environ.get("CRON_JOB_ID") or " ".join(sys.argv[1:3]), "mode": "ai",
+                    "model": _AUDIT.get("model"), "aiInvoked": bool(_AUDIT.get("aiInvoked")),
+                    "telegramSent": bool(_AUDIT.get("telegramSent")), "exitCode": code, "error": err,
+                    "startedAt": started, "outputTail": tail, "command": " ".join(sys.argv[1:])[:500],
+                }
+                for url in AUDIT_INGEST_URLS:
+                    try:
+                        req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST")
+                        urllib.request.urlopen(req, timeout=3).read()
+                        break
+                    except Exception:  # noqa: BLE001 — try next candidate
+                        continue
+        except Exception:  # noqa: BLE001 — audit must never break the cron job
+            pass
+    return code
 
 
 if __name__ == "__main__":

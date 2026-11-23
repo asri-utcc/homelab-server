@@ -21,10 +21,13 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
+const audit = require('./audit-logger');
 
 const HUB_ROOT = '/home/dev/.gemini/agent-hub';
 const BIN_DIR = path.join(HUB_ROOT, 'bin');
 const JOBS_DIR = path.join(HUB_ROOT, 'jobs');
+const BUNDLES_DIR = path.join(HUB_ROOT, 'bundles');
+const MOTION_STUDIO_DIR = '/home/dev/.local/share/motion-studio';
 const CONFIG_PATH = path.join(HUB_ROOT, 'config.json');
 const NODES_PATH = path.join(HUB_ROOT, 'nodes.json');
 const JOBS_PATH = path.join(HUB_ROOT, 'jobs.json');
@@ -481,6 +484,19 @@ function handleCommandResult(body) {
         const resolvers = hist.waiterResolvers.splice(0, hist.waiterResolvers.length);
         for (const fn of resolvers) {
             try { fn(resultRecord); } catch (_) {}
+        }
+
+        if (hist.action !== 'sysinfo') {
+            try {
+                const id = audit.startRun({
+                    source: 'agent-hub', prompt: `${hist.action} @${hist.nodeId} ${JSON.stringify(hist.payload || {}).slice(0, 1500)}`,
+                    startedAt: Date.parse(hist.createdAt) || undefined, mode: hist.action
+                });
+                if (id) {
+                    const out = resultRecord.data ? JSON.stringify(resultRecord.data).slice(-1500) : '';
+                    audit.finishRun(id, { status: resultRecord.ok ? 'completed' : 'error', error: resultRecord.error, answer: out, exitCode: resultRecord.ok ? 0 : 1 });
+                }
+            } catch (_) {}
         }
     }
 

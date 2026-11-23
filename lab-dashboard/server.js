@@ -31,6 +31,7 @@ const { URL } = require('url');
 const crypto = require('crypto');
 const wgManager = require('./wireguard-manager');
 const geminiManager = require('./gemini-manager');
+const audit = require('./audit-logger');
 const aiRouter = require('./ai-router');
 const bgRemoveManager = require('./bg-remove-manager');
 const videoStudioManager = require('./video-studio-manager');
@@ -2256,6 +2257,45 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, r.ok ? 200 : 400, r);
             }
             return sendJson(res, 200, { ok: true, defaultModel: geminiManager.getDefaultModel() });
+        }
+        if (p.startsWith('/api/audit/')) {
+            if (p === '/api/audit/live' && req.method === 'GET') return sendJson(res, 200, { runs: audit.liveRuns() });
+            if (p === '/api/audit/stats' && req.method === 'GET') return sendJson(res, 200, audit.stats());
+            if (p === '/api/audit/runs' && req.method === 'GET') {
+                const sp = url.searchParams;
+                return sendJson(res, 200, audit.queryRuns({
+                    q: sp.get('q') || '', file: sp.get('file') || '', source: sp.get('source') || 'all',
+                    status: sp.get('status') || 'all', unreported: sp.get('unreported') === '1',
+                    from: sp.get('from') || '', to: sp.get('to') || '',
+                    limit: sp.get('limit'), offset: sp.get('offset')
+                }));
+            }
+            const m = p.match(/^\/api\/audit\/runs\/([A-Za-z0-9_.-]+)$/);
+            if (m && req.method === 'GET') {
+                const r = audit.getRun(m[1]);
+                return r ? sendJson(res, 200, r) : sendJson(res, 404, { error: 'not found' });
+            }
+            if (p === '/api/audit/ingest' && req.method === 'POST') {
+                // Localhost-only: direct loopback socket and NOT via the reverse proxy
+                const ra = (req.socket && req.socket.remoteAddress) || '';
+                const raClean = ra.replace(/^::ffff:/, '');
+                const selfAddrs = new Set(Object.values(os.networkInterfaces()).flat().map((i) => i.address));
+                const direct = (raClean === '127.0.0.1' || raClean === '::1' || selfAddrs.has(raClean)) && !req.headers['x-forwarded-for'];
+                if (!direct) return sendJson(res, 403, { error: 'localhost only' });
+                const body = await readJsonBody(req, 256 * 1024);
+                if (!audit.shouldAuditCron(body)) return sendJson(res, 200, { ok: true, skipped: true });
+                const id = audit.startRun({
+                    source: body.source === 'agent-hub' ? 'agent-hub' : 'cron', prompt: body.command || body.name || '',
+                    cwd: null, mode: body.mode || null, model: body.model || null, startedAt: body.startedAt
+                });
+                if (id) audit.recordEvent(id, 'status', body.outputTail || body.name || '', { cron: body.name || null });
+                const sum = id && audit.finishRun(id, {
+                    status: body.error || (body.exitCode != null && body.exitCode !== 0) || body.timedOut ? 'error' : 'completed',
+                    exitCode: body.exitCode, error: body.error || null, answer: body.outputTail || ''
+                });
+                return sendJson(res, 200, { ok: true, jobId: id, summary: sum });
+            }
+            return sendJson(res, 404, { error: 'unknown audit endpoint' });
         }
         if (p === '/api/gemini/status') {
             return sendJson(res, 200, await geminiManager.getStatus());

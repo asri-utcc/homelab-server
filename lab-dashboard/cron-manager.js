@@ -1,6 +1,7 @@
 'use strict';
 
 const { execFile, exec } = require('child_process');
+const audit = require('./audit-logger');
 const fs = require('fs');
 const fsp = require('fs').promises;
 const path = require('path');
@@ -280,7 +281,8 @@ async function runJobNow(id) {
     try { prevSize = fs.statSync(logFile).size; } catch (_) {}
 
     return new Promise((resolve) => {
-        exec(job.command, { timeout: 240000, shell: '/bin/bash' }, (err, stdout, stderr) => {
+        const auditStart = Date.now();
+        exec(job.command, { timeout: 240000, shell: '/bin/bash', env: { ...process.env, AUDIT_MANUAL: '1' } }, (err, stdout, stderr) => {
             let logDelta = '';
             try {
                 const st = fs.statSync(logFile);
@@ -293,6 +295,10 @@ async function runJobNow(id) {
                 }
             } catch (_) {}
             const output = [stdout, stderr, logDelta].filter(Boolean).join('\n').trim();
+            try {
+                const aid = audit.startRun({ source: 'cron', prompt: `[manual] ${job.id}: ${job.command}`, startedAt: auditStart, mode: 'manual' });
+                if (aid) audit.finishRun(aid, { status: err ? 'error' : 'completed', exitCode: err ? (err.code || 1) : 0, error: err ? err.message : null, answer: output });
+            } catch (_) {}
             resolve({
                 ok: !err,
                 exitCode: err ? (err.code || 1) : 0,

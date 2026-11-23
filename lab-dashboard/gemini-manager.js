@@ -29,6 +29,7 @@ const deepseekAgent = require('./deepseek-agent');
 const aiRouter = require('./ai-router');
 const crossTeam = require('./cross-team-orchestrator');
 const tokenUsageHelper = require('./token-usage');
+const audit = require('./audit-logger');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
@@ -230,9 +231,10 @@ async function processNextInQueue(onlySid = null) {
         const release = () => { clearTimeout(safetyRelease); queueStarting.delete(sid); };
         try {
             console.log(`[GeminiManager] Running next task from queue [${sid}] (${nextTask.id}): "${nextTask.prompt.substring(0, 45)}..." (Remaining in room: ${getQueue(sid).length}, total: ${taskQueue.length})`);
-            executePrompt(
+            executePromptAudited(
                 {
                     sessionId: sid,
+                    auditSource: 'queue',
                     prompt: nextTask.prompt,
                     images: Array.isArray(nextTask.images) ? nextTask.images : [],
                     mode: nextTask.mode,
@@ -1127,6 +1129,7 @@ async function persistJobToHistory(job) {
         };
         if (job.modelInfo) assistantFields.modelInfo = job.modelInfo;
         if (job.tokenUsage) assistantFields.tokenUsage = job.tokenUsage;
+        if (auditRunBySession.has(sid)) assistantFields.auditJobId = auditRunBySession.get(sid);
 
         if (secondLast && secondLast.role === 'user' && secondLast.content === promptText && last && last.role === 'assistant') {
             if (!secondLast.timestamp) secondLast.timestamp = startTs;
@@ -1135,6 +1138,7 @@ async function persistJobToHistory(job) {
             last.durationMs = durationMs;
             if (assistantFields.modelInfo) last.modelInfo = assistantFields.modelInfo;
             if (assistantFields.tokenUsage) last.tokenUsage = assistantFields.tokenUsage;
+            if (assistantFields.auditJobId) last.auditJobId = assistantFields.auditJobId;
         } else if (last && last.role === 'user' && last.content === promptText) {
             if (!last.timestamp) last.timestamp = startTs;
             history.push(assistantFields);
@@ -1150,6 +1154,7 @@ async function persistJobToHistory(job) {
 
 // ── Initialize Environment ───────────────────────────────────────────────────
 function init() {
+    try { audit.sweepOrphanedRunsOnBoot(); setTimeout(() => audit.archiveOldLogs(), 60000).unref(); setInterval(() => audit.archiveOldLogs(), 24 * 3600 * 1000).unref(); } catch (e) { console.error('[Audit] boot sweep failed:', e.message); }
     try {
         if (!fs.existsSync(GEMINI_DIR)) {
             fs.mkdirSync(GEMINI_DIR, { recursive: true });
@@ -4033,9 +4038,10 @@ async function onAutoResumeTick(sessionId) {
 
     console.log(`[GeminiManager] Auto-resuming session ${sessionId} on ${rec.model} (${rec.agyAccount || 'default'})`);
     try {
-        executePrompt(
+        executePromptAudited(
             {
                 sessionId,
+                auditSource: 'recovery',
                 prompt: resumePrompt,
                 images: Array.isArray(rec.images) ? rec.images : [],
                 mode: rec.mode || (sessMeta && sessMeta.mode) || 'exec',
@@ -4257,9 +4263,10 @@ async function handoffToAnotherModel({ sessionId = null, jobId = null, targetMod
     });
     const displayPrompt = `🔄 ทำต่อด้วย ${chosenLabel} (ส่งไม้ต่อจาก ${failedLabel})`;
 
-    return executePrompt(
+    return executePromptAudited(
         {
             sessionId: sid,
+            auditSource: 'recovery',
             jobId,
             prompt: displayPrompt,
             images,
@@ -4276,15 +4283,93 @@ async function handoffToAnotherModel({ sessionId = null, jobId = null, targetMod
     );
 }
 
+// ── Audit / Flight Recorder wrapper (top-level user-facing runs only) ───────
+const auditRunBySession = new Map(); // sid -> auditJobId
+
+function finalizeAuditRun(auditId, sid, code, errMsg) {
+    if (!auditRunBySession.has(sid) || auditRunBySession.get(sid) !== auditId) return;
+    auditRunBySession.delete(sid);
+    const j = lastJobs.get(sid);
+    const aborted = j && j.status === 'aborted';
+    const failed = code !== 0 && code != null;
+    audit.finishRun(auditId, {
+        status: aborted ? 'aborted' : (failed || errMsg ? 'error' : 'completed'),
+        exitCode: code == null ? null : code,
+        error: errMsg || (j && j.error) || null,
+        tokenUsage: j && j.tokenUsage || null,
+        answer: j && j.output || ''
+    });
+}
+
+function executePromptAudited(params, onChunk, onDone) {
+    let auditId = null;
+    let sid = null;
+    try {
+        sid = resolveSessionId(params.sessionId);
+        if (!activeRuns.has(sid)) {
+            const meta = getSessionMetaSync(sid) || {};
+            auditId = audit.startRun({
+                source: params.auditSource === 'recovery' || params.fromRecovery ? 'recovery' : 'chat',
+                sessionId: sid, sessionTitle: meta.title || null, prompt: params.prompt,
+                cwd: params.cwd && fs.existsSync(params.cwd) ? params.cwd : PROJECTS_BASE,
+                mode: params.mode, model: params.model
+            });
+            if (auditId) auditRunBySession.set(sid, auditId);
+        }
+    } catch (_) { auditId = null; }
+    if (!auditId) return executePrompt(params, onChunk, onDone);
+
+    const wrappedChunk = (type, data) => {
+        try {
+            if (type === 'thought' && data && Array.isArray(data.timeline)) audit.observeTimeline(auditId, data.timeline);
+            else if (type === 'meta' && data && data.modelInfo) {
+                const mi = data.modelInfo;
+                audit.updateRun(auditId, { model: mi.model || mi.label || undefined, account: mi.account || mi.agyAccount || undefined });
+            }
+        } catch (_) {}
+        return onChunk(type, data);
+    };
+    const wrappedDone = (code, errMsg) => {
+        try { finalizeAuditRun(auditId, sid, code, errMsg); } catch (_) {}
+        return onDone(code, errMsg);
+    };
+    try {
+        return executePrompt(params, wrappedChunk, wrappedDone);
+    } catch (e) {
+        try { auditRunBySession.delete(sid); audit.finishRun(auditId, { status: 'error', error: e.message }); } catch (_) {}
+        throw e;
+    }
+}
+
+// Watchdog: heartbeat probes + close out runs whose room is no longer active (abort paths that skip onDone)
+setInterval(() => {
+    for (const [sid, auditId] of [...auditRunBySession]) {
+        try {
+            const run = activeRuns.get(sid);
+            if (!run) { finalizeAuditRun(auditId, sid, null, null); continue; }
+            const pid = run.child && run.child.pid;
+            let rssMb = null;
+            if (pid) {
+                try {
+                    const m = fs.readFileSync(`/proc/${pid}/status`, 'utf8').match(/VmRSS:\s+(\d+)/);
+                    if (m) rssMb = Math.round(Number(m[1]) / 1024);
+                } catch (_) {}
+                audit.updateRun(auditId, { pid });
+            }
+            audit.probe(auditId, { pid: pid || null, rssMb });
+        } catch (_) {}
+    }
+}, 15000).unref();
+
 aiRouter.setQuotaProvider(getQuotaSummary);
 aiRouter.setProviderQuotaProvider(getProviderQuotas);
 
 module.exports = {
+    executePrompt: executePromptAudited,
     getDefaultModel,
     setDefaultModel,
     getStatus,
     setApiKey,
-    executePrompt,
     abortActive,
     getActiveJob,
     loadHistory,

@@ -7531,7 +7531,7 @@ body::before {
           }
           prevUserTs = null;
         }
-        appendMessage(m.role, m.content, false, m.images || [], m.timestamp, dur, null, m.modelInfo || null, m.tokenUsage || null);
+        appendMessage(m.role, m.content, false, m.images || [], m.timestamp, dur, null, m.modelInfo || null, m.tokenUsage || null, m.auditJobId || null);
       });
     } else {
       msgList.innerHTML = '<div class="msg msg--assistant"><div class="msg__meta"><span class="msg__author" id="welcome-author">⚡ ' + getCoreIdentity().name + '</span><span class="msg__meta-right"><span class="msg__time">🕒 ' + formatMsgTimestamp(Date.now()) + '</span></span></div><div class="msg__body">พร้อมเริ่มบทสนทนาใหม่แล้วครับ พิมพ์หรือกดไมค์สั่งงานได้เลย!</div></div>';
@@ -8401,7 +8401,7 @@ body::before {
     }
   }
 
-  function appendMessage(role, content, save = true, images = [], timestamp = null, durationMs = null, pendingStartedAt = null, modelInfo = null, tokenUsage = null) {
+  function appendMessage(role, content, save = true, images = [], timestamp = null, durationMs = null, pendingStartedAt = null, modelInfo = null, tokenUsage = null, auditJobId = null) {
     const el = document.createElement('div');
     el.className = 'msg ' + (role === 'user' ? 'msg--user' : 'msg--assistant');
     const msgTime = timestamp ? Number(timestamp) : Date.now();
@@ -8459,6 +8459,15 @@ body::before {
         }
       });
       metaRight.appendChild(speakBtn);
+      if (auditJobId && window.openAuditExplorer) {
+        const auBtn = document.createElement('button');
+        auBtn.type = 'button';
+        auBtn.className = 'btn-msg-audit';
+        auBtn.title = 'ดูขั้นตอนการทำงานและไฟล์ที่ถูกแตะ (Black Box)';
+        auBtn.textContent = '🔍 ขั้นตอน';
+        auBtn.addEventListener('click', () => window.openAuditExplorer(auditJobId));
+        metaRight.appendChild(auBtn);
+      }
     }
     meta.appendChild(metaLeft);
     meta.appendChild(metaRight);
@@ -12706,5 +12715,6 @@ body::before {
 /* --- /Annotation & Magic DOM (t5) --- */
 /* ===== /Browser Vision ===== */
 </script>
+<script src="/audit-explorer.js"></script>
 </body>
 </html>

@@ -526,6 +526,22 @@
       })
     },
     {
+      id: 'agent-hub', label: 'AGENT HUB', keywords: 'agent hub worker pc windows asridaytrade exe remote render ศูนย์ควบคุม เครื่องลูก', icon: '🛰️', kind: 'station', ring: 278, speed: 0.0020, angle: 2.1, size: 32, color: '#00e5ff',
+      getTag: () => '🛰️ AGENT HUB',
+      getInfo: () => ({
+        title: 'สถานีควบคุมเครื่องลูกข่าย (Homelab Agent Hub)',
+        status: 'CLUSTER CONTROL',
+        body: `
+          ศูนย์กลางควบคุมเครื่อง Windows / Linux / macOS ผ่าน <code>homelab-agent.exe</code> แบบคลิกเดียวจบ<br>
+          <span style="color:#94a3b8; font-size:11.5px;">รองรับ: รีโมทเทอร์มินัล PowerShell · เปิดอ่าน/แก้ไขโค้ดข้ามเครื่อง · แชร์โหลดเรนเดอร์วิดีโอด้วย GPU NVENC · สั่ง Auto-Update จากศูนย์กลาง</span>
+        `,
+        actions: [
+          { label: '🛰️ เปิดศูนย์ควบคุม Agent Hub', href: '/agent-hub', sameTab: true },
+          { label: '⬇️ ดาวน์โหลด homelab-agent.exe', href: '/api/agent-hub/download/homelab-agent.exe' }
+        ]
+      })
+    },
+    {
       id: 'hostdb', label: 'HOST/DB', keywords: 'host db disk sensor core os รายละเอียด', icon: '🪨', kind: 'asteroid', ring: 278, speed: 0.0020, angle: 5.26, size: 30, color: '#94a3b8',
       getTag: () => '🪨 HOST/DB',
       getInfo: () => {
@@ -609,6 +625,9 @@
       if (def.id === 'bg-remove') {
         e.stopPropagation();
         window.location.href = '/bg-remove';
+      } else if (def.id === 'agent-hub') {
+        e.stopPropagation();
+        window.location.href = '/agent-hub';
       }
     });
     el.addEventListener('pointerup', onDrop);
@@ -631,7 +650,7 @@
       { kind: 'meteor', icon: '☄️', color: '#f5d061' }
     ];
     links.forEach((l, idx) => {
-      if (l.id === 'bg-remove') return; // Dedicated star node already orbits in Tier 4
+      if (l.id === 'bg-remove' || l.id === 'agent-hub') return; // Dedicated cosmic nodes already orbit in Tier 4
       const label = String(l.label || l.name || 'Service').replace('เวอร์ชันเดิม', 'Legacy');
       const shortTag = label.length > 14 ? label.slice(0, 13) + '…' : label;
       const k = kinds[idx % kinds.length];

@@ -34,6 +34,7 @@ const geminiManager = require('./gemini-manager');
 const aiRouter = require('./ai-router');
 const bgRemoveManager = require('./bg-remove-manager');
 const videoStudioManager = require('./video-studio-manager');
+const agentHubManager = require('./agent-hub-manager');
 let browserVisionBridge = null;
 try {
     browserVisionBridge = require('./browser-vision-bridge');
@@ -1187,6 +1188,7 @@ async function terminalExec(body = {}) {
 // ── summary assembly ─────────────────────────────────────────────────────────
 const LINKS = [
     { id: 'terminal', label: 'Web Terminal (Cockpit)', icon: 'terminal', url: '/terminal' },
+    { id: 'agent-hub', label: 'Agent Hub (ศูนย์ควบคุม PC)', icon: 'server', url: '/agent-hub' },
     { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
     { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
     { id: 'ports', label: 'Port & Firewall Manager', icon: 'shield', url: '#sec-ports' },
@@ -1572,6 +1574,16 @@ async function handleAuthCheck(req, res) {
     if (uri === '/manifest.json' || uri === '/sw.js' || uri.startsWith('/icons/') || uri === '/favicon.ico') {
         res.writeHead(200, {
             'X-Auth-User': 'public',
+            'Cache-Control': 'no-store',
+            'Content-Type': 'text/plain; charset=utf-8',
+        });
+        res.end('ok');
+        return;
+    }
+    // Allow Worker Agent heartbeats, long-polls, and binary downloads through Caddy forward_auth
+    if (agentHubManager && agentHubManager.isPublicOrAgentAuthorized(req, uri)) {
+        res.writeHead(200, {
+            'X-Auth-User': 'agent-hub',
             'Cache-Control': 'no-store',
             'Content-Type': 'text/plain; charset=utf-8',
         });
@@ -2663,6 +2675,12 @@ const server = http.createServer(async (req, res) => {
         if (req.method === 'POST' && p === '/api/refresh') {
             cache.clear();
             return sendJson(res, 200, { ok: true });
+        }
+        if (p === '/agent-hub' || p === '/agent-hub/') {
+            return await serveStatic(req, res, '/agent-hub.html');
+        }
+        if (p.startsWith('/api/agent-hub/')) {
+            if (await agentHubManager.handleApi(req, res, url, { sendJson, readJsonBody, clientIp })) return;
         }
         if (p.startsWith('/api/browser-vision/')) {
             if (!browserVisionBridge) return sendJson(res, 503, { ok: false, error: 'Browser Vision bridge unavailable' });

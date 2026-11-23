@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="tactical">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Homelab Agent Hub — ระบบศูนย์กลางควบคุมเครื่องลูกข่าย</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#06090e">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<style>
+  :root {
+    --bg-0: #05080f;
+    --bg-1: #0b111e;
+    --bg-2: #111a2e;
+    --card: rgba(14, 22, 38, 0.86);
+    --card-border: rgba(56, 189, 248, 0.2);
+    --accent: #00e5ff;
+    --accent-2: #a855f7;
+    --accent-green: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-red: #ef4444;
+    --text-0: #f1f5f9;
+    --text-1: #94a3b8;
+    --text-2: #64748b;
+    --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    --sans: 'Inter', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background:
+      radial-gradient(circle at 12% 10%, rgba(0, 229, 255, 0.09), transparent 38%),
+      radial-gradient(circle at 88% 15%, rgba(168, 85, 247, 0.09), transparent 40%),
+      var(--bg-0);
+    color: var(--text-0);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* Topbar */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 22px;
+    background: rgba(5, 8, 15, 0.88);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--card-border);
+  }
+  .topbar__left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--text-0);
+    text-decoration: none;
+    font-size: 0.86rem;
+    font-weight: 600;
+    transition: all 0.18s ease;
+  }
+  .back-btn:hover {
+    background: rgba(0, 229, 255, 0.15);
+    border-color: var(--accent);
+  }
+  .brand-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.12rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+  }
+  .brand-badge {
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    background: rgba(0, 229, 255, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+  }
+  .topbar__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 20px 22px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* Summary Metric Cards */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 15px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+  .stat-card__label {
+    font-size: 0.78rem;
+    color: var(--text-1);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .stat-card__val {
+    font-size: 1.65rem;
+    font-weight: 800;
+    font-family: var(--mono);
+    color: var(--accent);
+  }
+  .stat-card__sub {
+    font-size: 0.78rem;
+    color: var(--text-2);
+  }
+
+  /* Deploy / Download Banner */
+  .deploy-panel {
+    background: linear-gradient(135deg, rgba(14, 24, 44, 0.94), rgba(22, 16, 46, 0.92));
+    border: 1px solid rgba(0, 229, 255, 0.32);
+    border-radius: 16px;
+    padding: 18px 22px;
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 20px;
+    align-items: center;
+  }
+  @media (max-width: 980px) {
+    .deploy-panel { grid-template-columns: 1fr; }
+  }
+  .deploy-panel h2 {
+    margin: 0 0 6px;
+    font-size: 1.15rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .deploy-panel p {
+    margin: 0 0 14px;
+    color: var(--text-1);
+    font-size: 0.88rem;
+  }
+  .dl-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 15px;
+    border-radius: 10px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-0);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.16s ease;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: var(--accent);
+  }
+  .btn--primary {
+    background: linear-gradient(135deg, #00c6ff, #0072ff);
+    border-color: rgba(0, 229, 255, 0.6);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(0, 198, 255, 0.28);
+  }
+  .btn--primary:hover {
+    filter: brightness(1.1);
+  }
+  .btn--purple {
+    background: linear-gradient(135deg, #9333ea, #6366f1);
+    border-color: rgba(168, 85, 247, 0.6);
+    color: #fff;
+  }
+  .btn--sm {
+    padding: 6px 11px;
+    font-size: 0.78rem;
+    border-radius: 8px;
+  }
+  .btn--danger {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+  }
+
+  .ps-box {
+    background: rgba(4, 7, 13, 0.85);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .ps-box__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.77rem;
+    color: var(--text-1);
+    margin-bottom: 6px;
+  }
+  .ps-code {
+    font-family: var(--mono);
+    font-size: 0.79rem;
+    color: #67e8f9;
+    word-break: break-all;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    user-select: all;
+  }
+
+  /* Nodes Section + Workspace Split */
+  .hub-grid {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) {
+    .hub-grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .panel__title {
+    font-weight: 700;
+    font-size: 0.96rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nodes-list {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .node-card {
+    background: rgba(10, 16, 29, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 13px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+  }
+  .node-card:hover {
+    border-color: rgba(0, 229, 255, 0.45);
+  }
+  .node-card.is-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 8px 24px rgba(0, 229, 255, 0.14);
+    background: rgba(14, 25, 45, 0.95);
+  }
+  .node-card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .node-name {
+    font-weight: 800;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .status-pill--online {
+    background: rgba(16, 185, 129, 0.16);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+  }
+  .status-pill--offline {
+    background: rgba(148, 163, 184, 0.14);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+  }
+  .node-meta {
+    font-size: 0.78rem;
+    color: var(--text-1);
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .meter-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .meter-item {
+    display: flex;
+     flex-direction: column;
+    gap: 3px;
+  }
+  .meter-lbl {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.73rem;
+    font-family: var(--mono);
+    color: var(--text-1);
+  }
+  .meter-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #00e5ff, #3b82f6);
+    transition: width 0.3s ease;
+  }
+  .meter-fill--gpu {
+    background: linear-gradient(90deg, #10b981, #a855f7);
+  }
+  .cap-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .cap-tag {
+    font-size: 0.69rem;
+    font-family: var(--mono);
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .cap-tag--highlight {
+    background: rgba(16, 185, 129, 0.15);
+    color: #6ee7b7;
+    border-color: rgba(16, 185, 129, 0.35);
+  }
+
+  /* Workspace Tabs */
+  .ws-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.25);
+    flex-wrap: wrap;
+  }
+  .ws-tab {
+    padding: 8px 14px;
+    border-radius: 9px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    background: transparent;
+    color: var(--text-1);
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .ws-tab.is-active {
+    background: rgba(0, 229, 255, 0.14);
+    color: var(--accent);
+    border-color: rgba(0, 229, 255, 0.35);
+  }
+  .ws-pane {
+    display: none;
+    padding: 18px;
+  }
+  .ws-pane.is-active {
+    display: block;
+  }
+
+  /* Terminal Pane */
+  .preset-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-bottom: 12px;
+  }
+  .chip {
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-0);
+    cursor: pointer;
+  }
+  .chip:hover {
+    background: rgba(0, 229, 255, 0.15);
+    border-color: var(--accent);
+  }
+  .cmd-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .input {
+    width: 100%;
+    padding: 9px 13px;
+    border-radius: 10px;
+    background: rgba(3, 6, 12, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: var(--text-0);
+    font-family: var(--mono);
+    font-size: 0.86rem;
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .term-output {
+    background: #04070d;
+    border: 1px solid rgba(56, 189, 248, 0.22);
+    border-radius: 12px;
+    padding: 14px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    min-height: 310px;
+    max-height: 520px;
+    overflow: auto;
+    white-space: pre-wrap;
+    color: #e2e8f0;
+  }
+
+  /* File Explorer & Editor */
+  .fs-split {
+    display: grid;
+    grid-template-columns: 310px 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 900px) {
+    .fs-split { grid-template-columns: 1fr; }
+  }
+  .fs-list {
+    background: rgba(4, 7, 13, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    max-height: 480px;
+    overflow: auto;
+    padding: 8px;
+  }
+  .fs-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    gap: 8px;
+  }
+  .fs-item:hover {
+    background: rgba(0, 229, 255, 0.12);
+  }
+  .fs-item__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fs-item__size {
+    font-size: 0.72rem;
+    color: var(--text-2);
+    font-family: var(--mono);
+    flex-shrink: 0;
+  }
+  .code-editor {
+    width: 100%;
+    min-height: 410px;
+    background: #04070d;
+    border: 1px solid rgba(56, 189, 248, 0.24);
+    border-radius: 12px;
+    padding: 13px;
+    color: #f8fafc;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.55;
+    resize: vertical;
+  }
+
+  /* Render Jobs Table */
+  .jobs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .job-row {
+    background: rgba(7, 12, 22, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 11px;
+    padding: 12px 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    z-index: 100;
+    padding: 11px 18px;
+    border-radius: 11px;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid var(--accent);
+    color: #fff;
+    font-size: 0.86rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__left">
+    <a href="/" class="back-btn">← กลับหน้าแดชบอร์ด</a>
+    <div class="brand-title">
+      <span>🛰️ HOMELAB AGENT HUB</span>
+      <span class="brand-badge" id="agent-ver-badge">v1.0.0</span>
+    </div>
+  </div>
+  <div class="topbar__right">
+    <a href="/video-studio" class="btn btn--sm">🎬 Video Studio</a>
+    <a href="/gemini.html" class="btn btn--sm">💬 สั่งงานผ่านแชท AI</a>
+    <button type="button" class="btn btn--sm" id="btn-refresh">🔄 รีเฟรชสถานะ</button>
+  </div>
+</header>
+
+<main class="container">
+  <!-- Summary Cluster Metrics -->
+  <section class="stats-grid">
+    <div class="stat-card">
+      <span class="stat-card__label">เครื่องลูกที่ออนไลน์ (Online Nodes)</span>
+      <strong class="stat-card__val" id="st-online">0 / 0</strong>
+      <span class="stat-card__sub">เชื่อมต่อแบบ Heartbeat 5s + Instant Long-Poll</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-card__label">พลังประมวลผลรวม (CPU Threads)</span>
+      <strong class="stat-card__val" id="st-threads">0 Threads</strong>
+      <span class="stat-card__sub">พร้อมรับคำสั่ง Remote Exec &amp; Render</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-card__label">หน่วยความจำรวม (Cluster RAM)</span>
+      <strong class="stat-card__val" id="st-ram">0 GB</strong>
+      <span class="stat-card__sub">รวมทุกโหนดที่ออนไลน์</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-card__label">การ์ดจอเร่งความเร็ว (NVENC GPU)</span>
+      <strong class="stat-card__val" id="st-nvenc">0 เครื่อง</strong>
+      <span class="stat-card__sub">พร้อมช่วยเรนเดอร์คลิป H.264 NVENC</span>
+    </div>
+  </section>
+
+  <!-- One-Click Deployment Banner -->
+  <section class="deploy-panel">
+    <div>
+      <h2>🚀 ติดตั้ง Homelab Worker Agent (`homelab-agent.exe`) แบบคลิกเดียวจบ</h2>
+      <p>
+        ไฟล์เดียวจบ (คอมไพล์ด้วยภาษา Go ขนาด ~7 MB กิน RAM ไม่ถึง 15 MB) ฝังรหัสเชื่อมต่อของเครื่อง Homelab ไว้ให้แล้ว
+        แค่ดาวน์โหลดไป<strong>ดับเบิลคลิกบนเครื่อง Windows (`asridaytrade`)</strong> ตัวโปรแกรมจะติดตั้งตัวเองลงเครื่อง ตั้งค่าเปิดอัตโนมัติพร้อม Windows และออนไลน์ขึ้นหน้านี้ทันทีโดยไม่ต้องเปิดพอร์ตหรือตั้งค่าไฟร์วอลล์ค่ะ
+      </p>
+      <div class="dl-buttons">
+        <a href="/api/agent-hub/download/homelab-agent.exe" class="btn btn--primary" download>
+          ⬇️ ดาวน์โหลด homelab-agent.exe (Windows 64-bit)
+        </a>
+        <a href="/api/agent-hub/download/homelab-agent-linux-amd64" class="btn" download>
+          🐧 Linux (amd64)
+        </a>
+        <a href="/api/agent-hub/download/homelab-agent-darwin-arm64" class="btn" download>
+          🍎 macOS (Apple Silicon)
+        </a>
+        <button type="button" class="btn" id="btn-rebuild-bin" title="คอมไพล์ไฟล์ .exe ใหม่จากซอร์สโค้ด Go บน Homelab">
+          🔨 คอมไพล์ Binary ใหม่
+        </button>
+      </div>
+    </div>
+
+    <div class="ps-box">
+      <div class="ps-box__head">
+        <span>⚡ หรือรันคำสั่งเดียวใน PowerShell บนเครื่อง Windows:</span>
+        <button type="button" class="btn btn--sm" id="btn-copy-ps">📋 คัดลอกคำสั่ง</button>
+      </div>
+      <div class="ps-code" id="ps-oneliner">irm http://192.168.1.123:8090/api/agent-hub/install.ps1 | iex</div>
+    </div>
+  </section>
+
+  <!-- Main Control Grid -->
+  <section class="hub-grid">
+    <!-- Left Column: Connected Worker Nodes -->
+    <div class="panel">
+      <div class="panel__head">
+        <div class="panel__title">🖥️ เครื่องลูกข่ายในระบบ (Worker Nodes)</div>
+        <span class="brand-badge" id="nodes-count-badge">0 nodes</span>
+      </div>
+      <div class="nodes-list" id="nodes-list">
+        <div style="padding:24px;text-align:center;color:var(--text-1);font-size:0.88rem;">
+          กำลังโหลดรายการเครื่องลูกข่าย...
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Interactive Node Control Workspace -->
+    <div class="panel">
+      <div class="panel__head">
+        <div class="panel__title" id="ws-header-title">🎛️ ศูนย์สั่งการระยะไกล (เลือกเครื่องทางซ้ายเพื่อควบคุม)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn--sm" id="btn-node-ping">📡 Ping ทดสอบ</button>
+          <button type="button" class="btn btn--sm" id="btn-node-update">⬆️ สั่ง Self-Update (.exe)</button>
+        </div>
+      </div>
+
+      <div class="ws-tabs">
+        <button type="button" class="ws-tab is-active" data-tab="terminal">💻 รีโมทเทอร์มินัล (PowerShell / Bash)</button>
+        <button type="button" class="ws-tab" data-tab="files">📂 จัดการไฟล์ &amp; แก้ไขโค้ดระยะไกล</button>
+        <button type="button" class="ws-tab" data-tab="render">🎬 ทดสอบแชร์โหลดเรนเดอร์ (FFmpeg / NVENC)</button>
+      </div>
+
+      <!-- Tab 1: Remote Terminal -->
+      <div class="ws-pane is-active" id="pane-terminal">
+        <div class="preset-chips">
+          <button type="button" class="chip" data-preset="Get-ComputerInfo | Select-Object CsName, WindowsProductName, OsArchitecture, CsProcessors">ℹ️ ข้อมูลระบบ Windows</button>
+          <button type="button" class="chip" data-preset="nvidia-smi">🎮 เช็คการ์ดจอ NVIDIA (nvidia-smi)</button>
+          <button type="button" class="chip" data-preset="Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Id, ProcessName, CPU, WorkingSet64 | Format-Table -AutoSize">📊 โปรเซสที่ใช้ CPU สูงสุด</button>
+          <button type="button" class="chip" data-preset="ffmpeg -hide_banner -encoders | Select-String nvenc">🎬 เช็คตัวเข้ารหัส NVENC</button>
+          <button type="button" class="chip" data-preset="Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='UsedGB';E={[math]::Round($_.Used/1GB,2)}}, @{N='FreeGB';E={[math]::Round($_.Free/1GB,2)}}">💽 พื้นที่ดิสก์ทุกไดรฟ์</button>
+          <button type="button" class="chip" data-preset="ipconfig">🌐 เช็ค IP เครือข่าย</button>
+        </div>
+
+        <form class="cmd-bar" id="form-exec" autocomplete="off">
+          <select id="exec-shell" class="input" style="max-width:145px;">
+            <option value="auto">Auto Shell</option>
+            <option value="powershell">PowerShell</option>
+            <option value="cmd">CMD.exe</option>
+            <option value="bash">Bash</option>
+          </select>
+          <input
+            type="search"
+            id="exec-cmd-input"
+            class="input"
+            placeholder="พิมพ์คำสั่ง PowerShell / CMD / Bash เพื่อรันบนเครื่องลูก..."
+            autocomplete="off"
+            data-lpignore="true"
+            readonly
+            onfocus="this.removeAttribute('readonly')"
+          />
+          <button type="submit" class="btn btn--primary" id="btn-run-cmd" style="flex-shrink:0;">▶️ รันคำสั่ง</button>
+        </form>
+
+        <div class="term-output" id="term-output">เลือกเครื่องลูกข่ายทางซ้าย แล้วพิมพ์คำสั่งหรือกดปุ่มลัดด้านบนเพื่อสั่งงานได้ทันทีค่ะ...</div>
+      </div>
+
+      <!-- Tab 2: Remote File Explorer & Code Editor -->
+      <div class="ws-pane" id="pane-files">
+        <div class="cmd-bar">
+          <button type="button" class="btn btn--sm" id="btn-fs-drives">💽 ไดรฟ์ทั้งหมด (ROOT)</button>
+          <button type="button" class="btn btn--sm" id="btn-fs-up">⬆️ ขึ้นโฟลเดอร์แม่</button>
+          <input
+            type="search"
+            id="fs-path-input"
+            class="input"
+            placeholder="ระบุพาธโฟลเดอร์ เช่น C:\Users หรือปล่อยว่างเพื่อดูไดรฟ์ทั้งหมด"
+            autocomplete="off"
+            data-lpignore="true"
+            readonly
+            onfocus="this.removeAttribute('readonly')"
+          />
+          <button type="button" class="btn btn--sm btn--primary" id="btn-fs-go">📂 เปิดดู</button>
+        </div>
+
+        <div class="fs-split">
+          <div>
+            <div style="font-size:0.78rem;color:var(--text-1);margin-bottom:6px;">รายการไฟล์และโฟลเดอร์ (คลิกเพื่อเปิดอ่าน/แก้ไข):</div>
+            <div class="fs-list" id="fs-items-list">
+              <div style="padding:18px;text-align:center;color:var(--text-2);">กดปุ่ม "เปิดดู" เพื่อดึงรายการไฟล์จากเครื่องลูก</div>
+            </div>
+          </div>
+
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+              <input
+                type="search"
+                id="editor-file-path"
+                class="input"
+                style="flex:1;padding:6px 10px;font-size:0.79rem;"
+                placeholder="พาธไฟล์บนเครื่องลูก เช่น C:\project\config.json"
+                autocomplete="off"
+                data-lpignore="true"
+                readonly
+                onfocus="this.removeAttribute('readonly')"
+              />
+              <button type="button" class="btn btn--sm btn--primary" id="btn-save-file">💾 บันทึกไฟล์ลงเครื่องลูก</button>
+            </div>
+            <textarea
+              id="editor-content"
+              class="code-editor"
+              placeholder="เนื้อหาไฟล์จะแสดงที่นี่ สามารถแก้ไขโค้ดแล้วกด 'บันทึกไฟล์ลงเครื่องลูก' ได้ทันที..."
+              spellcheck="false"
+            ></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Distributed Render Offload -->
+      <div class="ws-pane" id="pane-render">
+        <div style="background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.22);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+          <h3 style="margin:0 0 6px;font-size:0.96rem;">⚡ ทดสอบส่งงานเรนเดอร์วิดีโอไปให้เครื่องลูกประมวลผล (Distributed FFmpeg / NVENC)</h3>
+          <p style="margin:0 0 12px;font-size:0.84rem;color:var(--text-1);">
+            เมื่อกดปุ่มด้านล่าง `homelab` จะส่งคำสั่งให้เครื่องลูกใช้ CPU หลายเธรด หรือการ์ดจอ NVIDIA (`h264_nvenc`) เรนเดอร์วิดีโอ 1080x1920 (9:16) แล้วอัปโหลดไฟล์ `.mp4` ที่เสร็จแล้วกลับมาให้ `homelab` อัตโนมัติค่ะ
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <button type="button" class="btn btn--primary" id="btn-test-render-nvenc">
+              🚀 ส่งงานทดสอบเรนเดอร์ 9:16 (ใช้ GPU NVENC / Auto)
+            </button>
+            <button type="button" class="btn" id="btn-test-render-cpu">
+              ⚙️ ส่งงานทดสอบเรนเดอร์ด้วย CPU (libx264)
+            </button>
+          </div>
+        </div>
+
+        <div style="font-weight:700;font-size:0.88rem;margin-bottom:8px;">รายการคิวงานเรนเดอร์ระยะไกล (Distributed Render Jobs):</div>
+        <div class="jobs-list" id="render-jobs-list">
+          <div style="padding:18px;text-align:center;color:var(--text-2);">ยังไม่มีประวัติงานเรนเดอร์ระยะไกล</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+let hubState = {
+  nodes: [],
+  selectedNodeId: '',
+  currentFsParent: '',
+};
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+function fmtBytes(b) {
+  if (!Number.isFinite(b) || b <= 0) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
+  return `${(b / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0)} ${u[i]}`;
+}
+
+function fmtDur(sec) {
+  if (!sec || sec < 0) return '—';
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = $('#toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3600);
+}
+
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+async function loadStatus() {
+  try {
+    const data = await apiFetch('/api/agent-hub/status');
+    $('#agent-ver-badge').textContent = `v${data.agentVersion || '1.0.0'}`;
+    const c = data.cluster || {};
+    $('#st-online').textContent = `${c.onlineNodes || 0} / ${c.totalNodes || 0}`;
+    $('#st-threads').textContent = `${c.totalThreads || 0} Threads`;
+    $('#st-ram').textContent = fmtBytes(c.totalRamBytes || 0);
+    $('#st-nvenc').textContent = `${c.nvencNodes || 0} เครื่อง`;
+    $('#nodes-count-badge').textContent = `${(data.nodes || []).length} nodes`;
+
+    // Update PowerShell 1-liner to match best origin
+    const origin = location.origin.includes('tail285279.ts.net')
+      ? 'http://100.93.214.79:8090'
+      : 'http://192.168.1.123:8090';
+    $('#ps-oneliner').textContent = `irm ${origin}/api/agent-hub/install.ps1 | iex`;
+
+    hubState.nodes = data.nodes || [];
+    if (!hubState.selectedNodeId && hubState.nodes.length > 0) {
+      hubState.selectedNodeId = hubState.nodes[0].nodeId;
+    }
+    renderNodesList();
+    renderJobsList(data.renderJobs || []);
+  } catch (err) {
+    console.error('loadStatus error:', err);
+  }
+}
+
+function renderNodesList() {
+  const box = $('#nodes-list');
+  if (!hubState.nodes.length) {
+    box.innerHTML = `
+      <div style="padding:22px;text-align:center;color:var(--text-1);font-size:0.86rem;">
+        <div style="font-size:1.8rem;margin-bottom:8px;">🛰️</div>
+        <strong>ยังไม่มีเครื่องลูกข่ายเชื่อมต่อเข้ามา</strong>
+        <p style="margin:6px 0 0;color:var(--text-2);">
+          กดดาวน์โหลด <code>homelab-agent.exe</code> ด้านบนไปเปิดบนเครื่อง Windows (เช่น <code>asridaytrade</code>) หรือรันคำสั่ง PowerShell บรรทัดเดียว แล้วเครื่องจะปรากฏที่นี่อัตโนมัติภายใน 5 วินาทีค่ะ
+        </p>
+      </div>`;
+    return;
+  }
+
+  box.innerHTML = hubState.nodes.map((n) => {
+    const sp = n.specs || {};
+    const mt = n.metrics || {};
+    const isSel = n.nodeId === hubState.selectedNodeId;
+    const cpuPct = Math.min(100, Math.max(0, Number(mt.cpuPct) || 0));
+    const memPct = Math.min(100, Math.max(0, Number(mt.memPct) || 0));
+    const caps = Array.isArray(sp.capabilities) ? sp.capabilities : [];
+    const ips = Array.isArray(sp.ips) && sp.ips.length ? sp.ips.join(', ') : (n.lastIp || '—');
+
+    return `
+      <div class="node-card ${isSel ? 'is-selected' : ''}" data-node-id="${esc(n.nodeId)}">
+        <div class="node-card__top">
+          <div class="node-name">
+            <span>${sp.os === 'windows' ? '🪟' : (sp.os === 'darwin' ? '🍎' : '🐧')}</span>
+            <span>${esc(sp.hostname || n.nodeId)}</span>
+          </div>
+          <span class="status-pill ${n.online ? 'status-pill--online' : 'status-pill--offline'}">
+            ● ${n.online ? 'ONLINE' : 'OFFLINE'}
+          </span>
+        </div>
+
+        <div class="node-meta">
+          <div><strong>OS:</strong> ${esc(sp.osCaption || `${sp.os || ''}/${sp.arch || ''}`)} · <strong>Uptime:</strong> ${fmtDur(mt.uptimeSec)}</div>
+          <div><strong>CPU:</strong> ${esc(sp.cpuModel || '—')} (${sp.cpuThreads || 0} Threads)</div>
+          <div><strong>GPU:</strong> ${esc(sp.gpuModel || 'ไม่มี GPU แยก')} ${sp.gpuVramMB ? `(${sp.gpuVramMB} MB)` : ''} ${mt.gpuTempC ? `· ${mt.gpuTempC}°C` : ''}</div>
+          <div><strong>IP:</strong> ${esc(ips)}</div>
+        </div>
+
+        <div class="meter-row">
+          <div class="meter-item">
+            <div class="meter-lbl"><span>CPU Load</span><span>${cpuPct.toFixed(1)}%</span></div>
+            <div class="meter-bar"><div class="meter-fill" style="width:${cpuPct}%"></div></div>
+          </div>
+          <div class="meter-item">
+            <div class="meter-lbl"><span>RAM (${fmtBytes(mt.memUsed || 0)} / ${fmtBytes(mt.memTotal || 0)})</span><span>${memPct.toFixed(1)}%</span></div>
+            <div class="meter-bar"><div class="meter-fill meter-fill--gpu" style="width:${memPct}%"></div></div>
+          </div>
+        </div>
+
+        <div class="cap-tags">
+          ${caps.map((c) => `<span class="cap-tag ${c.includes('nvenc') || c.includes('remotion') ? 'cap-tag--highlight' : ''}">${esc(c)}</span>`).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const selNode = hubState.nodes.find((n) => n.nodeId === hubState.selectedNodeId);
+  if (selNode) {
+    const sp = selNode.specs || {};
+    $('#ws-header-title').textContent = `🎛️ กำลังควบคุมเครื่อง: ${sp.hostname || selNode.nodeId} (${selNode.online ? '🟢 ออนไลน์' : '⚪ ออฟไลน์'})`;
+  }
+}
+
+function renderJobsList(jobs) {
+  const box = $('#render-jobs-list');
+  if (!jobs || !jobs.length) {
+    box.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text-2);">ยังไม่มีประวัติงานเรนเดอร์ระยะไกล</div>';
+    return;
+  }
+  box.innerHTML = jobs.map((j) => {
+    const isDone = j.status === 'completed';
+    const isFail = j.status === 'failed';
+    const badgeColor = isDone ? '#34d399' : (isFail ? '#f87171' : '#38bdf8');
+    return `
+      <div class="job-row">
+        <div>
+          <div style="font-weight:700;font-family:var(--mono);font-size:0.86rem;">
+            ${esc(j.jobId)} → <span style="color:var(--accent)">${esc(j.nodeId)}</span>
+            <span style="color:${badgeColor};margin-left:8px;">[${esc(j.status.toUpperCase())} ${j.progress || 0}%]</span>
+          </div>
+          <div style="font-size:0.79rem;color:var(--text-1);margin-top:3px;">
+            ${esc(j.message || '')} ${j.outputSize ? `· ขนาดไฟล์ ${fmtBytes(j.outputSize)}` : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          ${j.downloadUrl ? `<a href="${esc(j.downloadUrl)}" class="btn btn--sm btn--primary" download>⬇️ ดาวน์โหลด MP4</a>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function runNodeCommand(action, payload = {}, timeoutMs = 45000) {
+  if (!hubState.selectedNodeId) {
+    showToast('กรุณาเลือกเครื่องลูกข่ายทางซ้ายก่อนค่ะ');
+    throw new Error('No node selected');
+  }
+  return await apiFetch('/api/agent-hub/command', {
+    method: 'POST',
+    body: JSON.stringify({
+      nodeId: hubState.selectedNodeId,
+      action,
+      payload,
+      wait: true,
+      timeoutMs,
+    }),
+  });
+}
+
+// Event Listeners
+$('#nodes-list').addEventListener('click', (e) => {
+  const card = e.target.closest('[data-node-id]');
+  if (!card) return;
+  hubState.selectedNodeId = card.dataset.nodeId;
+  renderNodesList();
+});
+
+$$('.ws-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    $$('.ws-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+    $$('.ws-pane').forEach((p) => p.classList.toggle('is-active', p.id === `pane-${btn.dataset.tab}`));
+    if (btn.dataset.tab === 'files' && hubState.selectedNodeId && !$('#fs-items-list').dataset.loaded) {
+      loadRemoteDir($('#fs-path-input').value.trim());
+    }
+  });
+});
+
+$('#btn-refresh').addEventListener('click', () => {
+  loadStatus();
+  showToast('รีเฟรชสถานะเรียบร้อยค่ะ');
+});
+
+$('#btn-copy-ps').addEventListener('click', async () => {
+  const txt = $('#ps-oneliner').textContent.trim();
+  try {
+    await navigator.clipboard.writeText(txt);
+    showToast('คัดลอกคำสั่ง PowerShell แล้ว! นำไปวางใน PowerShell บนเครื่อง Windows ได้เลยค่ะ');
+  } catch (_) {}
+});
+
+$('#btn-rebuild-bin').addEventListener('click', async () => {
+  const btn = $('#btn-rebuild-bin');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังคอมไพล์...';
+  try {
+    await apiFetch('/api/agent-hub/build', { method: 'POST' });
+    showToast('คอมไพล์ homelab-agent.exe ใหม่ครบทุกแพลตฟอร์มเรียบร้อยค่ะ!');
+    await loadStatus();
+  } catch (err) {
+    showToast('คอมไพล์ไม่สำเร็จ: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔨 คอมไพล์ Binary ใหม่';
+  }
+});
+
+$('#btn-node-ping').addEventListener('click', async () => {
+  try {
+    const t0 = Date.now();
+    const res = await runNodeCommand('ping', {}, 10000);
+    const rtt = Date.now() - t0;
+    showToast(`📡 Ping ${hubState.selectedNodeId} สำเร็จ! (RTT ${rtt} ms)`);
+  } catch (err) {
+    showToast('Ping ไม่สำเร็จ: ' + err.message);
+  }
+});
+
+$('#btn-node-update').addEventListener('click', async () => {
+  try {
+    showToast(`กำลังสั่งให้ ${hubState.selectedNodeId} ดึงไฟล์ .exe เวอร์ชันล่าสุดและรีสตาร์ทตัวเอง...`);
+    const res = await runNodeCommand('self-update', {}, 45000);
+    showToast(`✅ อัปเดต ${hubState.selectedNodeId} สำเร็จ!`);
+  } catch (err) {
+    showToast('อัปเดตไม่สำเร็จ: ' + err.message);
+  }
+});
+
+// Terminal Execution
+async function executeTerminalCmd(cmdText) {
+  if (!cmdText) return;
+  const out = $('#term-output');
+  const shell = $('#exec-shell').value;
+  out.textContent = `[${hubState.selectedNodeId}] $ ${cmdText}\n⏳ กำลังรันคำสั่งบนเครื่องลูก...`;
+  try {
+    const res = await runNodeCommand('exec', { command: cmdText, shell }, 120000);
+    const d = res.data || {};
+    const header = `[${hubState.selectedNodeId}] (${d.cwd || ''}) Exit=${d.exitCode ?? 0} (${d.durationMs || 0} ms)\n$ ${cmdText}\n${'─'.repeat(60)}\n`;
+    out.textContent = header + (d.stdout || '') + (d.stderr ? `\n[STDERR]\n${d.stderr}` : '');
+  } catch (err) {
+    out.textContent = `❌ Error: ${err.message}`;
+  }
+}
+
+$('#form-exec').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const cmd = $('#exec-cmd-input').value.trim();
+  executeTerminalCmd(cmd);
+});
+
+$$('[data-preset]').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    const cmd = chip.dataset.preset;
+    $('#exec-cmd-input').value = cmd;
+    executeTerminalCmd(cmd);
+  });
+});
+
+// File Explorer & Editor
+async function loadRemoteDir(dirPath = '') {
+  const box = $('#fs-items-list');
+  box.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-1);">⏳ กำลังดึงรายการไฟล์...</div>';
+  try {
+    const res = await runNodeCommand('fs.list', { path: dirPath }, 25000);
+    const d = res.data || {};
+    box.dataset.loaded = '1';
+    $('#fs-path-input').value = d.path === 'ROOT' ? '' : (d.path || '');
+    hubState.currentFsParent = d.parent ?? '';
+    const items = d.items || [];
+    if (!items.length) {
+      box.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-2);">โฟลเดอร์ว่างเปล่า</div>';
+      return;
+    }
+    box.innerHTML = items.map((it) => `
+      <div class="fs-item" data-fs-path="${esc(it.path)}" data-fs-dir="${it.isDir ? '1' : '0'}">
+        <span class="fs-item__name">${it.isDir ? '📁' : '📄'} ${esc(it.name)}</span>
+        <span class="fs-item__size">${it.isDir ? '' : fmtBytes(it.size || 0)}</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    box.innerHTML = `<div style="padding:16px;color:#f87171;">❌ ${esc(err.message)}</div>`;
+  }
+}
+
+$('#btn-fs-go').addEventListener('click', () => loadRemoteDir($('#fs-path-input').value.trim()));
+$('#btn-fs-drives').addEventListener('click', () => loadRemoteDir('drives'));
+$('#btn-fs-up').addEventListener('click', () => loadRemoteDir(hubState.currentFsParent || 'drives'));
+
+$('#fs-items-list').addEventListener('click', async (e) => {
+  const row = e.target.closest('[data-fs-path]');
+  if (!row) return;
+  const p = row.dataset.fsPath;
+  const isDir = row.dataset.fsDir === '1';
+  if (isDir) {
+    loadRemoteDir(p);
+  } else {
+    $('#editor-file-path').value = p;
+    $('#editor-content').value = '⏳ กำลังเปิดอ่านไฟล์จากเครื่องลูก...';
+    try {
+      const res = await runNodeCommand('fs.read', { path: p }, 30000);
+      $('#editor-content').value = (res.data && res.data.content) || '';
+      showToast(`เปิดไฟล์ ${p} เรียบร้อยค่ะ`);
+    } catch (err) {
+      $('#editor-content').value = `❌ ไม่สามารถอ่านไฟล์ได้: ${err.message}`;
+    }
+  }
+});
+
+$('#btn-save-file').addEventListener('click', async () => {
+  const p = $('#editor-file-path').value.trim();
+  if (!p) {
+    showToast('กรุณาระบุพาธไฟล์ที่จะบันทึกก่อนค่ะ');
+    return;
+  }
+  const content = $('#editor-content').value;
+  try {
+    const res = await runNodeCommand('fs.write', { path: p, content }, 30000);
+    showToast(`💾 บันทึกไฟล์ ${p} (${fmtBytes((res.data && res.data.bytesWritten) || content.length)}) สำเร็จ!`);
+  } catch (err) {
+    showToast('บันทึกไฟล์ไม่สำเร็จ: ' + err.message);
+  }
+});
+
+// Distributed Render Test
+async function dispatchTestRender(useNvenc) {
+  try {
+    const res = await apiFetch('/api/agent-hub/render-jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        nodeId: hubState.selectedNodeId || 'auto',
+        testMode: true,
+        useNvenc,
+        durationSec: 5,
+      }),
+    });
+    showToast(`🎬 ส่งงานเรนเดอร์ ${res.job.jobId} ไปยัง ${res.job.nodeId} แล้ว!`);
+    loadStatus();
+  } catch (err) {
+    showToast('ส่งงานเรนเดอร์ไม่สำเร็จ: ' + err.message);
+  }
+}
+
+$('#btn-test-render-nvenc').addEventListener('click', () => dispatchTestRender(true));
+$('#btn-test-render-cpu').addEventListener('click', () => dispatchTestRender(false));
+
+// Clear any browser autofill on load
+window.addEventListener('DOMContentLoaded', () => {
+  ['#exec-cmd-input', '#fs-path-input', '#editor-file-path'].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.value = '';
+  });
+  loadStatus();
+  setInterval(loadStatus, 4000);
+});
+</script>
+</body>
+</html>

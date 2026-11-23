@@ -2341,7 +2341,7 @@ function bindEvents() {
         if (anchor) {
             const href = anchor.getAttribute('href') || '';
             // If it's an external link or normal page URL, do NOT intercept
-            if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('/os/') || href.startsWith('/portainer') || href.startsWith('/mongo') || href.startsWith('/terminal') || href.startsWith('/energy') || href.startsWith('/bg-remove') || anchor.target === '_blank') {
+            if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('/os/') || href.startsWith('/portainer') || href.startsWith('/mongo') || href.startsWith('/terminal') || href.startsWith('/energy') || href.startsWith('/bg-remove') || href.startsWith('/video-studio') || href.startsWith('/agent-hub') || anchor.target === '_blank') {
                 return;
             }
         }

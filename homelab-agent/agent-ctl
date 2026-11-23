@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""
+agent-ctl — Homelab Worker Agent Central CLI Controller
+Allows Antigravity AI (Asrida) and terminal scripts to inspect and control
+any connected Windows / Linux / macOS worker node (e.g. asridaytrade, servergigi).
+
+Usage:
+  agent-ctl status
+  agent-ctl nodes
+  agent-ctl exec <nodeId> "<command>" [--shell powershell|cmd|bash] [--cwd <dir>] [--timeout <sec>]
+  agent-ctl sysinfo <nodeId>
+  agent-ctl ls <nodeId> [path]
+  agent-ctl read <nodeId> <remotePath>
+  agent-ctl write <nodeId> <remotePath> <localFileOrContent> [--from-file <localPath>]
+  agent-ctl edit <nodeId> <remotePath> --target "<old>" --replace "<new>"
+  agent-ctl render <nodeId|auto> [--input <localPath>] [--test] [--nvenc]
+  agent-ctl update <nodeId>
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+HUB_BASE = os.environ.get("HOMELAB_HUB_API", "http://172.17.0.1:8090")
+CONFIG_PATH = "/home/dev/.gemini/agent-hub/config.json"
+DEFAULT_TOKEN = "hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b"
+
+
+def get_token() -> str:
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if d.get("token"):
+                    return d["token"]
+    except Exception:
+        pass
+    return os.environ.get("HOMELAB_AGENT_TOKEN", DEFAULT_TOKEN)
+
+
+def hub_request(method: str, path: str, body: dict | None = None, timeout: int = 65) -> dict:
+    url = HUB_BASE.rstrip("/") + path
+    headers = {
+        "X-Agent-Token": get_token(),
+        "Accept": "application/json",
+    }
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            return json.loads(raw) if raw.strip() else {"ok": True}
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(err_body)
+        except Exception:
+            return {"ok": False, "error": f"HTTP {e.code}: {err_body}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def run_node_cmd(node_id: str, action: str, payload: dict, timeout_sec: int = 45) -> dict:
+    return hub_request(
+        "POST",
+        "/api/agent-hub/command",
+        {
+            "nodeId": node_id,
+            "action": action,
+            "payload": payload,
+            "wait": True,
+            "timeoutMs": timeout_sec * 1000,
+        },
+        timeout=timeout_sec + 10,
+    )
+
+
+def fmt_bytes(b: int | float) -> str:
+    if not b or b <= 0:
+        return "0 B"
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if b < 1024:
+            return f"{b:.1f} {unit}"
+        b /= 1024
+    return f"{b:.1f} PB"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Homelab Worker Agent Controller")
+    sub = parser.add_subparsers(dest="cmd")
+
+    p_status = sub.add_parser("status", help="Show full Agent Hub status JSON")
+    p_status.add_argument("--json", action="store_true")
+
+    p_nodes = sub.add_parser("nodes", help="List registered worker nodes")
+    p_nodes.add_argument("--json", action="store_true")
+
+    p_exec = sub.add_parser("exec", help="Execute a shell command on a remote node")
+    p_exec.add_argument("node", help="Target node ID (e.g. asridaytrade)")
+    p_exec.add_argument("command", help="Command string to execute")
+    p_exec.add_argument("--shell", default="auto", choices=["auto", "powershell", "cmd", "bash", "sh"])
+    p_exec.add_argument("--cwd", default="")
+    p_exec.add_argument("--timeout", type=int, default=120)
+    p_exec.add_argument("--json", action="store_true")
+
+    p_sys = sub.add_parser("sysinfo", help="Fetch live specs, metrics, and top processes from a node")
+    p_sys.add_argument("node")
+
+    p_ls = sub.add_parser("ls", help="List directory contents on a remote node")
+    p_ls.add_argument("node")
+    p_ls.add_argument("path", nargs="?", default="")
+    p_ls.add_argument("--json", action="store_true")
+
+    p_read = sub.add_parser("read", help="Read a file from a remote node")
+    p_read.add_argument("node")
+    p_read.add_argument("path")
+    p_read.add_argument("--json", action="store_true")
+
+    p_write = sub.add_parser("write", help="Write content to a file on a remote node")
+    p_write.add_argument("node")
+    p_write.add_argument("path")
+    p_write.add_argument("content", nargs="?", default="")
+    p_write.add_argument("--from-file", dest="from_file", default="")
+    p_write.add_argument("--append", action="store_true")
+
+    p_edit = sub.add_parser("edit", help="Replace target string in a remote file")
+    p_edit.add_argument("node")
+    p_edit.add_argument("path")
+    p_edit.add_argument("--target", required=True)
+    p_edit.add_argument("--replace", required=True)
+
+    p_render = sub.add_parser("render", help="Dispatch a distributed FFmpeg render job")
+    p_render.add_argument("node", nargs="?", default="auto")
+    p_render.add_argument("--input", default="")
+    p_render.add_argument("--test", action="store_true", help="Run a 5s 1080x1920 test render")
+    p_render.add_argument("--duration", type=int, default=5)
+    p_render.add_argument("--crf", type=int, default=20)
+
+    p_upd = sub.add_parser("update", help="Trigger self-update on a remote node")
+    p_upd.add_argument("node")
+
+    args = parser.parse_args()
+    if not args.cmd or args.cmd == "nodes":
+        st = hub_request("GET", "/api/agent-hub/status")
+        if getattr(args, "json", False):
+            print(json.dumps(st, ensure_ascii=False, indent=2))
+            return 0
+        if not st.get("ok"):
+            print(f"Error: {st.get('error')}", file=sys.stderr)
+            return 1
+        nodes = st.get("nodes", [])
+        print(f"=== Homelab Agent Hub (Online: {st.get('cluster', {}).get('onlineNodes', 0)}/{len(nodes)}) ===")
+        if not nodes:
+            print("  (ยังไม่มีเครื่องลูกเชื่อมต่อเข้ามา)")
+        for n in nodes:
+            sp = n.get("specs", {})
+            mt = n.get("metrics", {})
+            badge = "🟢 ONLINE" if n.get("online") else "⚪ OFFLINE"
+            gpu = sp.get("gpuModel") or "No discrete GPU"
+            nv = " [NVENC]" if sp.get("hasNvenc") else ""
+            print(
+                f"  • {n.get('nodeId')} ({sp.get('hostname', '-')}) — {badge} | "
+                f"{sp.get('osCaption', sp.get('os', '-'))} | "
+                f"CPU: {sp.get('cpuModel', '-')} ({sp.get('cpuThreads', 0)}T, {mt.get('cpuPct', 0):.1f}%) | "
+                f"RAM: {fmt_bytes(mt.get('memUsed', 0))}/{fmt_bytes(mt.get('memTotal', 0))} ({mt.get('memPct', 0):.1f}%) | "
+                f"GPU: {gpu}{nv} | IP: {', '.join(sp.get('ips', [])) or n.get('lastIp', '-')}"
+            )
+        return 0
+
+    if args.cmd == "status":
+        st = hub_request("GET", "/api/agent-hub/status")
+        print(json.dumps(st, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "exec":
+        res = run_node_cmd(
+            args.node,
+            "exec",
+            {"command": args.command, "shell": args.shell, "cwd": args.cwd, "timeoutSec": args.timeout},
+            timeout_sec=args.timeout + 5,
+        )
+        if args.json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+            return 0 if res.get("ok") else 1
+        if not res.get("ok"):
+            print(f"Error: {res.get('error')}", file=sys.stderr)
+            return 1
+        data = res.get("data") or {}
+        if data.get("stdout"):
+            sys.stdout.write(data["stdout"])
+            if not data["stdout"].endswith("\n"):
+                sys.stdout.write("\n")
+        if data.get("stderr"):
+            sys.stderr.write(data["stderr"])
+            if not data["stderr"].endswith("\n"):
+                sys.stderr.write("\n")
+        return int(data.get("exitCode") or 0)
+
+    if args.cmd == "sysinfo":
+        res = run_node_cmd(args.node, "sysinfo", {}, timeout_sec=30)
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
+
+    if args.cmd == "ls":
+        res = run_node_cmd(args.node, "fs.list", {"path": args.path}, timeout_sec=30)
+        if args.json or not res.get("ok"):
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+            return 0 if res.get("ok") else 1
+        data = res.get("data") or {}
+        print(f"Directory: {data.get('path')}")
+        for item in data.get("items", []):
+            kind = "📁 DIR " if item.get("isDir") else "📄 FILE"
+            sz = "" if item.get("isDir") else f" ({fmt_bytes(item.get('size', 0))})"
+            print(f"  {kind}  {item.get('name')}{sz}  ->  {item.get('path')}")
+        return 0
+
+    if args.cmd == "read":
+        res = run_node_cmd(args.node, "fs.read", {"path": args.path}, timeout_sec=30)
+        if args.json or not res.get("ok"):
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+            return 0 if res.get("ok") else 1
+        sys.stdout.write((res.get("data") or {}).get("content", ""))
+        return 0
+
+    if args.cmd == "write":
+        content = args.content
+        if args.from_file:
+            with open(args.from_file, "r", encoding="utf-8") as f:
+                content = f.read()
+        res = run_node_cmd(
+            args.node,
+            "fs.write",
+            {"path": args.path, "content": content, "append": args.append},
+            timeout_sec=45,
+        )
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
+
+    if args.cmd == "edit":
+        res = run_node_cmd(
+            args.node,
+            "fs.edit",
+            {"path": args.path, "target": args.target, "replacement": args.replace},
+            timeout_sec=30,
+        )
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
+
+    if args.cmd == "render":
+        res = hub_request(
+            "POST",
+            "/api/agent-hub/render-jobs",
+            {
+                "nodeId": args.node,
+                "inputPath": args.input,
+                "testMode": args.test or not bool(args.input),
+                "durationSec": args.duration,
+                "crf": args.crf,
+            },
+        )
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
+
+    if args.cmd == "update":
+        res = run_node_cmd(args.node, "self-update", {}, timeout_sec=60)
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

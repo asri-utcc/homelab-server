@@ -9,6 +9,8 @@ import type { StyleDirectorDef, StyleShotArgs } from './types';
 // SHARED CONTENT EXTRACTION & 3D GEOMETRY HELPERS (Pure, Deterministic)
 // ============================================================================
 
+const CONTENT_BOTTOM = SAFE_BOTTOM - 120;
+
 const F_STEP_RE = /(?:ขั้นตอน|สเต็ป|ลำดับ|วิธี|เส้นทาง|ไต่|ปีน|จาก.+สู่|ระดับ|step)/i;
 const F_SUMMARY_RE = /(?:สรุป|สำคัญ|ไฮไลต์|ประโยคจำ|จำไว้|หัวใจ|แก่น|บทเรียน|ปิดท้าย|สำเร็จ|ฉลอง)/i;
 const F_COMPARE_RE = /(?:เทียบ|ตอนนั้น|ตอนนี้|อดีต|ปัจจุบัน|แบบเดิม|แบบใหม่|ต่างกัน|ใหญ่กว่า|เล็กกว่า|vs|เปรียบเทียบ)/i;
@@ -515,7 +517,7 @@ const SizeLineupShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
   const fallbackLabels = ['ระดับเริ่มต้น', 'ขนาดกลาง', 'ขนาดใหญ่', 'ขนาดมหึมา'];
   const fallbackScales = ['1x', '2.5x', '5x', '10x'];
 
-  const floorY = 1135;
+  const floorY = 1070;
   const titleP = appear(localFrame, 3, 14);
   const rulerP = appear(localFrame, 6, 18);
   const humanSpring = spring({ frame: Math.max(0, localFrame - 6), fps, config: { damping: 14, stiffness: 140 } });
@@ -745,17 +747,18 @@ const SizeLineupShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
         </g>
       </svg>
 
-      {/* Bottom Legend Cards mapped to each lined-up object (stays above SAFE_BOTTOM) */}
+      {/* Bottom Legend Cards mapped to each lined-up object (stays above CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 1222,
+          top: 1152,
           left: 60,
           right: 60,
-          maxHeight: SAFE_BOTTOM - 1242,
+          maxHeight: CONTENT_BOTTOM - 1152,
+          overflow: 'hidden',
           display: 'grid',
           gridTemplateColumns: `repeat(${itemCount === 3 ? 3 : 2}, 1fr)`,
-          gap: 16,
+          gap: 12,
         }}
       >
         {slots.map((slot, i) => {
@@ -770,11 +773,13 @@ const SizeLineupShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
                 background: 'rgba(26, 32, 48, 0.88)',
                 border: `1.5px solid ${i === slots.length - 1 ? '#38BDF8' : pal.border}`,
                 borderRadius: 18,
-                padding: '14px 18px',
+                padding: '12px 16px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
                 boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+                minWidth: 0,
+                overflow: 'hidden',
               }}
             >
               <div
@@ -834,10 +839,10 @@ const ZoomLadderShot: React.FC<StyleShotArgs> = ({ scene, localFrame, durationFr
           { x: 775, y: 585, r: 122, cardX: 110, cardY: 495, color: '#F59E0B' },
         ]
       : [
-          { x: 185, y: 1330, r: 36, cardX: 290, cardY: 1265, color: '#94A3B8' },
-          { x: 375, y: 1065, r: 58, cardX: 488, cardY: 995, color: '#60A5FA' },
-          { x: 605, y: 785, r: 86, cardX: 110, cardY: 715, color: '#38BDF8' },
-          { x: 835, y: 495, r: 116, cardX: 110, cardY: 425, color: '#F59E0B' },
+          { x: 185, y: 1295, r: 36, cardX: 290, cardY: 1225, color: '#94A3B8' },
+          { x: 375, y: 1035, r: 58, cardX: 488, cardY: 965, color: '#60A5FA' },
+          { x: 605, y: 765, r: 86, cardX: 110, cardY: 695, color: '#38BDF8' },
+          { x: 835, y: 485, r: 116, cardX: 110, cardY: 415, color: '#F59E0B' },
         ];
 
   // Active optical reticle position gliding along rungs
@@ -1077,8 +1082,8 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
   const statP = spring({ frame: Math.max(0, localFrame - 10), fps, config: { damping: 14, stiffness: 130 } });
 
   const layerCount = 7;
-  const baseFloorY = 1340;
-  const layerStep = 86;
+  const baseFloorY = 1285;
+  const layerStep = 80;
   const towerX = 300;
   const topReachedY = baseFloorY - layerCount * layerStep;
 
@@ -1097,7 +1102,7 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
-      <ScaleStudioBackdrop pal={pal} localFrame={localFrame} floorY={1355} spotX={320} />
+      <ScaleStudioBackdrop pal={pal} localFrame={localFrame} floorY={1300} spotX={320} />
 
       {/* Header */}
       <div
@@ -1197,18 +1202,19 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
         <circle cx={515} cy={currentLaserY} r={8} fill="#F59E0B" opacity={laserProgress} />
       </svg>
 
-      {/* Right-Side Giant Stat Display & Supporting Points */}
+      {/* Right-Side Giant Stat Display & Supporting Points (strictly <= CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 470,
+          top: 410,
           left: 560,
           right: 60,
-          bottom: STAGE_H - SAFE_BOTTOM + 20,
+          maxHeight: CONTENT_BOTTOM - 410,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
-          gap: 20,
+          justifyContent: 'flex-start',
+          gap: 18,
         }}
       >
         <div
@@ -1218,8 +1224,9 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
             background: 'linear-gradient(155deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.96))',
             border: '2px solid rgba(56, 189, 248, 0.6)',
             borderRadius: 28,
-            padding: '32px 28px',
+            padding: '24px 24px',
             boxShadow: '0 22px 44px rgba(0,0,0,0.45)',
+            flexShrink: 0,
           }}
         >
           <div
@@ -1228,25 +1235,25 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
               fontSize: 22,
               fontWeight: 700,
               color: '#7DD3FC',
-              marginBottom: 8,
+              marginBottom: 6,
             }}
           >
             ระดับความสูงรวม
           </div>
-          <FitText text={metric.big} baseSize={92} minSize={50} maxLines={1} color="#FDE68A" fontWeight={900} align="left" />
+          <FitText text={metric.big} baseSize={84} minSize={48} maxLines={1} color="#FDE68A" fontWeight={900} align="left" />
           {metric.unit ? (
-            <div style={{ marginTop: 6 }}>
-              <FitText text={metric.unit} baseSize={30} minSize={20} maxLines={1} color="#38BDF8" fontWeight={800} align="left" />
+            <div style={{ marginTop: 4 }}>
+              <FitText text={metric.unit} baseSize={28} minSize={20} maxLines={1} color="#38BDF8" fontWeight={800} align="left" />
             </div>
           ) : null}
-          <div style={{ marginTop: 12, borderTop: '1px solid rgba(148,163,184,0.22)', paddingTop: 12 }}>
-            <FitText text={metric.label} baseSize={26} minSize={19} maxLines={3} color={pal.fg} fontWeight={600} align="left" />
+          <div style={{ marginTop: 10, borderTop: '1px solid rgba(148,163,184,0.22)', paddingTop: 10 }}>
+            <FitText text={metric.label} baseSize={24} minSize={18} maxLines={2} color={pal.fg} fontWeight={600} align="left" />
           </div>
         </div>
 
-        {/* Supporting callout stack */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {pts.map((pt, i) => {
+        {/* Supporting callout stack (capped & sized so all items fit cleanly <= CONTENT_BOTTOM) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflow: 'hidden' }}>
+          {pts.slice(0, 3).map((pt, i) => {
             const p = stagger(i, localFrame, 7, 20, 14);
             return (
               <div
@@ -1257,10 +1264,23 @@ const StackTowerShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
                   background: 'rgba(26, 32, 48, 0.86)',
                   borderLeft: `5px solid ${i === 0 ? '#F59E0B' : '#38BDF8'}`,
                   borderRadius: 14,
-                  padding: '14px 18px',
+                  padding: '12px 16px',
+                  maxHeight: 108,
+                  overflow: 'hidden',
+                  flexShrink: 0,
                 }}
               >
-                <FitText text={pt} baseSize={25} minSize={19} maxLines={2} color={pal.fg} fontWeight={700} align="left" />
+                <FitText
+                  text={pt}
+                  baseSize={23}
+                  minSize={18}
+                  maxLines={2}
+                  lineHeight={1.25}
+                  color={pal.fg}
+                  fontWeight={700}
+                  align="left"
+                  style={{ maxHeight: 74 }}
+                />
               </div>
             );
           })}
@@ -1280,9 +1300,9 @@ const SideBySideGiantShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
   const giantSp = spring({ frame: Math.max(0, localFrame - 14), fps, config: { damping: 13, stiffness: 115 } });
   const arcP = appear(localFrame, 24, 16);
 
-  const floorY = 1125;
+  const floorY = 1085;
   const smallH = Math.max(10, 118 * smallSp);
-  const giantH = Math.max(14, 520 * giantSp);
+  const giantH = Math.max(14, 500 * giantSp);
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
@@ -1395,14 +1415,15 @@ const SideBySideGiantShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
         </g>
       </svg>
 
-      {/* Bottom Side-by-Side Comparison Cards (safely above SAFE_BOTTOM) */}
+      {/* Bottom Side-by-Side Comparison Cards (safely above CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 1185,
+          top: 1145,
           left: 56,
           right: 56,
-          maxHeight: SAFE_BOTTOM - 1205,
+          maxHeight: CONTENT_BOTTOM - 1145,
+          overflow: 'hidden',
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: 22,
@@ -1547,7 +1568,7 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
       <div
         style={{
           position: 'absolute',
-          top: 90,
+          top: 72,
           left: 64,
           right: 64,
           opacity: titleP,
@@ -1555,7 +1576,7 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         }}
       >
         {t.badge ? (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
             <span
               style={{
                 padding: '8px 24px',
@@ -1572,14 +1593,14 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
             </span>
           </div>
         ) : null}
-        <FitText text={t.title} baseSize={58} minSize={36} maxLines={2} color="#FFFFFF" fontWeight={800} />
+        <FitText text={t.title} baseSize={54} minSize={34} maxLines={2} color="#FFFFFF" fontWeight={800} />
       </div>
 
       {/* Giant Goal / Milestone Number Halo */}
       <div
         style={{
           position: 'absolute',
-          top: 295,
+          top: 256,
           left: 80,
           right: 80,
           opacity: appear(localFrame, 12, 14),
@@ -1623,7 +1644,7 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         </defs>
 
         {/* Golden radial aura behind trophy */}
-        <circle cx={540} cy={780} r={290 * trophySp} fill="url(#tp-aura)" />
+        <circle cx={540} cy={715} r={280 * trophySp} fill="url(#tp-aura)" />
 
         {/* Falling 3D confetti ribbons */}
         {CONFETTI_SEEDS.map(([sx, sy, w, h, col], i) => {
@@ -1646,7 +1667,7 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         })}
 
         {/* Tiered 3D Emerald & Gold Podium */}
-        <g transform={`translate(540, ${interpolate(podiumSp, [0, 1], [1340, 1085])})`} opacity={clamp01(podiumSp)}>
+        <g transform={`translate(540, ${interpolate(podiumSp, [0, 1], [1260, 1015])})`} opacity={clamp01(podiumSp)}>
           {/* Floor shadow */}
           <ellipse cx={0} cy={175} rx={340} ry={46} fill="#040D0A" opacity={0.75} />
           {/* Lower wide step */}
@@ -1673,7 +1694,7 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
 
         {/* Sculpted 3D Golden Championship Trophy */}
         <g
-          transform={`translate(540, ${835 + floatY}) scale(${trophySp})`}
+          transform={`translate(540, ${765 + floatY}) scale(${trophySp})`}
           opacity={clamp01(trophySp)}
         >
           {/* Trophy base shadow on podium */}
@@ -1730,26 +1751,27 @@ const TrophyPodiumShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         </g>
       </svg>
 
-      {/* Bottom Milestone Summary Strip (above SAFE_BOTTOM) */}
+      {/* Bottom Milestone Summary Strip (strictly <= CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 1290,
+          top: 1206,
           left: 64,
           right: 64,
-          maxHeight: SAFE_BOTTOM - 1310,
+          maxHeight: CONTENT_BOTTOM - 1206,
+          overflow: 'hidden',
           opacity: appear(localFrame, 18, 14),
           background: 'rgba(13, 39, 31, 0.90)',
           border: '1.8px solid rgba(251, 191, 36, 0.55)',
           borderRadius: 22,
-          padding: '20px 28px',
+          padding: '16px 26px',
           boxShadow: '0 16px 34px rgba(0,0,0,0.45)',
         }}
       >
-        <FitText text={metric.label} baseSize={30} minSize={21} maxLines={2} color="#FFFFFF" fontWeight={700} />
+        <FitText text={metric.label} baseSize={28} minSize={20} maxLines={2} color="#FFFFFF" fontWeight={700} />
         {pts[0] && pts[0] !== metric.label ? (
-          <div style={{ marginTop: 8 }}>
-            <FitText text={pts[0]} baseSize={24} minSize={18} maxLines={2} color="#A7F3D0" fontWeight={500} />
+          <div style={{ marginTop: 6 }}>
+            <FitText text={pts[0]} baseSize={22} minSize={17} maxLines={2} color="#A7F3D0" fontWeight={500} />
           </div>
         ) : null}
       </div>
@@ -1776,10 +1798,10 @@ const ProgressMountainShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps,
           { x: 785, y: 545, cardX: 90, cardY: 485, labelSide: 'left' as const },
         ]
       : [
-          { x: 190, y: 1325, cardX: 268, cardY: 1265, labelSide: 'right' as const },
-          { x: 395, y: 1085, cardX: 475, cardY: 1020, labelSide: 'right' as const },
-          { x: 605, y: 820, cardX: 76, cardY: 755, labelSide: 'left' as const },
-          { x: 805, y: 525, cardX: 76, cardY: 465, labelSide: 'left' as const },
+          { x: 190, y: 1295, cardX: 268, cardY: 1235, labelSide: 'right' as const },
+          { x: 395, y: 1055, cardX: 475, cardY: 990, labelSide: 'right' as const },
+          { x: 605, y: 800, cardX: 76, cardY: 735, labelSide: 'left' as const },
+          { x: 805, y: 515, cardX: 76, cardY: 455, labelSide: 'left' as const },
         ];
 
   const trailD = checkpoints.map((c, idx) => `${idx === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ');
@@ -1972,15 +1994,15 @@ const MedalWallShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
   const positions =
     count === 3
       ? [
-          { cx: 540, cy: 525, cardTop: 650, cardLeft: 170, cardW: 740 },
-          { cx: 295, cy: 1015, cardTop: 1140, cardLeft: 64, cardW: 455 },
-          { cx: 785, cy: 1015, cardTop: 1140, cardLeft: 560, cardW: 455 },
+          { cx: 540, cy: 515, cardTop: 640, cardLeft: 170, cardW: 740 },
+          { cx: 295, cy: 995, cardTop: 1120, cardLeft: 64, cardW: 455 },
+          { cx: 785, cy: 995, cardTop: 1120, cardLeft: 560, cardW: 455 },
         ]
       : [
-          { cx: 295, cy: 530, cardTop: 650, cardLeft: 64, cardW: 455 },
-          { cx: 785, cy: 530, cardTop: 650, cardLeft: 560, cardW: 455 },
-          { cx: 295, cy: 1035, cardTop: 1155, cardLeft: 64, cardW: 455 },
-          { cx: 785, cy: 1035, cardTop: 1155, cardLeft: 560, cardW: 455 },
+          { cx: 295, cy: 520, cardTop: 640, cardLeft: 64, cardW: 455 },
+          { cx: 785, cy: 520, cardTop: 640, cardLeft: 560, cardW: 455 },
+          { cx: 295, cy: 995, cardTop: 1120, cardLeft: 64, cardW: 455 },
+          { cx: 785, cy: 995, cardTop: 1120, cardLeft: 560, cardW: 455 },
         ];
 
   return (
@@ -1994,7 +2016,7 @@ const MedalWallShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
           top: 54,
           left: 36,
           right: 36,
-          height: SAFE_BOTTOM - 72,
+          height: CONTENT_BOTTOM - 54,
           border: '2px solid rgba(251, 191, 36, 0.32)',
           borderRadius: 34,
           background: 'rgba(8, 25, 20, 0.35)',
@@ -2037,8 +2059,8 @@ const MedalWallShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
       {/* 3D Medals hanging from brass pegs on velvet display wall */}
       <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`} style={{ position: 'absolute', inset: 0 }}>
         {/* Horizontal brass display rails */}
-        <line x1={96} y1={355} x2={984} y2={355} stroke="#D97706" strokeWidth={5} strokeLinecap="round" opacity={0.7} />
-        <line x1={96} y1={855} x2={984} y2={855} stroke="#D97706" strokeWidth={5} strokeLinecap="round" opacity={0.7} />
+        <line x1={96} y1={345} x2={984} y2={345} stroke="#D97706" strokeWidth={5} strokeLinecap="round" opacity={0.7} />
+        <line x1={96} y1={820} x2={984} y2={820} stroke="#D97706" strokeWidth={5} strokeLinecap="round" opacity={0.7} />
 
         {positions.map((pos, i) => {
           const meta = medalsMeta[i % medalsMeta.length];
@@ -2292,18 +2314,19 @@ const CelebrationBurstShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loca
         </div>
       ) : null}
 
-      {/* Hero Summary Card Below Crest (safely above SAFE_BOTTOM) */}
+      {/* Hero Summary Card Below Crest (safely above CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
           top: 830,
           left: 64,
           right: 64,
-          maxHeight: SAFE_BOTTOM - 855,
+          maxHeight: CONTENT_BOTTOM - 830,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 20,
+          gap: 18,
         }}
       >
         <div
@@ -2455,10 +2478,10 @@ const DonutBuildShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
   const centerSp = spring({ frame: Math.max(0, localFrame - 6), fps, config: { damping: 14, stiffness: 140 } });
 
   const cx = 540;
-  const cy = 675;
-  const outerR = 250;
-  const innerR = 138;
-  const depthY = 26;
+  const cy = 635;
+  const outerR = 235;
+  const innerR = 130;
+  const depthY = 24;
 
   // Compute start/end angles for each slice
   let accDeg = 0;
@@ -2602,17 +2625,18 @@ const DonutBuildShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
         </g>
       </svg>
 
-      {/* Breakdown Legend Cards (safely above SAFE_BOTTOM) */}
+      {/* Breakdown Legend Cards (safely above CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 1030,
+          top: 985,
           left: 58,
           right: 58,
-          maxHeight: SAFE_BOTTOM - 1050,
+          maxHeight: CONTENT_BOTTOM - 985,
+          overflow: 'hidden',
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gap: 16,
+          gap: 14,
         }}
       >
         {geom.map((g, i) => {
@@ -2626,8 +2650,10 @@ const DonutBuildShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
                 background: 'rgba(26, 32, 48, 0.92)',
                 border: `1.8px solid ${g.colors.top}`,
                 borderRadius: 20,
-                padding: '16px 20px',
+                padding: '14px 18px',
                 boxShadow: '0 12px 26px rgba(0,0,0,0.38)',
+                minWidth: 0,
+                overflow: 'hidden',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -2825,17 +2851,18 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
         </g>
       </svg>
 
-      {/* Featured Zoom Inspection Card + Secondary Slice Chips (above SAFE_BOTTOM) */}
+      {/* Featured Zoom Inspection Card + Secondary Slice Chips (above CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 990,
+          top: 980,
           left: 60,
           right: 60,
-          maxHeight: SAFE_BOTTOM - 1010,
+          maxHeight: CONTENT_BOTTOM - 980,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 18,
+          gap: 14,
         }}
       >
         <div
@@ -2845,7 +2872,7 @@ const ExplodedDonutShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, to
             background: 'linear-gradient(155deg, rgba(16, 185, 129, 0.22), rgba(20, 26, 40, 0.96))',
             border: `2.5px solid ${hero.colors.top}`,
             borderRadius: 26,
-            padding: '24px 28px',
+            padding: '20px 26px',
             boxShadow: '0 20px 44px rgba(0,0,0,0.48)',
           }}
         >
@@ -2920,20 +2947,20 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
   const jars = slices.slice(0, jarCount);
 
   const titleP = appear(localFrame, 2, 14);
-  const shelfY = 1135;
+  const shelfY = 1040;
   const jarPositions = jarCount === 3 ? [210, 540, 870] : [330, 750];
-  const jarW = 224;
-  const jarH = 440;
+  const jarW = 220;
+  const jarH = 385;
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
-      <DonutStudioBackdrop pal={pal} localFrame={localFrame} glowX={540} glowY={760} />
+      <DonutStudioBackdrop pal={pal} localFrame={localFrame} glowX={540} glowY={700} />
 
       {/* Header */}
       <div
         style={{
           position: 'absolute',
-          top: 86,
+          top: 68,
           left: 64,
           right: 64,
           opacity: titleP,
@@ -2941,16 +2968,16 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
         }}
       >
         {t.badge ? (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
             <span
               style={{
-                padding: '7px 22px',
+                padding: '6px 20px',
                 borderRadius: 999,
                 background: 'rgba(245, 158, 11, 0.16)',
                 border: '1.5px solid rgba(251, 191, 36, 0.55)',
                 color: '#FDE68A',
                 fontFamily: THAI_FONT_FAMILY,
-                fontSize: 22,
+                fontSize: 21,
                 fontWeight: 800,
               }}
             >
@@ -2958,10 +2985,10 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
             </span>
           </div>
         ) : null}
-        <FitText text={t.title} baseSize={54} minSize={34} maxLines={2} color="#FFFFFF" fontWeight={800} />
+        <FitText text={t.title} baseSize={50} minSize={32} maxLines={2} color="#FFFFFF" fontWeight={800} />
         {t.subtitle ? (
-          <div style={{ marginTop: 8 }}>
-            <FitText text={t.subtitle} baseSize={26} minSize={19} maxLines={2} color={pal.muted} fontWeight={500} />
+          <div style={{ marginTop: 6 }}>
+            <FitText text={t.subtitle} baseSize={24} minSize={18} maxLines={1} color={pal.muted} fontWeight={500} />
           </div>
         ) : null}
       </div>
@@ -2988,8 +3015,8 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
         </defs>
 
         {/* 3D Floating Studio Shelf */}
-        <polygon points="46,1135 1034,1135 1054,1168 26,1168" fill="#1E293B" stroke="#475569" strokeWidth={1.5} />
-        <rect x={26} y={1168} width={1028} height={28} rx={6} fill="url(#cj-shelf)" />
+        <polygon points={`46,${shelfY} 1034,${shelfY} 1054,${shelfY + 32} 26,${shelfY + 32}`} fill="#1E293B" stroke="#475569" strokeWidth={1.5} />
+        <rect x={26} y={shelfY + 32} width={1028} height={26} rx={6} fill="url(#cj-shelf)" />
 
         {/* Each 3D Glass Jar with Stacked 3D Coins */}
         {jars.map((jar, i) => {
@@ -3000,7 +3027,7 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
             fps,
             config: { damping: 14, stiffness: 135 },
           });
-          const coinCount = Math.max(3, Math.round((jar.pct / 100) * 18));
+          const coinCount = Math.max(3, Math.round((jar.pct / 100) * 16));
           const jarTopY = shelfY - jarH;
 
           return (
@@ -3032,7 +3059,7 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
                   fps,
                   config: { damping: 14, stiffness: 180 },
                 });
-                const cyPos = shelfY - 28 - cIdx * 20 - interpolate(cSp, [0, 1], [140, 0]);
+                const cyPos = shelfY - 26 - cIdx * 18 - interpolate(cSp, [0, 1], [120, 0]);
                 const wobbleX = ((cIdx * 7 + i * 11) % 13) - 6;
                 return (
                   <g key={cIdx} opacity={clamp01(cSp * 1.6)}>
@@ -3092,17 +3119,18 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
         })}
       </svg>
 
-      {/* Jar Category Labels below Shelf (safely above SAFE_BOTTOM) */}
+      {/* Jar Category Labels below Shelf (strictly <= CONTENT_BOTTOM, no overflow) */}
       <div
         style={{
           position: 'absolute',
-          top: 1220,
+          top: shelfY + 80,
           left: 48,
           right: 48,
-          maxHeight: SAFE_BOTTOM - 1236,
+          maxHeight: CONTENT_BOTTOM - (shelfY + 80),
+          overflow: 'hidden',
           display: 'grid',
-          gridTemplateColumns: `repeat(${jarCount}, 1fr)`,
-          gap: 18,
+          gridTemplateColumns: `repeat(${jarCount}, minmax(0, 1fr))`,
+          gap: 16,
         }}
       >
         {jars.map((jar, i) => {
@@ -3117,14 +3145,29 @@ const CoinJarsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens 
                 background: 'rgba(26, 32, 48, 0.92)',
                 borderTop: `5px solid ${colors.top}`,
                 borderRadius: 18,
-                padding: '16px 16px',
+                padding: '14px 14px',
                 boxShadow: '0 12px 24px rgba(0,0,0,0.4)',
+                minWidth: 0,
+                maxHeight: CONTENT_BOTTOM - (shelfY + 84),
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
               }}
             >
-              <FitText text={jar.label} baseSize={26} minSize={19} maxLines={3} color="#FFFFFF" fontWeight={800} />
+              <FitText
+                text={jar.label}
+                baseSize={22}
+                minSize={16}
+                maxLines={3}
+                lineHeight={1.25}
+                color="#FFFFFF"
+                fontWeight={800}
+                style={{ overflow: 'hidden', maxHeight: 112 }}
+              />
               {jar.rawNumber ? (
-                <div style={{ marginTop: 6 }}>
-                  <FitText text={jar.rawNumber} baseSize={22} minSize={17} maxLines={1} color={colors.light} fontWeight={700} />
+                <div style={{ marginTop: 6, flexShrink: 0 }}>
+                  <FitText text={jar.rawNumber} baseSize={20} minSize={16} maxLines={1} color={colors.light} fontWeight={700} />
                 </div>
               ) : null}
             </div>
@@ -3150,8 +3193,8 @@ const BudgetStackBarShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, t
   );
 
   const titleP = appear(localFrame, 2, 14);
-  const colTop = 445;
-  const colH = 660;
+  const colTop = 410;
+  const colH = 615;
   const colW = 210;
   const leftX = 165;
   const rightX = 705;
@@ -3204,7 +3247,7 @@ const BudgetStackBarShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, t
       <div
         style={{
           position: 'absolute',
-          top: 332,
+          top: 302,
           left: leftX - 40,
           width: colW + 80,
           opacity: appear(localFrame, 6, 12),
@@ -3215,7 +3258,7 @@ const BudgetStackBarShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, t
       <div
         style={{
           position: 'absolute',
-          top: 332,
+          top: 302,
           left: rightX - 40,
           width: colW + 80,
           opacity: appear(localFrame, 10, 12),
@@ -3322,14 +3365,15 @@ const BudgetStackBarShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, t
         </text>
       </svg>
 
-      {/* Bottom Legend Grid explaining each colored segment (above SAFE_BOTTOM) */}
+      {/* Bottom Legend Grid explaining each colored segment (above CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 1165,
+          top: 1090,
           left: 58,
           right: 58,
-          maxHeight: SAFE_BOTTOM - 1185,
+          maxHeight: CONTENT_BOTTOM - 1090,
+          overflow: 'hidden',
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: 14,

@@ -5,6 +5,8 @@ import type { StudioScene } from '../types';
 import { FitText, SAFE_BOTTOM, STAGE_H, STAGE_W, appear, sceneTexts, stagger } from './kit';
 import type { StyleDirectorDef, StyleShotArgs } from './types';
 
+const CONTENT_BOTTOM = SAFE_BOTTOM - 120; // 1420 — keep all cards/text strictly above subtitle zone (y≈1440–1600)
+
 // ============================================================================
 // SHARED CONTENT EXTRACTION HELPERS (Pure, Deterministic, Zero External Assets)
 // ============================================================================
@@ -210,7 +212,7 @@ const BlueprintBackdrop: React.FC<{
   scaleLabel?: string;
 }> = ({ tokens, localFrame, uid, dwgCode, scaleLabel = 'SCALE 1:1' }) => {
   const pal = getBlueGridPalette(tokens);
-  const scanY = ((localFrame * 3.2) % (SAFE_BOTTOM + 200)) - 100;
+  const scanY = ((localFrame * 3.2) % (CONTENT_BOTTOM + 200)) - 100;
 
   return (
     <div
@@ -242,12 +244,12 @@ const BlueprintBackdrop: React.FC<{
         {/* Subtle drafting scanner sweep */}
         <rect x={0} y={scanY} width={STAGE_W} height={90} fill={`url(#bp-scan-${uid})`} />
 
-        {/* Outer technical border above SAFE_BOTTOM */}
+        {/* Outer technical border above CONTENT_BOTTOM */}
         <rect
           x={32}
           y={44}
           width={STAGE_W - 64}
-          height={SAFE_BOTTOM - 76}
+          height={CONTENT_BOTTOM - 64}
           fill="none"
           stroke="rgba(224,242,254,0.52)"
           strokeWidth={2}
@@ -256,7 +258,7 @@ const BlueprintBackdrop: React.FC<{
           x={40}
           y={52}
           width={STAGE_W - 80}
-          height={SAFE_BOTTOM - 92}
+          height={CONTENT_BOTTOM - 80}
           fill="none"
           stroke="rgba(224,242,254,0.22)"
           strokeWidth={1}
@@ -266,8 +268,8 @@ const BlueprintBackdrop: React.FC<{
         {[
           [56, 68],
           [STAGE_W - 56, 68],
-          [56, SAFE_BOTTOM - 56],
-          [STAGE_W - 56, SAFE_BOTTOM - 56],
+          [56, CONTENT_BOTTOM - 36],
+          [STAGE_W - 56, CONTENT_BOTTOM - 36],
         ].map(([cx, cy], idx) => (
           <g key={idx} stroke={pal.cyan} strokeWidth={1.5} opacity={0.7}>
             <line x1={cx - 10} y1={cy} x2={cx + 10} y2={cy} />
@@ -277,7 +279,7 @@ const BlueprintBackdrop: React.FC<{
         ))}
 
         {/* Ruler ticks along left and right margins */}
-        {Array.from({ length: 14 }).map((_, i) => {
+        {Array.from({ length: 13 }).map((_, i) => {
           const y = 140 + i * 95;
           return (
             <g key={i} stroke="rgba(224,242,254,0.45)" strokeWidth={1.2}>
@@ -330,18 +332,24 @@ const GearMechanismShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
   // Gear D (small top-left): 8 teeth, R=82 -> speed = -16/8 = -2.0
   const baseRot = localFrame * 0.9;
   const gears = [
-    { cx: 390, cy: 690, outer: 162, inner: 136, teeth: 16, rot: baseRot, accent: pal.cyan, code: 'G-01' },
-    { cx: 650, cy: 582, outer: 124, inner: 100, teeth: 12, rot: -baseRot * (16 / 12) + 14, accent: pal.line, code: 'G-02' },
-    { cx: 642, cy: 842, outer: 108, inner: 86, teeth: 10, rot: baseRot * (16 / 10) + 8, accent: pal.amber, code: 'G-03' },
-    { cx: 295, cy: 468, outer: 86, inner: 66, teeth: 8, rot: -baseRot * 2 + 22, accent: pal.muted, code: 'G-04' },
+    { cx: 390, cy: 640, outer: 158, inner: 132, teeth: 16, rot: baseRot, accent: pal.cyan, code: 'G-01' },
+    { cx: 646, cy: 536, outer: 120, inner: 96, teeth: 12, rot: -baseRot * (16 / 12) + 14, accent: pal.line, code: 'G-02' },
+    { cx: 638, cy: 790, outer: 104, inner: 82, teeth: 10, rot: baseRot * (16 / 10) + 8, accent: pal.amber, code: 'G-03' },
+    { cx: 295, cy: 428, outer: 82, inner: 62, teeth: 8, rot: -baseRot * 2 + 22, accent: pal.muted, code: 'G-04' },
   ];
 
-  // Callout label anchors neatly spaced above/below the gear train
-  const labelSlots: Array<{ x: number; y: number; w: number; align: 'left' | 'right'; gx: number; gy: number }> = [
-    { x: 64, y: 1020, w: 452, align: 'left', gx: 390, gy: 690 },
-    { x: 564, y: 1020, w: 452, align: 'left', gx: 642, gy: 842 },
-    { x: 64, y: 1230, w: 452, align: 'left', gx: 295, gy: 468 },
-    { x: 564, y: 1230, w: 452, align: 'left', gx: 650, gy: 582 },
+  // Fixed-height 2-column grid metrics (ends at 960 + 444 = 1404 ≤ CONTENT_BOTTOM=1420)
+  const gridTop = 960;
+  const gridHeight = CONTENT_BOTTOM - gridTop - 16; // 444
+  const cardGap = 20;
+  const cardRowH = points.length <= 2 ? 220 : Math.floor((gridHeight - cardGap) / 2); // 212
+
+  // Callout leader anchors aligned with the 2-column grid cells
+  const labelSlots: Array<{ x: number; y: number; w: number; gx: number; gy: number }> = [
+    { x: 64, y: gridTop, w: 466, gx: 390, gy: 640 },
+    { x: 550, y: gridTop, w: 466, gx: 638, gy: 790 },
+    { x: 64, y: gridTop + cardRowH + cardGap, w: 466, gx: 295, gy: 428 },
+    { x: 550, y: gridTop + cardRowH + cardGap, w: 466, gx: 646, gy: 536 },
   ];
 
   return (
@@ -394,33 +402,40 @@ const GearMechanismShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
       {/* Mechanical Gear Assembly SVG */}
       <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`} style={{ position: 'absolute', inset: 0 }}>
         {/* Centerlines & dimension guides */}
-        <line x1={120} y1={690} x2={960} y2={690} stroke="rgba(186,230,253,0.3)" strokeWidth={1.5} strokeDasharray="16 8 4 8" />
-        <line x1={390} y1={350} x2={390} y2={970} stroke="rgba(186,230,253,0.3)" strokeWidth={1.5} strokeDasharray="16 8 4 8" />
+        <line x1={120} y1={640} x2={960} y2={640} stroke="rgba(186,230,253,0.3)" strokeWidth={1.5} strokeDasharray="16 8 4 8" />
+        <line x1={390} y1={320} x2={390} y2={910} stroke="rgba(186,230,253,0.3)" strokeWidth={1.5} strokeDasharray="16 8 4 8" />
 
         {/* Dimension arrow across main assembly */}
         <g opacity={appear(localFrame, 10, 14)} stroke={pal.cyan} strokeWidth={1.5}>
-          <line x1={190} y1={376} x2={790} y2={376} />
-          <line x1={190} y1={362} x2={190} y2={390} />
-          <line x1={790} y1={362} x2={790} y2={390} />
-          <polygon points="190,376 204,370 204,382" fill={pal.cyan} />
-          <polygon points="790,376 776,370 776,382" fill={pal.cyan} />
-          <rect x={424} y={362} width={132} height={28} fill={pal.bgDeep} stroke={pal.cyan} strokeWidth={1} />
-          <text x={490} y={382} textAnchor="middle" fill={pal.cyan} fontSize={16} fontFamily="monospace" fontWeight={700}>
+          <line x1={190} y1={336} x2={790} y2={336} />
+          <line x1={190} y1={322} x2={190} y2={350} />
+          <line x1={790} y1={322} x2={790} y2={350} />
+          <polygon points="190,336 204,330 204,342" fill={pal.cyan} />
+          <polygon points="790,336 776,330 776,342" fill={pal.cyan} />
+          <rect x={424} y={322} width={132} height={28} fill={pal.bgDeep} stroke={pal.cyan} strokeWidth={1} />
+          <text x={490} y={342} textAnchor="middle" fill={pal.cyan} fontSize={16} fontFamily="monospace" fontWeight={700}>
             Ø 600.0 mm
           </text>
         </g>
 
-        {/* Leader lines from gears to bottom callout cards */}
+        {/* Leader lines from gears to bottom 2-column callout grid */}
         {points.map((_, idx) => {
           const slot = labelSlots[idx];
           if (!slot) return null;
           const p = stagger(idx, localFrame, 6, 10, 14);
-          const anchorX = slot.x + slot.w * 0.5;
-          const anchorY = slot.y;
+          const isRow2 = idx >= 2;
+          const anchorX = isRow2 ? (idx % 2 === 0 ? slot.x : slot.x + slot.w) : slot.x + slot.w * 0.5;
+          const anchorY = isRow2 ? slot.y + cardRowH * 0.5 : slot.y;
+          const elbowY = isRow2 ? anchorY : gridTop - 24;
+          const midX = isRow2 ? (idx % 2 === 0 ? 48 : STAGE_W - 48) : slot.gx;
           return (
-            <g key={`leader-${idx}`} opacity={p * 0.8}>
+            <g key={`leader-${idx}`} opacity={p * 0.78}>
               <polyline
-                points={`${slot.gx},${slot.gy} ${slot.gx},${anchorY - 26} ${anchorX},${anchorY - 26} ${anchorX},${anchorY}`}
+                points={
+                  isRow2
+                    ? `${slot.gx},${slot.gy} ${midX},${slot.gy} ${midX},${elbowY} ${anchorX},${anchorY}`
+                    : `${slot.gx},${slot.gy} ${slot.gx},${elbowY} ${anchorX},${elbowY} ${anchorX},${anchorY}`
+                }
                 fill="none"
                 stroke={pal.cyan}
                 strokeWidth={1.8}
@@ -488,48 +503,70 @@ const GearMechanismShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
 
         {/* Curved rotation direction arc around main gear */}
         <path
-          d="M 210 595 A 200 200 0 0 1 330 495"
+          d="M 210 545 A 200 200 0 0 1 330 445"
           fill="none"
           stroke={pal.amber}
           strokeWidth={2.5}
           strokeDasharray="10 6"
           opacity={0.85}
         />
-        <polygon points="335,492 318,492 326,506" fill={pal.amber} opacity={0.85} />
+        <polygon points="335,442 318,442 326,456" fill={pal.amber} opacity={0.85} />
       </svg>
 
-      {/* Callout Cards for each Gear / Bullet */}
-      {points.map((pt, idx) => {
-        const slot = labelSlots[idx];
-        if (!slot) return null;
-        const p = stagger(idx, localFrame, 6, 10, 14);
-        const code = gears[idx]?.code || `G-0${idx + 1}`;
-        return (
-          <div
-            key={idx}
-            style={{
-              position: 'absolute',
-              left: slot.x,
-              top: slot.y,
-              width: slot.w,
-              padding: '20px 22px',
-              background: pal.cardBg,
-              border: `1.8px solid ${idx === 0 ? pal.cyan : pal.border}`,
-              boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)',
-              opacity: p,
-              transform: `translateY(${interpolate(p, [0, 1], [22, 0])}px)`,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ color: pal.cyan, fontFamily: 'monospace', fontSize: 18, fontWeight: 700 }}>
-                [{code}] PART 0{idx + 1}
-              </span>
-              <span style={{ width: 10, height: 10, background: idx === 2 ? pal.amber : pal.cyan, display: 'inline-block' }} />
+      {/* Fixed-Height 2-Column Grid of Part Callout Cards (strictly non-overlapping, ends ≤ CONTENT_BOTTOM=1420) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: gridTop,
+          left: 64,
+          width: 952,
+          height: gridHeight,
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gridTemplateRows: points.length <= 2 ? `${cardRowH}px` : `${cardRowH}px ${cardRowH}px`,
+          gap: cardGap,
+        }}
+      >
+        {points.map((pt, idx) => {
+          const p = stagger(idx, localFrame, 6, 10, 14);
+          const code = gears[idx]?.code || `G-0${idx + 1}`;
+          return (
+            <div
+              key={idx}
+              style={{
+                height: cardRowH,
+                overflow: 'hidden',
+                padding: '16px 20px',
+                background: pal.cardBg,
+                border: `1.8px solid ${idx === 0 ? pal.cyan : pal.border}`,
+                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)',
+                display: 'flex',
+                flexDirection: 'column',
+                opacity: p,
+                transform: `translateY(${interpolate(p, [0, 1], [18, 0])}px)`,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexShrink: 0 }}>
+                <span style={{ color: pal.cyan, fontFamily: 'monospace', fontSize: 18, fontWeight: 700 }}>
+                  [{code}] PART 0{idx + 1}
+                </span>
+                <span style={{ width: 10, height: 10, background: idx === 2 ? pal.amber : pal.cyan, display: 'inline-block' }} />
+              </div>
+              <FitText
+                text={pt}
+                baseSize={27}
+                minSize={19}
+                maxLines={3}
+                lineHeight={1.26}
+                color={pal.line}
+                fontWeight={700}
+                align="left"
+                style={{ maxHeight: cardRowH - 68, overflow: 'hidden' }}
+              />
             </div>
-            <FitText text={pt} baseSize={30} minSize={20} maxLines={3} color={pal.line} fontWeight={700} align="left" />
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -543,12 +580,13 @@ const CutawayShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, f
   const pistonOffset = Math.sin(localFrame * 0.14) * 34;
   const pulse = 0.6 + 0.4 * Math.sin(localFrame * 0.18);
 
-  // 4 callout targets inside the cutaway machine housing
+  // 4 callout targets inside the cutaway machine housing (fixed card height 216, ends at 1140+216=1356 ≤ CONTENT_BOTTOM=1420)
+  const calloutCardH = 216;
   const calloutTargets = [
-    { tx: 340, ty: 560, bx: 530, by: 460, label: 'SEC-A' },
-    { tx: 385, ty: 720, bx: 530, by: 705, label: 'SEC-B' },
-    { tx: 340, ty: 880, bx: 530, by: 950, label: 'SEC-C' },
-    { tx: 290, ty: 1045, bx: 530, by: 1195, label: 'SEC-D' },
+    { tx: 340, ty: 530, bx: 530, by: 420, label: 'SEC-A' },
+    { tx: 385, ty: 690, bx: 530, by: 660, label: 'SEC-B' },
+    { tx: 340, ty: 850, bx: 530, by: 900, label: 'SEC-C' },
+    { tx: 290, ty: 1015, bx: 530, by: 1140, label: 'SEC-D' },
   ];
 
   return (
@@ -598,7 +636,7 @@ const CutawayShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, f
           </pattern>
         </defs>
 
-        <g transform={`translate(285, 815) scale(${reveal}) translate(-285, -815)`}>
+        <g transform={`translate(285, 785) scale(${reveal}) translate(-285, -815)`}>
           {/* Outer housing cutaway shell with 45-degree engineering section hatch */}
           <path
             d="M 110 470 L 460 470 L 460 540 L 420 540 L 420 1100 L 460 1100 L 460 1180 L 110 1180 L 110 1100 L 150 1100 L 150 540 L 110 540 Z"
@@ -692,7 +730,7 @@ const CutawayShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, f
         })}
       </svg>
 
-      {/* Right-hand Technical Callout Boxes */}
+      {/* Right-hand Technical Callout Boxes (fixed height, strictly above CONTENT_BOTTOM=1420) */}
       {points.map((pt, idx) => {
         const target = calloutTargets[idx];
         if (!target) return null;
@@ -706,19 +744,23 @@ const CutawayShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, f
               left: target.bx,
               top: target.by,
               width: STAGE_W - target.bx - 64,
-              padding: '20px 22px',
+              height: calloutCardH,
+              overflow: 'hidden',
+              padding: '16px 20px',
               background: pal.cardBg,
               border: `1.8px solid ${accent}`,
               borderLeft: `6px solid ${accent}`,
+              display: 'flex',
+              flexDirection: 'column',
               opacity: p,
               transform: `translateX(${interpolate(p, [0, 1], [28, 0])}px)`,
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, flexShrink: 0 }}>
               <span style={{ color: accent, fontFamily: 'monospace', fontSize: 17, fontWeight: 700 }}>{target.label}</span>
               <span style={{ color: pal.muted, fontFamily: 'monospace', fontSize: 15 }}>LAYER 0{idx + 1}</span>
             </div>
-            <FitText text={pt} baseSize={29} minSize={20} maxLines={3} color={pal.line} fontWeight={700} align="left" />
+            <FitText text={pt} baseSize={27} minSize={19} maxLines={3} lineHeight={1.26} color={pal.line} fontWeight={700} align="left" style={{ maxHeight: calloutCardH - 64, overflow: 'hidden' }} />
           </div>
         );
       })}
@@ -733,13 +775,13 @@ const FlowSchematicShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
   const steps = extractPoints(scene, 4);
   const count = Math.max(1, steps.length);
 
-  // Serpentine schematic node positions (alternating left/right)
+  // Serpentine schematic node positions (alternating left/right, ends at 370 + 3*255 + 185 = 1320 ≤ CONTENT_BOTTOM=1420)
   const nodes = steps.map((text, i) => {
     const isLeft = i % 2 === 0;
     const x = isLeft ? 105 : 420;
-    const y = 390 + i * 270;
+    const y = 370 + i * 255;
     const w = 555;
-    const h = 190;
+    const h = 185;
     const portX = isLeft ? 210 : 870;
     const portY = y + h / 2;
     return { text, i, isLeft, x, y, w, h, portX, portY };
@@ -792,8 +834,8 @@ const FlowSchematicShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
       {/* Orthogonal Circuit / Pipe Schematic SVG */}
       <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`} style={{ position: 'absolute', inset: 0 }}>
         {/* Background schematic bus lines */}
-        <line x1={82} y1={340} x2={82} y2={1450} stroke="rgba(186,230,253,0.22)" strokeWidth={2} />
-        <line x1={998} y1={340} x2={998} y2={1450} stroke="rgba(186,230,253,0.22)" strokeWidth={2} />
+        <line x1={82} y1={340} x2={82} y2={CONTENT_BOTTOM - 16} stroke="rgba(186,230,253,0.22)" strokeWidth={2} />
+        <line x1={998} y1={340} x2={998} y2={CONTENT_BOTTOM - 16} stroke="rgba(186,230,253,0.22)" strokeWidth={2} />
 
         {/* Orthogonal pipes connecting step i -> step i+1 */}
         {nodes.slice(0, -1).map((curr, idx) => {
@@ -863,8 +905,9 @@ const FlowSchematicShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
               left: node.x,
               top: node.y,
               width: node.w,
-              minHeight: node.h,
-              padding: '22px 26px',
+              height: node.h,
+              overflow: 'hidden',
+              padding: '18px 24px',
               background: active ? 'rgba(14, 64, 122, 0.92)' : pal.cardBg,
               border: `2px solid ${active ? pal.amber : pal.cyan}`,
               boxShadow: active ? '0 0 28px rgba(252, 211, 77, 0.22)' : 'none',
@@ -906,7 +949,7 @@ const FlowSchematicShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
                 }}
               />
             </div>
-            <FitText text={node.text} baseSize={31} minSize={21} maxLines={3} color={pal.line} fontWeight={700} align="left" />
+            <FitText text={node.text} baseSize={28} minSize={19} maxLines={3} lineHeight={1.25} color={pal.line} fontWeight={700} align="left" style={{ maxHeight: 110, overflow: 'hidden' }} />
           </div>
         );
       })}
@@ -979,13 +1022,13 @@ const SpecSheetShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
 
         {/* Left vertical dimension line for hero stat box */}
         <g stroke={pal.muted} strokeWidth={1.4} opacity={heroSpring}>
-          <line x1={68} y1={368} x2={68} y2={690} />
-          <line x1={58} y1={368} x2={78} y2={368} />
-          <line x1={58} y1={690} x2={78} y2={690} />
+          <line x1={68} y1={350} x2={68} y2={640} />
+          <line x1={58} y1={350} x2={78} y2={350} />
+          <line x1={58} y1={640} x2={78} y2={640} />
         </g>
 
         {/* Decorative mini orthographic schematic gauge inside hero card right */}
-        <g transform={`translate(860, 528) scale(${heroSpring})`} opacity={0.85}>
+        <g transform={`translate(860, 495) scale(${heroSpring})`} opacity={0.85}>
           <circle cx={0} cy={0} r={86} fill="none" stroke="rgba(186,230,253,0.3)" strokeWidth={2} strokeDasharray="8 6" />
           <circle
             cx={0}
@@ -1010,13 +1053,13 @@ const SpecSheetShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
       <div
         style={{
           position: 'absolute',
-          top: 368,
+          top: 350,
           left: 92,
           width: 896,
-          height: 322,
+          height: 290,
           background: pal.cardBg,
           border: `2.4px solid ${pal.cyan}`,
-          padding: '28px 36px',
+          padding: '22px 36px',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
@@ -1028,20 +1071,22 @@ const SpecSheetShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
           PRIMARY PARAMETER // {metric.unit || 'MEASURED'}
         </div>
         <div style={{ maxWidth: 620 }}>
-          <FitText text={metric.big} baseSize={112} minSize={56} maxLines={1} color={pal.amber} fontWeight={900} align="left" />
+          <FitText text={metric.big} baseSize={106} minSize={52} maxLines={1} color={pal.amber} fontWeight={900} align="left" />
         </div>
-        <div style={{ maxWidth: 620, marginTop: 8 }}>
-          <FitText text={metric.label} baseSize={32} minSize={22} maxLines={2} color={pal.line} fontWeight={700} align="left" />
+        <div style={{ maxWidth: 620, marginTop: 6 }}>
+          <FitText text={metric.label} baseSize={30} minSize={20} maxLines={2} color={pal.line} fontWeight={700} align="left" />
         </div>
       </div>
 
-      {/* Technical Specification Table */}
+      {/* Technical Specification Table (strictly above stamp & CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 728,
+          top: 668,
           left: 92,
           width: 896,
+          maxHeight: CONTENT_BOTTOM - 668 - 76,
+          overflow: 'hidden',
           border: `2px solid ${pal.border}`,
           background: pal.cardBg,
         }}
@@ -1051,7 +1096,7 @@ const SpecSheetShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
           style={{
             display: 'flex',
             alignItems: 'center',
-            padding: '14px 24px',
+            padding: '12px 24px',
             background: 'rgba(103, 232, 249, 0.14)',
             borderBottom: `1.5px solid ${pal.cyan}`,
             fontFamily: 'monospace',
@@ -1074,7 +1119,7 @@ const SpecSheetShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                padding: '22px 24px',
+                padding: '16px 24px',
                 borderBottom: i < specs.length - 1 ? '1px solid rgba(186,230,253,0.22)' : 'none',
                 opacity: p,
                 transform: `translateX(${interpolate(p, [0, 1], [-22, 0])}px)`,
@@ -1084,7 +1129,7 @@ const SpecSheetShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
                 SP-0{i + 1}
               </span>
               <div style={{ flex: 1, paddingRight: 16 }}>
-                <FitText text={row} baseSize={30} minSize={21} maxLines={2} color={pal.line} fontWeight={700} align="left" />
+                <FitText text={row} baseSize={27} minSize={19} maxLines={2} lineHeight={1.26} color={pal.line} fontWeight={700} align="left" style={{ maxHeight: 74 }} />
               </div>
               <span
                 style={{
@@ -1105,11 +1150,11 @@ const SpecSheetShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
         })}
       </div>
 
-      {/* Bottom Right Approved Engineering Stamp */}
+      {/* Bottom Right Approved Engineering Stamp (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1388,
+          top: CONTENT_BOTTOM - 64,
           right: 92,
           padding: '10px 22px',
           border: `2.5px solid ${pal.amber}`,
@@ -1199,8 +1244,8 @@ const StudioTurntableBackdrop: React.FC<{
         {[
           [44, 58, 1, 1],
           [STAGE_W - 44, 58, -1, 1],
-          [44, SAFE_BOTTOM - 36, 1, -1],
-          [STAGE_W - 44, SAFE_BOTTOM - 36, -1, -1],
+          [44, CONTENT_BOTTOM - 36, 1, -1],
+          [STAGE_W - 44, CONTENT_BOTTOM - 36, -1, -1],
         ].map(([x, y, dx, dy], idx) => (
           <path
             key={idx}
@@ -1429,13 +1474,15 @@ const TurntableSpinShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
         </g>
       </svg>
 
-      {/* Bottom Sleek Feature Strip (strictly above SAFE_BOTTOM) */}
+      {/* Bottom Sleek Feature Strip (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1168,
+          top: 1135,
           left: 64,
           right: 64,
+          maxHeight: CONTENT_BOTTOM - 1135,
+          overflow: 'hidden',
           display: 'flex',
           gap: 20,
           justifyContent: 'center',
@@ -1448,7 +1495,9 @@ const TurntableSpinShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
               key={idx}
               style={{
                 flex: 1,
-                padding: '22px 22px',
+                maxHeight: CONTENT_BOTTOM - 1145,
+                overflow: 'hidden',
+                padding: '18px 20px',
                 borderRadius: 22,
                 background: pal.cardBg,
                 border: `1.5px solid ${pal.border}`,
@@ -1479,7 +1528,7 @@ const TurntableSpinShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
                   SPEC #{sceneIndex + 1}.{idx + 1}
                 </span>
               </div>
-              <FitText text={pt} baseSize={29} minSize={20} maxLines={3} color={pal.fg} fontWeight={700} align="left" />
+              <FitText text={pt} baseSize={27} minSize={19} maxLines={3} lineHeight={1.26} color={pal.fg} fontWeight={700} align="left" style={{ maxHeight: 120 }} />
             </div>
           );
         })}
@@ -1507,8 +1556,8 @@ const HotspotCalloutsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
   }> = [
     { hx: 510, hy: 585, bx: 52, by: 420, bw: 356, side: 'left' },
     { hx: 582, hy: 700, bx: 672, by: 540, bw: 356, side: 'right' },
-    { hx: 482, hy: 850, bx: 52, by: 870, bw: 356, side: 'left' },
-    { hx: 576, hy: 965, bx: 672, by: 1010, bw: 356, side: 'right' },
+    { hx: 482, hy: 850, bx: 52, by: 855, bw: 356, side: 'left' },
+    { hx: 576, hy: 965, bx: 672, by: 985, bw: 356, side: 'right' },
   ];
 
   return (
@@ -1625,22 +1674,24 @@ const HotspotCalloutsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, 
         );
       })}
 
-      {/* Bottom subtitle caption bar if present */}
+      {/* Bottom subtitle caption bar if present (strictly above CONTENT_BOTTOM=1420) */}
       {t.subtitle ? (
         <div
           style={{
             position: 'absolute',
-            top: 1345,
+            top: 1290,
             left: 96,
             right: 96,
-            padding: '18px 28px',
+            maxHeight: CONTENT_BOTTOM - 1290,
+            overflow: 'hidden',
+            padding: '14px 24px',
             borderRadius: 18,
             background: 'rgba(255,255,255,0.82)',
             border: `1px solid ${pal.border}`,
             opacity: appear(localFrame, 18, 14),
           }}
         >
-          <FitText text={t.subtitle} baseSize={27} minSize={20} maxLines={2} color={pal.muted} fontWeight={600} align="center" />
+          <FitText text={t.subtitle} baseSize={25} minSize={19} maxLines={2} lineHeight={1.26} color={pal.muted} fontWeight={600} align="center" style={{ maxHeight: 74 }} />
         </div>
       ) : null}
     </div>
@@ -1811,7 +1862,9 @@ const ExplodedFeaturesShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps,
               left: 516,
               top: cy - 64,
               width: STAGE_W - 516 - 60,
-              padding: '18px 22px',
+              maxHeight: 195,
+              overflow: 'hidden',
+              padding: '16px 22px',
               borderRadius: 18,
               background: pal.cardBg,
               border: `1.5px solid ${pal.border}`,
@@ -1848,7 +1901,7 @@ const PriceRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
-      <StudioTurntableBackdrop tokens={tokens} uid="price" mood="spotlight" horizonY={1020} />
+      <StudioTurntableBackdrop tokens={tokens} uid="price" mood="spotlight" horizonY={940} />
 
       {/* Dramatic Overhead Spotlight Cone + Pedestal + Product */}
       <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`} style={{ position: 'absolute', inset: 0 }}>
@@ -1866,33 +1919,33 @@ const PriceRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
         </defs>
 
         {/* Spotlight beam from top center */}
-        <polygon points="440,0 640,0 920,1120 160,1120" fill="url(#spot-beam-price)" opacity={spotIn} />
+        <polygon points="440,0 640,0 920,1040 160,1040" fill="url(#spot-beam-price)" opacity={spotIn} />
 
         {/* Floor spotlight pool */}
-        <ellipse cx={360} cy={1040} rx={300 * spotIn} ry={66 * spotIn} fill="url(#spot-pool-price)" />
+        <ellipse cx={360} cy={960} rx={300 * spotIn} ry={62 * spotIn} fill="url(#spot-pool-price)" />
 
         {/* Dark obsidian turntable pedestal */}
-        <g transform={`translate(360, 1005) scale(${prodSpring})`}>
+        <g transform={`translate(360, 925) scale(${prodSpring})`}>
           <path d="M -200 0 L -200 36 A 200 40 0 0 0 200 36 L 200 0 Z" fill="#18191D" stroke={pal.gold} strokeWidth={2} />
           <ellipse cx={0} cy={0} rx={200} ry={40} fill="#25272E" stroke="#F3D69B" strokeWidth={2} />
         </g>
 
         {/* Product under spotlight (left-center so price tag shines on right) */}
-        <g transform={`translate(360, 785) scale(${prodSpring * 0.92})`}>
+        <g transform={`translate(360, 715) scale(${prodSpring * 0.88})`}>
           <StudioProductIllustration uid="price" specShift={Math.sin(localFrame * 0.06) * 0.5} highlightGold="#F3D69B" />
         </g>
 
         {/* Hanging metallic cord for luxury price tag */}
         <line
           x1={760}
-          y1={360}
+          y1={330}
           x2={760}
-          y2={530}
+          y2={485}
           stroke="#F3D69B"
           strokeWidth={3}
           opacity={tagSpring}
         />
-        <circle cx={760} cy={530} r={10} fill="#0D0C0B" stroke="#F3D69B" strokeWidth={3} opacity={tagSpring} />
+        <circle cx={760} cy={485} r={10} fill="#0D0C0B" stroke="#F3D69B" strokeWidth={3} opacity={tagSpring} />
       </svg>
 
       {/* Top Title in Moody Spotlight Studio */}
@@ -1929,10 +1982,10 @@ const PriceRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
       <div
         style={{
           position: 'absolute',
-          top: 520,
+          top: 475,
           left: 552,
           width: 456,
-          padding: '38px 32px 32px',
+          padding: '34px 30px 28px',
           borderRadius: 26,
           background: 'linear-gradient(155deg, #272522 0%, #151412 100%)',
           border: '2.5px solid #F3D69B',
@@ -1961,19 +2014,21 @@ const PriceRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
         <FitText text={metric.label} baseSize={30} minSize={20} maxLines={2} color="#E7DFCE" fontWeight={700} align="center" />
       </div>
 
-      {/* Value Bullet Chips at Bottom (above SAFE_BOTTOM) */}
+      {/* Value Bullet Chips / Spec Checklist at Bottom (3rd row strictly ≤ CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1152,
+          top: 1055,
           left: 68,
           right: 68,
+          maxHeight: CONTENT_BOTTOM - 1055,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 12,
         }}
       >
-        {bullets.map((b, i) => {
+        {bullets.slice(0, 3).map((b, i) => {
           const p = stagger(i, localFrame, 6, 16, 14);
           return (
             <div
@@ -1982,7 +2037,9 @@ const PriceRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
                 display: 'flex',
                 alignItems: 'center',
                 gap: 16,
-                padding: '18px 26px',
+                maxHeight: 108,
+                overflow: 'hidden',
+                padding: '14px 22px',
                 borderRadius: 18,
                 background: 'rgba(255, 250, 240, 0.08)',
                 border: '1.5px solid rgba(243, 214, 155, 0.32)',
@@ -2008,7 +2065,7 @@ const PriceRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
                 ✓
               </span>
               <div style={{ flex: 1 }}>
-                <FitText text={b} baseSize={30} minSize={21} maxLines={2} color="#FAF6EE" fontWeight={700} align="left" />
+                <FitText text={b} baseSize={27} minSize={19} maxLines={2} lineHeight={1.25} color="#FAF6EE" fontWeight={700} align="left" style={{ maxHeight: 72 }} />
               </div>
             </div>
           );
@@ -2163,10 +2220,10 @@ const CardFlipShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, 
       <div
         style={{
           position: 'absolute',
-          top: 390,
+          top: 356,
           left: 86,
           width: 908,
-          height: 556,
+          height: 510,
           transform: `scale(${enter * liftScale}) scaleX(${cosScaleX})`,
           transformOrigin: '50% 50%',
         }}
@@ -2183,7 +2240,7 @@ const CardFlipShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, 
               background: 'linear-gradient(135deg, #272D3D 0%, #141824 52%, #0B0E17 100%)',
               border: `2.5px solid ${pal.gold}`,
               boxShadow: '0 32px 80px rgba(0, 0, 0, 0.65), 0 0 42px rgba(245, 197, 99, 0.22)',
-              padding: '44px 48px',
+              padding: '36px 44px',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
@@ -2252,7 +2309,7 @@ const CardFlipShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, 
             }}
           >
             {/* Magnetic stripe across top of card back */}
-            <div style={{ height: 74, marginTop: 34, background: '#07090F', borderTop: '1px solid #334155', borderBottom: '1px solid #334155' }} />
+            <div style={{ height: 64, marginTop: 26, background: '#07090F', borderTop: '1px solid #334155', borderBottom: '1px solid #334155' }} />
 
             {/* Diagonal glossy shine */}
             <div
@@ -2269,7 +2326,7 @@ const CardFlipShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, 
             />
 
             {/* Signature / CVV + Revealed Main Offer */}
-            <div style={{ flex: 1, padding: '28px 48px 36px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ flex: 1, padding: '22px 44px 28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
                 <div
                   style={{
@@ -2316,19 +2373,21 @@ const CardFlipShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, 
         )}
       </div>
 
-      {/* Flip Status Indicator + Supporting Benefit Pills Below Card */}
+      {/* Flip Status Indicator + Supporting Benefit Pills Below Card (3rd item strictly ≤ CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 996,
+          top: 908,
           left: 68,
           right: 68,
+          maxHeight: CONTENT_BOTTOM - 908,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 14,
         }}
       >
-        {points.map((pt, idx) => {
+        {points.slice(0, 3).map((pt, idx) => {
           const p = stagger(idx, localFrame, 6, 18, 14);
           return (
             <div
@@ -2337,7 +2396,9 @@ const CardFlipShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, 
                 display: 'flex',
                 alignItems: 'center',
                 gap: 18,
-                padding: '22px 26px',
+                maxHeight: 118,
+                overflow: 'hidden',
+                padding: '16px 22px',
                 borderRadius: 20,
                 background: 'rgba(30, 36, 54, 0.84)',
                 border: `1.5px solid ${idx === 0 ? pal.gold : pal.border}`,
@@ -2364,7 +2425,7 @@ const CardFlipShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, 
                 0{idx + 1}
               </div>
               <div style={{ flex: 1 }}>
-                <FitText text={pt} baseSize={31} minSize={21} maxLines={2} color={pal.fg} fontWeight={700} align="left" />
+                <FitText text={pt} baseSize={28} minSize={19} maxLines={2} lineHeight={1.26} color={pal.fg} fontWeight={700} align="left" style={{ maxHeight: 76 }} />
               </div>
             </div>
           );
@@ -2538,16 +2599,18 @@ const CardFanShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens }
         })}
       </div>
 
-      {/* Crisp Readable Card Legend Grid Below the Fan (above SAFE_BOTTOM) */}
+      {/* Crisp Readable Card Legend Grid Below the Fan (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 905,
+          top: 890,
           left: 64,
           right: 64,
+          maxHeight: CONTENT_BOTTOM - 890,
+          overflow: 'hidden',
           display: 'grid',
           gridTemplateColumns: count <= 2 ? '1fr' : '1fr 1fr',
-          gap: 20,
+          gap: 16,
         }}
       >
         {points.map((pt, i) => {
@@ -2557,7 +2620,9 @@ const CardFanShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens }
             <div
               key={i}
               style={{
-                padding: '22px 24px',
+                maxHeight: 245,
+                overflow: 'hidden',
+                padding: '18px 20px',
                 borderRadius: 22,
                 background: 'rgba(22, 28, 44, 0.9)',
                 border: `1.8px solid ${theme.border}`,
@@ -2572,7 +2637,7 @@ const CardFanShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens }
                 </span>
                 <span style={{ color: theme.border, fontSize: 18 }}>◆</span>
               </div>
-              <FitText text={pt} baseSize={29} minSize={20} maxLines={3} color={pal.fg} fontWeight={700} align="left" />
+              <FitText text={pt} baseSize={27} minSize={19} maxLines={3} lineHeight={1.26} color={pal.fg} fontWeight={700} align="left" style={{ maxHeight: 122 }} />
             </div>
           );
         })}
@@ -2593,7 +2658,7 @@ const ScratchRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
   const scratchP = Math.max(0, Math.min(1, (localFrame - 8) / 36));
   const revealWidth = interpolate(scratchP, [0, 1], [0, 740]);
   const coinX = 170 + revealWidth;
-  const coinY = 700 + Math.sin(scratchP * Math.PI * 6) * 56;
+  const coinY = 655 + Math.sin(scratchP * Math.PI * 6) * 48;
   const coinVisible = scratchP > 0.02 && scratchP < 0.98;
   const sparkleScale = spring({ frame: Math.max(0, localFrame - 34), fps, config: { damping: 10, stiffness: 180 } });
 
@@ -2635,10 +2700,10 @@ const ScratchRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
       <div
         style={{
           position: 'absolute',
-          top: 372,
+          top: 344,
           left: 84,
           width: 912,
-          height: 600,
+          height: 552,
           borderRadius: 36,
           background: 'linear-gradient(145deg, #1F2937 0%, #0F172A 100%)',
           border: `3px solid ${pal.gold}`,
@@ -2653,7 +2718,7 @@ const ScratchRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '28px 40px 18px',
+            padding: '22px 40px 14px',
           }}
         >
           <span style={{ color: pal.gold, fontFamily: 'monospace', fontSize: 20, fontWeight: 800, letterSpacing: 2.5 }}>
@@ -2668,8 +2733,8 @@ const ScratchRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
         <div
           style={{
             position: 'relative',
-            margin: '12px 46px 24px',
-            height: 350,
+            margin: '8px 46px 18px',
+            height: 315,
             borderRadius: 24,
             overflow: 'hidden',
             background: 'radial-gradient(circle at 50% 45%, #FFFBEB 0%, #FDE68A 52%, #F59E0B 100%)',
@@ -2772,19 +2837,21 @@ const ScratchRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
         ))}
       </svg>
 
-      {/* Supporting Details Below Card */}
+      {/* Supporting Details Below Card (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1020,
+          top: 932,
           left: 84,
           right: 84,
+          maxHeight: CONTENT_BOTTOM - 932,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 14,
         }}
       >
-        {bullets.map((b, i) => {
+        {bullets.slice(0, 3).map((b, i) => {
           const p = stagger(i, localFrame, 6, 20, 14);
           return (
             <div
@@ -2793,7 +2860,9 @@ const ScratchRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
                 display: 'flex',
                 alignItems: 'center',
                 gap: 16,
-                padding: '20px 26px',
+                maxHeight: 116,
+                overflow: 'hidden',
+                padding: '16px 22px',
                 borderRadius: 20,
                 background: 'rgba(30, 36, 54, 0.85)',
                 border: `1.5px solid ${pal.border}`,
@@ -2803,7 +2872,7 @@ const ScratchRevealShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
             >
               <span style={{ color: pal.gold, fontSize: 24, flexShrink: 0 }}>✦</span>
               <div style={{ flex: 1 }}>
-                <FitText text={b} baseSize={30} minSize={20} maxLines={2} color={pal.fg} fontWeight={700} align="left" />
+                <FitText text={b} baseSize={28} minSize={19} maxLines={2} lineHeight={1.26} color={pal.fg} fontWeight={700} align="left" style={{ maxHeight: 74 }} />
               </div>
             </div>
           );
@@ -2861,14 +2930,14 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
         <FitText text={t.title} baseSize={52} minSize={30} maxLines={2} color={pal.fg} fontWeight={800} align="center" />
       </div>
 
-      {/* Side-by-Side Comparison Cards */}
+      {/* Side-by-Side Comparison Cards (strictly ends ≤ CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 356,
+          top: 336,
           left: 48,
           right: 48,
-          height: 1090,
+          height: CONTENT_BOTTOM - 336 - 16,
           display: 'flex',
           gap: 28,
           alignItems: 'stretch',
@@ -2886,7 +2955,7 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
               : 'linear-gradient(160deg, #242A38 0%, #111520 100%)',
             border: `2.5px solid ${leftWins ? pal.gold : '#475569'}`,
             boxShadow: leftWins ? '0 24px 60px rgba(245, 197, 99, 0.24)' : '0 20px 44px rgba(0,0,0,0.45)',
-            padding: '32px 26px',
+            padding: '26px 24px',
             display: 'flex',
             flexDirection: 'column',
             transform: `translateX(${interpolate(leftSpring, [0, 1], [-60, 0])}px) scale(${leftSpring})`,
@@ -2896,17 +2965,18 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
           {/* Mini card visual header */}
           <div
             style={{
-              height: 220,
+              height: 200,
+              flexShrink: 0,
               borderRadius: 22,
               background: leftWins
                 ? 'linear-gradient(135deg, #B98324 0%, #78350F 100%)'
                 : 'linear-gradient(135deg, #334155 0%, #1E293B 100%)',
               border: `1.5px solid ${leftWins ? pal.gold : '#64748B'}`,
-              padding: '20px 22px',
+              padding: '18px 20px',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              marginBottom: 26,
+              marginBottom: 20,
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2920,14 +2990,14 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
           </div>
 
           {/* Left Items List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18, flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, overflow: 'hidden' }}>
             {cmp.leftItems.map((item, i) => {
               const p = stagger(i, localFrame, 6, 12, 14);
               return (
                 <div
                   key={i}
                   style={{
-                    padding: '20px 18px',
+                    padding: '16px 16px',
                     borderRadius: 18,
                     background: 'rgba(15, 23, 42, 0.58)',
                     border: '1px solid rgba(148, 163, 184, 0.25)',
@@ -2941,7 +3011,7 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
                     {leftWins ? '✓' : '•'}
                   </span>
                   <div style={{ flex: 1 }}>
-                    <FitText text={item} baseSize={28} minSize={19} maxLines={4} color={pal.fg} fontWeight={700} align="left" />
+                    <FitText text={item} baseSize={26} minSize={18} maxLines={3} lineHeight={1.26} color={pal.fg} fontWeight={700} align="left" style={{ maxHeight: 108 }} />
                   </div>
                 </div>
               );
@@ -2961,7 +3031,7 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
               : 'linear-gradient(160deg, #242A38 0%, #111520 100%)',
             border: `2.8px solid ${rightWins ? pal.gold : '#475569'}`,
             boxShadow: rightWins ? '0 26px 64px rgba(245, 197, 99, 0.28)' : '0 20px 44px rgba(0,0,0,0.45)',
-            padding: '32px 26px',
+            padding: '26px 24px',
             display: 'flex',
             flexDirection: 'column',
             transform: `translateX(${interpolate(rightSpring, [0, 1], [60, 0])}px) scale(${rightSpring})`,
@@ -2987,17 +3057,18 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
           {/* Mini card visual header */}
           <div
             style={{
-              height: 220,
+              height: 200,
+              flexShrink: 0,
               borderRadius: 22,
               background: rightWins
                 ? 'linear-gradient(135deg, #D97706 0%, #92400E 50%, #451A03 100%)'
                 : 'linear-gradient(135deg, #334155 0%, #1E293B 100%)',
               border: `2px solid ${rightWins ? pal.gold : '#64748B'}`,
-              padding: '20px 22px',
+              padding: '18px 20px',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              marginBottom: 26,
+              marginBottom: 20,
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3011,14 +3082,14 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
           </div>
 
           {/* Right Items List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18, flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, overflow: 'hidden' }}>
             {cmp.rightItems.map((item, i) => {
               const p = stagger(i, localFrame, 6, 16, 14);
               return (
                 <div
                   key={i}
                   style={{
-                    padding: '20px 18px',
+                    padding: '16px 16px',
                     borderRadius: 18,
                     background: 'rgba(245, 197, 99, 0.11)',
                     border: `1.5px solid ${rightWins ? 'rgba(245, 197, 99, 0.48)' : 'rgba(148, 163, 184, 0.25)'}`,
@@ -3030,7 +3101,7 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
                 >
                   <span style={{ color: pal.emerald, fontSize: 22, fontWeight: 900 }}>✓</span>
                   <div style={{ flex: 1 }}>
-                    <FitText text={item} baseSize={28} minSize={19} maxLines={4} color="#FFFFFF" fontWeight={700} align="left" />
+                    <FitText text={item} baseSize={26} minSize={18} maxLines={3} lineHeight={1.26} color="#FFFFFF" fontWeight={700} align="left" style={{ maxHeight: 108 }} />
                   </div>
                 </div>
               );
@@ -3043,7 +3114,7 @@ const CompareCardsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
       <div
         style={{
           position: 'absolute',
-          top: 462,
+          top: 432,
           left: STAGE_W / 2 - 44,
           width: 88,
           height: 88,

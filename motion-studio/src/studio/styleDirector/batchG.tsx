@@ -10,6 +10,8 @@ import type { StyleDirectorDef, StyleShotArgs } from './types';
 // Pure, Deterministic, Inline SVG/CSS Only, Zero External Assets
 // ============================================================================
 
+const CONTENT_BOTTOM = SAFE_BOTTOM - 120;
+
 const FONT_THAI = THAI_FONT_FAMILY;
 const FONT_MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 
@@ -401,7 +403,7 @@ const Look22LockscreenFlood: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loc
       <div
         style={{
           position: 'absolute',
-          top: 62,
+          top: 48,
           left: 64,
           right: 64,
           opacity: headerP,
@@ -409,7 +411,7 @@ const Look22LockscreenFlood: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loc
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 10,
+          gap: 8,
           zIndex: 5,
         }}
       >
@@ -418,28 +420,28 @@ const Look22LockscreenFlood: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loc
             display: 'inline-flex',
             alignItems: 'center',
             gap: 10,
-            padding: '7px 20px',
+            padding: '6px 18px',
             borderRadius: 99,
             background: 'rgba(16,185,129,0.16)',
             border: '1.5px solid rgba(16,185,129,0.55)',
           }}
         >
           <span style={{ width: 10, height: 10, borderRadius: 99, background: '#10B981', boxShadow: '0 0 10px #10B981' }} />
-          <span style={{ fontFamily: FONT_THAI, fontSize: 22, fontWeight: 700, color: '#6EE7B7' }}>
+          <span style={{ fontFamily: FONT_THAI, fontSize: 21, fontWeight: 700, color: '#6EE7B7' }}>
             {shortTextG(txt.badge || 'แจ้งเตือนไหลเข้าต่อเนื่อง', 28)}
           </span>
         </div>
-        <FitText text={txt.title || 'ยอดแจ้งเตือนพุ่งไม่หยุด'} baseSize={48} minSize={30} maxLines={2} color="#F8FAFC" />
+        <FitText text={txt.title || 'ยอดแจ้งเตือนพุ่งไม่หยุด'} baseSize={46} minSize={28} maxLines={2} color="#F8FAFC" />
       </div>
 
-      {/* Smartphone Lockscreen Mockup (y: 268..1368) */}
+      {/* Smartphone Lockscreen Mockup (y: 230..1262) */}
       <div
         style={{
           position: 'absolute',
-          top: 268,
+          top: 230,
           left: 140,
           width: 800,
-          height: 1100,
+          height: 1032,
           transform: `translateX(${shakeOffset.toFixed(1)}px) translateY(${((1 - phoneEnter) * 70).toFixed(1)}px) scale(${(0.92 + phoneEnter * 0.08).toFixed(4)})`,
           zIndex: 4,
         }}
@@ -505,21 +507,21 @@ const Look22LockscreenFlood: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loc
             </div>
 
             {/* Lock Icon + Clock */}
-            <div style={{ textAlign: 'center', marginBottom: 22 }}>
-              <svg width={26} height={30} viewBox="0 0 26 30" style={{ display: 'inline-block', marginBottom: 4 }}>
+            <div style={{ textAlign: 'center', marginBottom: 14 }}>
+              <svg width={24} height={28} viewBox="0 0 26 30" style={{ display: 'inline-block', marginBottom: 2 }}>
                 <path d="M7 13V9a6 6 0 0 1 12 0v4" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
                 <rect x="4" y="13" width="18" height="14" rx="4" fill="#94A3B8" />
               </svg>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 96, fontWeight: 800, color: '#F8FAFC', lineHeight: 0.95, letterSpacing: -2 }}>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 80, fontWeight: 800, color: '#F8FAFC', lineHeight: 0.95, letterSpacing: -2 }}>
                 09:41
               </div>
-              <div style={{ fontFamily: FONT_THAI, fontSize: 23, fontWeight: 600, color: '#CBD5E1', marginTop: 6 }}>
+              <div style={{ fontFamily: FONT_THAI, fontSize: 21, fontWeight: 600, color: '#CBD5E1', marginTop: 4 }}>
                 วันอังคาร · {shortTextG(metric.unit || 'สรุปรายการล่าสุด', 24)}
               </div>
             </div>
 
             {/* Stacking Notification Cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflow: 'hidden' }}>
               {items.map((item, idx) => {
                 const delay = 8 + idx * 13;
                 const sp = spring({ frame: Math.max(0, localFrame - delay), fps, config: { damping: 14, stiffness: 170 } });
@@ -532,25 +534,25 @@ const Look22LockscreenFlood: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loc
                     style={{
                       opacity: op,
                       transform: `translateY(${yOff.toFixed(1)}px) scale(${sc.toFixed(4)})`,
-                      borderRadius: 24,
+                      borderRadius: 22,
                       background: 'rgba(15, 23, 42, 0.78)',
                       border: `1.5px solid ${idx === 0 ? `${item.color}99` : 'rgba(148,163,184,0.28)'}`,
-                      padding: '16px 20px',
+                      padding: '13px 18px',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 16,
+                      gap: 14,
                       boxShadow: idx === 0 ? `0 14px 30px rgba(0,0,0,0.4), 0 0 24px ${item.color}22` : '0 10px 22px rgba(0,0,0,0.32)',
                     }}
                   >
-                    <NotifAppIconSvg kind={idx} color={item.color} size={52} />
+                    <NotifAppIconSvg kind={idx} color={item.color} size={46} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ fontFamily: FONT_THAI, fontSize: 23, fontWeight: 800, color: '#F8FAFC' }}>{item.title}</span>
+                          <span style={{ fontFamily: FONT_THAI, fontSize: 22, fontWeight: 800, color: '#F8FAFC' }}>{item.title}</span>
                           <span
                             style={{
                               fontFamily: FONT_THAI,
-                              fontSize: 17,
+                              fontSize: 16,
                               fontWeight: 700,
                               color: item.color,
                               background: `${item.color}22`,
@@ -561,9 +563,9 @@ const Look22LockscreenFlood: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loc
                             {item.tag}
                           </span>
                         </div>
-                        <span style={{ fontFamily: FONT_THAI, fontSize: 18, color: '#94A3B8' }}>{item.time}</span>
+                        <span style={{ fontFamily: FONT_THAI, fontSize: 17, color: '#94A3B8' }}>{item.time}</span>
                       </div>
-                      <FitText text={item.body} baseSize={24} minSize={19} maxLines={2} color="#E2E8F0" fontWeight={600} align="left" lineHeight={1.25} />
+                      <FitText text={item.body} baseSize={22} minSize={18} maxLines={2} color="#E2E8F0" fontWeight={600} align="left" lineHeight={1.22} />
                     </div>
                   </div>
                 );
@@ -571,28 +573,30 @@ const Look22LockscreenFlood: React.FC<StyleShotArgs> = ({ scene, sceneIndex, loc
             </div>
 
             {/* Bottom Home Indicator */}
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
               <div style={{ width: 210, height: 7, borderRadius: 99, background: 'rgba(248,250,252,0.45)' }} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom Metric Strip above SAFE_BOTTOM (y: 1396..1492) */}
+      {/* Bottom Metric Strip above CONTENT_BOTTOM (y: 1296..1384) */}
       <div
         style={{
           position: 'absolute',
-          top: 1398,
+          top: 1296,
           left: 90,
           right: 90,
-          height: 92,
+          height: 88,
+          maxHeight: CONTENT_BOTTOM - 1296,
+          overflow: 'hidden',
           borderRadius: 22,
           background: 'rgba(15,23,42,0.88)',
           border: '1.5px solid rgba(51,65,85,0.85)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 32px',
+          padding: '0 30px',
           opacity: appear(localFrame, 18, 14),
         }}
       >
@@ -826,16 +830,18 @@ const Look22CashRegister: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
         })}
       </svg>
 
-      {/* Incoming Sales Alert Cards (y: 816..1476) */}
+      {/* Incoming Sales Alert Cards (y: 796..1340, strictly <= CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 818,
+          top: 796,
           left: 84,
           right: 84,
+          maxHeight: CONTENT_BOTTOM - 796,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 18,
+          gap: 14,
         }}
       >
         {salesRows.map((row, idx) => {
@@ -851,7 +857,7 @@ const Look22CashRegister: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
                 borderRadius: 22,
                 background: 'rgba(22, 32, 51, 0.92)',
                 border: `1.5px solid ${idx === 0 ? '#10B981' : '#334155'}`,
-                padding: '18px 24px',
+                padding: '15px 22px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -925,7 +931,7 @@ const Look22WristBuzz: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
       <div
         style={{
           position: 'absolute',
-          top: 66,
+          top: 52,
           left: 64,
           right: 64,
           textAlign: 'center',
@@ -961,14 +967,14 @@ const Look22WristBuzz: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
           return (
             <g key={ring} opacity={op}>
               <path
-                d={`M ${540 - dx} 610 Q ${540 - dx - 52} 775 ${540 - dx} 940`}
+                d={`M ${540 - dx} 540 Q ${540 - dx - 52} 705 ${540 - dx} 870`}
                 fill="none"
                 stroke="#22D3EE"
                 strokeWidth={5 - ring}
                 strokeLinecap="round"
               />
               <path
-                d={`M ${540 + dx} 610 Q ${540 + dx + 52} 775 ${540 + dx} 940`}
+                d={`M ${540 + dx} 540 Q ${540 + dx + 52} 705 ${540 + dx} 870`}
                 fill="none"
                 stroke="#22D3EE"
                 strokeWidth={5 - ring}
@@ -979,20 +985,20 @@ const Look22WristBuzz: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
         })}
       </svg>
 
-      {/* Smartwatch Assembly (centered around y: 775) */}
+      {/* Smartwatch Assembly (centered around y: 705, ends at y: 1210) */}
       <div
         style={{
           position: 'absolute',
-          top: 196,
+          top: 132,
           left: 240,
           width: 600,
-          height: 1120,
+          height: 1078,
           transform: `translateX(${buzzX.toFixed(1)}px) rotate(${buzzRot.toFixed(2)}deg) scale(${(0.88 + watchPop * 0.12).toFixed(4)})`,
           transformOrigin: '50% 50%',
         }}
       >
         {/* Top & Bottom Silicone Watch Straps (SVG) */}
-        <svg width={600} height={1120} viewBox="0 0 600 1120" style={{ position: 'absolute', inset: 0 }}>
+        <svg width={600} height={1078} viewBox="0 0 600 1120" style={{ position: 'absolute', inset: 0 }}>
           <defs>
             <linearGradient id="strapGrad" x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor="#1E293B" />
@@ -1098,13 +1104,15 @@ const Look22WristBuzz: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
         </div>
       </div>
 
-      {/* Bottom Summary Strip above SAFE_BOTTOM (y: 1368..1492) */}
+      {/* Bottom Summary Strip above CONTENT_BOTTOM (y: 1246..1386) */}
       <div
         style={{
           position: 'absolute',
-          top: 1368,
+          top: 1246,
           left: 80,
           right: 80,
+          maxHeight: CONTENT_BOTTOM - 1246,
+          overflow: 'hidden',
           display: 'flex',
           gap: 16,
           opacity: appear(localFrame, 20, 14),
@@ -1115,13 +1123,15 @@ const Look22WristBuzz: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
             key={i}
             style={{
               flex: 1,
+              minWidth: 0,
               borderRadius: 20,
               background: 'rgba(15,23,42,0.88)',
               border: '1.5px solid rgba(34,211,238,0.35)',
-              padding: '16px 20px',
+              padding: '14px 18px',
+              overflow: 'hidden',
             }}
           >
-            <FitText text={shortTextG(pt, 48)} baseSize={24} minSize={19} maxLines={2} color="#E2E8F0" fontWeight={700} align="center" />
+            <FitText text={shortTextG(pt, 48)} baseSize={23} minSize={18} maxLines={2} color="#E2E8F0" fontWeight={700} align="center" />
           </div>
         ))}
       </div>
@@ -1181,13 +1191,13 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
       <div
         style={{
           position: 'absolute',
-          top: 62,
+          top: 50,
           left: 60,
           right: 60,
           opacity: appear(localFrame, 2, 12),
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div
             style={{
               display: 'inline-flex',
@@ -1210,17 +1220,17 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
             {shortTextG(txt.badge || 'อัปเดตสด', 22)}
           </span>
         </div>
-        <FitText text={txt.title || 'แดชบอร์ดยอดขายเด้งแจ้งเตือนสด'} baseSize={48} minSize={30} maxLines={2} color="#F8FAFC" align="left" />
+        <FitText text={txt.title || 'แดชบอร์ดยอดขายเด้งแจ้งเตือนสด'} baseSize={46} minSize={28} maxLines={2} color="#F8FAFC" align="left" />
       </div>
 
-      {/* Desktop Monitor Window (y: 256..1180) */}
+      {/* Desktop Monitor Window (y: 232..1112, all 3 toasts fit cleanly inside) */}
       <div
         style={{
           position: 'absolute',
-          top: 256,
+          top: 232,
           left: 48,
           right: 48,
-          height: 890,
+          height: 880,
           borderRadius: 28,
           background: '#0F172A',
           border: '2px solid #334155',
@@ -1234,13 +1244,14 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
         {/* Window Chrome */}
         <div
           style={{
-            height: 58,
+            height: 50,
             background: '#1E293B',
             borderBottom: '1.5px solid #334155',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 24px',
+            flexShrink: 0,
           }}
         >
           <div style={{ display: 'flex', gap: 10 }}>
@@ -1248,16 +1259,16 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
             <div style={{ width: 14, height: 14, borderRadius: 99, background: '#F59E0B' }} />
             <div style={{ width: 14, height: 14, borderRadius: 99, background: '#10B981' }} />
           </div>
-          <div style={{ padding: '6px 26px', borderRadius: 10, background: '#0F172A', fontFamily: FONT_MONO, fontSize: 18, color: '#94A3B8' }}>
+          <div style={{ padding: '5px 24px', borderRadius: 10, background: '#0F172A', fontFamily: FONT_MONO, fontSize: 18, color: '#94A3B8' }}>
             analytics.store.local/live-orders
           </div>
           <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 800, color: '#34D399' }}>● SYNC</div>
         </div>
 
         {/* Dashboard Body */}
-        <div style={{ flex: 1, padding: 26, position: 'relative', display: 'flex', flexDirection: 'column', gap: 22 }}>
+        <div style={{ flex: 1, padding: '18px 22px', position: 'relative', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
           {/* 3 KPI Cards */}
-          <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
             {[
               { label: shortTextG(metric.unit || 'ยอดรวมวันนี้', 16), val: `${metric.prefix}${metric.big}`, sub: metric.delta, col: '#10B981' },
               { label: 'ออเดอร์ใหม่', val: `+${14 + Math.round(chartDraw * 28)}`, sub: 'กำลังไหลเข้า', col: '#38BDF8' },
@@ -1267,15 +1278,15 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
                 key={i}
                 style={{
                   flex: 1,
-                  borderRadius: 18,
+                  borderRadius: 16,
                   background: '#162033',
                   border: '1.5px solid #293548',
-                  padding: '16px 20px',
+                  padding: '12px 16px',
                 }}
               >
-                <div style={{ fontFamily: FONT_THAI, fontSize: 19, fontWeight: 700, color: '#94A3B8' }}>{kpi.label}</div>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 38, fontWeight: 900, color: kpi.col, marginTop: 4 }}>{kpi.val}</div>
-                <div style={{ fontFamily: FONT_THAI, fontSize: 18, fontWeight: 600, color: '#CBD5E1', marginTop: 2 }}>{kpi.sub}</div>
+                <div style={{ fontFamily: FONT_THAI, fontSize: 18, fontWeight: 700, color: '#94A3B8' }}>{kpi.label}</div>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 34, fontWeight: 900, color: kpi.col, marginTop: 2 }}>{kpi.val}</div>
+                <div style={{ fontFamily: FONT_THAI, fontSize: 17, fontWeight: 600, color: '#CBD5E1', marginTop: 2 }}>{kpi.sub}</div>
               </div>
             ))}
           </div>
@@ -1283,17 +1294,18 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
           {/* Live Revenue Sparkline Chart */}
           <div
             style={{
-              borderRadius: 20,
+              borderRadius: 18,
               background: '#131C2E',
               border: '1.5px solid #293548',
-              padding: '18px 22px',
+              padding: '14px 18px',
+              flexShrink: 0,
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontFamily: FONT_THAI, fontSize: 22, fontWeight: 700, color: '#E2E8F0' }}>กราฟยอดเข้าแบบเรียลไทม์</span>
-              <span style={{ fontFamily: FONT_MONO, fontSize: 19, color: '#38BDF8' }}>24H STREAM</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontFamily: FONT_THAI, fontSize: 21, fontWeight: 700, color: '#E2E8F0' }}>กราฟยอดเข้าแบบเรียลไทม์</span>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 18, color: '#38BDF8' }}>24H STREAM</span>
             </div>
-            <svg width={880} height={268} viewBox="0 0 740 268" style={{ width: '100%', height: 248 }}>
+            <svg width={880} height={192} viewBox="0 0 740 268" style={{ width: '100%', height: 192 }}>
               <defs>
                 <linearGradient id="dashArea" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#10B981" stopOpacity="0.38" />
@@ -1324,7 +1336,7 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
           </div>
 
           {/* Floating Toast Pings sliding from right */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11, flex: 1, justifyContent: 'center' }}>
             {toasts.map((toast, idx) => {
               const d = 14 + idx * 12;
               const sp = spring({ frame: Math.max(0, localFrame - d), fps, config: { damping: 14, stiffness: 175 } });
@@ -1336,13 +1348,13 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
                   style={{
                     opacity: op,
                     transform: `translateX(${((1 - sp) * 140).toFixed(1)}px)`,
-                    borderRadius: 18,
+                    borderRadius: 16,
                     background: 'rgba(30, 41, 59, 0.96)',
                     border: `1.5px solid ${toast.color}99`,
-                    padding: '14px 20px',
+                    padding: '11px 18px',
                     position: 'relative',
                     overflow: 'hidden',
-                    boxShadow: `0 12px 26px rgba(0,0,0,0.45), 0 0 18px ${toast.color}22`,
+                    boxShadow: `0 10px 22px rgba(0,0,0,0.45), 0 0 18px ${toast.color}22`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -1350,16 +1362,16 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
-                    <NotifAppIconSvg kind={idx} color={toast.color} size={42} />
+                    <NotifAppIconSvg kind={idx} color={toast.color} size={38} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontFamily: FONT_THAI, fontSize: 21, fontWeight: 800, color: '#F8FAFC' }}>{toast.title}</span>
-                        <span style={{ fontFamily: FONT_THAI, fontSize: 17, fontWeight: 700, color: toast.color }}>{toast.tag}</span>
+                        <span style={{ fontFamily: FONT_THAI, fontSize: 20, fontWeight: 800, color: '#F8FAFC' }}>{toast.title}</span>
+                        <span style={{ fontFamily: FONT_THAI, fontSize: 16, fontWeight: 700, color: toast.color }}>{toast.tag}</span>
                       </div>
-                      <FitText text={toast.text} baseSize={22} minSize={18} maxLines={1} color="#CBD5E1" fontWeight={600} align="left" />
+                      <FitText text={toast.text} baseSize={21} minSize={17} maxLines={1} color="#CBD5E1" fontWeight={600} align="left" />
                     </div>
                   </div>
-                  <span style={{ fontFamily: FONT_MONO, fontSize: 24, fontWeight: 900, color: '#34D399', flexShrink: 0 }}>{toast.amount}</span>
+                  <span style={{ fontFamily: FONT_MONO, fontSize: 23, fontWeight: 900, color: '#34D399', flexShrink: 0 }}>{toast.amount}</span>
                   {/* Countdown Progress Strip */}
                   <div
                     style={{
@@ -1378,28 +1390,30 @@ const Look22DashboardPing: React.FC<StyleShotArgs> = ({ scene, sceneIndex, local
         </div>
       </div>
 
-      {/* Monitor Stand + Bottom Takeaway above SAFE_BOTTOM (y: 1146..1490) */}
-      <svg width={STAGE_W} height={110} viewBox="0 0 1080 110" style={{ position: 'absolute', top: 1146, left: 0 }}>
-        <rect x="470" y="0" width="140" height="58" fill="#1E293B" stroke="#334155" strokeWidth="2" />
-        <rect x="350" y="56" width="380" height="22" rx="11" fill="#334155" stroke="#475569" strokeWidth="2" />
+      {/* Monitor Stand + Bottom Takeaway above CONTENT_BOTTOM (y: 1112..1350) */}
+      <svg width={STAGE_W} height={74} viewBox="0 0 1080 74" style={{ position: 'absolute', top: 1112, left: 0 }}>
+        <rect x="470" y="0" width="140" height="44" fill="#1E293B" stroke="#334155" strokeWidth="2" />
+        <rect x="350" y="42" width="380" height="20" rx="10" fill="#334155" stroke="#475569" strokeWidth="2" />
       </svg>
       <div
         style={{
           position: 'absolute',
-          top: 1264,
+          top: 1204,
           left: 64,
           right: 64,
+          maxHeight: CONTENT_BOTTOM - 1204,
+          overflow: 'hidden',
           borderRadius: 22,
           background: 'rgba(15,23,42,0.9)',
           border: '1.5px solid #334155',
-          padding: '22px 28px',
+          padding: '18px 26px',
           opacity: appear(localFrame, 24, 14),
         }}
       >
         <FitText
           text={txt.subtitle || pts[3] || 'ทุกการแจ้งเตือนรวมไว้บนหน้าจอเดียว ตรวจสอบได้ทันที'}
-          baseSize={28}
-          minSize={22}
+          baseSize={26}
+          minSize={20}
           maxLines={2}
           color="#E2E8F0"
           fontWeight={700}
@@ -1471,7 +1485,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
       <div
         style={{
           position: 'absolute',
-          top: 62,
+          top: 50,
           left: 60,
           right: 60,
           textAlign: 'center',
@@ -1484,15 +1498,15 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
             display: 'inline-flex',
             alignItems: 'center',
             gap: 12,
-            padding: '7px 22px',
+            padding: '6px 20px',
             borderRadius: 99,
             background: 'rgba(238,241,246,0.12)',
             border: '1.5px solid rgba(238,241,246,0.35)',
             fontFamily: FONT_THAI,
-            fontSize: 22,
+            fontSize: 21,
             fontWeight: 700,
             color: '#E2E8F0',
-            marginBottom: 12,
+            marginBottom: 10,
           }}
         >
           <span style={{ color: '#FDA4AF' }}>ก่อน</span>
@@ -1500,17 +1514,17 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
           <span style={{ color: '#6EE7B7' }}>หลัง</span>
           <span>· {shortTextG(txt.badge || 'เปรียบเทียบชัดเจน', 22)}</span>
         </div>
-        <FitText text={txt.title || 'เปรียบเทียบก่อนและหลังในภาพเดียว'} baseSize={48} minSize={30} maxLines={2} color="#F8FAFC" />
+        <FitText text={txt.title || 'เปรียบเทียบก่อนและหลังในภาพเดียว'} baseSize={46} minSize={28} maxLines={2} color="#F8FAFC" />
       </div>
 
-      {/* Main Split Comparison Viewport (y: 266..1326) */}
+      {/* Main Split Comparison Viewport (y: 240..1230) */}
       <div
         style={{
           position: 'absolute',
-          top: 266,
+          top: 240,
           left: 60,
           width: stageW,
-          height: 1060,
+          height: 990,
           borderRadius: 34,
           overflow: 'hidden',
           border: '2px solid #475569',
@@ -1524,7 +1538,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
             position: 'absolute',
             inset: 0,
             background: 'linear-gradient(155deg, #064E3B 0%, #0F2942 52%, #0F172A 100%)',
-            padding: '38px 34px',
+            padding: '28px 30px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
@@ -1548,7 +1562,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
           </div>
 
           {/* Right-aligned AFTER cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 22, paddingLeft: 480 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingLeft: 480 }}>
             {pair.rightItems.slice(0, 4).map((item, i) => {
               const p = stagger(i, localFrame, 6, 8, 14);
               return (
@@ -1557,27 +1571,27 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
                   style={{
                     opacity: p,
                     transform: `translateX(${((1 - p) * 28).toFixed(1)}px)`,
-                    borderRadius: 22,
+                    borderRadius: 20,
                     background: 'rgba(6, 78, 59, 0.52)',
                     border: '1.5px solid rgba(52, 211, 153, 0.55)',
-                    padding: '22px 24px',
+                    padding: '16px 20px',
                     display: 'flex',
                     alignItems: 'flex-start',
-                    gap: 16,
+                    gap: 14,
                     boxShadow: '0 14px 28px rgba(0,0,0,0.28)',
                   }}
                 >
                   <div
                     style={{
-                      width: 38,
-                      height: 38,
+                      width: 36,
+                      height: 36,
                       borderRadius: 99,
                       background: '#10B981',
                       color: '#022C22',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: 900,
                       flexShrink: 0,
                       marginTop: 2,
@@ -1585,7 +1599,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
                   >
                     ✓
                   </div>
-                  <FitText text={shortTextG(item, 68)} baseSize={27} minSize={20} maxLines={3} color="#ECFDF5" fontWeight={700} align="left" />
+                  <FitText text={shortTextG(item, 68)} baseSize={25} minSize={19} maxLines={3} color="#ECFDF5" fontWeight={700} align="left" />
                 </div>
               );
             })}
@@ -1605,7 +1619,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
             inset: 0,
             clipPath: `inset(0 ${(100 - splitPct).toFixed(2)}% 0 0)`,
             background: 'linear-gradient(155deg, #2A1624 0%, #1E1B2E 52%, #111827 100%)',
-            padding: '38px 34px',
+            padding: '28px 30px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
@@ -1629,7 +1643,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
           </div>
 
           {/* Left-aligned BEFORE cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 22, paddingRight: 480 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingRight: 480 }}>
             {pair.leftItems.slice(0, 4).map((item, i) => {
               const p = stagger(i, localFrame, 6, 4, 14);
               return (
@@ -1638,20 +1652,20 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
                   style={{
                     opacity: p,
                     transform: `translateX(${((1 - p) * -28).toFixed(1)}px)`,
-                    borderRadius: 22,
+                    borderRadius: 20,
                     background: 'rgba(51, 24, 40, 0.65)',
                     border: '1.5px solid rgba(251, 113, 133, 0.45)',
-                    padding: '22px 24px',
+                    padding: '16px 20px',
                     display: 'flex',
                     alignItems: 'flex-start',
-                    gap: 16,
+                    gap: 14,
                     boxShadow: '0 14px 28px rgba(0,0,0,0.32)',
                   }}
                 >
                   <div
                     style={{
-                      width: 38,
-                      height: 38,
+                      width: 36,
+                      height: 36,
                       borderRadius: 99,
                       background: 'rgba(244,63,94,0.28)',
                       border: '2px solid #FB7185',
@@ -1659,7 +1673,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: 20,
+                      fontSize: 19,
                       fontWeight: 900,
                       flexShrink: 0,
                       marginTop: 2,
@@ -1667,7 +1681,7 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
                   >
                     ✕
                   </div>
-                  <FitText text={shortTextG(item, 68)} baseSize={27} minSize={20} maxLines={3} color="#FFE4E6" fontWeight={700} align="left" />
+                  <FitText text={shortTextG(item, 68)} baseSize={25} minSize={19} maxLines={3} color="#FFE4E6" fontWeight={700} align="left" />
                 </div>
               );
             })}
@@ -1720,17 +1734,19 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
         </div>
       </div>
 
-      {/* Bottom Summary Bar above SAFE_BOTTOM (y: 1364..1484) */}
+      {/* Bottom Summary Bar above CONTENT_BOTTOM (y: 1262..1372) */}
       <div
         style={{
           position: 'absolute',
-          top: 1364,
+          top: 1262,
           left: 60,
           right: 60,
+          maxHeight: CONTENT_BOTTOM - 1262,
+          overflow: 'hidden',
           borderRadius: 22,
           background: 'rgba(15,23,42,0.9)',
           border: '1.5px solid #334155',
-          padding: '20px 28px',
+          padding: '16px 26px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1739,8 +1755,8 @@ const Look23SplitSlider: React.FC<StyleShotArgs> = ({ scene, localFrame, duratio
       >
         <FitText
           text={txt.subtitle || 'เลื่อนเทียบความต่างให้เห็นชัดเจนในเฟรมเดียว'}
-          baseSize={27}
-          minSize={20}
+          baseSize={25}
+          minSize={19}
           maxLines={2}
           color="#E2E8F0"
           fontWeight={700}
@@ -1810,14 +1826,14 @@ const Look23RoomMakeover: React.FC<StyleShotArgs> = ({ scene, localFrame, durati
         <FitText text={txt.title || 'จัดระบบใหม่ เห็นความต่างทันที'} baseSize={48} minSize={30} maxLines={2} color="#F8FAFC" />
       </div>
 
-      {/* Room Makeover Illustrated Stage (y: 256..916) */}
+      {/* Room Makeover Illustrated Stage (y: 240..880) */}
       <div
         style={{
           position: 'absolute',
-          top: 256,
+          top: 240,
           left: 60,
           width: roomW,
-          height: roomH,
+          height: 640,
           borderRadius: 30,
           overflow: 'hidden',
           border: '2px solid #475569',
@@ -2001,13 +2017,15 @@ const Look23RoomMakeover: React.FC<StyleShotArgs> = ({ scene, localFrame, durati
         />
       </div>
 
-      {/* Side-by-Side Before vs After Breakdown Cards (y: 952..1486) */}
+      {/* Side-by-Side Before vs After Breakdown Cards (y: 908..1360, strictly <= CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 952,
+          top: 908,
           left: 60,
           right: 60,
+          maxHeight: CONTENT_BOTTOM - 908,
+          overflow: 'hidden',
           display: 'flex',
           gap: 24,
         }}
@@ -2016,21 +2034,23 @@ const Look23RoomMakeover: React.FC<StyleShotArgs> = ({ scene, localFrame, durati
         <div
           style={{
             flex: 1,
+            minWidth: 0,
             borderRadius: 26,
             background: 'rgba(42, 22, 36, 0.88)',
             border: '1.5px solid rgba(251, 113, 133, 0.45)',
-            padding: '24px 26px',
+            padding: '20px 24px',
             opacity: appear(localFrame, 8, 14),
+            overflow: 'hidden',
           }}
         >
-          <div style={{ fontFamily: FONT_THAI, fontSize: 24, fontWeight: 800, color: '#FDA4AF', marginBottom: 14 }}>
+          <div style={{ fontFamily: FONT_THAI, fontSize: 23, fontWeight: 800, color: '#FDA4AF', marginBottom: 12 }}>
             ✕ {shortTextG(pair.leftTitle, 22)}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {pair.leftItems.slice(0, 3).map((item, i) => (
               <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <span style={{ color: '#FB7185', fontWeight: 900, fontSize: 22 }}>•</span>
-                <FitText text={shortTextG(item, 54)} baseSize={25} minSize={19} maxLines={2} color="#FFE4E6" fontWeight={600} align="left" />
+                <FitText text={shortTextG(item, 54)} baseSize={24} minSize={18} maxLines={2} color="#FFE4E6" fontWeight={600} align="left" />
               </div>
             ))}
           </div>
@@ -2040,21 +2060,23 @@ const Look23RoomMakeover: React.FC<StyleShotArgs> = ({ scene, localFrame, durati
         <div
           style={{
             flex: 1,
+            minWidth: 0,
             borderRadius: 26,
             background: 'rgba(6, 78, 59, 0.72)',
             border: '1.5px solid rgba(52, 211, 153, 0.55)',
-            padding: '24px 26px',
+            padding: '20px 24px',
             opacity: appear(localFrame, 16, 14),
+            overflow: 'hidden',
           }}
         >
-          <div style={{ fontFamily: FONT_THAI, fontSize: 24, fontWeight: 800, color: '#6EE7B7', marginBottom: 14 }}>
+          <div style={{ fontFamily: FONT_THAI, fontSize: 23, fontWeight: 800, color: '#6EE7B7', marginBottom: 12 }}>
             ✓ {shortTextG(pair.rightTitle, 22)}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {pair.rightItems.slice(0, 3).map((item, i) => (
               <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <span style={{ color: '#34D399', fontWeight: 900, fontSize: 22 }}>✓</span>
-                <FitText text={shortTextG(item, 54)} baseSize={25} minSize={19} maxLines={2} color="#ECFDF5" fontWeight={700} align="left" />
+                <FitText text={shortTextG(item, 54)} baseSize={24} minSize={18} maxLines={2} color="#ECFDF5" fontWeight={700} align="left" />
               </div>
             ))}
           </div>
@@ -2112,19 +2134,19 @@ const Look23GraphFlip: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
         <FitText text={txt.title || 'กราฟพลิกจากขาลงเป็นขาขึ้น'} baseSize={48} minSize={30} maxLines={2} color="#F8FAFC" />
       </div>
 
-      {/* Main Chart Board (y: 266..1016) */}
+      {/* Main Chart Board (y: 250..960) */}
       <div
         style={{
           position: 'absolute',
-          top: 266,
+          top: 250,
           left: 56,
           right: 56,
-          height: 740,
+          height: 710,
           borderRadius: 30,
           background: 'rgba(15, 23, 42, 0.92)',
           border: '2px solid #334155',
           boxShadow: '0 32px 76px rgba(0,0,0,0.58)',
-          padding: '28px 30px',
+          padding: '24px 28px',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -2229,14 +2251,26 @@ const Look23GraphFlip: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
         </svg>
       </div>
 
-      {/* Bottom Comparison Takeaways (y: 1044..1486) */}
-      <div style={{ position: 'absolute', top: 1044, left: 56, right: 56, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* Bottom Comparison Takeaways (y: 990..1360, strictly <= CONTENT_BOTTOM) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 990,
+          left: 56,
+          right: 56,
+          maxHeight: CONTENT_BOTTOM - 990,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+      >
         <div
           style={{
             borderRadius: 22,
             background: 'rgba(51, 24, 40, 0.78)',
             border: '1.5px solid rgba(251,113,133,0.45)',
-            padding: '20px 26px',
+            padding: '16px 24px',
             display: 'flex',
             alignItems: 'center',
             gap: 18,
@@ -2246,14 +2280,14 @@ const Look23GraphFlip: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
           <span style={{ fontFamily: FONT_THAI, fontSize: 22, fontWeight: 800, color: '#FDA4AF', padding: '6px 14px', borderRadius: 12, background: 'rgba(244,63,94,0.2)', flexShrink: 0 }}>
             ก่อนหน้า
           </span>
-          <FitText text={shortTextG(pair.leftItems[0] || 'แนวโน้มลดลงและเสียโอกาส', 62)} baseSize={27} minSize={20} maxLines={2} color="#FFE4E6" fontWeight={700} align="left" />
+          <FitText text={shortTextG(pair.leftItems[0] || 'แนวโน้มลดลงและเสียโอกาส', 62)} baseSize={26} minSize={20} maxLines={2} color="#FFE4E6" fontWeight={700} align="left" />
         </div>
         <div
           style={{
             borderRadius: 22,
             background: 'rgba(6, 78, 59, 0.72)',
             border: '1.5px solid rgba(52,211,153,0.55)',
-            padding: '20px 26px',
+            padding: '16px 24px',
             display: 'flex',
             alignItems: 'center',
             gap: 18,
@@ -2263,7 +2297,7 @@ const Look23GraphFlip: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
           <span style={{ fontFamily: FONT_THAI, fontSize: 22, fontWeight: 800, color: '#022C22', padding: '6px 14px', borderRadius: 12, background: '#34D399', flexShrink: 0 }}>
             หลังเปลี่ยน
           </span>
-          <FitText text={shortTextG(pair.rightItems[0] || txt.subtitle || 'กราฟพุ่งขึ้นชัดเจนอย่างต่อเนื่อง', 62)} baseSize={27} minSize={20} maxLines={2} color="#ECFDF5" fontWeight={700} align="left" />
+          <FitText text={shortTextG(pair.rightItems[0] || txt.subtitle || 'กราฟพุ่งขึ้นชัดเจนอย่างต่อเนื่อง', 62)} baseSize={26} minSize={20} maxLines={2} color="#ECFDF5" fontWeight={700} align="left" />
         </div>
       </div>
     </div>
@@ -2319,18 +2353,18 @@ const Look23MirrorPortrait: React.FC<StyleShotArgs> = ({ scene, localFrame, fps,
         <FitText text={txt.title || 'ตัวคุณก่อนเปลี่ยน vs หลังเปลี่ยน'} baseSize={48} minSize={30} maxLines={2} color="#F8FAFC" />
       </div>
 
-      {/* Central Arched Mirror + Split Silhouettes (y: 266..1180) */}
+      {/* Central Arched Mirror + Split Silhouettes (y: 248..1148) */}
       <div
         style={{
           position: 'absolute',
-          top: 266,
+          top: 248,
           left: 0,
           width: STAGE_W,
-          height: 920,
+          height: 900,
           transform: `scale(${(0.94 + mirrorPop * 0.06).toFixed(4)})`,
         }}
       >
-        <svg width={STAGE_W} height={920} viewBox="0 0 1080 920" style={{ position: 'absolute', inset: 0 }}>
+        <svg width={STAGE_W} height={900} viewBox="0 0 1080 920" style={{ position: 'absolute', inset: 0 }}>
           <defs>
             <clipPath id="mirrorArch">
               <path d="M 270 300 A 270 270 0 0 1 810 300 L 810 860 L 270 860 Z" />
@@ -2488,17 +2522,19 @@ const Look23MirrorPortrait: React.FC<StyleShotArgs> = ({ scene, localFrame, fps,
         })}
       </div>
 
-      {/* Bottom Takeaway Bar above SAFE_BOTTOM (y: 1236..1474) */}
+      {/* Bottom Takeaway Bar above CONTENT_BOTTOM (y: 1188..1358) */}
       <div
         style={{
           position: 'absolute',
-          top: 1236,
+          top: 1188,
           left: 60,
           right: 60,
+          maxHeight: CONTENT_BOTTOM - 1188,
+          overflow: 'hidden',
           borderRadius: 24,
           background: 'rgba(15,23,42,0.92)',
           border: '1.5px solid #334155',
-          padding: '24px 30px',
+          padding: '18px 28px',
           opacity: appear(localFrame, 20, 14),
           textAlign: 'center',
         }}
@@ -2508,8 +2544,8 @@ const Look23MirrorPortrait: React.FC<StyleShotArgs> = ({ scene, localFrame, fps,
         </div>
         <FitText
           text={txt.subtitle || `${pair.leftTitle} → ${pair.rightTitle}`}
-          baseSize={30}
-          minSize={22}
+          baseSize={28}
+          minSize={20}
           maxLines={2}
           color="#F8FAFC"
           fontWeight={800}
@@ -2653,22 +2689,22 @@ const Look25PostCard: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
         </span>
       </div>
 
-      {/* Main White Social Post Card (y: 196..1180) */}
+      {/* Main White Social Post Card (y: 172..1120) */}
       <div
         style={{
           position: 'absolute',
-          top: 196,
+          top: 172,
           left: 64,
           right: 64,
           borderRadius: 34,
           background: '#FFFFFF',
           border: '2px solid #E2E8F0',
           boxShadow: '0 40px 90px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.6)',
-          padding: '38px 40px 32px',
+          padding: '32px 36px 28px',
           transform: `translateY(${((1 - cardSpring) * 64).toFixed(1)}px) scale(${(0.93 + cardSpring * 0.07).toFixed(4)})`,
           display: 'flex',
           flexDirection: 'column',
-          gap: 26,
+          gap: 20,
         }}
       >
         {/* Author Row */}
@@ -2785,17 +2821,19 @@ const Look25PostCard: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame
         </div>
       </div>
 
-      {/* Bottom Context Banner safely above SAFE_BOTTOM (y: 1260..1474) */}
+      {/* Bottom Context Banner safely above CONTENT_BOTTOM (y: 1210..1360) */}
       <div
         style={{
           position: 'absolute',
-          top: Math.min(1260, SAFE_BOTTOM - 260),
+          top: Math.min(1210, CONTENT_BOTTOM - 180),
           left: 64,
           right: 64,
+          maxHeight: CONTENT_BOTTOM - Math.min(1210, CONTENT_BOTTOM - 180),
+          overflow: 'hidden',
           borderRadius: 24,
           background: 'rgba(15, 23, 42, 0.9)',
           border: '1.5px solid rgba(56,189,248,0.45)',
-          padding: '22px 28px',
+          padding: '18px 26px',
           opacity: appear(localFrame, 18, 14),
           display: 'flex',
           alignItems: 'center',
@@ -2895,11 +2933,11 @@ const Look25ScreenshotEvidence: React.FC<StyleShotArgs> = ({ scene, sceneIndex, 
         </div>
       </div>
 
-      {/* Pinned Screenshot Paper Card (y: 230..1080) */}
+      {/* Pinned Screenshot Paper Card (y: 206..1030) */}
       <div
         style={{
           position: 'absolute',
-          top: 230,
+          top: 206,
           left: 72,
           right: 72,
           transform: `rotate(-1.8deg) translateY(${((1 - pinSpring) * 48).toFixed(1)}px) scale(${(0.93 + pinSpring * 0.07).toFixed(4)})`,
@@ -2918,12 +2956,12 @@ const Look25ScreenshotEvidence: React.FC<StyleShotArgs> = ({ scene, sceneIndex, 
           style={{
             borderRadius: 20,
             background: '#FFFFFF',
-            padding: '44px 38px 36px',
+            padding: '38px 36px 30px',
             boxShadow: '0 36px 80px rgba(0,0,0,0.65)',
             border: '2px solid #E5E7EB',
             display: 'flex',
             flexDirection: 'column',
-            gap: 24,
+            gap: 20,
           }}
         >
           {/* Screenshot Header */}
@@ -2982,16 +3020,18 @@ const Look25ScreenshotEvidence: React.FC<StyleShotArgs> = ({ scene, sceneIndex, 
         </div>
       </div>
 
-      {/* Pinned Yellow Sticky Note Annotation below Screenshot (y: 1126..1470) */}
+      {/* Pinned Yellow Sticky Note Annotation below Screenshot (y: 1086..1340, strictly <= CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 1126,
+          top: 1086,
           left: 110,
           right: 110,
+          maxHeight: CONTENT_BOTTOM - 1086,
+          overflow: 'hidden',
           borderRadius: 18,
           background: 'linear-gradient(155deg, #FEF08A 0%, #FDE047 100%)',
-          padding: '26px 32px',
+          padding: '22px 28px',
           boxShadow: '0 24px 48px rgba(0,0,0,0.52)',
           transform: `rotate(1.2deg) translateY(${((1 - notePop) * 40).toFixed(1)}px) scale(${(0.92 + notePop * 0.08).toFixed(4)})`,
           opacity: clamp01((localFrame - 22) / 10),
@@ -3002,8 +3042,8 @@ const Look25ScreenshotEvidence: React.FC<StyleShotArgs> = ({ scene, sceneIndex, 
         </div>
         <FitText
           text={shortTextG(pts[1] || pts[0] || txt.subtitle || 'ประโยคนี้ชี้ชัดถึงข้อเท็จจริงที่เกิดขึ้นจริง', 88)}
-          baseSize={30}
-          minSize={22}
+          baseSize={28}
+          minSize={20}
           maxLines={3}
           color="#422006"
           fontWeight={800}
@@ -3030,13 +3070,12 @@ const Look25CommentStorm: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
   const pts = extractShortPointsG(scene, 4);
   const author = FICTIONAL_USERS[sceneIndex % FICTIONAL_USERS.length];
 
-  const comments = [0, 1, 2, 3].map((i) => {
+  const comments = [0, 1, 2].map((i) => {
     const u = FICTIONAL_USERS[(sceneIndex + i + 1) % FICTIONAL_USERS.length];
     const fallbacks = [
       'จริงมาก เจอกับตัวมาแล้วเหมือนกัน!',
       'เห็นตัวเลขนี้แล้วชัดเจนเลย แชร์เก็บไว้แล้ว',
       'ประเด็นนี้หลายคนมองข้ามไปจริงๆ',
-      'สรุปได้ตรงจุดมาก ขอบคุณที่เอาหลักฐานมาให้ดู',
     ];
     return {
       user: u,
@@ -3086,22 +3125,22 @@ const Look25CommentStorm: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
         </span>
       </div>
 
-      {/* Compact Original Post Anchor (y: 132..424) */}
+      {/* Compact Original Post Anchor (y: 124..370) */}
       <div
         style={{
           position: 'absolute',
-          top: 132,
+          top: 124,
           left: 60,
           right: 60,
           borderRadius: 28,
           background: '#FFFFFF',
-          padding: '24px 30px',
+          padding: '20px 28px',
           boxShadow: '0 22px 50px rgba(0,0,0,0.48)',
           opacity: appear(localFrame, 2, 14),
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-          <FictionalAvatarSvg initials={author.initials} bg={author.bg} size={54} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10 }}>
+          <FictionalAvatarSvg initials={author.initials} bg={author.bg} size={52} />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontFamily: FONT_THAI, fontSize: 24, fontWeight: 800, color: '#0F172A' }}>{author.name}</span>
@@ -3110,19 +3149,21 @@ const Look25CommentStorm: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
             <span style={{ fontFamily: FONT_MONO, fontSize: 18, color: '#64748B' }}>{author.handle} · โพสต์ต้นทาง</span>
           </div>
         </div>
-        <FitText text={txt.title || 'ประเด็นร้อนที่คนแห่เข้ามาคอมเมนต์'} baseSize={36} minSize={24} maxLines={2} color="#0F172A" fontWeight={800} align="left" />
+        <FitText text={txt.title || 'ประเด็นร้อนที่คนแห่เข้ามาคอมเมนต์'} baseSize={34} minSize={24} maxLines={2} color="#0F172A" fontWeight={800} align="left" />
       </div>
 
-      {/* Thread Connector Line */}
-      <div style={{ position: 'absolute', top: 416, left: 108, width: 4, height: 1040, background: 'linear-gradient(180deg, #38BDF8 0%, rgba(56,189,248,0.08) 100%)' }} />
+      {/* Thread Connector Line (stops cleanly above CONTENT_BOTTOM) */}
+      <div style={{ position: 'absolute', top: 376, left: 108, width: 4, height: CONTENT_BOTTOM - 450, background: 'linear-gradient(180deg, #38BDF8 0%, rgba(56,189,248,0.08) 100%)' }} />
 
-      {/* Cascading Comment Stream (y: 454..1480) */}
+      {/* Cascading Comment Stream (capped to 3 comments, strictly <= CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 454,
+          top: 416,
           left: 60,
           right: 60,
+          maxHeight: CONTENT_BOTTOM - 416,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           gap: 20,
@@ -3147,6 +3188,7 @@ const Look25CommentStorm: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
                 gap: 18,
                 alignItems: 'flex-start',
                 boxShadow: '0 16px 34px rgba(0,0,0,0.4)',
+                flexShrink: 0,
               }}
             >
               <FictionalAvatarSvg initials={c.user.initials} bg={c.user.bg} size={58} />
@@ -3174,7 +3216,7 @@ const Look25CommentStorm: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
         {[0, 1, 2, 3].map((i) => {
           const p = clamp01(((localFrame + i * 16) % 64) / 64);
           const x = 995 + Math.sin(p * 6 + i) * 16;
-          const y = 1420 - p * 460;
+          const y = 1360 - p * 460;
           const op = Math.sin(p * Math.PI) * 0.8;
           return (
             <text key={i} x={x} y={y} textAnchor="middle" fill={i % 2 === 0 ? '#FB7185' : '#38BDF8'} fontSize="30" opacity={op}>
@@ -3251,9 +3293,9 @@ const Look25ViralMeter: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         <FitText text={txt.title || 'โพสต์เดียวแพร่กระจายสู่คนนับแสน'} baseSize={46} minSize={28} maxLines={2} color="#F8FAFC" />
       </div>
 
-      {/* Viral Sharing Tree SVG (y: 244..950) */}
-      <div style={{ position: 'absolute', top: 244, left: 0, width: STAGE_W, height: 700 }}>
-        <svg width={STAGE_W} height={700} viewBox="0 0 1080 700">
+      {/* Viral Sharing Tree SVG (y: 230..900) */}
+      <div style={{ position: 'absolute', top: 230, left: 0, width: STAGE_W, height: 670 }}>
+        <svg width={STAGE_W} height={670} viewBox="0 0 1080 680">
           {/* Tier 0 -> Tier 1 Curved Paths */}
           {tier1.map((n, i) => (
             <g key={`e1-${i}`}>
@@ -3331,21 +3373,23 @@ const Look25ViralMeter: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         </svg>
       </div>
 
-      {/* Viral Reach Meter Dashboard Card (y: 954..1484) */}
+      {/* Viral Reach Meter Dashboard Card (y: 920..1360, strictly <= CONTENT_BOTTOM) */}
       <div
         style={{
           position: 'absolute',
-          top: 954,
+          top: 920,
           left: 60,
           right: 60,
+          maxHeight: CONTENT_BOTTOM - 920,
+          overflow: 'hidden',
           borderRadius: 30,
           background: 'rgba(15, 23, 42, 0.94)',
           border: '2px solid #38BDF8',
           boxShadow: '0 28px 64px rgba(0,0,0,0.58), 0 0 36px rgba(56,189,248,0.18)',
-          padding: '30px 34px',
+          padding: '26px 32px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 18,
+          gap: 16,
           opacity: appear(localFrame, 10, 14),
         }}
       >

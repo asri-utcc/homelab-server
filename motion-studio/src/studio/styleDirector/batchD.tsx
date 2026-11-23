@@ -5,6 +5,8 @@ import type { StudioScene } from '../types';
 import { FitText, SAFE_BOTTOM, STAGE_H, STAGE_W, appear, sceneTexts, stagger } from './kit';
 import type { StyleDirectorDef, StyleShotArgs } from './types';
 
+const CONTENT_BOTTOM = SAFE_BOTTOM - 120; // 1420 — keep all cards/text strictly above subtitle zone (y≈1440–1600)
+
 // ============================================================================
 // SHARED CONTENT EXTRACTION HELPERS (Batch D — Pure, Deterministic, Zero Deps)
 // ============================================================================
@@ -316,8 +318,8 @@ const HoloBackdropD: React.FC<{
         <g stroke="#38BDF8" strokeWidth={2.5} fill="none" opacity={0.55}>
           <path d="M 38 86 L 38 42 L 82 42" />
           <path d="M 1042 86 L 1042 42 L 998 42" />
-          <path d="M 38 1500 L 38 1534 L 82 1534" />
-          <path d="M 1042 1500 L 1042 1534 L 998 1534" />
+          <path d={`M 38 ${CONTENT_BOTTOM - 34} L 38 ${CONTENT_BOTTOM} L 82 ${CONTENT_BOTTOM}`} />
+          <path d={`M 1042 ${CONTENT_BOTTOM - 34} L 1042 ${CONTENT_BOTTOM} L 998 ${CONTENT_BOTTOM}`} />
         </g>
 
         {/* Sweeping holographic scanline beam */}
@@ -350,30 +352,30 @@ const HoloTableShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
   const titleP = appear(localFrame, 2, 14);
   const rotRad = localFrame * 0.036;
   const cx = 540;
-  const coreCy = 700;
+  const coreCy = 665;
 
   // 3D wireframe octahedron vertices projected into 2D
-  const ringR = 158;
+  const ringR = 154;
   const tiltY = 0.44;
   const eqPts: Array<[number, number]> = [0, 1, 2, 3].map((k) => {
     const a = rotRad + (k * Math.PI) / 2;
     return [cx + Math.cos(a) * ringR, coreCy + Math.sin(a) * ringR * tiltY];
   });
-  const topPole: [number, number] = [cx, coreCy - 178];
-  const botPole: [number, number] = [cx, coreCy + 178];
+  const topPole: [number, number] = [cx, coreCy - 172];
+  const botPole: [number, number] = [cx, coreCy + 172];
 
   // Inner counter-rotating cube prism vertices
-  const innerR = 82;
+  const innerR = 80;
   const innerTop: Array<[number, number]> = [0, 1, 2, 3].map((k) => {
     const a = -rotRad * 1.3 + (k * Math.PI) / 2 + Math.PI / 4;
-    return [cx + Math.cos(a) * innerR, coreCy - 52 + Math.sin(a) * innerR * tiltY];
+    return [cx + Math.cos(a) * innerR, coreCy - 50 + Math.sin(a) * innerR * tiltY];
   });
   const innerBot: Array<[number, number]> = [0, 1, 2, 3].map((k) => {
     const a = -rotRad * 1.3 + (k * Math.PI) / 2 + Math.PI / 4;
-    return [cx + Math.cos(a) * innerR, coreCy + 52 + Math.sin(a) * innerR * tiltY];
+    return [cx + Math.cos(a) * innerR, coreCy + 50 + Math.sin(a) * innerR * tiltY];
   });
 
-  // Floating satellite node slots positioned around the 3D hologram (all above SAFE_BOTTOM=1540)
+  // Floating satellite node slots positioned around the 3D hologram (all strictly above CONTENT_BOTTOM=1420)
   const nodeLayout: Array<{
     boxX: number;
     boxY: number;
@@ -384,20 +386,20 @@ const HoloTableShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
   }> =
     points.length <= 2
       ? [
-          { boxX: 54, boxY: 455, boxW: 370, anchorX: cx - 125, anchorY: coreCy - 90, align: 'left' },
-          { boxX: 656, boxY: 850, boxW: 370, anchorX: cx + 125, anchorY: coreCy + 80, align: 'right' },
+          { boxX: 54, boxY: 430, boxW: 370, anchorX: cx - 125, anchorY: coreCy - 90, align: 'left' },
+          { boxX: 656, boxY: 810, boxW: 370, anchorX: cx + 125, anchorY: coreCy + 80, align: 'right' },
         ]
       : points.length === 3
         ? [
-            { boxX: 50, boxY: 410, boxW: 360, anchorX: cx - 125, anchorY: coreCy - 100, align: 'left' },
-            { boxX: 670, boxY: 470, boxW: 360, anchorX: cx + 130, anchorY: coreCy - 60, align: 'right' },
-            { boxX: 180, boxY: 1295, boxW: 720, anchorX: cx, anchorY: coreCy + 175, align: 'left' },
+            { boxX: 50, boxY: 395, boxW: 360, anchorX: cx - 125, anchorY: coreCy - 100, align: 'left' },
+            { boxX: 670, boxY: 445, boxW: 360, anchorX: cx + 130, anchorY: coreCy - 60, align: 'right' },
+            { boxX: 180, boxY: 1175, boxW: 720, anchorX: cx, anchorY: coreCy + 170, align: 'left' },
           ]
         : [
-            { boxX: 48, boxY: 385, boxW: 356, anchorX: cx - 125, anchorY: coreCy - 105, align: 'left' },
-            { boxX: 676, boxY: 385, boxW: 356, anchorX: cx + 125, anchorY: coreCy - 105, align: 'right' },
-            { boxX: 48, boxY: 960, boxW: 356, anchorX: cx - 115, anchorY: coreCy + 115, align: 'left' },
-            { boxX: 676, boxY: 960, boxW: 356, anchorX: cx + 115, anchorY: coreCy + 115, align: 'right' },
+            { boxX: 48, boxY: 370, boxW: 356, anchorX: cx - 125, anchorY: coreCy - 105, align: 'left' },
+            { boxX: 676, boxY: 370, boxW: 356, anchorX: cx + 125, anchorY: coreCy - 105, align: 'right' },
+            { boxX: 48, boxY: 910, boxW: 356, anchorX: cx - 115, anchorY: coreCy + 115, align: 'left' },
+            { boxX: 676, boxY: 910, boxW: 356, anchorX: cx + 115, anchorY: coreCy + 115, align: 'right' },
           ];
 
   return (
@@ -426,7 +428,7 @@ const HoloTableShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
         </defs>
 
         {/* Holographic projector table base pedestal */}
-        <g transform={`translate(${cx}, 1215) scale(${interpolate(tableP, [0, 1], [0.85, 1])})`} opacity={tableP}>
+        <g transform={`translate(${cx}, 1145) scale(${interpolate(tableP, [0, 1], [0.85, 1])})`} opacity={tableP}>
           {/* Heavy metallic table rim */}
           <ellipse cx={0} cy={52} rx={365} ry={88} fill="#071326" stroke="#1E40AF" strokeWidth={3} opacity={0.92} />
           <ellipse cx={0} cy={30} rx={340} ry={78} fill="#0B1E3B" stroke="#0EA5E9" strokeWidth={3} />
@@ -442,7 +444,7 @@ const HoloTableShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
 
         {/* Upward volumetric holographic light cone */}
         <polygon
-          points={`${cx - 185},1220 ${cx + 185},1220 ${cx + 355},450 ${cx - 355},450`}
+          points={`${cx - 185},1150 ${cx + 185},1150 ${cx + 355},430 ${cx - 355},430`}
           fill="url(#holo-tbl-beam)"
           opacity={tableP * 0.92}
         />
@@ -516,7 +518,7 @@ const HoloTableShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
             );
           })}
           {/* Vertical laser core axis */}
-          <line x1={cx} y1={460} x2={cx} y2={1210} stroke="#A5F3FC" strokeWidth={1.5} strokeDasharray="6 6" opacity={0.48} />
+          <line x1={cx} y1={440} x2={cx} y2={1140} stroke="#A5F3FC" strokeWidth={1.5} strokeDasharray="6 6" opacity={0.48} />
         </g>
 
         {/* Holographic leader callout lines from 3D projection to floating bullet nodes */}
@@ -622,28 +624,28 @@ const HoloTableShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
               <span>NODE 0{i + 1}</span>
               <span style={{ width: 8, height: 8, borderRadius: 99, background: '#67E8F9', boxShadow: '0 0 8px #00E5FF' }} />
             </div>
-            <FitText text={pt} baseSize={27} minSize={20} maxLines={3} color="#F0F9FF" fontWeight={700} align={slot.align} />
+            <FitText text={pt} baseSize={26} minSize={19} maxLines={3} color="#F0F9FF" fontWeight={700} align={slot.align} style={{ maxHeight: 112 }} />
           </div>
         );
       })}
 
-      {/* Bottom table telemetry status bar (above SAFE_BOTTOM) */}
+      {/* Bottom table telemetry status bar (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1456,
+          top: CONTENT_BOTTOM - 54,
           left: 110,
           right: 110,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '10px 24px',
+          padding: '8px 22px',
           borderRadius: 10,
           border: '1px solid rgba(56, 189, 248, 0.35)',
-          background: 'rgba(6, 20, 44, 0.72)',
+          background: 'rgba(6, 20, 44, 0.78)',
           opacity: appear(localFrame, 12, 14),
           fontFamily: THAI_FONT_FAMILY,
-          fontSize: 20,
+          fontSize: 19,
           fontWeight: 700,
           color: '#7DD3FC',
         }}
@@ -667,24 +669,24 @@ const MissionRouteShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
   const titleP = appear(localFrame, 0, 14);
   const pathLen = 1480;
 
-  // Waypoint coordinates along a stepped tactical holographic vector path
+  // Waypoint coordinates along a stepped tactical holographic vector path (strictly above CONTENT_BOTTOM=1420)
   const waypoints: Array<{ x: number; y: number; side: 'right' | 'left' }> =
     points.length <= 2
       ? [
-          { x: 255, y: 630, side: 'right' },
-          { x: 825, y: 1110, side: 'left' },
+          { x: 255, y: 600, side: 'right' },
+          { x: 825, y: 1060, side: 'left' },
         ]
       : points.length === 3
         ? [
-            { x: 235, y: 515, side: 'right' },
-            { x: 835, y: 865, side: 'left' },
-            { x: 245, y: 1235, side: 'right' },
+            { x: 235, y: 495, side: 'right' },
+            { x: 835, y: 825, side: 'left' },
+            { x: 245, y: 1155, side: 'right' },
           ]
         : [
-            { x: 225, y: 465, side: 'right' },
-            { x: 845, y: 735, side: 'left' },
-            { x: 225, y: 1015, side: 'right' },
-            { x: 845, y: 1295, side: 'left' },
+            { x: 225, y: 445, side: 'right' },
+            { x: 845, y: 695, side: 'left' },
+            { x: 225, y: 945, side: 'right' },
+            { x: 845, y: 1195, side: 'left' },
           ];
 
   // Construct clean angular tactical polyline connecting waypoints
@@ -900,22 +902,23 @@ const MissionRouteShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
             </div>
             <FitText
               text={pt}
-              baseSize={30}
-              minSize={21}
+              baseSize={28}
+              minSize={20}
               maxLines={3}
               color="#F8FAFC"
               fontWeight={700}
               align={isRight ? 'left' : 'right'}
+              style={{ maxHeight: 116 }}
             />
           </div>
         );
       })}
 
-      {/* Bottom Progress Bar safely above SAFE_BOTTOM */}
+      {/* Bottom Progress Bar safely above CONTENT_BOTTOM=1420 */}
       <div
         style={{
           position: 'absolute',
-          top: 1458,
+          top: CONTENT_BOTTOM - 28,
           left: 64,
           right: 64,
           opacity: appear(localFrame, 10, 14),
@@ -956,8 +959,8 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
   const titleP = appear(localFrame, 2, 14);
   const sweepDeg = (localFrame * 3.1) % 360;
   const cx = 540;
-  const cy = 695;
-  const maxR = 345;
+  const cy = 635;
+  const maxR = 315;
 
   const progressVal =
     typeof scene.stat?.progress === 'number'
@@ -968,9 +971,9 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
 
   // Target radar blips positioned within the circular scope
   const blips: ReadonlyArray<{ angle: number; dist: number; code: string }> = [
-    { angle: -42, dist: 235, code: 'T-01' },
-    { angle: 128, dist: 255, code: 'T-02' },
-    { angle: 224, dist: 215, code: 'T-03' },
+    { angle: -42, dist: 210, code: 'T-01' },
+    { angle: 128, dist: 230, code: 'T-02' },
+    { angle: 224, dist: 195, code: 'T-03' },
   ];
 
   return (
@@ -1138,16 +1141,18 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
         ) : null}
       </div>
 
-      {/* Bottom Target Telemetry Readout Cards (strictly above SAFE_BOTTOM=1540) */}
+      {/* Bottom Target Telemetry Readout Cards (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1110,
+          top: 1005,
           left: 60,
           right: 60,
+          maxHeight: CONTENT_BOTTOM - 1005,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 12,
         }}
       >
         {points.slice(0, 3).map((pt, i) => {
@@ -1160,7 +1165,7 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 18,
-                padding: '16px 22px',
+                padding: '13px 20px',
                 borderRadius: 14,
                 background: 'rgba(6, 22, 46, 0.84)',
                 border: '1.5px solid rgba(0, 229, 255, 0.5)',
@@ -1185,7 +1190,7 @@ const RadarScanShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
                 T-0{i + 1}
               </div>
               <div style={{ flex: 1 }}>
-                <FitText text={pt} baseSize={28} minSize={20} maxLines={2} color="#F0F9FF" fontWeight={700} align="left" />
+                <FitText text={pt} baseSize={26} minSize={19} maxLines={2} lineHeight={1.26} color="#F0F9FF" fontWeight={700} align="left" style={{ maxHeight: 74 }} />
               </div>
               {/* Mini live signal bars */}
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 26, flexShrink: 0 }}>
@@ -1249,7 +1254,7 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
         </defs>
 
         {/* Left Holographic Emitter Pad */}
-        <g transform="translate(245, 1410)" opacity={holoP}>
+        <g transform="translate(245, 1345)" opacity={holoP}>
           <ellipse cx={0} cy={22} rx={182} ry={40} fill="#071832" stroke="#0EA5E9" strokeWidth={3} />
           <ellipse cx={0} cy={8} rx={142} ry={28} fill="#00E5FF" opacity={0.35} filter="url(#holo-hud-glow)" />
           <ellipse cx={0} cy={8} rx={96} ry={18} fill="none" stroke="#E0F2FE" strokeWidth={2.5} />
@@ -1257,13 +1262,13 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
 
         {/* Volumetric beam rising around holographic presenter */}
         <polygon
-          points="105,1415 385,1415 445,510 55,510"
+          points="105,1350 385,1350 445,480 55,480"
           fill="url(#holo-hud-cone)"
           opacity={holoP * 0.72}
         />
 
         {/* Holographic Presenter / Briefing Avatar Silhouette (gesturing toward HUD panels) */}
-        <g transform={`translate(245, ${660 + Math.sin(localFrame * 0.06) * 6}) scale(${holoP})`} opacity={flicker}>
+        <g transform={`translate(245, ${625 + Math.sin(localFrame * 0.06) * 6}) scale(${holoP * 0.94})`} opacity={flicker}>
           {/* Halo telemetry ring behind head */}
           <circle cx={0} cy={-35} r={88} fill="none" stroke="#38BDF8" strokeWidth={2} strokeDasharray="12 8" opacity={0.65} />
 
@@ -1352,17 +1357,18 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
         ) : null}
       </div>
 
-      {/* Right Floating Translucent HUD Data Panels (above SAFE_BOTTOM=1540) */}
+      {/* Right Floating Translucent HUD Data Panels (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 455,
+          top: 410,
           left: 468,
           right: 52,
-          maxHeight: SAFE_BOTTOM - 485,
+          maxHeight: CONTENT_BOTTOM - 410,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 20,
+          gap: 14,
         }}
       >
         {/* Main HUD Data Header Strip */}
@@ -1392,7 +1398,7 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
             <div
               key={i}
               style={{
-                padding: '20px 24px',
+                padding: '16px 20px',
                 borderRadius: 16,
                 background: 'rgba(6, 22, 48, 0.84)',
                 border: '1.5px solid rgba(0, 229, 255, 0.6)',
@@ -1414,7 +1420,7 @@ const HudBriefingShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
               >
                 ▸ DATA PANEL 0{i + 1}
               </div>
-              <FitText text={pt} baseSize={29} minSize={21} maxLines={3} color="#F8FAFC" fontWeight={700} align="left" />
+              <FitText text={pt} baseSize={27} minSize={20} maxLines={3} lineHeight={1.26} color="#F8FAFC" fontWeight={700} align="left" style={{ maxHeight: 110 }} />
             </div>
           );
         })}
@@ -1582,7 +1588,7 @@ const ReliefMapShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
         </defs>
 
         {/* Sculpted Multi-Layer Red Terracotta Relief Landmass */}
-        <g transform={`translate(0, ${interpolate(mapP, [0, 1], [44, 0])})`} opacity={mapP}>
+        <g transform={`translate(0, ${interpolate(mapP, [0, 1], [44, -48])})`} opacity={mapP}>
           {/* Tier 0: Coastal continental shelf */}
           <path
             d="M 95 795 C 125 620, 260 470, 445 450 C 605 432, 745 415, 885 480 C 995 530, 1020 695, 955 835 C 885 985, 695 1045, 515 1030 C 310 1012, 75 940, 95 795 Z"
@@ -1720,21 +1726,23 @@ const ReliefMapShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
         ) : null}
       </div>
 
-      {/* Bottom Embossed Cartographic Field Legend (strictly above SAFE_BOTTOM=1540) */}
+      {/* Bottom Embossed Cartographic Field Legend (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1095,
+          top: 1015,
           left: 60,
           right: 60,
-          padding: '22px 26px',
+          maxHeight: CONTENT_BOTTOM - 1015,
+          overflow: 'hidden',
+          padding: '18px 24px',
           borderRadius: 18,
           background: 'linear-gradient(160deg, rgba(46, 15, 16, 0.94) 0%, rgba(26, 9, 10, 0.96) 100%)',
           border: '2px solid rgba(224, 122, 95, 0.65)',
           boxShadow: '0 16px 36px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(254, 240, 138, 0.25)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 12,
         }}
       >
         <div
@@ -1788,7 +1796,7 @@ const ReliefMapShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
                 {String.fromCharCode(65 + i)}
               </div>
               <div style={{ flex: 1 }}>
-                <FitText text={pt} baseSize={28} minSize={20} maxLines={2} color="#FDF6EC" fontWeight={700} align="left" />
+                <FitText text={pt} baseSize={26} minSize={19} maxLines={2} lineHeight={1.26} color="#FDF6EC" fontWeight={700} align="left" style={{ maxHeight: 72 }} />
               </div>
             </div>
           );
@@ -1947,18 +1955,19 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
       <div
         style={{
           position: 'absolute',
-          top: 775,
+          top: 750,
           left: 48,
           width: 472,
-          maxHeight: SAFE_BOTTOM - 800,
-          padding: '22px 22px',
+          maxHeight: CONTENT_BOTTOM - 750,
+          overflow: 'hidden',
+          padding: '18px 20px',
           borderRadius: 18,
           background: 'linear-gradient(170deg, rgba(98, 22, 22, 0.92) 0%, rgba(42, 11, 12, 0.96) 100%)',
           border: `2.5px solid ${cmp.winner === 'left' ? '#FBBF24' : '#EF4444'}`,
           boxShadow: '0 14px 32px rgba(0, 0, 0, 0.55)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 12,
         }}
       >
         <div
@@ -1966,11 +1975,11 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingBottom: 12,
+            paddingBottom: 10,
             borderBottom: '1.5px solid rgba(239, 68, 68, 0.45)',
           }}
         >
-          <FitText text={cmp.leftTitle} baseSize={34} minSize={22} maxLines={2} color="#FCA5A5" fontWeight={800} align="left" />
+          <FitText text={cmp.leftTitle} baseSize={32} minSize={21} maxLines={2} color="#FCA5A5" fontWeight={800} align="left" />
           {cmp.winner === 'left' ? <span style={{ fontSize: 28, color: '#FBBF24' }}>★</span> : null}
         </div>
         {cmp.leftItems.map((item, i) => {
@@ -1979,7 +1988,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
             <div
               key={i}
               style={{
-                padding: '14px 16px',
+                padding: '12px 14px',
                 borderRadius: 12,
                 background: 'rgba(20, 6, 7, 0.55)',
                 borderLeft: '4px solid #EF4444',
@@ -1987,7 +1996,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
                 transform: `translateX(${interpolate(p, [0, 1], [-20, 0])}px)`,
               }}
             >
-              <FitText text={item} baseSize={27} minSize={20} maxLines={3} color="#FDF6EC" fontWeight={700} align="left" />
+              <FitText text={item} baseSize={25} minSize={19} maxLines={3} lineHeight={1.26} color="#FDF6EC" fontWeight={700} align="left" style={{ maxHeight: 102 }} />
             </div>
           );
         })}
@@ -1997,18 +2006,19 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
       <div
         style={{
           position: 'absolute',
-          top: 775,
+          top: 750,
           left: 560,
           width: 472,
-          maxHeight: SAFE_BOTTOM - 800,
-          padding: '22px 22px',
+          maxHeight: CONTENT_BOTTOM - 750,
+          overflow: 'hidden',
+          padding: '18px 20px',
           borderRadius: 18,
           background: 'linear-gradient(170deg, rgba(58, 42, 22, 0.92) 0%, rgba(28, 20, 12, 0.96) 100%)',
           border: `2.5px solid ${cmp.winner === 'right' ? '#FEF08A' : '#F59E0B'}`,
           boxShadow: '0 14px 32px rgba(0, 0, 0, 0.55)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 12,
         }}
       >
         <div
@@ -2016,11 +2026,11 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingBottom: 12,
+            paddingBottom: 10,
             borderBottom: '1.5px solid rgba(245, 158, 11, 0.45)',
           }}
         >
-          <FitText text={cmp.rightTitle} baseSize={34} minSize={22} maxLines={2} color="#FDE68A" fontWeight={800} align="left" />
+          <FitText text={cmp.rightTitle} baseSize={32} minSize={21} maxLines={2} color="#FDE68A" fontWeight={800} align="left" />
           {cmp.winner === 'right' ? <span style={{ fontSize: 28, color: '#FEF08A' }}>★</span> : null}
         </div>
         {cmp.rightItems.map((item, i) => {
@@ -2029,7 +2039,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
             <div
               key={i}
               style={{
-                padding: '14px 16px',
+                padding: '12px 14px',
                 borderRadius: 12,
                 background: 'rgba(20, 14, 7, 0.55)',
                 borderLeft: '4px solid #F59E0B',
@@ -2037,7 +2047,7 @@ const BattleArrowsShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tok
                 transform: `translateX(${interpolate(p, [0, 1], [20, 0])}px)`,
               }}
             >
-              <FitText text={item} baseSize={27} minSize={20} maxLines={3} color="#FDF6EC" fontWeight={700} align="left" />
+              <FitText text={item} baseSize={25} minSize={19} maxLines={3} lineHeight={1.26} color="#FDF6EC" fontWeight={700} align="left" style={{ maxHeight: 102 }} />
             </div>
           );
         })}
@@ -2054,8 +2064,8 @@ const EraScrollShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, tokens
 
   const unrollP = spring({ frame: localFrame, fps, config: { damping: 18, stiffness: 90 } });
   const titleP = appear(localFrame, 0, 14);
-  const scrollTop = 340;
-  const maxScrollH = 1090;
+  const scrollTop = 320;
+  const maxScrollH = CONTENT_BOTTOM - scrollTop - 32;
   const currentScrollH = interpolate(unrollP, [0, 1], [140, maxScrollH]);
   const bottomRodY = scrollTop + currentScrollH;
 
@@ -2305,10 +2315,10 @@ const MonumentShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps }) => {
             <circle cx={55} cy={-4} r={5} fill="#FDE68A" />
           </g>
 
-          {/* Stepped Monument Plinth & Pedestal Base (safely above SAFE_BOTTOM=1540) */}
+          {/* Stepped Monument Plinth & Pedestal Base (strictly above CONTENT_BOTTOM=1420) */}
           <rect x={102} y={1137} width={876} height={46} rx={4} fill="#7F1D1D" stroke="#F59E0B" strokeWidth={2.5} />
-          <rect x={76} y={1183} width={928} height={160} rx={6} fill="#4A1212" stroke="#B94836" strokeWidth={3} />
-          <rect x={54} y={1343} width={972} height={125} rx={6} fill="#310B0C" stroke="#991B1B" strokeWidth={2.5} />
+          <rect x={76} y={1183} width={928} height={156} rx={6} fill="#4A1212" stroke="#B94836" strokeWidth={3} />
+          <rect x={54} y={1339} width={972} height={76} rx={6} fill="#310B0C" stroke="#991B1B" strokeWidth={2.5} />
 
           {/* Left & Right Ceremonial Braziers on Pedestal */}
           {[148, 932].map((bx, idx) => (
@@ -2516,7 +2526,7 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
   const titleP = appear(localFrame, 2, 14);
   const galRot = localFrame * 0.25;
   const cx = 540;
-  const cy = 695;
+  const cy = 635;
   const targetX = cx + 52;
   const targetY = cy - 28;
 
@@ -2663,13 +2673,13 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
             strokeWidth={2.2}
           />
           <polyline
-            points={`${targetX},${targetY + 36} ${targetX},${cy + 255} ${cx},${cy + 315} ${cx},1045`}
+            points={`${targetX},${targetY + 36} ${targetX},${cy + 235} ${cx},${cy + 290} ${cx},975`}
             fill="none"
             stroke="#F59E0B"
             strokeWidth={2.5}
             strokeDasharray="8 6"
           />
-          <circle cx={cx} cy={1045} r={6} fill="#FEF08A" />
+          <circle cx={cx} cy={975} r={6} fill="#FEF08A" />
         </g>
       </svg>
 
@@ -2705,27 +2715,29 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
         <FitText text={t.title} baseSize={54} minSize={32} maxLines={2} color={fgColor} fontWeight={800} />
       </div>
 
-      {/* Bottom Locked Data Focus Module (strictly above SAFE_BOTTOM=1540) */}
+      {/* Bottom Locked Data Focus Module (strictly above CONTENT_BOTTOM=1420) */}
       <div
         style={{
           position: 'absolute',
-          top: 1055,
+          top: 985,
           left: 64,
           right: 64,
-          padding: '22px 26px',
+          maxHeight: CONTENT_BOTTOM - 985,
+          overflow: 'hidden',
+          padding: '18px 24px',
           borderRadius: 20,
           background: 'linear-gradient(160deg, rgba(20, 27, 42, 0.92) 0%, rgba(11, 14, 22, 0.96) 100%)',
           border: '1.5px solid rgba(245, 158, 11, 0.58)',
           boxShadow: '0 16px 40px rgba(0, 0, 0, 0.65)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
+          gap: 10,
           opacity: reticleP,
         }}
       >
         {t.subtitle ? (
-          <div style={{ paddingBottom: 10, borderBottom: '1px solid rgba(148, 163, 184, 0.25)' }}>
-            <FitText text={t.subtitle} baseSize={30} minSize={21} maxLines={2} color="#FDE68A" fontWeight={700} align="left" />
+          <div style={{ paddingBottom: 8, borderBottom: '1px solid rgba(148, 163, 184, 0.25)' }}>
+            <FitText text={t.subtitle} baseSize={26} minSize={19} maxLines={2} lineHeight={1.26} color="#FDE68A" fontWeight={700} align="left" style={{ maxHeight: 68 }} />
           </div>
         ) : null}
 
@@ -2753,7 +2765,7 @@ const CosmicZoomShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, token
                 }}
               />
               <div style={{ flex: 1 }}>
-                <FitText text={pt} baseSize={28} minSize={20} maxLines={2} color="#F1F5F9" fontWeight={700} align="left" />
+                <FitText text={pt} baseSize={25} minSize={18} maxLines={2} lineHeight={1.26} color="#F1F5F9" fontWeight={700} align="left" style={{ maxHeight: 68 }} />
               </div>
             </div>
           );
@@ -2785,8 +2797,8 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
     { fillTop: '#2E3A47', fillBot: '#1E2732', rim: '#7C93AA', tagBg: '#121922', depth: '9.2 km' },
   ];
 
-  const bandStartY = 395;
-  const bandSpan = Math.floor((SAFE_BOTTOM - 36 - bandStartY) / Math.max(1, entries.length));
+  const bandStartY = 365;
+  const bandSpan = Math.floor((CONTENT_BOTTOM - 16 - bandStartY) / Math.max(1, entries.length));
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
@@ -2804,7 +2816,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
 
         {/* Distant mountain horizon ridge separating starry sky from Earth crust */}
         <path
-          d="M 0 385 L 140 330 L 295 368 L 475 305 L 660 362 L 845 318 L 1080 378 L 1080 430 L 0 430 Z"
+          d="M 0 355 L 140 302 L 295 340 L 475 280 L 660 336 L 845 292 L 1080 350 L 1080 400 L 0 400 Z"
           fill="#261C19"
           stroke="#8C583A"
           strokeWidth={2}
@@ -2860,7 +2872,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
         })}
 
         {/* Vertical geological depth drill-core gauge on far left */}
-        <line x1={46} y1={bandStartY + 12} x2={46} y2={SAFE_BOTTOM - 32} stroke="#FDE68A" strokeWidth={2.5} strokeDasharray="6 6" opacity={0.55} />
+        <line x1={46} y1={bandStartY + 12} x2={46} y2={CONTENT_BOTTOM - 16} stroke="#FDE68A" strokeWidth={2.5} strokeDasharray="6 6" opacity={0.55} />
       </svg>
 
       {/* Top Starry Sky Title Header */}
@@ -2895,7 +2907,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
         <FitText text={t.title} baseSize={52} minSize={30} maxLines={2} color={fgColor} fontWeight={800} />
       </div>
 
-      {/* Text Content anchored cleanly inside each geological stratum band (above SAFE_BOTTOM=1540) */}
+      {/* Text Content anchored cleanly inside each geological stratum band (strictly above CONTENT_BOTTOM=1420) */}
       {entries.map((entry, i) => {
         const st = strataStyles[i % strataStyles.length];
         const p = stagger(i, localFrame, 8, 8, 16);
@@ -2905,10 +2917,11 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
             key={i}
             style={{
               position: 'absolute',
-              top: y0 + 24,
+              top: y0 + 20,
               left: 74,
               right: 92,
-              height: bandSpan - 34,
+              height: bandSpan - 28,
+              overflow: 'hidden',
               display: 'flex',
               alignItems: 'center',
               gap: 22,
@@ -2921,7 +2934,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
               style={{
                 width: 190,
                 flexShrink: 0,
-                padding: '12px 14px',
+                padding: '10px 14px',
                 borderRadius: 12,
                 background: st.tagBg,
                 border: `1.5px solid ${st.rim}`,
@@ -2931,7 +2944,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
                 gap: 4,
               }}
             >
-              <FitText text={entry.tag} baseSize={25} minSize={18} maxLines={1} color="#FEF3C7" fontWeight={900} />
+              <FitText text={entry.tag} baseSize={24} minSize={18} maxLines={1} color="#FEF3C7" fontWeight={900} />
               <span style={{ fontFamily: THAI_FONT_FAMILY, fontSize: 16, fontWeight: 700, color: st.rim }}>
                 DEPTH {st.depth}
               </span>
@@ -2939,7 +2952,7 @@ const StrataLayersShot: React.FC<StyleShotArgs> = ({ scene, localFrame, tokens }
 
             {/* Era Description inside rock band */}
             <div style={{ flex: 1, textShadow: '0 3px 10px rgba(0, 0, 0, 0.6)' }}>
-              <FitText text={entry.text} baseSize={31} minSize={21} maxLines={3} color="#FFFBF5" fontWeight={800} align="left" />
+              <FitText text={entry.text} baseSize={28} minSize={19} maxLines={3} lineHeight={1.26} color="#FFFBF5" fontWeight={800} align="left" style={{ maxHeight: bandSpan - 44 }} />
             </div>
           </div>
         );
@@ -2960,7 +2973,7 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
   const coreP = spring({ frame: Math.max(0, localFrame - 6), fps, config: { damping: 14, stiffness: 120 } });
   const titleP = appear(localFrame, 0, 14);
   const cx = 540;
-  const cy = 690;
+  const cy = 625;
 
   // Generate smooth Archimedean time spiral SVG path (3.2 full turns)
   const spiralSamples = 110;
@@ -2968,7 +2981,7 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
   for (let i = 0; i <= spiralSamples; i++) {
     const u = i / spiralSamples;
     const angle = u * Math.PI * 2 * 3.15 - Math.PI / 2;
-    const radius = 52 + u * 338;
+    const radius = 48 + u * 292;
     spiralPts.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
   }
   const spiralD = spiralPts.map(([x, y], idx) => `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
@@ -3004,20 +3017,20 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
 
         {/* Outer Astrolabe Dial Frame */}
         <g transform={`translate(${cx}, ${cy})`}>
-          <circle r={402} fill="url(#dt-clk-core)" opacity={0.75} />
-          <circle r={396} fill="none" stroke="#F59E0B" strokeWidth={2.5} opacity={0.45} />
-          <circle r={374} fill="none" stroke="#94A3B8" strokeWidth={1.2} strokeDasharray="6 10" opacity={0.45} />
+          <circle r={352} fill="url(#dt-clk-core)" opacity={0.75} />
+          <circle r={346} fill="none" stroke="#F59E0B" strokeWidth={2.5} opacity={0.45} />
+          <circle r={326} fill="none" stroke="#94A3B8" strokeWidth={1.2} strokeDasharray="6 10" opacity={0.45} />
           {/* 24 Astronomical Clock Dial Ticks */}
           {Array.from({ length: 24 }).map((_, i) => {
             const rad = (i * 15 * Math.PI) / 180;
-            const inner = i % 2 === 0 ? 372 : 382;
+            const inner = i % 2 === 0 ? 324 : 334;
             return (
               <line
                 key={i}
                 x1={Math.cos(rad) * inner}
                 y1={Math.sin(rad) * inner}
-                x2={Math.cos(rad) * 396}
-                y2={Math.sin(rad) * 396}
+                x2={Math.cos(rad) * 346}
+                y2={Math.sin(rad) * 346}
                 stroke={i % 6 === 0 ? '#FEF08A' : '#94A3B8'}
                 strokeWidth={i % 6 === 0 ? 3.5 : 1.5}
               />
@@ -3028,7 +3041,7 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
             x1={0}
             y1={0}
             x2={0}
-            y2={-330}
+            y2={-285}
             stroke="#FDE68A"
             strokeWidth={3}
             strokeLinecap="round"
@@ -3039,7 +3052,7 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
             x1={0}
             y1={0}
             x2={0}
-            y2={-240}
+            y2={-210}
             stroke="#38BDF8"
             strokeWidth={5}
             strokeLinecap="round"
@@ -3137,57 +3150,81 @@ const ClockSpiralShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFram
         ) : null}
       </div>
 
-      {/* Bottom Epoch Scale Milestone Cards (strictly above SAFE_BOTTOM=1540) */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 1126,
-          left: 58,
-          right: 58,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}
-      >
-        {metric.label && metric.label !== t.title ? (
-          <div style={{ textAlign: 'center', marginBottom: 2, opacity: appear(localFrame, 10, 14) }}>
-            <FitText text={metric.label} baseSize={30} minSize={21} maxLines={2} color="#FDE68A" fontWeight={700} />
-          </div>
-        ) : null}
-        <div style={{ display: 'flex', gap: 16 }}>
-          {points.slice(0, 3).map((pt, i) => {
-            const p = stagger(i, localFrame, 7, 14, 14);
-            return (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  padding: '18px 18px',
-                  borderRadius: 16,
-                  background: 'rgba(17, 22, 34, 0.88)',
-                  border: '1.5px solid rgba(245, 158, 11, 0.45)',
-                  borderTop: `4px solid ${i === 0 ? '#FEF08A' : i === 1 ? '#F59E0B' : '#38BDF8'}`,
-                  opacity: p,
-                  transform: `translateY(${interpolate(p, [0, 1], [22, 0])}px)`,
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: THAI_FONT_FAMILY,
-                    fontSize: 18,
-                    fontWeight: 800,
-                    color: '#94A3B8',
-                    marginBottom: 8,
-                  }}
-                >
-                  EPOCH 0{i + 1}
-                </div>
-                <FitText text={pt} baseSize={26} minSize={19} maxLines={4} color="#F8FAFC" fontWeight={700} align="left" />
+      {/* Bottom Epoch Scale Milestone Cards (strictly above CONTENT_BOTTOM=1420) */}
+      {(() => {
+        const hasMetricSub = Boolean(metric.label && metric.label !== t.title);
+        const epochCardH = hasMetricSub ? 300 : 340;
+        const epochTextMaxH = epochCardH - 64;
+        return (
+          <div
+            style={{
+              position: 'absolute',
+              top: 1005,
+              left: 58,
+              right: 58,
+              maxHeight: CONTENT_BOTTOM - 1005,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            {hasMetricSub ? (
+              <div style={{ textAlign: 'center', marginBottom: 2, opacity: appear(localFrame, 10, 14) }}>
+                <FitText text={metric.label} baseSize={26} minSize={19} maxLines={1} color="#FDE68A" fontWeight={700} style={{ maxHeight: 44 }} />
               </div>
-            );
-          })}
-        </div>
-      </div>
+            ) : null}
+            <div style={{ display: 'flex', gap: 16 }}>
+              {points.slice(0, 3).map((pt, i) => {
+                const p = stagger(i, localFrame, 7, 14, 14);
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: epochCardH,
+                      overflow: 'hidden',
+                      padding: '14px 16px',
+                      borderRadius: 16,
+                      background: 'rgba(17, 22, 34, 0.88)',
+                      border: '1.5px solid rgba(245, 158, 11, 0.45)',
+                      borderTop: `4px solid ${i === 0 ? '#FEF08A' : i === 1 ? '#F59E0B' : '#38BDF8'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      opacity: p,
+                      transform: `translateY(${interpolate(p, [0, 1], [22, 0])}px)`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: THAI_FONT_FAMILY,
+                        fontSize: 18,
+                        fontWeight: 800,
+                        color: '#94A3B8',
+                        marginBottom: 6,
+                        flexShrink: 0,
+                      }}
+                    >
+                      EPOCH 0{i + 1}
+                    </div>
+                    <FitText
+                      text={pt}
+                      baseSize={24}
+                      minSize={17}
+                      maxLines={4}
+                      lineHeight={1.28}
+                      color="#F8FAFC"
+                      fontWeight={700}
+                      align="left"
+                      style={{ maxHeight: epochTextMaxH, overflow: 'hidden' }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -3202,7 +3239,7 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
   const sunP = spring({ frame: localFrame, fps, config: { damping: 16, stiffness: 110 } });
   const titleP = appear(localFrame, 0, 14);
   const sunX = 540;
-  const sunY = 425;
+  const sunY = 400;
   const coronaPulse = 1 + 0.04 * Math.sin(localFrame * 0.11);
 
   // Orbit definitions sweeping gracefully below the sun with generous vertical spacing so Thai labels never overlap
@@ -3216,10 +3253,10 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
     hasRing?: boolean;
     labelSide: 'right' | 'left';
   }> = [
-    { rx: 335, ry: 270, baseDeg: 136, radius: 34, col1: '#F87171', col2: '#991B1B', labelSide: 'right' },
-    { rx: 425, ry: 505, baseDeg: 54, radius: 42, col1: '#38BDF8', col2: '#1D4ED8', labelSide: 'left' },
-    { rx: 465, ry: 725, baseDeg: 122, radius: 46, col1: '#FBBF24', col2: '#B45309', hasRing: true, labelSide: 'right' },
-    { rx: 495, ry: 950, baseDeg: 62, radius: 38, col1: '#A78BFA', col2: '#4C1D95', labelSide: 'left' },
+    { rx: 335, ry: 240, baseDeg: 136, radius: 34, col1: '#F87171', col2: '#991B1B', labelSide: 'right' },
+    { rx: 425, ry: 445, baseDeg: 54, radius: 42, col1: '#38BDF8', col2: '#1D4ED8', labelSide: 'left' },
+    { rx: 465, ry: 645, baseDeg: 122, radius: 46, col1: '#FBBF24', col2: '#B45309', hasRing: true, labelSide: 'right' },
+    { rx: 495, ry: 845, baseDeg: 62, radius: 38, col1: '#A78BFA', col2: '#4C1D95', labelSide: 'left' },
   ];
 
   // Compute live animated positions for active planets
@@ -3358,12 +3395,12 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
         <FitText text={t.title} baseSize={52} minSize={30} maxLines={2} color={fgColor} fontWeight={800} />
       </div>
 
-      {/* Orbiting Planet Label Plaques (all safely above SAFE_BOTTOM=1540) */}
+      {/* Orbiting Planet Label Plaques (all strictly above CONTENT_BOTTOM=1420) */}
       {activeOrbits.map(({ pt, spec, px, py }, i) => {
         const p = stagger(i, localFrame, 8, 8, 14);
         const isRight = spec.labelSide === 'right';
         const boxLeft = isRight ? Math.min(STAGE_W - 496, px + 88) : Math.max(52, px - 88 - 444);
-        const boxTop = Math.min(SAFE_BOTTOM - 165, Math.max(545, py - 68));
+        const boxTop = Math.min(CONTENT_BOTTOM - 168, Math.max(520, py - 64));
         return (
           <div
             key={i}
@@ -3372,7 +3409,9 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
               left: boxLeft,
               top: boxTop,
               width: 444,
-              padding: '16px 20px',
+              maxHeight: 162,
+              overflow: 'hidden',
+              padding: '14px 18px',
               borderRadius: 16,
               background: 'rgba(13, 18, 32, 0.88)',
               border: `1.5px solid ${spec.col1}`,
@@ -3396,12 +3435,14 @@ const PlanetOrbitShot: React.FC<StyleShotArgs> = ({ scene, localFrame, fps, toke
             </div>
             <FitText
               text={pt}
-              baseSize={28}
-              minSize={20}
+              baseSize={26}
+              minSize={19}
               maxLines={3}
+              lineHeight={1.26}
               color="#F8FAFC"
               fontWeight={700}
               align={isRight ? 'left' : 'right'}
+              style={{ maxHeight: 104 }}
             />
           </div>
         );

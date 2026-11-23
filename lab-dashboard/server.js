@@ -2357,7 +2357,8 @@ const server = http.createServer(async (req, res) => {
             const clean = String(rawPath || '').replace(/^file:\/\//i, '').trim();
             if (!clean) return { status: 400, error: 'Missing path' };
             const resolved = path.resolve(clean);
-            const allowedRoots = ['/home/dev/projects', '/home/dev/.gemini', '/tmp'];
+            // Motion-studio masters live on Google Drive; ~/.gemini/outputs/videos is a symlink into it
+            const allowedRoots = ['/home/dev/projects', '/home/dev/.gemini', '/tmp', '/mnt/gdrive/Homelab-Videos'];
             const inAllowed = (target) => allowedRoots.some((root) => target === root || target.startsWith(root + '/'));
             if (!inAllowed(resolved)) return { status: 403, error: `Forbidden ${label.toLowerCase()} path` };
             const base = path.basename(resolved);

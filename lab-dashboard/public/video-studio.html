@@ -2263,6 +2263,19 @@
       });
 
       // Draft Editor
+      const SHOT_OPTIONS = [
+        ['', 'อัตโนมัติ (ให้ระบบ/AI เลือก)'],
+        ['pov-desk', 'นั่งโต๊ะหันหน้าเข้ากล้อง + โน้ตบนผนัง'],
+        ['interview', 'สองคนคุยกัน + บอลลูนคำพูด'],
+        ['whiteboard', 'ยืนชี้กระดาน'],
+        ['closeup', 'โคลสอัปหน้า + ลูกโป่งความคิด'],
+        ['crowd', 'ฝูงคน 100 หัว (สถิติ)'],
+        ['split', 'การ์ตูน 2 ช่อง ผิด vs ถูก'],
+        ['stairs', 'เดินขึ้นบันไดทีละขั้น'],
+        ['held-paper', 'มือเราถือกระดาษ (POV)'],
+        ['door', 'เปิดประตูเข้าห้อง'],
+        ['phone', 'มือเราถือมือถืออ่านแชท'],
+      ];
       function renderDraftEditor(script) {
         $('draft-panel').classList.remove('hidden');
         const scenes = Array.isArray(script.scenes) ? script.scenes : [];
@@ -2282,6 +2295,7 @@
               <div><label class="field-label">ไอคอน (Icon)</label><input class="input" data-f="icon" value="${escapeHtml(sc.icon || '')}" /></div>
               <div><label class="field-label">ภาพประกอบ (Visual)</label><input class="input" data-f="visual" value="${escapeHtml(sc.visual || '')}" /></div>
             </div>
+            <div><label class="field-label">ฉาก/มุมกล้อง (Shot · สไตล์ลายเส้น)</label><select class="input" data-shot>${SHOT_OPTIONS.map(([v, l]) => `<option value="${v}" ${((sc.direction && sc.direction.shot) || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
             <div><label class="field-label">บทพากย์ (Narration)</label><textarea class="input" rows="2" data-f="narration">${escapeHtml(sc.narration || '')}</textarea></div>
             <div><label class="field-label">Bullets (คั่นด้วย ,)</label><input class="input" data-f="bullets" value="${escapeHtml(Array.isArray(sc.bullets) ? sc.bullets.join(', ') : (sc.bullets || ''))}" /></div>
           </div>
@@ -2289,6 +2303,15 @@
 
         $('scene-list').querySelectorAll('.scene-card').forEach((card) => {
           const idx = Number(card.dataset.idx);
+          const shotSel = card.querySelector('[data-shot]');
+          if (shotSel) {
+            shotSel.addEventListener('change', () => {
+              const sc = state.activeScript.scenes[idx];
+              const dir = (sc.direction && typeof sc.direction === 'object') ? sc.direction : {};
+              if (shotSel.value) dir.shot = shotSel.value; else delete dir.shot;
+              sc.direction = dir;
+            });
+          }
           card.querySelectorAll('[data-f]').forEach((inp) => {
             inp.addEventListener('input', () => {
               const f = inp.dataset.f;

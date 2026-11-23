@@ -119,14 +119,22 @@ function loadStateSync() {
 }
 
 let saveNodesTimer = null;
+async function saveNodesNow() {
+    if (saveNodesTimer) {
+        clearTimeout(saveNodesTimer);
+        saveNodesTimer = null;
+    }
+    try {
+        const arr = [...nodes.values()];
+        await fsp.writeFile(NODES_PATH, JSON.stringify(arr, null, 2));
+    } catch (_) {}
+}
+
 function scheduleSaveNodes() {
     if (saveNodesTimer) return;
     saveNodesTimer = setTimeout(async () => {
         saveNodesTimer = null;
-        try {
-            const arr = [...nodes.values()];
-            await fsp.writeFile(NODES_PATH, JSON.stringify(arr, null, 2));
-        } catch (_) {}
+        await saveNodesNow();
     }, 1500);
     if (typeof saveNodesTimer.unref === 'function') saveNodesTimer.unref();
 }
@@ -311,13 +319,90 @@ function decorateNode(n) {
     const online = ageMs !== null && ageMs <= ONLINE_THRESHOLD_MS;
     const q = pendingCommands.get(n.nodeId) || [];
     const waiters = pollWaiters.get(n.nodeId);
+    const alias = String(n.alias || '').trim();
+    const notes = String(n.notes || '').trim();
+    const hostname = String((n.specs && n.specs.hostname) || n.nodeId || '').trim();
     return {
         ...n,
+        alias,
+        notes,
+        displayName: alias || hostname,
         online,
         ageMs,
         longPollConnected: Boolean(waiters && waiters.size > 0),
         queuedCommands: q.length,
     };
+}
+
+function resolveNodeRef(identifier, candidateList = null) {
+    const raw = String(identifier || '').trim();
+    const q = raw.toLowerCase();
+    const list = candidateList || [...nodes.values()].map(decorateNode);
+    if (!q) return { node: null, ambiguous: false, matches: [] };
+
+    const exactId = list.find((n) => String(n.nodeId || '').toLowerCase() === q);
+    if (exactId) return { node: exactId, ambiguous: false, matches: [exactId] };
+
+    const exactAlias = list.filter((n) => String(n.alias || '').trim().toLowerCase() === q);
+    if (exactAlias.length === 1) return { node: exactAlias[0], ambiguous: false, matches: exactAlias };
+    if (exactAlias.length > 1) return { node: null, ambiguous: true, matches: exactAlias };
+
+    const exactHost = list.filter((n) => String((n.specs && n.specs.hostname) || '').trim().toLowerCase() === q);
+    if (exactHost.length === 1) return { node: exactHost[0], ambiguous: false, matches: exactHost };
+    if (exactHost.length > 1) return { node: null, ambiguous: true, matches: exactHost };
+
+    const partial = list.filter((n) => {
+        const fields = [
+            n.nodeId || '',
+            n.alias || '',
+            (n.specs && n.specs.hostname) || '',
+            n.notes || '',
+        ];
+        return fields.some((f) => String(f).toLowerCase().includes(q));
+    });
+    if (partial.length === 1) return { node: partial[0], ambiguous: false, matches: partial };
+    if (partial.length > 1) return { node: null, ambiguous: true, matches: partial };
+
+    return { node: null, ambiguous: false, matches: [] };
+}
+
+async function updateNodeMeta(identifier, body = {}) {
+    const resolved = resolveNodeRef(identifier);
+    if (resolved.ambiguous) {
+        const err = new Error(`ชื่อ "${identifier}" ตรงกับหลายเครื่อง: ${resolved.matches.map((m) => m.nodeId).join(', ')}`);
+        err.statusCode = 409;
+        throw err;
+    }
+    if (!resolved.node) {
+        const err = new Error(`ไม่พบเครื่องลูกข่าย "${identifier}"`);
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const target = nodes.get(resolved.node.nodeId);
+    const hasAlias = Object.prototype.hasOwnProperty.call(body, 'alias');
+    const hasNotes = Object.prototype.hasOwnProperty.call(body, 'notes');
+    const nextAlias = hasAlias ? String(body.alias ?? '').trim().slice(0, 80) : String(target.alias || '').trim();
+    const nextNotes = hasNotes ? String(body.notes ?? '').trim().slice(0, 500) : String(target.notes || '').trim();
+
+    if (nextAlias) {
+        const aliasLower = nextAlias.toLowerCase();
+        for (const other of nodes.values()) {
+            if (other.nodeId === target.nodeId) continue;
+            if (String(other.alias || '').trim().toLowerCase() === aliasLower || other.nodeId.toLowerCase() === aliasLower) {
+                const err = new Error(`ชื่อเรียก "${nextAlias}" ถูกใช้งานโดยเครื่อง ${other.nodeId} อยู่แล้ว กรุณาตั้งชื่อที่ไม่ซ้ำกันค่ะ`);
+                err.statusCode = 409;
+                throw err;
+            }
+        }
+    }
+
+    target.alias = nextAlias;
+    target.notes = nextNotes;
+    target.metaUpdatedAt = new Date().toISOString();
+    nodes.set(target.nodeId, target);
+    await saveNodesNow();
+    return decorateNode(target);
 }
 
 function handleHeartbeat(body, clientIp) {
@@ -508,8 +593,8 @@ function selectBestRenderNode(preferredNodeId = '') {
     const pref = String(preferredNodeId || '').trim().toLowerCase();
     const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
     if (pref && pref !== 'auto') {
-        const found = allOnline.find((n) => n.nodeId === pref);
-        if (found) return found;
+        const res = resolveNodeRef(pref, allOnline);
+        if (res.node) return res.node;
     }
     // Score online nodes with ffmpeg capability: prefer NVENC GPU, more threads, lower CPU load
     const capable = allOnline.filter((n) => {
@@ -599,8 +684,8 @@ function selectBestBlenderNode(preferredNodeId = '', preferGpu = false) {
     const pref = String(preferredNodeId || '').trim().toLowerCase();
     const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
     if (pref && pref !== 'auto') {
-        const found = allOnline.find((n) => n.nodeId === pref);
-        if (found) return found;
+        const res = resolveNodeRef(pref, allOnline);
+        if (res.node) return res.node;
     }
     const capable = allOnline.filter((n) => {
         const caps = (n.specs && n.specs.capabilities) || [];
@@ -689,8 +774,8 @@ function selectBestRemotionNode(preferredNodeId = '') {
     const pref = String(preferredNodeId || '').trim().toLowerCase();
     const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
     if (pref && pref !== 'auto') {
-        const found = allOnline.find((n) => n.nodeId === pref);
-        return found || null;
+        const res = resolveNodeRef(pref, allOnline);
+        return res.node || null;
     }
 
     const busyNodes = new Set();
@@ -1581,6 +1666,9 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             const memTotal = metrics.memTotal || 0;
             return {
                 nodeId: n.nodeId,
+                alias: n.alias || '',
+                notes: n.notes || '',
+                displayName: n.displayName || specs.hostname || n.nodeId,
                 hostname: specs.hostname || n.nodeId,
                 os: specs.os || specs.osCaption || '',
                 online: !!n.online,
@@ -1613,22 +1701,35 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
 
     if (req.method === 'POST' && p === '/api/agent-hub/command') {
         const body = await readJsonBody(req, 16 * 1024 * 1024);
-        const nodeId = String(body.nodeId || '').trim().toLowerCase();
+        const rawNodeRef = String(body.nodeId || '').trim();
         const action = String(body.action || '').trim();
         const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
         const wait = body.wait !== false;
         const timeoutMs = Math.min(600000, Math.max(3000, Number(body.timeoutMs) || 45000));
 
-        if (!nodeId || !action) {
+        if (!rawNodeRef || !action) {
             sendJson(res, 400, { ok: false, error: 'nodeId and action are required' });
             return true;
         }
+        const resolved = resolveNodeRef(rawNodeRef);
+        if (resolved.ambiguous) {
+            sendJson(res, 409, {
+                ok: false,
+                error: `ชื่อเครื่อง "${rawNodeRef}" ตรงกับหลายเครื่อง: ${resolved.matches.map((m) => m.alias ? `${m.alias} (${m.nodeId})` : m.nodeId).join(', ')}`,
+            });
+            return true;
+        }
+        if (!resolved.node) {
+            sendJson(res, 404, { ok: false, error: `ไม่พบเครื่องลูกข่าย "${rawNodeRef}"` });
+            return true;
+        }
+        const nodeId = resolved.node.nodeId;
         if (wait) {
             const resObj = await dispatchAndWait(nodeId, action, payload, timeoutMs);
             sendJson(res, 200, resObj);
         } else {
             const { cmd, dispatchedImmediately } = enqueueCommand(nodeId, action, payload);
-            sendJson(res, 200, { ok: true, commandId: cmd.id, dispatchedImmediately });
+            sendJson(res, 200, { ok: true, commandId: cmd.id, nodeId, dispatchedImmediately });
         }
         return true;
     }
@@ -1670,6 +1771,19 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         return true;
     }
 
+    const nodeMetaMatch = p.match(/^\/api\/agent-hub\/nodes\/([^/]+?)(?:\/meta)?$/);
+    if ((req.method === 'PATCH' || req.method === 'PUT' || (req.method === 'POST' && p.endsWith('/meta'))) && nodeMetaMatch) {
+        const nodeIdParam = decodeURIComponent(nodeMetaMatch[1]);
+        const body = await readJsonBody(req, 64 * 1024);
+        try {
+            const updated = await updateNodeMeta(nodeIdParam, body);
+            sendJson(res, 200, { ok: true, node: updated });
+        } catch (err) {
+            sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+        }
+        return true;
+    }
+
     if (req.method === 'DELETE' && p.startsWith('/api/agent-hub/nodes/')) {
         const nodeId = decodeURIComponent(p.slice('/api/agent-hub/nodes/'.length)).trim().toLowerCase();
         const existed = nodes.delete(nodeId);
@@ -1697,4 +1811,6 @@ module.exports = {
     selectBestBlenderNode,
     createRemotionJob,
     selectBestRemotionNode,
+    resolveNodeRef,
+    updateNodeMeta,
 };

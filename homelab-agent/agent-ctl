@@ -16,6 +16,7 @@ Usage:
   agent-ctl render <nodeId|auto> [--input <localPath>] [--test] [--nvenc]
   agent-ctl remotion --props <file.json> -o <out.mp4> [--comp StudioEngine] [--node <id|auto>] [--concurrency <n>] [--timeout <sec>]
   agent-ctl blender --script <file.py> [--node <id|auto>] [--live-session <bv>] [--wait]
+  agent-ctl rename <node> "<alias>" [--notes "<notes>"] [--clear]
   agent-ctl update <nodeId>
 
 Blender Live Helpers (available inside bpy scripts):
@@ -95,12 +96,57 @@ def hub_download(path: str, dest_path: str, timeout: int = 120) -> bool:
         return False
 
 
+def resolve_node_target(raw_ref: str) -> str:
+    q = (raw_ref or "").strip()
+    if not q or q.lower() == "auto":
+        return q
+    st = hub_request("GET", "/api/agent-hub/status", timeout=15)
+    if not st.get("ok"):
+        return q
+    nodes_list = st.get("nodes") or []
+    ql = q.lower()
+
+    for n in nodes_list:
+        if str(n.get("nodeId", "")).lower() == ql:
+            return n["nodeId"]
+
+    exact_alias = [n for n in nodes_list if str(n.get("alias", "")).strip().lower() == ql]
+    if len(exact_alias) == 1:
+        return exact_alias[0]["nodeId"]
+
+    exact_host = [n for n in nodes_list if str((n.get("specs") or {}).get("hostname", "")).strip().lower() == ql]
+    if len(exact_host) == 1:
+        return exact_host[0]["nodeId"]
+
+    partial = [
+        n
+        for n in nodes_list
+        if any(
+            ql in str(val).lower()
+            for val in (
+                n.get("nodeId", ""),
+                n.get("alias", ""),
+                (n.get("specs") or {}).get("hostname", ""),
+                n.get("notes", ""),
+            )
+            if val
+        )
+    ]
+    if len(partial) == 1:
+        return partial[0]["nodeId"]
+    if len(partial) > 1:
+        names = ", ".join(f"{n.get('alias') or n.get('nodeId')} ({n.get('nodeId')})" for n in partial)
+        raise SystemExit(f"Error: ชื่อเครื่อง '{q}' ตรงกับหลายเครื่อง: {names}")
+    return q
+
+
 def run_node_cmd(node_id: str, action: str, payload: dict, timeout_sec: int = 45) -> dict:
+    resolved_id = resolve_node_target(node_id)
     return hub_request(
         "POST",
         "/api/agent-hub/command",
         {
-            "nodeId": node_id,
+            "nodeId": resolved_id,
             "action": action,
             "payload": payload,
             "wait": True,
@@ -193,6 +239,12 @@ def main() -> int:
     p_blender.add_argument("--timeout", type=int, default=1800, help="Wait timeout in seconds (default: 1800)")
     p_blender.add_argument("--out-dir", dest="out_dir", default="/home/dev/.gemini/outputs/3d", help="Local output directory")
 
+    p_rename = sub.add_parser("rename", help="Set display alias and project notes for a node")
+    p_rename.add_argument("node", help="Target node ID or current alias")
+    p_rename.add_argument("alias", nargs="?", default="", help="Human-friendly display alias")
+    p_rename.add_argument("--notes", default=None, help="Project paths or notes")
+    p_rename.add_argument("--clear", action="store_true", help="Clear alias")
+
     p_upd = sub.add_parser("update", help="Trigger self-update on a remote node")
     p_upd.add_argument("node")
 
@@ -215,13 +267,16 @@ def main() -> int:
             badge = "🟢 ONLINE" if n.get("online") else "⚪ OFFLINE"
             gpu = sp.get("gpuModel") or "No discrete GPU"
             nv = " [NVENC]" if sp.get("hasNvenc") else ""
+            alias_str = f" [🏷️ {n['alias']}]" if n.get("alias") else ""
             print(
-                f"  • {n.get('nodeId')} ({sp.get('hostname', '-')}) — {badge} | "
+                f"  • {n.get('nodeId')}{alias_str} ({sp.get('hostname', '-')}) — {badge} | "
                 f"{sp.get('osCaption', sp.get('os', '-'))} | "
                 f"CPU: {sp.get('cpuModel', '-')} ({sp.get('cpuThreads', 0)}T, {mt.get('cpuPct', 0):.1f}%) | "
                 f"RAM: {fmt_bytes(mt.get('memUsed', 0))}/{fmt_bytes(mt.get('memTotal', 0))} ({mt.get('memPct', 0):.1f}%) | "
                 f"GPU: {gpu}{nv} | IP: {', '.join(sp.get('ips', [])) or n.get('lastIp', '-')}"
             )
+            if n.get("notes"):
+                print(f"      📌 {n['notes']}")
         return 0
 
     if args.cmd == "status":
@@ -505,6 +560,25 @@ def main() -> int:
 
         print(f"Error: timed out after {args.timeout}s waiting for job {job_id}", file=sys.stderr)
         return 1
+
+    if args.cmd == "rename":
+        target_id = resolve_node_target(args.node)
+        body = {}
+        if args.clear:
+            body["alias"] = ""
+            if args.notes is not None:
+                body["notes"] = args.notes
+        else:
+            if args.alias:
+                body["alias"] = args.alias
+            if args.notes is not None:
+                body["notes"] = args.notes
+        if not body:
+            print("Error: specify an alias or --notes (or --clear)", file=sys.stderr)
+            return 1
+        res = hub_request("PATCH", f"/api/agent-hub/nodes/{urllib.parse.quote(target_id)}", body, timeout=15)
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
 
     if args.cmd == "update":
         res = run_node_cmd(args.node, "self-update", {}, timeout_sec=60)

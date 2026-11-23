@@ -314,6 +314,96 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+  }
+  .node-name__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .node-alias-sub {
+    font-size: 0.74rem;
+    color: var(--accent);
+    font-family: var(--mono);
+    margin: -4px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .node-notes-box {
+    font-size: 0.76rem;
+    color: #cbd5e1;
+    background: rgba(0, 229, 255, 0.06);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+    border-radius: 8px;
+    padding: 6px 9px;
+    margin-bottom: 9px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .node-card__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .node-edit-btn {
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    border-radius: 7px;
+  }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    background: rgba(2, 6, 15, 0.76);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+  }
+  .modal-backdrop.is-open {
+    display: flex;
+  }
+  .modal-card {
+    width: 100%;
+    max-width: 500px;
+    background: #0d1526;
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-radius: 16px;
+    padding: 20px 22px;
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.65);
+  }
+  .modal-card h3 {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+  }
+  .modal-card p {
+    margin: 0 0 14px;
+    font-size: 0.82rem;
+    color: var(--text-1);
+  }
+  .modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 13px;
+  }
+  .modal-field label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-0);
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
   }
   .status-pill {
     display: inline-flex;
@@ -666,6 +756,7 @@
       <div class="panel__head">
         <div class="panel__title" id="ws-header-title">🎛️ ศูนย์สั่งการระยะไกล (เลือกเครื่องทางซ้ายเพื่อควบคุม)</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn--sm" id="btn-node-rename">🏷️ ตั้งชื่อเครื่อง</button>
           <button type="button" class="btn btn--sm" id="btn-node-ping">📡 Ping ทดสอบ</button>
           <button type="button" class="btn btn--sm" id="btn-node-update">⬆️ สั่ง Self-Update (.exe)</button>
         </div>
@@ -788,6 +879,48 @@
   </section>
 </main>
 
+<div class="modal-backdrop" id="node-meta-modal" role="dialog" aria-modal="true" aria-labelledby="meta-modal-title">
+  <div class="modal-card">
+    <h3 id="meta-modal-title">🏷️ ตั้งชื่อเรียก &amp; โน้ตโปรเจคของเครื่อง</h3>
+    <p id="meta-node-subtitle">กำหนดชื่อเรียกที่จำง่ายเพื่อให้สั่งงาน AI ข้ามเครื่องได้ตรงเครื่องและไม่ผิดโปรเจคค่ะ</p>
+    <form id="form-node-meta" autocomplete="off">
+      <div class="modal-field">
+        <label for="meta-alias-input">ชื่อเรียกเครื่อง (Alias)</label>
+        <input
+          type="search"
+          id="meta-alias-input"
+          class="input"
+          maxlength="80"
+          placeholder="เช่น เครื่องเซิร์ฟเวอร์ของร้าน, คอมบ้าน, เครื่องเรนเดอร์"
+          autocomplete="off"
+          data-lpignore="true"
+          readonly
+          onfocus="this.removeAttribute('readonly')"
+        />
+      </div>
+      <div class="modal-field">
+        <label for="meta-notes-input">โน้ตโปรเจค / พาธโปรแกรมสำคัญ (ไม่บังคับ)</label>
+        <textarea
+          id="meta-notes-input"
+          class="input"
+          rows="3"
+          maxlength="500"
+          style="resize:vertical;font-family:var(--sans);"
+          placeholder="เช่น โปรแกรมคลินิก: C:\ClinicApp | โปรแกรมขายหน้าร้าน: D:\POS"
+          autocomplete="off"
+          data-lpignore="true"
+          readonly
+          onfocus="this.removeAttribute('readonly')"
+        ></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btn-meta-cancel">ยกเลิก</button>
+        <button type="submit" class="btn btn--primary" id="btn-meta-save">💾 บันทึกชื่อเรียก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -892,18 +1025,26 @@ function renderNodesList() {
     const memPct = Math.min(100, Math.max(0, Number(mt.memPct) || 0));
     const caps = Array.isArray(sp.capabilities) ? sp.capabilities : [];
     const ips = Array.isArray(sp.ips) && sp.ips.length ? sp.ips.join(', ') : (n.lastIp || '—');
+    const alias = String(n.alias || '').trim();
+    const notes = String(n.notes || '').trim();
+    const hostLabel = sp.hostname || n.nodeId;
 
     return `
       <div class="node-card ${isSel ? 'is-selected' : ''}" data-node-id="${esc(n.nodeId)}">
         <div class="node-card__top">
           <div class="node-name">
             <span>${sp.os === 'windows' ? '🪟' : (sp.os === 'darwin' ? '🍎' : '🐧')}</span>
-            <span>${esc(sp.hostname || n.nodeId)}</span>
+            <span class="node-name__title">${alias ? `🏷️ ${esc(alias)}` : esc(hostLabel)}</span>
           </div>
-          <span class="status-pill ${n.online ? 'status-pill--online' : 'status-pill--offline'}">
-            ● ${n.online ? 'ONLINE' : 'OFFLINE'}
-          </span>
+          <div class="node-card__actions">
+            <button type="button" class="btn node-edit-btn" data-edit-node="${esc(n.nodeId)}" title="ตั้งชื่อเรียกและโน้ตโปรเจค">✏️</button>
+            <span class="status-pill ${n.online ? 'status-pill--online' : 'status-pill--offline'}">
+              ● ${n.online ? 'ONLINE' : 'OFFLINE'}
+            </span>
+          </div>
         </div>
+        ${alias ? `<div class="node-alias-sub"><span>ID: ${esc(n.nodeId)}</span><span>· Host: ${esc(hostLabel)}</span></div>` : ''}
+        ${notes ? `<div class="node-notes-box">📌 ${esc(notes)}</div>` : ''}
 
         <div class="node-meta">
           <div><strong>OS:</strong> ${esc(sp.osCaption || `${sp.os || ''}/${sp.arch || ''}`)} · <strong>Uptime:</strong> ${fmtDur(mt.uptimeSec)}</div>
@@ -933,7 +1074,8 @@ function renderNodesList() {
   const selNode = hubState.nodes.find((n) => n.nodeId === hubState.selectedNodeId);
   if (selNode) {
     const sp = selNode.specs || {};
-    $('#ws-header-title').textContent = `🎛️ กำลังควบคุมเครื่อง: ${sp.hostname || selNode.nodeId} (${selNode.online ? '🟢 ออนไลน์' : '⚪ ออฟไลน์'})`;
+    const label = selNode.alias ? `${selNode.alias} (${selNode.nodeId})` : (sp.hostname || selNode.nodeId);
+    $('#ws-header-title').textContent = `🎛️ กำลังควบคุมเครื่อง: ${label} (${selNode.online ? '🟢 ออนไลน์' : '⚪ ออฟไลน์'})`;
   }
 }
 
@@ -985,10 +1127,69 @@ async function runNodeCommand(action, payload = {}, timeoutMs = 45000) {
 
 // Event Listeners
 $('#nodes-list').addEventListener('click', (e) => {
+  const editBtn = e.target.closest('[data-edit-node]');
+  if (editBtn) {
+    e.stopPropagation();
+    openNodeMetaModal(editBtn.dataset.editNode);
+    return;
+  }
   const card = e.target.closest('[data-node-id]');
   if (!card) return;
   hubState.selectedNodeId = card.dataset.nodeId;
   renderNodesList();
+});
+
+// Node Alias & Project Notes Modal
+let editingMetaNodeId = '';
+function openNodeMetaModal(nodeId) {
+  const node = hubState.nodes.find((n) => n.nodeId === nodeId);
+  if (!node) {
+    showToast('กรุณาเลือกเครื่องลูกข่ายก่อนค่ะ');
+    return;
+  }
+  editingMetaNodeId = node.nodeId;
+  const sp = node.specs || {};
+  $('#meta-node-subtitle').textContent = `เครื่อง: ${sp.hostname || node.nodeId} (Node ID: ${node.nodeId})`;
+  const aliasInput = $('#meta-alias-input');
+  const notesInput = $('#meta-notes-input');
+  aliasInput.value = '';
+  notesInput.value = '';
+  aliasInput.value = node.alias || '';
+  notesInput.value = node.notes || '';
+  $('#node-meta-modal').classList.add('is-open');
+  setTimeout(() => aliasInput.focus(), 50);
+}
+
+function closeNodeMetaModal() {
+  editingMetaNodeId = '';
+  $('#node-meta-modal').classList.remove('is-open');
+}
+
+$('#btn-node-rename').addEventListener('click', () => openNodeMetaModal(hubState.selectedNodeId));
+$('#btn-meta-cancel').addEventListener('click', closeNodeMetaModal);
+$('#node-meta-modal').addEventListener('click', (e) => {
+  if (e.target === $('#node-meta-modal')) closeNodeMetaModal();
+});
+$('#form-node-meta').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!editingMetaNodeId) return;
+  const alias = $('#meta-alias-input').value.trim();
+  const notes = $('#meta-notes-input').value.trim();
+  const btn = $('#btn-meta-save');
+  btn.disabled = true;
+  try {
+    await apiFetch(`/api/agent-hub/nodes/${encodeURIComponent(editingMetaNodeId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ alias, notes }),
+    });
+    showToast(alias ? `🏷️ ตั้งชื่อเรียก "${alias}" เรียบร้อยแล้วค่ะ` : 'อัปเดตข้อมูลเครื่องเรียบร้อยแล้วค่ะ');
+    closeNodeMetaModal();
+    await loadStatus();
+  } catch (err) {
+    showToast('บันทึกไม่สำเร็จ: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 $$('.ws-tab').forEach((btn) => {

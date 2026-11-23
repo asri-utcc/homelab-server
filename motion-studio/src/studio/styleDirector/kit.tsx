@@ -1,6 +1,6 @@
 import React from 'react';
 import { THAI_FONT_FAMILY } from '../../components/ThaiFontLoader';
-import { computeTitleSize, splitThaiWords } from '../families';
+import { splitThaiWords } from '../families';
 import type { StudioScene } from '../types';
 
 export const STAGE_W = 1080;
@@ -107,9 +107,9 @@ export interface FitTextProps {
 }
 
 /**
- * Thai-safe auto-sizing text block using computeTitleSize + splitThaiWords.
+ * Thai-safe auto-sizing text block using proportional sizing + splitThaiWords.
  * Inserts zero-width spaces between Thai word segments so lines wrap cleanly
- * without clipping upper/lower Thai vowels.
+ * without clipping upper/lower Thai vowels, and never scales above baseSize.
  */
 export const FitText: React.FC<FitTextProps> = ({
   text,
@@ -126,7 +126,23 @@ export const FitText: React.FC<FitTextProps> = ({
   const clean = String(text || '').trim();
   if (!clean) return null;
 
-  const computed = Math.max(minSize, computeTitleSize(clean, baseSize));
+  const len = clean.length;
+  let size = baseSize;
+  if (baseSize >= 70) {
+    if (len > 14) size = baseSize * 0.56;
+    else if (len > 9) size = baseSize * 0.72;
+    else if (len > 6) size = baseSize * 0.86;
+  } else if (baseSize >= 46) {
+    if (len > 55) size = baseSize - 14;
+    else if (len > 40) size = baseSize - 9;
+    else if (len > 28) size = baseSize - 4;
+  } else {
+    if (len > 95) size = baseSize - 6;
+    else if (len > 65) size = baseSize - 4;
+    else if (len > 44) size = baseSize - 2;
+    else if (len > 30) size = baseSize - 1;
+  }
+  const computed = Math.max(minSize, Math.min(baseSize, Math.round(size)));
   const words = splitThaiWords(clean);
   const wrapped = words.length > 1 ? words.join('\u200B') : clean;
 

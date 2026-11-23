@@ -3852,30 +3852,45 @@ const KpiTowersShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame,
       <div
         style={{
           position: 'absolute',
-          top: 326,
-          left: 62,
-          padding: '12px 20px',
+          top: 298,
+          left: 52,
+          maxWidth: 330,
+          padding: '12px 18px',
           borderRadius: 18,
           background: 'rgba(15, 23, 42, 0.92)',
           border: `2px solid ${pal.accent}`,
           boxShadow: `0 12px 30px rgba(5, 8, 17, 0.55)`,
           display: 'flex',
           flexDirection: 'column',
-          gap: 2,
+          gap: 4,
           opacity: appear(localFrame, 6, 12),
         }}
       >
-        <span style={{ fontFamily: FONT_MONO, fontSize: 13, fontWeight: 800, color: pal.accent, letterSpacing: 1 }}>
-          {metric.unit.slice(0, 16)}
+        <FitText
+          text={metric.unit}
+          baseSize={14}
+          minSize={12}
+          maxLines={2}
+          color={pal.accent}
+          fontWeight={800}
+          align="left"
+          lineHeight={1.28}
+        />
+        <span style={{ fontFamily: FONT_MONO, fontSize: 38, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.08 }}>
+          {metric.big.slice(0, 10)}
         </span>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 40, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.1 }}>
-            {metric.big.slice(0, 10)}
-          </span>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 16, fontWeight: 800, color: pal.accent3 }}>
-            {metric.delta.slice(0, 10)}
-          </span>
-        </div>
+        {metric.delta ? (
+          <FitText
+            text={metric.delta}
+            baseSize={14}
+            minSize={12}
+            maxLines={2}
+            color={pal.accent3}
+            fontWeight={700}
+            align="left"
+            lineHeight={1.28}
+          />
+        ) : null}
       </div>
 
       {/* Bottom Summary & KPI Takeaway Cards (y: 908..1395) */}

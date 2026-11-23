@@ -420,6 +420,25 @@ function getActiveJob(sessionId = null) {
 let sessionsCache = null;
 let sessionsCacheMtime = 0;
 
+function mergeSessionsInPlace(targetList, diskList) {
+    if (!Array.isArray(targetList) || !Array.isArray(diskList)) return diskList;
+    const byId = new Map(targetList.filter(Boolean).map(s => [s.id, s]));
+    const next = [];
+    for (const item of diskList) {
+        if (!item || typeof item !== 'object') continue;
+        const existing = byId.get(item.id);
+        if (existing) {
+            Object.assign(existing, item);
+            next.push(existing);
+        } else {
+            next.push(item);
+        }
+    }
+    targetList.length = 0;
+    targetList.push(...next);
+    return targetList;
+}
+
 function ensureSessionsStoreSync() {
     try {
         if (fs.existsSync(SESSIONS_INDEX_FILE)) {
@@ -429,7 +448,7 @@ function ensureSessionsStoreSync() {
             }
             const parsed = JSON.parse(fs.readFileSync(SESSIONS_INDEX_FILE, 'utf8'));
             if (Array.isArray(parsed)) {
-                sessionsCache = parsed;
+                sessionsCache = sessionsCache ? mergeSessionsInPlace(sessionsCache, parsed) : parsed;
                 sessionsCacheMtime = stat.mtimeMs;
                 return sessionsCache;
             }
@@ -440,9 +459,11 @@ function ensureSessionsStoreSync() {
         fs.mkdirSync(GEMINI_DIR, { recursive: true });
         fs.mkdirSync(SESSIONS_DIR, { recursive: true });
         if (fs.existsSync(SESSIONS_INDEX_FILE)) {
+            const stat = fs.statSync(SESSIONS_INDEX_FILE);
             const parsed = JSON.parse(fs.readFileSync(SESSIONS_INDEX_FILE, 'utf8'));
             if (Array.isArray(parsed)) {
                 sessionsCache = parsed;
+                sessionsCacheMtime = stat.mtimeMs;
                 return sessionsCache;
             }
         }
@@ -472,6 +493,7 @@ function ensureSessionsStoreSync() {
         sessionsCache = [defSess];
         fs.writeFileSync(path.join(SESSIONS_DIR, 'sess_default.json'), JSON.stringify(legacyMsgs, null, 2), 'utf8');
         fs.writeFileSync(SESSIONS_INDEX_FILE, JSON.stringify(sessionsCache, null, 2), 'utf8');
+        try { sessionsCacheMtime = fs.statSync(SESSIONS_INDEX_FILE).mtimeMs; } catch (_) { sessionsCacheMtime = Date.now(); }
         return sessionsCache;
     } catch (_) {
         sessionsCache = [];
@@ -483,9 +505,63 @@ function saveSessionsIndexSync() {
     try {
         fs.mkdirSync(GEMINI_DIR, { recursive: true });
         fs.writeFileSync(SESSIONS_INDEX_FILE, JSON.stringify(sessionsCache || [], null, 2), 'utf8');
+        try {
+            sessionsCacheMtime = fs.statSync(SESSIONS_INDEX_FILE).mtimeMs;
+        } catch (_) {
+            sessionsCacheMtime = Date.now();
+        }
     } catch (e) {
         console.error('[GeminiManager] saveSessionsIndexSync error:', e.message);
     }
+}
+
+function getPriorSessionMessages(sessionId, currentPrompt = '') {
+    try {
+        const hist = loadSessionMessagesSync(sessionId);
+        if (!Array.isArray(hist) || hist.length === 0) return [];
+        const cleanCur = String(currentPrompt || '').trim();
+        const last = hist[hist.length - 1];
+        const rawPrior = (last && last.role === 'user' && String(last.content || '').trim() === cleanCur)
+            ? hist.slice(0, -1)
+            : hist.slice();
+        return rawPrior.filter((m) => {
+            if (!m || !m.content) return false;
+            const txt = String(m.content).trim();
+            if (!txt) return false;
+            if (m.role === 'assistant' && (/^พร้อมเริ่มบทสนทนาใหม่แล้วครับ/.test(txt) || /^ประวัติการคุยถูกล้างเรียบร้อย/.test(txt))) {
+                return false;
+            }
+            return true;
+        });
+    } catch (_) {
+        return [];
+    }
+}
+
+function formatSessionHistoryBridge(priorMessages, { maxMessages = 14, maxCharsPerMsg = 3500, maxTotalChars = 20000 } = {}) {
+    if (!Array.isArray(priorMessages) || priorMessages.length === 0) return '';
+    const recent = priorMessages.slice(-maxMessages);
+    const lines = [];
+    let totalChars = 0;
+    for (let i = recent.length - 1; i >= 0; i--) {
+        const m = recent[i];
+        const role = m.role === 'user' ? 'User' : 'Assistant';
+        let txt = String(m.content || '').trim();
+        // Strip auto-router banner header from assistant messages so context stays clean and dense
+        if (m.role === 'assistant') {
+            txt = txt.replace(/^>\s*🧠\s*Auto[^\n]*\n+/i, '').trim();
+        }
+        if (!txt) continue;
+        if (txt.length > maxCharsPerMsg) {
+            txt = txt.slice(0, maxCharsPerMsg) + '\n...[ตัดทอนบางส่วน]...';
+        }
+        const entry = `${role}: ${txt}`;
+        if (totalChars + entry.length > maxTotalChars && lines.length >= 2) break;
+        lines.unshift(entry);
+        totalChars += entry.length;
+    }
+    if (lines.length === 0) return '';
+    return `[บริบทประวัติการสนทนาในห้องแชทนี้ (อ่านให้ครบถ้วนก่อนตอบเพื่อความต่อเนื่องของบทสนทนา):\n${lines.join('\n---\n')}\n]`;
 }
 
 function getSessionMetaSync(sessionId) {
@@ -1175,7 +1251,10 @@ function executeAuto(params, onChunk, onDone) {
                 sessMeta.mode = params.mode || sessMeta.mode;
                 if (params.resetSession) {
                     sessMeta.agyConversationId = null;
+                    sessMeta.agyConvs = {};
+                    sessMeta.agySyncedCount = {};
                     sessMeta.claudeSessionId = null;
+                    sessMeta.claudeSyncedCount = 0;
                     priorHistory = [];
                 }
                 sessMeta.needsAgyBridge = true;
@@ -1304,7 +1383,10 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         sessMeta.mode = mode || sessMeta.mode;
         if (resetSession) {
             sessMeta.agyConversationId = null;
+            sessMeta.agyConvs = {};
+            sessMeta.agySyncedCount = {};
             sessMeta.claudeSessionId = null;
+            sessMeta.claudeSyncedCount = 0;
         }
         saveSessionsIndexSync();
     }
@@ -1354,6 +1436,10 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         shouldResetSession = false;
         if (sessMeta) {
             sessMeta.agyConversationId = null;
+            sessMeta.agyConvs = {};
+            sessMeta.agySyncedCount = {};
+            sessMeta.claudeSessionId = null;
+            sessMeta.claudeSyncedCount = 0;
             saveSessionsIndexSync();
         }
     }
@@ -1380,23 +1466,22 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         let claudeSid = hadClaudeSession ? sessMeta.claudeSessionId : crypto.randomUUID();
         let finalClaudePrompt = cliPrompt;
 
-        // Bridge prior messages if first time using Claude Code in this room or after another engine
-        if (!hadClaudeSession || (sessMeta && sessMeta.needsClaudeBridge)) {
-            try {
-                const hist = loadSessionMessagesSync(sid);
-                const prior = hist.slice(0, -1).slice(-6);
-                if (prior.length > 0) {
-                    const summaryLines = prior.map((m) => {
-                        const role = m.role === 'user' ? 'User' : 'Assistant';
-                        return `${role}: ${String(m.content || '').slice(0, 1200)}`;
-                    });
-                    finalClaudePrompt = `[บริบทล่าสุดในห้องแชทเดียวกัน (อ่านเพื่อความต่อเนื่อง):\n${summaryLines.join('\n---\n')}\n]\n\n${cliPrompt}`;
-                }
-            } catch (_) {}
+        // Bridge prior messages if first time using Claude Code in this room, after another engine, or unsynced turns exist
+        const priorForClaude = getPriorSessionMessages(sid, prompt);
+        const claudeSyncedCount = (sessMeta && typeof sessMeta.claudeSyncedCount === 'number')
+            ? sessMeta.claudeSyncedCount
+            : (hadClaudeSession ? priorForClaude.length : 0);
+        const needClaudeBridge = !hadClaudeSession || Boolean(sessMeta && sessMeta.needsClaudeBridge) || (claudeSyncedCount < priorForClaude.length);
+        if (needClaudeBridge && priorForClaude.length > 0) {
+            const bridgeBlock = formatSessionHistoryBridge(priorForClaude);
+            if (bridgeBlock) {
+                finalClaudePrompt = `${bridgeBlock}\n\n${cliPrompt}`;
+            }
         }
 
         if (sessMeta) {
             sessMeta.claudeSessionId = claudeSid;
+            sessMeta.claudeSyncedCount = priorForClaude.length + 2;
             sessMeta.needsClaudeBridge = false;
             sessMeta.needsAgyBridge = true;
             saveSessionsIndexSync();
@@ -1745,38 +1830,56 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         const agyAcc = aiRouter.getAgyAccount(agyAccount || (sessMeta && sessMeta.agyAccount) || 'g1');
         const agyBrain = aiRouter.agyBrainDir(agyAcc);
         job.agyAccount = agyAcc.id;
-        let convId = existingConvId;
-        const switchedAccount = Boolean(sessMeta && (sessMeta.agyAccount || 'g1') !== agyAcc.id);
-        if (sessMeta && switchedAccount) {
-            convId = null;
-            sessMeta.agyConversationId = null;
-        }
+
         if (sessMeta) {
-            sessMeta.agyAccount = agyAcc.id;
-            saveSessionsIndexSync();
+            if (!sessMeta.agyConvs || typeof sessMeta.agyConvs !== 'object') sessMeta.agyConvs = {};
+            if (!sessMeta.agySyncedCount || typeof sessMeta.agySyncedCount !== 'object') sessMeta.agySyncedCount = {};
+            if (sessMeta.agyConversationId && sessMeta.agyAccount && !sessMeta.agyConvs[sessMeta.agyAccount]) {
+                sessMeta.agyConvs[sessMeta.agyAccount] = sessMeta.agyConversationId;
+            }
         }
 
-        // Bridge context if user switched back from DeepSeek/Claude or to another Google account
+        const prevAccount = (sessMeta && sessMeta.agyAccount) || null;
+        const switchedAccount = Boolean(prevAccount && prevAccount !== agyAcc.id);
+        let convId = (!forceNew && sessMeta)
+            ? ((sessMeta.agyConvs && sessMeta.agyConvs[agyAcc.id]) || (!switchedAccount ? existingConvId : null))
+            : null;
+        // Verify that the conversation directory actually exists in this Google account's brain dir
+        if (convId && !fs.existsSync(path.join(agyBrain, convId))) {
+            convId = null;
+            if (sessMeta && sessMeta.agyConvs) {
+                delete sessMeta.agyConvs[agyAcc.id];
+            }
+        }
+
+        const priorForAgy = getPriorSessionMessages(sid, prompt);
+        const agySyncedForAcc = (sessMeta && sessMeta.agySyncedCount && typeof sessMeta.agySyncedCount[agyAcc.id] === 'number')
+            ? sessMeta.agySyncedCount[agyAcc.id]
+            : (convId && !switchedAccount && !(sessMeta && sessMeta.needsAgyBridge) ? priorForAgy.length : 0);
+        const needAgyBridge = !convId
+            || Boolean(sessMeta && sessMeta.needsAgyBridge)
+            || switchedAccount
+            || (agySyncedForAcc < priorForAgy.length);
+
         let finalAgyPrompt = cliPrompt;
-        if (sessMeta && ((convId && sessMeta.needsAgyBridge) || switchedAccount)) {
-            try {
-                const hist = loadSessionMessagesSync(sid);
-                const prior = hist.slice(0, -1).slice(-6);
-                if (prior.length > 0) {
-                    const summaryLines = prior.map((m) => {
-                        const role = m.role === 'user' ? 'User' : 'Assistant';
-                        const txt = String(m.content || '').slice(0, 1200);
-                        return `${role}: ${txt}`;
-                    });
-                    finalAgyPrompt = `[บริบทล่าสุดในห้องแชทเดียวกัน (อ่านเพื่อความต่อเนื่อง):\n${summaryLines.join('\n---\n')}\n]\n\n${cliPrompt}`;
-                }
-            } catch (_) {}
+        if (needAgyBridge && priorForAgy.length > 0) {
+            const bridgeBlock = formatSessionHistoryBridge(priorForAgy);
+            if (bridgeBlock) {
+                finalAgyPrompt = `${bridgeBlock}\n\n${cliPrompt}`;
+            }
+        }
+
+        if (sessMeta) {
+            sessMeta.agyAccount = agyAcc.id;
+            sessMeta.agyConversationId = convId || null;
+            if (convId) sessMeta.agyConvs[agyAcc.id] = convId;
+            sessMeta.agySyncedCount[agyAcc.id] = priorForAgy.length + 2;
             sessMeta.needsAgyBridge = false;
             sessMeta.needsClaudeBridge = true;
             saveSessionsIndexSync();
         }
 
-        // Snapshot existing brain UUIDs if this session doesn't have an agyConversationId yet
+        // Snapshot existing brain UUIDs if this account doesn't have an agyConversationId yet
         let beforeBrains = null;
         if (!convId) {
             try {
@@ -1814,26 +1917,57 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         activeRuns.set(sid, { child, job });
 
         const detectConvId = () => {
-            if (!beforeBrains || (sessMeta && sessMeta.agyConversationId)) return;
+            const liveMeta = getSessionMetaSync(sid) || sessMeta;
+            const existingForAcc = liveMeta && liveMeta.agyConvs && liveMeta.agyConvs[agyAcc.id];
+            if (!beforeBrains || existingForAcc) return;
             try {
                 if (!fs.existsSync(agyBrain)) return;
-                const claimed = new Set(ensureSessionsStoreSync().map(s => s.agyConversationId).filter(Boolean));
+                const allSessions = ensureSessionsStoreSync();
+                const claimed = new Set();
+                for (const s of allSessions) {
+                    if (!s) continue;
+                    if (s.agyConversationId) claimed.add(s.agyConversationId);
+                    if (s.agyConvs && typeof s.agyConvs === 'object') {
+                        for (const cid of Object.values(s.agyConvs)) {
+                            if (cid) claimed.add(cid);
+                        }
+                    }
+                }
                 const nowDirs = fs.readdirSync(agyBrain).filter(d => !beforeBrains.has(d) && !claimed.has(d));
                 if (nowDirs.length > 0) {
-                    nowDirs.sort((a, b) => {
-                        try { return fs.statSync(path.join(agyBrain, b)).mtimeMs - fs.statSync(path.join(agyBrain, a)).mtimeMs; } catch (_) { return 0; }
+                    const validDirs = nowDirs.filter((d) => {
+                        try {
+                            const tPath = path.join(agyBrain, d, '.system_generated/logs/transcript.jsonl');
+                            if (fs.existsSync(tPath)) {
+                                const head = fs.readFileSync(tPath, 'utf8').slice(0, 1500);
+                                if (head.includes('สรุปเนื้อหาข้อความต่อไปนี้ให้เป็นชื่อหัวข้อแชท')) return false;
+                            }
+                        } catch (_) {}
+                        return true;
                     });
-                    if (sessMeta) {
-                        sessMeta.agyConversationId = nowDirs[0];
-                        saveSessionsIndexSync();
+                    if (validDirs.length > 0) {
+                        validDirs.sort((a, b) => {
+                            try { return fs.statSync(path.join(agyBrain, b)).mtimeMs - fs.statSync(path.join(agyBrain, a)).mtimeMs; } catch (_) { return 0; }
+                        });
+                        const chosen = validDirs[0];
+                        if (liveMeta) {
+                            liveMeta.agyConversationId = chosen;
+                            if (!liveMeta.agyConvs || typeof liveMeta.agyConvs !== 'object') liveMeta.agyConvs = {};
+                            liveMeta.agyConvs[agyAcc.id] = chosen;
+                            saveSessionsIndexSync();
+                        }
                     }
                 }
             } catch (_) {}
         };
-        const brainPoll = beforeBrains ? setInterval(detectConvId, 600) : null;
+        const brainPoll = beforeBrains ? setInterval(detectConvId, 500) : null;
         let lastAgyThoughtSig = '';
         const thoughtPoll = setInterval(() => {
-            const state = getLiveThinkingState(job.startedAt || 0, sessMeta && sessMeta.agyConversationId, agyBrain);
+            const liveMeta = getSessionMetaSync(sid) || sessMeta;
+            const activeConvId = (liveMeta && liveMeta.agyConvs && liveMeta.agyConvs[agyAcc.id])
+                || (liveMeta && liveMeta.agyConversationId)
+                || convId;
+            const state = getLiveThinkingState(job.startedAt || 0, activeConvId, agyBrain);
             if (!state) return;
             const tlLen = Array.isArray(state.timeline) ? state.timeline.length : 0;
             const sig = `${state.currentAction}|${state.stepsCount}|${tlLen}|${state.thinking}`;
@@ -2091,6 +2225,12 @@ async function clearHistory(sessionId = null) {
         const sess = getSessionMetaSync(sid);
         if (sess) {
             sess.agyConversationId = null;
+            sess.agyConvs = {};
+            sess.agySyncedCount = {};
+            sess.claudeSessionId = null;
+            sess.claudeSyncedCount = 0;
+            sess.needsAgyBridge = false;
+            sess.needsClaudeBridge = false;
             sess.title = 'แชทใหม่';
             sess.updatedAt = Date.now();
             saveSessionsIndexSync();

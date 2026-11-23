@@ -14,6 +14,7 @@ module.exports = {
             time: true,
             env: {
                 NODE_ENV: 'production',
+                PATH: '/home/dev/.gemini/antigravity-cli/bin:/home/dev/.gemini/bin:/home/dev/.local/bin:/home/dev/.local/pm2/node_modules/.bin:/usr/local/bin:/usr/bin:/bin:/usr/games',
                 DASHBOARD_PORT: '8090',
                 // ผูกเฉพาะ gateway ของ docker bridge (172.17.0.1) เท่านั้น
                 // จึงเข้าถึงได้จาก Caddy เท่านั้น — LAN/tailnet ที่พอร์ตตรงจะไม่ผ่าน

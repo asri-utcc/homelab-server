@@ -260,12 +260,24 @@ const EXEC_TOOLS = [
     }
 ];
 
+const EXTRA_BIN_PATH = '/home/dev/.gemini/antigravity-cli/bin:/home/dev/.gemini/bin:/home/dev/.local/bin:/home/dev/.local/pm2/node_modules/.bin';
+
+function buildToolEnv() {
+    const cur = process.env.PATH || '/usr/local/bin:/usr/bin:/bin';
+    return {
+        ...process.env,
+        PATH: `${EXTRA_BIN_PATH}:${cur}`,
+        TERM: 'xterm-256color',
+        FORCE_COLOR: '0'
+    };
+}
+
 function runShellTool(command, cwd, timeoutSec, abortSignal, activeChildren) {
     return new Promise((resolve) => {
         const ms = Math.min(Math.max((Number(timeoutSec) || 60) * 1000, 1000), 300000);
         const child = spawn('bash', ['-lc', command], {
             cwd,
-            env: { ...process.env, TERM: 'xterm-256color', FORCE_COLOR: '0' },
+            env: buildToolEnv(),
             stdio: ['ignore', 'pipe', 'pipe']
         });
         activeChildren.add(child);
@@ -323,7 +335,7 @@ function runDeferredCommands(commands, cwd) {
     if (!commands.length) return;
     const script = `sleep 4; ${commands.join('; ')}`;
     try {
-        const child = spawn('bash', ['-c', script], { cwd, detached: true, stdio: 'ignore' });
+        const child = spawn('bash', ['-c', script], { cwd, env: buildToolEnv(), detached: true, stdio: 'ignore' });
         child.unref();
     } catch (_) {}
 }

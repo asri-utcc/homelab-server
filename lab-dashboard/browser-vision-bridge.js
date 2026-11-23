@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { URL } = require('url');
+const http = require('http');
 
 const LAB_BROWSER_DIR = '/home/dev/.local/share/lab-browser';
 const LAB_BROWSER_BIN = '/home/dev/.local/bin/lab-browser';
@@ -396,7 +397,16 @@ function attachUpgrade(server, { isAuthorized, log = console.log } = {}) {
         }
 
         if (url.pathname !== '/ws/browser-vision') {
-            return; // Not our WebSocket path
+            // Node routes every request carrying "Upgrade" to this listener and skips the normal
+            // request handler — Caddy forward_auth copies the client's Upgrade header onto its
+            // GET /auth sub-request, so without this fall-through /auth (and the WS) hangs forever.
+            if (server.listenerCount('upgrade') > 1) return;
+            const res = new http.ServerResponse(req);
+            res.shouldKeepAlive = false;
+            res.assignSocket(socket);
+            res.on('finish', () => { try { socket.destroy(); } catch (_) {} });
+            server.emit('request', req, res);
+            return;
         }
 
         const upgradeHdr = String(req.headers.upgrade || '').toLowerCase();

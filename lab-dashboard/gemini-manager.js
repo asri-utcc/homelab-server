@@ -2229,8 +2229,17 @@ function toPctObj(remainingFraction, resetTime = null) {
     };
 }
 
-const GEMINI_CREDIT_CFG = path.join(os.homedir(), '.gemini', 'gemini-credit.json');
-const GEMINI_TTS_LEDGER = path.join(os.homedir(), '.gemini', 'gemini-tts-ledger.jsonl');
+const CREDIT_GEMINI_DIR = fs.existsSync(path.join(os.homedir(), '.gemini', 'gemini-credit.json'))
+    ? path.join(os.homedir(), '.gemini')
+    : '/home/dev/.gemini';
+const GEMINI_CREDIT_CFG = path.join(CREDIT_GEMINI_DIR, 'gemini-credit.json');
+const GEMINI_TTS_LEDGER = path.join(CREDIT_GEMINI_DIR, 'gemini-tts-ledger.jsonl');
+const GEMINI_CREDIT_ALERT_SCRIPT = '/home/dev/.local/share/motion-studio/scripts/credit_ledger.py';
+
+function maybeCheckLowCreditAlertAsync(credit) {
+    if (!credit || !credit.ok || !credit.isLow) return;
+    execFile('/usr/bin/python3', [GEMINI_CREDIT_ALERT_SCRIPT, '--check-alert'], { timeout: 15000 }, () => {});
+}
 
 // Estimated Gemini API prepay balance = baseline (read from AI Studio) - cost of TTS calls logged since then
 async function getGeminiCredit() {
@@ -2263,12 +2272,13 @@ async function getGeminiCredit() {
     } catch { /* no ledger yet */ }
     const baseline = Number(cfg.baselineBalanceThb) || 0;
     const spentThb = usd * fx;
-    const remainingThb = Math.max(0, baseline - spentThb);
+    const remainingThb = Number(Math.max(0, baseline - spentThb).toFixed(2));
     const topUp = Number(cfg.topUpThb) || baseline;
-    return {
+    const lowThb = cfg.lowThb !== undefined && cfg.lowThb !== null ? Number(cfg.lowThb) : 10;
+    const result = {
         ok: true,
         currency: cfg.currency || 'THB',
-        remainingThb: Number(remainingThb.toFixed(2)),
+        remainingThb,
         baselineThb: baseline,
         baselineAt: cfg.baselineAt,
         topUpThb: topUp,
@@ -2276,9 +2286,13 @@ async function getGeminiCredit() {
         spentUsd: Number(usd.toFixed(4)),
         usdToThb: fx,
         calls, inputTokens: inTok, outputTokens: outTok, unpriced, lastAt,
-        lowThb: Number(cfg.lowThb) || 30,
+        lowThb,
+        isLow: remainingThb < lowThb,
+        isEmpty: remainingThb <= 0.5,
         estimated: true
     };
+    maybeCheckLowCreditAlertAsync(result);
+    return result;
 }
 
 async function getProviderQuotas({ force = false } = {}) {
@@ -2980,6 +2994,7 @@ module.exports = {
     UPLOADS_DIR,
     saveUploadedImage,
     getQuotaSummary,
+    getGeminiCredit,
     setClaudeSessionKey,
     listSessions,
     createSession,

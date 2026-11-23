@@ -1793,7 +1793,19 @@ const server = http.createServer(async (req, res) => {
         }
         if (req.method === 'GET' && p === '/api/video-studio/status') {
             try {
-                return sendJson(res, 200, await videoStudioManager.getStatus());
+                const [status, geminiCredit] = await Promise.all([
+                    videoStudioManager.getStatus(),
+                    geminiManager.getGeminiCredit().catch(() => null)
+                ]);
+                return sendJson(res, 200, { ...status, geminiCredit });
+            } catch (err) {
+                return sendJson(res, err.statusCode || 500, { ok: false, error: err.message });
+            }
+        }
+        if (req.method === 'GET' && p === '/api/video-studio/credit') {
+            try {
+                const credit = await geminiManager.getGeminiCredit();
+                return sendJson(res, 200, credit || { ok: false, error: 'ยังไม่ได้ตั้งค่า gemini-credit.json' });
             } catch (err) {
                 return sendJson(res, err.statusCode || 500, { ok: false, error: err.message });
             }

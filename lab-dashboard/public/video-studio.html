@@ -109,6 +109,59 @@
     .status-dot.err { background: var(--coral); }
     @keyframes pulseDot { 50% { opacity: 0.35; transform: scale(0.82); } }
 
+    /* Credit Balance Pill & Low-Balance Banner */
+    .credit-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 11px; border-radius: 999px;
+      background: var(--well); border: 1px solid var(--border);
+      font-size: 12px; color: var(--ink-2); text-decoration: none;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .credit-pill:hover { background: var(--well-hover); border-color: var(--border-strong); }
+    .credit-pill.is-ok { border-color: rgba(52, 211, 153, 0.38); color: #a7f3d0; }
+    .credit-pill.is-warn { border-color: rgba(246, 196, 83, 0.5); color: #fde68a; }
+    .credit-pill.is-low {
+      border-color: rgba(251, 113, 133, 0.65);
+      background: rgba(251, 113, 133, 0.12);
+      color: #fecdd3;
+      animation: pulseCredit 1.8s ease-in-out infinite;
+    }
+    @keyframes pulseCredit { 50% { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.18); } }
+
+    .credit-banner {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+      padding: 11px 15px; border-radius: var(--radius);
+      background: linear-gradient(90deg, rgba(251, 113, 133, 0.16), rgba(245, 158, 11, 0.12));
+      border: 1px solid rgba(251, 113, 133, 0.55);
+      color: #ffe4e6;
+      font-size: 13px;
+    }
+    .credit-banner-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .voice-cost-hint {
+      font-size: 11.5px; color: var(--muted); line-height: 1.4;
+      padding-top: 2px;
+    }
+    .voice-cost-hint.is-low { color: #fecdd3; }
+    .voice-cost-hint.is-free { color: #a7f3d0; }
+
+    .result-cost-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; flex-wrap: wrap;
+      padding: 10px 13px; margin-bottom: 14px;
+      border-radius: 10px;
+      background: var(--well);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      font-size: 12.5px;
+    }
+    .result-cost-bar.is-low {
+      border-color: rgba(251, 113, 133, 0.55);
+      background: rgba(251, 113, 133, 0.08);
+    }
+    .result-cost-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .result-cost-val { font-size: 15px; font-weight: 800; color: var(--green); }
+    .result-cost-bar.is-low .result-cost-val { color: var(--star); }
+
     /* Buttons */
     .btn-link, .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -768,7 +821,7 @@
     }
     .config-summary {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 6px;
       padding-top: 10px;
       border-top: 1px solid var(--border);
@@ -1177,6 +1230,10 @@
       </div>
     </div>
     <div class="top-right">
+      <a href="/quota" class="credit-pill" id="credit-pill" title="ยอดเครดิต Gemini API คงเหลือ (ใช้เฉพาะเสียงพากย์วิดีโอ) — คลิกเพื่อดูรายละเอียด">
+        <span>💳</span>
+        <span class="mono" id="credit-pill-text">กำลังโหลดเครดิต...</span>
+      </a>
       <div class="status-pill" id="engine-pill" title="สถานะการทำงานของ Video Studio Engine">
         <span class="status-dot" id="engine-dot"></span>
         <span class="mono" id="engine-text">กำลังเชื่อมต่อ Studio...</span>
@@ -1193,6 +1250,17 @@
         <button type="button" class="nav-tab" data-tab="learn">🎨 สอนสไตล์ใหม่</button>
       </nav>
       <span class="muted mono" id="studio-quick-meta">9:16 Vertical · 1080×1920</span>
+    </div>
+
+    <div class="credit-banner hidden" id="credit-alert-banner" role="alert">
+      <div>
+        <strong>⚠️ เครดิต Gemini API ใกล้หมด!</strong>
+        <span id="credit-alert-msg">คงเหลือต่ำกว่า ฿10.00</span>
+      </div>
+      <div class="credit-banner-actions">
+        <button type="button" class="btn btn-sm" id="btn-switch-free-tts">🎙️ ใช้ Edge TTS (ฟรี ฿0)</button>
+        <a href="/quota" class="btn btn-sm btn-cyan">ดูยอด / วิธีเติมเงิน →</a>
+      </div>
     </div>
 
     <!-- TAB 1: STUDIO -->
@@ -1282,6 +1350,7 @@
                   <option value="edge:th-TH-PremwadeeNeural">Edge TTS · เปรมวดี (หญิง)</option>
                   <option value="edge:th-TH-NiwatNeural">Edge TTS · นิวัฒน์ (ชาย)</option>
                 </select>
+                <div class="voice-cost-hint" id="voice-cost-hint">กำลังตรวจสอบเครดิต...</div>
               </div>
               <div class="field-box">
                 <label class="field-label" for="bgm-select">เพลงประกอบ (BGM)</label>
@@ -1358,6 +1427,10 @@
                 <span>เพลง (BGM)</span>
                 <b id="preview-meta-bgm">Warm Tech</b>
               </div>
+              <div class="cfg-stat">
+                <span>เครดิตคงเหลือ</span>
+                <b class="mono" id="preview-meta-credit">กำลังโหลด...</b>
+              </div>
             </div>
           </div>
 
@@ -1403,6 +1476,14 @@
             <a id="btn-download" class="btn btn-primary btn-sm" href="#" download>⬇ ดาวน์โหลด</a>
             <button type="button" class="btn btn-sm" id="btn-copy-link">🔗 คัดลอกลิงก์</button>
           </div>
+        </div>
+        <div class="result-cost-bar hidden" id="result-cost-bar">
+          <div class="result-cost-main">
+            <span>💸 ค่าใช้จ่ายคลิปนี้:</span>
+            <span class="result-cost-val mono" id="result-cost-thb">฿0.00</span>
+            <span class="muted mono" id="result-cost-detail"></span>
+          </div>
+          <div class="mono" id="result-credit-rem" style="font-size:12px;"></div>
         </div>
         <div class="result-grid">
           <div class="video-box">
@@ -1551,6 +1632,8 @@
         activeJobId: null,
         activeJob: null,
         activeScript: null,
+        geminiCredit: null,
+        lowCreditToastShown: false,
         pollTimer: null,
         learnTimer: null
       };
@@ -1614,18 +1697,92 @@
       });
 
       function syncConfigSummary() {
-        const dur = $('duration-range').value || '30';
+        const dur = Number($('duration-range').value || 30);
         $('duration-val').textContent = `${dur} วินาที`;
         if ($('preview-meta-duration')) $('preview-meta-duration').textContent = `${dur}s`;
 
-        const voiceOpt = $('voice-select').selectedOptions[0]?.textContent || $('voice-select').value;
+        const voiceVal = $('voice-select').value || '';
+        const voiceOpt = $('voice-select').selectedOptions[0]?.textContent || voiceVal;
         const shortVoice = voiceOpt.split('(')[0].replace(/^Gemini · |^Edge TTS · /, '').trim();
         if ($('preview-meta-voice')) $('preview-meta-voice').textContent = shortVoice;
 
         const bgmOpt = $('bgm-select').selectedOptions[0]?.textContent || $('bgm-select').value;
         const shortBgm = bgmOpt.split('(')[0].trim();
         if ($('preview-meta-bgm')) $('preview-meta-bgm').textContent = shortBgm;
+
+        const hint = $('voice-cost-hint');
+        if (hint) {
+          if (voiceVal.startsWith('edge:') || voiceVal.startsWith('vachana:')) {
+            hint.className = 'voice-cost-hint is-free';
+            hint.textContent = '✓ ฟรี ฿0.00 (ไม่หักเครดิต Gemini API)';
+          } else {
+            const gc = state.geminiCredit;
+            const low = gc && gc.ok && gc.remainingThb < (gc.lowThb ?? 10);
+            const estMin = Math.max(0.10, (dur / 30) * 0.18).toFixed(2);
+            const estMax = Math.max(0.25, (dur / 30) * 0.45).toFixed(2);
+            const remTxt = gc && gc.ok ? ` · คงเหลือ ~฿${gc.remainingThb.toFixed(2)}` : '';
+            hint.className = 'voice-cost-hint' + (low ? ' is-low' : '');
+            hint.textContent = `💳 ใช้เครดิต Gemini TTS · ประมาณ ~฿${estMin}–฿${estMax}/คลิป${remTxt}${low ? ' (⚠️ ต่ำกว่า ฿10)' : ''}`;
+          }
+        }
       }
+
+      function renderCreditUI(gc) {
+        if (!gc || !gc.ok) return;
+        state.geminiCredit = gc;
+        const rem = Number(gc.remainingThb || 0);
+        const lowThb = gc.lowThb !== undefined && gc.lowThb !== null ? Number(gc.lowThb) : 10;
+        const isLow = rem < lowThb;
+        const isWarn = !isLow && rem < 30;
+
+        const pill = $('credit-pill');
+        const pillText = $('credit-pill-text');
+        if (pill && pillText) {
+          pill.className = 'credit-pill ' + (isLow ? 'is-low' : (isWarn ? 'is-warn' : 'is-ok'));
+          pillText.textContent = isLow
+            ? `เครดิต ฿${rem.toFixed(2)} ⚠️ ใกล้หมด`
+            : `เครดิต ~฿${rem.toFixed(2)}`;
+          pill.title = `ยอดตั้งต้น ฿${Number(gc.baselineThb || 0).toFixed(2)} · ใช้ไป ฿${Number(gc.spentThb || 0).toFixed(2)} (${gc.calls || 0} ครั้ง) · เตือนเมื่อต่ำกว่า ฿${lowThb}`;
+        }
+
+        const metaCredit = $('preview-meta-credit');
+        if (metaCredit) {
+          metaCredit.textContent = `~฿${rem.toFixed(2)}`;
+          metaCredit.style.color = isLow ? 'var(--coral)' : (isWarn ? 'var(--star)' : 'var(--green)');
+        }
+
+        const banner = $('credit-alert-banner');
+        const bannerMsg = $('credit-alert-msg');
+        if (banner && bannerMsg) {
+          if (isLow) {
+            banner.classList.remove('hidden');
+            bannerMsg.textContent = `คงเหลือประมาณ ฿${rem.toFixed(2)} (ต่ำกว่าเกณฑ์ ฿${lowThb.toFixed(0)}) — ระบบส่งแจ้งเตือน Telegram แล้ว หรือสลับเป็นเสียงฟรีชั่วคราวได้ค่ะ`;
+            if (!state.lowCreditToastShown) {
+              state.lowCreditToastShown = true;
+              toast(`⚠️ เครดิต Gemini API เหลือ ~฿${rem.toFixed(2)} (ต่ำกว่า ฿${lowThb.toFixed(0)})`, 'error');
+            }
+          } else {
+            banner.classList.add('hidden');
+          }
+        }
+        syncConfigSummary();
+      }
+
+      async function loadCreditStatus() {
+        try {
+          const gc = await apiFetch('/api/video-studio/credit');
+          if (gc && gc.ok) renderCreditUI(gc);
+        } catch (_) {}
+      }
+
+      $('btn-switch-free-tts')?.addEventListener('click', () => {
+        const sel = $('voice-select');
+        if (sel) {
+          sel.value = 'edge:th-TH-PremwadeeNeural';
+          syncConfigSummary();
+          toast('สลับเสียงพากย์เป็น Edge TTS (ฟรี ฿0) แล้วค่ะ', 'ok');
+        }
+      });
 
       // Duration, Voice & BGM listeners
       $('duration-range').addEventListener('input', syncConfigSummary);
@@ -1640,6 +1797,7 @@
           const busy = !!(d.busy || d.activeJob || (d.queue && d.queue.length));
           $('engine-dot').className = 'status-dot' + (busy ? ' busy' : '');
           $('engine-text').textContent = busy ? 'กำลังประมวลผลวิดีโอ...' : 'Studio พร้อมใช้งาน';
+          if (d.geminiCredit && d.geminiCredit.ok) renderCreditUI(d.geminiCredit);
         } catch (_) {
           $('engine-dot').className = 'status-dot warn';
           $('engine-text').textContent = 'รอเชื่อมต่อ API';
@@ -2048,8 +2206,17 @@
             $('draft-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
           if (['done', 'error', 'aborted', 'draft_ready'].includes(job.status)) {
+            const wasPolling = Boolean(state.pollTimer);
             clearInterval(state.pollTimer);
             state.pollTimer = null;
+            if (job.status === 'done') {
+              loadCreditStatus();
+              if (wasPolling && scrollTarget === null) {
+                const c = job.outputs?.costThb;
+                const costTxt = typeof c === 'number' ? ` · ค่าใช้จ่าย ฿${c.toFixed(2)}` : '';
+                toast(`สร้างวิดีโอเสร็จสมบูรณ์${costTxt}`, 'ok');
+              }
+            }
           }
         } catch (e) {
           toast(`โหลดสถานะงานไม่สำเร็จ: ${e.message}`, 'error');
@@ -2181,10 +2348,51 @@
         if (v && typeof v === 'object') {
           const file = v.file || 'final.mp4';
           const label = v.version ? `v${v.version} (${v.kind || file})` : file;
-          return { file, label, watchUrl: v.watchUrl || '' };
+          return { file, label, watchUrl: v.watchUrl || '', costThb: v.costThb, costDetails: v.costDetails };
         }
         const file = String(v || 'final.mp4');
         return { file, label: file, watchUrl: '' };
+      }
+
+      function renderResultCost(job, verObj = null) {
+        const bar = $('result-cost-bar');
+        if (!bar) return;
+        const details = verObj?.costDetails || job?.outputs?.costDetails || null;
+        const rawCost = verObj?.costThb ?? job?.outputs?.costThb;
+        if (rawCost === undefined && !details) {
+          bar.classList.add('hidden');
+          return;
+        }
+        const costThb = Number(rawCost ?? details?.costThb ?? 0);
+        const clipTotal = details?.clipTotalThb !== undefined ? Number(details.clipTotalThb) : costThb;
+        const apiCalls = Number(details?.apiCalls || 0);
+        const inTok = Number(details?.inputTokens || 0);
+        const outTok = Number(details?.outputTokens || 0);
+        const remThb = details?.remainingThb ?? state.geminiCredit?.remainingThb;
+        const lowThb = Number(details?.lowThb ?? state.geminiCredit?.lowThb ?? 10);
+        const isLow = remThb !== null && remThb !== undefined && Number(remThb) < lowThb;
+
+        bar.classList.remove('hidden');
+        bar.classList.toggle('is-low', isLow);
+
+        if (costThb > 0) {
+          $('result-cost-thb').textContent = `฿${costThb.toFixed(2)}`;
+          $('result-cost-detail').textContent = `(${apiCalls} ครั้ง · ${inTok.toLocaleString()} เข้า / ${outTok.toLocaleString()} ออก)`;
+        } else if (clipTotal > 0) {
+          $('result-cost-thb').textContent = '฿0.00 (ใช้แคช)';
+          $('result-cost-detail').textContent = `(ต้นทุนเสียงทั้งคลิป ฿${clipTotal.toFixed(2)})`;
+        } else {
+          $('result-cost-thb').textContent = '฿0.00 (ฟรี)';
+          $('result-cost-detail').textContent = '(ไม่ได้เรียก Gemini API แบบเสียเงิน)';
+        }
+
+        if (remThb !== null && remThb !== undefined) {
+          $('result-credit-rem').innerHTML = isLow
+            ? `<span style="color:var(--coral);font-weight:700;">⚠️ เครดิตคงเหลือ ~฿${Number(remThb).toFixed(2)} (ต่ำกว่า ฿${lowThb})</span>`
+            : `💳 เครดิตคงเหลือ ~฿${Number(remThb).toFixed(2)}`;
+        } else {
+          $('result-credit-rem').textContent = '';
+        }
       }
 
       function renderResultPanel(job) {
@@ -2197,6 +2405,7 @@
         const latest = versions[versions.length - 1];
         setVideoVersion(latest.file);
         $('version-select').value = latest.file;
+        renderResultCost(job, latest);
 
         const sbFile = job.outputs?.storyboardFile || job.storyboardFile;
         if (sbFile) {
@@ -2216,7 +2425,13 @@
         $('btn-download').href = url + '?download=1';
         $('btn-download').setAttribute('download', filename.split('/').pop() || 'video.mp4');
       }
-      $('version-select').addEventListener('change', (e) => setVideoVersion(e.target.value));
+      $('version-select').addEventListener('change', (e) => {
+        setVideoVersion(e.target.value);
+        const verObj = Array.isArray(state.activeJob?.versions)
+          ? state.activeJob.versions.find((v) => v && typeof v === 'object' && v.file === e.target.value)
+          : null;
+        renderResultCost(state.activeJob, verObj);
+      });
 
       $('btn-copy-link').addEventListener('click', async () => {
         const selectedFile = $('version-select').value;
@@ -2314,6 +2529,10 @@
             const st = statusBadgeInfo(j.status);
             const durText = formatDurationLabel(j);
             const verCount = Array.isArray(j.versions) && j.versions.length ? `v${j.versions.length}` : '';
+            const rawCost = j.outputs?.costThb;
+            const costBadge = typeof rawCost === 'number'
+              ? `<span>· 💸 ${rawCost > 0 ? '฿' + rawCost.toFixed(2) : 'ฟรี ฿0'}</span>`
+              : '';
             const editTarget = j.status === 'draft_ready' ? 'draft' : 'result';
             return `
               <article class="job-card">
@@ -2332,6 +2551,7 @@
                     <span>${jid}</span>
                     ${j.styleId ? `<span>· ${escapeHtml(j.styleId)}</span>` : ''}
                     ${verCount ? `<span>· ${escapeHtml(verCount)}</span>` : ''}
+                    ${costBadge}
                   </div>
                   <div class="job-card-actions">
                     <button type="button" class="btn btn-primary btn-sm btn-grow" data-open-job="${jid}" data-open-target="${editTarget}">${videoFile ? '▶ ดู / ตัดต่อ' : 'เปิดดู'}</button>

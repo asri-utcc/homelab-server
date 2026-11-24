@@ -4,12 +4,11 @@
   "fps": 30,
   "width": 1080,
   "height": 1920,
-  "voice": "gemini:Sulafat",
+  "voice": "gemini:Charon",
   "rate": "+0%",
   "pitch": "+0Hz",
   "leadInSec": 0.4,
   "holdEndSec": 2.0,
-  "ttsPrompt": "Narrate as a gentle, serene, slightly whispered Thai female spiritual storyteller. Keep a soft, calm, unhurried midnight warmth with natural phrasing and clear pronunciation of Thai and Islamic terms.",
   "scenes": [
     {
       "id": "s1_night_door",
@@ -18,22 +17,33 @@
       "badge": "01",
       "title": "ตอนที่โลกหลับสนิท มีประตูบานหนึ่งเปิดอยู่",
       "subtitle": "ช่วงเวลาที่เงียบที่สุด แต่ใกล้ชิดที่สุดของค่ำคืน",
-      "narration": "ตอนที่ทั้งโลกหลับสนิทและเงียบงัน กลับมีประตูแห่งความเมตตาบานหนึ่งเปิดกว้างรอเราอยู่ทุกค่ำคืน",
-      "ttsPrompt": "Narrate in a soft, calm, gently whispered Thai female voice, intimate and contemplative like a quiet midnight reflection, natural steady pace without dragging.",
+      "narration": "ทุกคืนตอนที่ทั้งโลกหลับสนิท มีช่วงเวลาหนึ่งที่ประตูแห่งการขอดุอาอ์เปิดรออยู่ นั่นคือหนึ่งในสามสุดท้ายของค่ำคืน",
       "padAfterSec": 0.5,
       "subtitles": [
         {
-          "text": "ตอนที่ทั้งโลกหลับสนิทและเงียบงัน",
+          "text": "ทุกคืนตอนที่ทั้งโลกหลับสนิท",
           "highlight": "โลกหลับสนิท"
         },
         {
-          "text": "มีประตูแห่งความเมตตาเปิดรอเราทุกคืน",
-          "highlight": "ประตูแห่งความเมตตา"
+          "text": "มีช่วงเวลาที่ประตูแห่งการขอดุอาอ์เปิดรออยู่",
+          "highlight": "การขอดุอาอ์"
+        },
+        {
+          "text": "นั่นคือหนึ่งในสามสุดท้ายของค่ำคืน",
+          "highlight": "หนึ่งในสามสุดท้าย"
         }
       ],
       "sfx": [
-        { "name": "riser", "offsetSec": 0.0, "volume": 0.20 },
-        { "name": "shimmer", "offsetSec": 2.8, "volume": 0.22 }
+        {
+          "name": "riser",
+          "offsetSec": 0.0,
+          "volume": 0.2
+        },
+        {
+          "name": "shimmer",
+          "offsetSec": 2.8,
+          "volume": 0.22
+        }
       ]
     },
     {
@@ -42,15 +52,14 @@
       "icon": "clock",
       "badge": "02",
       "title": "หนึ่งในสามสุดท้ายของค่ำคืน",
-      "subtitle": "ประมาณ 02:30–04:45 น. · ขึ้นกับเวลามัฆริบ–ฟัจร์ของแต่ละวัน",
-      "source": "คำนวณโดยแบ่งเวลามัฆริบถึงฟัจร์เป็น 3 ส่วนเท่ากัน",
-      "narration": "นั่นคือช่วงหนึ่งในสามสุดท้ายของค่ำคืน ราวตีสองครึ่งถึงก่อนรุ่งสาง โดยเวลาจริงขึ้นกับเวลามัฆริบและฟัจร์ของแต่ละวัน",
-      "ttsPrompt": "Narrate softly and clearly in a serene, gentle Thai female voice, calm and informative, maintaining an unhurried midnight atmosphere.",
+      "subtitle": "ประมาณ 01:15–04:55 น. (กรุงเทพฯ ช่วง พ.ย.) · ขึ้นกับเวลามัฆริบ–ฟัจร์",
+      "source": "คำนวณโดยแบ่งเวลามัฆริบถึงฟัจร์เป็น 3 ส่วนเท่ากัน (ค่าประมาณ)",
+      "narration": "ช่วงนี้อยู่ราวตีหนึ่งกว่าๆ ไปจนถึงก่อนรุ่งสาง แต่เวลาจริงขึ้นกับเวลามัฆริบและฟัจร์ของแต่ละวัน",
       "padAfterSec": 0.55,
       "subtitles": [
         {
-          "text": "ช่วงหนึ่งในสามสุดท้าย ราว 02:30–04:45 น.",
-          "highlight": "หนึ่งในสามสุดท้าย"
+          "text": "ช่วงนี้ราว 01:15–04:55 น.",
+          "highlight": "01:15–04:55"
         },
         {
           "text": "เวลาจริงขึ้นกับเวลามัฆริบ–ฟัจร์ของแต่ละวัน",
@@ -58,8 +67,16 @@
         }
       ],
       "sfx": [
-        { "name": "soft_impact", "offsetSec": 0.0, "volume": 0.20 },
-        { "name": "chime", "offsetSec": 3.2, "volume": 0.22 }
+        {
+          "name": "soft_impact",
+          "offsetSec": 0.0,
+          "volume": 0.2
+        },
+        {
+          "name": "chime",
+          "offsetSec": 3.2,
+          "volume": 0.22
+        }
       ]
     },
     {
@@ -73,7 +90,6 @@
       "arabic": "إِلَى السَّمَاءِ الدُّنْيَا حِينَ يَبْقَى ثُلُثُ اللَّيْلِ الآخِرُ",
       "arabicMeaning": "“...ยังฟากฟ้าชั้นต่ำสุด เมื่อค่ำคืนเหลือหนึ่งในสามสุดท้าย”",
       "narration": "ท่านนบีมุฮัมมัด ศ็อลลัลลอฮุอะลัยฮิวะซัลลัม บอกไว้ว่า อัลลอฮ์ทรงเสด็จลงมายังฟากฟ้าชั้นต่ำสุดในแบบที่สมกับพระองค์ทุกคืน เมื่อค่ำคืนเหลือหนึ่งในสามสุดท้าย",
-      "ttsPrompt": "Narrate with deep reverence, softness, and calm warmth in a gently hushed Thai female voice, pronouncing Arabic-origin Islamic phrases cleanly and smoothly.",
       "padAfterSec": 0.55,
       "subtitles": [
         {
@@ -90,8 +106,16 @@
         }
       ],
       "sfx": [
-        { "name": "riser", "offsetSec": 0.0, "volume": 0.19 },
-        { "name": "shimmer", "offsetSec": 3.6, "volume": 0.24 }
+        {
+          "name": "riser",
+          "offsetSec": 0.0,
+          "volume": 0.19
+        },
+        {
+          "name": "shimmer",
+          "offsetSec": 3.6,
+          "volume": 0.24
+        }
       ]
     },
     {
@@ -105,7 +129,6 @@
       "arabic": "مَنْ يَدْعُونِي فَأَسْتَجِيبَ لَهُ، مَنْ يَسْأَلُنِي فَأُعْطِيَهُ، مَنْ يَسْتَغْفِرُنِي فَأَغْفِرَ لَهُ",
       "arabicMeaning": "“ผู้ใดขอดุอาอ์ต่อข้า ข้าจะตอบรับเขา ผู้ใดขอต่อข้า ข้าจะให้แก่เขา และผู้ใดขออภัยโทษต่อข้า ข้าจะอภัยให้แก่เขา”",
       "narration": "แล้วพระองค์ทรงตรัสเรียกหาว่า ใครที่ขอดุอาอ์ต่อข้า ข้าจะตอบรับเขา ใครที่ขอต่อข้า ข้าจะให้แก่เขา และใครที่ขออภัยโทษต่อข้า ข้าจะอภัยให้เขา",
-      "ttsPrompt": "Narrate in a tender, deeply heartfelt, softly whispered Thai female voice, pausing very gently between the three divine calls so each feels warm and comforting.",
       "padAfterSec": 0.6,
       "subtitles": [
         {
@@ -122,8 +145,16 @@
         }
       ],
       "sfx": [
-        { "name": "soft_impact", "offsetSec": 0.0, "volume": 0.20 },
-        { "name": "shimmer", "offsetSec": 3.8, "volume": 0.25 }
+        {
+          "name": "soft_impact",
+          "offsetSec": 0.0,
+          "volume": 0.2
+        },
+        {
+          "name": "shimmer",
+          "offsetSec": 3.8,
+          "volume": 0.25
+        }
       ]
     },
     {
@@ -137,7 +168,6 @@
       "arabic": "كَانُوا قَلِيلًا مِّنَ اللَّيْلِ مَا يَهْجَعُونَ  وَبِالْأَسْحَارِ هُمْ يَسْتَغْفِرُونَ",
       "arabicMeaning": "“พวกเขาหลับนอนเพียงส่วนน้อยของกลางคืน และในยามรุ่งสางพวกเขาก็ขออภัยโทษ”",
       "narration": "อัลกุรอานในซูเราะฮ์อัซซาริยาตยังสรรเสริญผู้ยำเกรงว่า พวกเขาหลับนอนเพียงส่วนน้อยของกลางคืน และในยามรุ่งสางพวกเขาก็ขออภัยโทษ",
-      "ttsPrompt": "Narrate with serene reverence and gentle wonder in a calm, hushed Thai female voice, keeping a smooth poetic rhythm.",
       "padAfterSec": 0.55,
       "subtitles": [
         {
@@ -154,8 +184,16 @@
         }
       ],
       "sfx": [
-        { "name": "riser", "offsetSec": 0.0, "volume": 0.18 },
-        { "name": "chime", "offsetSec": 3.6, "volume": 0.23 }
+        {
+          "name": "riser",
+          "offsetSec": 0.0,
+          "volume": 0.18
+        },
+        {
+          "name": "chime",
+          "offsetSec": 3.6,
+          "volume": 0.23
+        }
       ]
     },
     {
@@ -166,7 +204,6 @@
       "title": "เริ่มง่ายๆ เพียง 10 นาทีก่อนฟัจร์",
       "subtitle": "ละหมาด 2 ร็อกอะฮ์ และอิสติฆฟารอย่างสงบ",
       "narration": "เริ่มง่ายๆ ด้วยการตั้งนาฬิกาปลุกก่อนฟัจร์สักสิบนาที ตื่นมาละหมาดสองร็อกอะฮ์ แล้วนั่งอิสติฆฟารและระบายความในใจต่ออัลลอฮ์",
-      "ttsPrompt": "Narrate in a warm, encouraging, gently whispered Thai female voice, soothing and practical like a caring friend inviting you to quiet peace.",
       "padAfterSec": 0.55,
       "subtitles": [
         {
@@ -183,8 +220,16 @@
         }
       ],
       "sfx": [
-        { "name": "soft_impact", "offsetSec": 0.0, "volume": 0.20 },
-        { "name": "shimmer", "offsetSec": 3.4, "volume": 0.22 }
+        {
+          "name": "soft_impact",
+          "offsetSec": 0.0,
+          "volume": 0.2
+        },
+        {
+          "name": "shimmer",
+          "offsetSec": 3.4,
+          "volume": 0.22
+        }
       ]
     },
     {
@@ -198,7 +243,6 @@
       "arabic": "وَاللَّهُ أَعْلَمُ",
       "arabicMeaning": "“และอัลลอฮ์ ﷻ ทรงรู้ดียิ่ง”",
       "narration": "คืนนี้ลองมอบเวลาสั้นๆ ก่อนรุ่งสางให้หัวใจได้พักพิง บันทึกคลิปนี้ไว้เตือนใจก่อนนอน ขออัลลอฮ์ทรงตอบรับดุอาอ์ของทุกท่าน วัลลอฮุอะอฺลัม",
-      "ttsPrompt": "Narrate in a very soft, peaceful, lingering whispered Thai female voice, ending with gentle warmth and calm finality on Wallahu A'lam.",
       "padAfterSec": 0.6,
       "subtitles": [
         {
@@ -215,9 +259,18 @@
         }
       ],
       "sfx": [
-        { "name": "shimmer", "offsetSec": 0.2, "volume": 0.24 },
-        { "name": "chime", "offsetSec": 4.0, "volume": 0.22 }
+        {
+          "name": "shimmer",
+          "offsetSec": 0.2,
+          "volume": 0.24
+        },
+        {
+          "name": "chime",
+          "offsetSec": 4.0,
+          "volume": 0.22
+        }
       ]
     }
-  ]
+  ],
+  "ttsStyle": "religious"
 }

@@ -3038,8 +3038,14 @@ server.listen(PORT, HOST, () => {
         }
     })();
 });
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
-process.on('SIGINT', () => server.close(() => process.exit(0)));
+function gracefulExit() {
+    const timer = setTimeout(() => process.exit(0), 800);
+    timer.unref();
+    if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+    server.close(() => process.exit(0));
+}
+process.on('SIGTERM', gracefulExit);
+process.on('SIGINT', gracefulExit);
 // ไม่ให้ error ประเภทไหนทำให้แดชบอร์ดล่ม (pm2 จะ restart อยู่ดี แต่ผู้ใช้จะเห็นหน้าจอว่าง)
 process.on('uncaughtException', (e) => log('uncaughtException:', e && e.stack ? e.stack : e));
 process.on('unhandledRejection', (e) => log('unhandledRejection:', e && e.stack ? e.stack : e));

@@ -37,6 +37,11 @@ const CATALOG_URLS = {
     modelsdev: 'https://models.dev/api.json'
 };
 
+// แคตตาล็อกรวบรวมที่มักคัดลอก/อ้างอิงราคาและสเปกจากต้นทางเดียวกัน นับรวมเป็น 1 แหล่งอิสระในการคิด confidence
+const AGGREGATOR_CATALOG_PROVIDERS = new Set(['openrouter', 'litellm', 'modelsdev']);
+const AGGREGATOR_CATALOG_DOMAINS = new Set(['openrouter.ai', 'models.dev']);
+const CATALOG_ONLY_CONFIDENCE_CAP = 55;
+
 const OFFICIAL_OR_CATALOG_DOMAINS = new Set([
     'openrouter.ai',
     'github.com',
@@ -875,22 +880,92 @@ function analyzeAgreement(uniqueSources) {
 }
 
 /**
+ * ตรวจว่าแหล่งข้อมูลเป็นแคตตาล็อกรวบรวม (aggregator catalog: OpenRouter, LiteLLM, Models.dev) หรือไม่
+ */
+function isAggregatorCatalogSource(source) {
+    if (!source || typeof source !== 'object') return false;
+    const provider = String(source.provider || '').toLowerCase();
+    if (AGGREGATOR_CATALOG_PROVIDERS.has(provider)) return true;
+    const domain = String(source.domain || extractRootDomain(source.url || '')).toLowerCase();
+    if (AGGREGATOR_CATALOG_DOMAINS.has(domain)) return true;
+    // LiteLLM โฮสต์อยู่บน github.com (ไม่นับรวม repo ทางการของผู้ผลิตบน github.com ที่ quality !== 'catalog')
+    if (domain === 'github.com') {
+        const url = String(source.url || '').toLowerCase();
+        if (source.quality === 'catalog' || url.includes('litellm')) return true;
+    }
+    return false;
+}
+
+/**
+ * นับจำนวนแหล่งข้อมูลอิสระ โดยรวมแคตตาล็อกรวบรวม (OpenRouter / LiteLLM / Models.dev)
+ * ให้เป็นเพียง 1 แหล่งอิสระ ส่วนแหล่งอื่น (เช่น เว็บผู้ผลิต deepseek.com, anthropic.com, google.dev) นับแยกตามโดเมน
+ */
+function countIndependentSources(uniqueSources) {
+    const list = Array.isArray(uniqueSources) ? uniqueSources : [];
+    const groups = new Set();
+    let catalogCount = 0;
+    let nonCatalogCount = 0;
+
+    for (const s of list) {
+        if (!s || typeof s !== 'object') continue;
+        if (isAggregatorCatalogSource(s)) {
+            catalogCount += 1;
+            groups.add('aggregator:catalog');
+        } else {
+            const domain = String(s.domain || extractRootDomain(s.url || '')).toLowerCase();
+            if (!domain) continue;
+            if (!groups.has(domain)) {
+                nonCatalogCount += 1;
+                groups.add(domain);
+            }
+        }
+    }
+
+    return {
+        independentCount: groups.size,
+        catalogCount,
+        nonCatalogCount,
+        catalogOnly: catalogCount > 0 && nonCatalogCount === 0,
+        groups: [...groups]
+    };
+}
+
+/**
  * สูตรคำนวณความมั่นใจแบบโปร่งใส (Transparent Confidence Score)
  */
 function computeConfidenceScore({ uniqueSources = [], agreement = 'low', hasIntelligence = false, hasPricing = false } = {}) {
     const list = Array.isArray(uniqueSources) ? uniqueSources : [];
     const uniqueDomainCount = list.length;
+    const {
+        independentCount,
+        catalogCount,
+        catalogOnly
+    } = countIndependentSources(list);
 
     let base = 25;
-    if (uniqueDomainCount === 1) base = 42;
-    else if (uniqueDomainCount === 2) base = 58;
-    else if (uniqueDomainCount === 3) base = 76;
-    else if (uniqueDomainCount === 4) base = 84;
-    else if (uniqueDomainCount >= 5) base = 90;
+    if (independentCount === 1) base = 42;
+    else if (independentCount === 2) base = 58;
+    else if (independentCount === 3) base = 76;
+    else if (independentCount === 4) base = 84;
+    else if (independentCount >= 5) base = 90;
 
+    // ให้คะแนนคุณภาพต่อ "แหล่งอิสระ" (รวมแคตตาล็อกรวบรวมทั้งหมดคิดเป็น 1 แหล่ง ไม่บวกซ้ำ 3 รอบ)
     let qualityRaw = 0;
+    let countedCatalogGroup = false;
+    const countedDomains = new Set();
     for (const s of list) {
-        if (s.quality === 'catalog' || s.quality === 'official' || isOfficialOrCatalogDomain(s.domain)) {
+        if (!s || typeof s !== 'object') continue;
+        if (isAggregatorCatalogSource(s)) {
+            if (!countedCatalogGroup) {
+                qualityRaw += 2.5;
+                countedCatalogGroup = true;
+            }
+            continue;
+        }
+        const domain = String(s.domain || extractRootDomain(s.url || '')).toLowerCase();
+        if (!domain || countedDomains.has(domain)) continue;
+        countedDomains.add(domain);
+        if (s.quality === 'catalog' || s.quality === 'official' || isOfficialOrCatalogDomain(domain)) {
             qualityRaw += 2.5;
         } else {
             qualityRaw += 1;
@@ -907,25 +982,36 @@ function computeConfidenceScore({ uniqueSources = [], agreement = 'low', hasInte
     if (hasIntelligence && hasPricing) completenessDelta = 4;
     else if (hasIntelligence || hasPricing) completenessDelta = -4;
 
+    // เพดานความมั่นใจตามจำนวนแหล่งอิสระ (ถ้ามีแต่แคตตาล็อกรวบรวมให้ไม่เกินระดับกลาง)
+    let maxCap = 98;
+    if (independentCount === 0) maxCap = 35;
+    else if (catalogOnly) maxCap = CATALOG_ONLY_CONFIDENCE_CAP;
+    else if (independentCount === 1) maxCap = 65;
+    else if (independentCount === 2) maxCap = 78;
+
     const raw = base + qualityBonus + agreementDelta + completenessDelta;
-    const score = clamp(Math.round(raw), 10, 98);
-    const meetsMinSources = uniqueDomainCount >= MIN_TRUSTED_SOURCES;
+    const score = clamp(Math.round(raw), 10, maxCap);
+    const meetsMinSources = independentCount >= MIN_TRUSTED_SOURCES;
 
     let verdict = 'ไม่พบข้อมูลสาธารณะภายนอก (รุ่นใหม่/โค้ดเนมภายใน)';
     if (agreement === 'conflict') {
         verdict = 'ข้อมูลจากแหล่งภายนอกขัดแย้งกัน — ควรตรวจสอบด้วยตนเอง';
     } else if (meetsMinSources && score >= 80) {
-        verdict = `น่าเชื่อถือสูง (${uniqueDomainCount} แหล่งอิสระสอดคล้องกัน)`;
+        verdict = `น่าเชื่อถือสูง (${independentCount} แหล่งอิสระสอดคล้องกัน)`;
     } else if (meetsMinSources) {
-        verdict = `ผ่านเกณฑ์ขั้นต่ำ (${uniqueDomainCount} แหล่งอิสระ)`;
-    } else if (uniqueDomainCount > 0) {
-        verdict = `พบ ${uniqueDomainCount} แหล่งอิสระ (ยังไม่ถึงเกณฑ์ ≥${MIN_TRUSTED_SOURCES} แหล่ง)`;
+        verdict = `ผ่านเกณฑ์ขั้นต่ำ (${independentCount} แหล่งอิสระ)`;
+    } else if (catalogOnly) {
+        verdict = `พบเฉพาะแคตตาล็อกรวบรวม (${catalogCount} แคตตาล็อก นับเป็น 1 แหล่งอิสระ — ยังไม่ถึงเกณฑ์ ≥${MIN_TRUSTED_SOURCES} แหล่ง)`;
+    } else if (independentCount > 0) {
+        verdict = `พบ ${independentCount} แหล่งอิสระ (ยังไม่ถึงเกณฑ์ ≥${MIN_TRUSTED_SOURCES} แหล่ง)`;
     }
 
     return {
         score,
         meetsMinSources,
         uniqueDomainCount,
+        independentSourceCount: independentCount,
+        catalogOnly,
         agreement,
         verdict,
         breakdown: {
@@ -933,7 +1019,8 @@ function computeConfidenceScore({ uniqueSources = [], agreement = 'low', hasInte
             qualityBonus,
             agreementDelta,
             completenessDelta,
-            raw
+            raw,
+            cap: maxCap
         }
     };
 }
@@ -1122,7 +1209,7 @@ async function researchModel(modelInput, opts = {}) {
     const valueScore = Number((avgQ / Math.max(0.15, effectiveCost)).toFixed(1));
 
     const basisParts = [
-        `วิจัยภายนอก ${conf.uniqueDomainCount} แหล่งอิสระ (${conf.verdict})`,
+        `วิจัยภายนอก ${conf.independentSourceCount} แหล่งอิสระ (${conf.verdict})`,
         metrics.outputUsdPer1M != null
             ? `ราคาตลาด ~$${metrics.inputUsdPer1M ?? '?'}/$${metrics.outputUsdPer1M} ต่อ 1M tok (cost≈${metrics.baseCost})`
             : `ไม่พบราคาสาธารณะ ใช้ฐานอ้างอิง cost=${metrics.baseCost}`
@@ -1141,6 +1228,7 @@ async function researchModel(modelInput, opts = {}) {
         confidence: conf.score,
         meetsMinSources: conf.meetsMinSources,
         uniqueDomainCount: conf.uniqueDomainCount,
+        independentSourceCount: conf.independentSourceCount,
         agreement: conf.agreement,
         verdict: conf.verdict,
         breakdown: conf.breakdown,
@@ -1244,7 +1332,7 @@ async function researchModels(models, opts = {}) {
         const valueScore = Number((avgQ / Math.max(0.15, effectiveCost)).toFixed(1));
 
         const basisParts = [
-            `วิจัยภายนอก ${conf.uniqueDomainCount} แหล่งอิสระ (${conf.verdict})`,
+            `วิจัยภายนอก ${conf.independentSourceCount} แหล่งอิสระ (${conf.verdict})`,
             metrics.outputUsdPer1M != null
                 ? `ราคาตลาด ~$${metrics.inputUsdPer1M ?? '?'}/$${metrics.outputUsdPer1M} ต่อ 1M tok (cost≈${metrics.baseCost})`
                 : `ไม่พบราคาสาธารณะ ใช้ฐานอ้างอิง cost=${metrics.baseCost}`
@@ -1263,6 +1351,7 @@ async function researchModels(models, opts = {}) {
             confidence: conf.score,
             meetsMinSources: conf.meetsMinSources,
             uniqueDomainCount: conf.uniqueDomainCount,
+            independentSourceCount: conf.independentSourceCount,
             agreement: conf.agreement,
             verdict: conf.verdict,
             breakdown: conf.breakdown,
@@ -1374,7 +1463,7 @@ async function synthesizeRankingWithGemini(rankedModels, opts = {}) {
         name: m.name,
         engine: m.engine,
         confidence: m.confidence,
-        sources: m.uniqueDomainCount,
+        sources: m.independentSourceCount != null ? m.independentSourceCount : m.uniqueDomainCount,
         meetsMinSources: m.meetsMinSources,
         avgQ: m.scores && m.scores.avgQ,
         cost: m.pricing && m.pricing.effectiveCost,
@@ -1455,6 +1544,8 @@ module.exports = {
     fetchPublicCatalogs,
     matchFromCatalogs,
     deduplicateSourcesByDomain,
+    isAggregatorCatalogSource,
+    countIndependentSources,
     analyzeAgreement,
     computeConfidenceScore,
     researchFamily,

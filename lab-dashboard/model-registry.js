@@ -211,7 +211,16 @@ function buildSeedRegistry() {
     for (const d of (deps.deepseekModels || [])) {
         if (!d) continue;
         const id = d.id || d.model;
-        if (!id || models[id]) continue;
+        if (!id) continue;
+        if (models[id]) {
+            if (models[id].source === 'builtin' && models[id].decidedBy === 'auto' && Number.isFinite(Number(d.q))) {
+                const baseQ = clampQ(Number(d.q));
+                models[id].suggested = models[id].suggested || {};
+                models[id].suggested.q = { code: baseQ, analysis: baseQ, chat: baseQ };
+                models[id].lastSeen = now;
+            }
+            continue;
+        }
         const baseQ = Number.isFinite(Number(d.q)) ? Number(d.q) : 80;
         models[id] = {
             id,
@@ -376,7 +385,24 @@ function init(injectedDeps = {}) {
             saveRegistry(seeded);
             return seeded;
         }
-        return loadRegistry();
+        const loaded = loadRegistry();
+        let changed = false;
+        const now = new Date().toISOString();
+        for (const d of (deps.deepseekModels || [])) {
+            if (!d) continue;
+            const id = d.id || d.model;
+            if (!id || !loaded.models || !loaded.models[id]) continue;
+            const m = loaded.models[id];
+            if (m.source === 'builtin' && m.decidedBy === 'auto' && Number.isFinite(Number(d.q))) {
+                const baseQ = clampQ(Number(d.q));
+                m.suggested = m.suggested || {};
+                m.suggested.q = { code: baseQ, analysis: baseQ, chat: baseQ };
+                m.lastSeen = now;
+                changed = true;
+            }
+        }
+        if (changed) saveRegistry(loaded);
+        return loaded;
     } catch (_) {
         return buildSeedRegistry();
     }

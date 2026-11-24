@@ -259,3 +259,59 @@ test('researchModel และ researchAll อัปเดต confidence, researc
     assert.equal(ranking.ranked.length, BASE_IDS.length);
     assert.ok(ranking.ranked[0].confidence > ranking.ranked[ranking.ranked.length - 1].confidence);
 });
+
+test('seed DeepSeek: รายการ builtin (decidedBy=auto) ที่มี q=80 ค้างอยู่ต้องถูก refresh เป็น 74', () => {
+    n += 1;
+    process.env.MODEL_REGISTRY_FILE = path.join(tmp, `reg-${n}.json`);
+    process.env.MODEL_ALERTS_FILE = path.join(tmp, `alerts-${n}.jsonl`);
+    process.env.MODEL_ALERTS_ACK_FILE = path.join(tmp, `acked-${n}.json`);
+    reg.init({
+        families: FAMILIES,
+        deepseekModels: [{ model: 'deepseek-flash', label: 'DeepSeek Flash' }],
+        claudeCodeModels: [],
+        listAccounts: () => [{ id: 'acc1', label: 'acc1', home: tmp, ready: true }],
+        agyBin: fakeAgy
+    });
+    let m = reg.getSnapshot().models.find((x) => x.id === 'deepseek-flash');
+    assert.equal(m.suggested.q.code, 80);
+
+    reg.init({
+        families: FAMILIES,
+        deepseekModels: [{ model: 'deepseek-flash', label: 'DeepSeek Flash', q: 74 }],
+        claudeCodeModels: [],
+        listAccounts: () => [{ id: 'acc1', label: 'acc1', home: tmp, ready: true }],
+        agyBin: fakeAgy
+    });
+    m = reg.getSnapshot().models.find((x) => x.id === 'deepseek-flash');
+    assert.equal(m.suggested.q.code, 74);
+    assert.equal(m.suggested.q.analysis, 74);
+    assert.equal(m.suggested.q.chat, 74);
+});
+
+test('seed DeepSeek: รายการที่ผู้ใช้ override (decidedBy=user) ต้องไม่ถูกทับ', () => {
+    n += 1;
+    process.env.MODEL_REGISTRY_FILE = path.join(tmp, `reg-${n}.json`);
+    process.env.MODEL_ALERTS_FILE = path.join(tmp, `alerts-${n}.jsonl`);
+    process.env.MODEL_ALERTS_ACK_FILE = path.join(tmp, `acked-${n}.json`);
+    reg.init({
+        families: FAMILIES,
+        deepseekModels: [{ model: 'deepseek-flash', label: 'DeepSeek Flash', q: 80 }],
+        claudeCodeModels: [],
+        listAccounts: () => [{ id: 'acc1', label: 'acc1', home: tmp, ready: true }],
+        agyBin: fakeAgy
+    });
+    reg.approve('deepseek-flash', { q: { code: 91, analysis: 92, chat: 93 } });
+
+    reg.init({
+        families: FAMILIES,
+        deepseekModels: [{ model: 'deepseek-flash', label: 'DeepSeek Flash', q: 74 }],
+        claudeCodeModels: [],
+        listAccounts: () => [{ id: 'acc1', label: 'acc1', home: tmp, ready: true }],
+        agyBin: fakeAgy
+    });
+    const m = reg.getSnapshot().models.find((x) => x.id === 'deepseek-flash');
+    assert.equal(m.decidedBy, 'user');
+    assert.equal(m.suggested.q.code, 91);
+    assert.equal(m.suggested.q.analysis, 92);
+    assert.equal(m.suggested.q.chat, 93);
+});

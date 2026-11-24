@@ -66,15 +66,16 @@ test('computeConfidenceScore แยกชัดเจนระหว่าง 0 
     const threeAgreed = researcher.computeConfidenceScore({
         uniqueSources: [
             { domain: 'openrouter.ai', quality: 'catalog', outputUsdPer1M: 0.6 },
-            { domain: 'github.com', quality: 'catalog', outputUsdPer1M: 0.6 },
-            { domain: 'models.dev', quality: 'catalog', outputUsdPer1M: 0.6 }
+            { domain: 'deepseek.com', quality: 'official', outputUsdPer1M: 0.6 },
+            { domain: 'artificialanalysis.ai', quality: 'official', outputUsdPer1M: 0.6 }
         ],
         agreement: 'high',
         hasIntelligence: true,
         hasPricing: true
     });
     assert.equal(threeAgreed.meetsMinSources, true);
-    assert.ok(threeAgreed.score >= 85, `3 agreed catalog sources should score high, got ${threeAgreed.score}`);
+    assert.equal(threeAgreed.independentSourceCount, 3);
+    assert.ok(threeAgreed.score >= 85, `3 independent agreed sources should score high, got ${threeAgreed.score}`);
     assert.equal(threeAgreed.breakdown.base, 76);
     assert.equal(threeAgreed.breakdown.agreementDelta, 8);
     assert.equal(threeAgreed.breakdown.completenessDelta, 4);
@@ -82,8 +83,8 @@ test('computeConfidenceScore แยกชัดเจนระหว่าง 0 
     const conflicted = researcher.computeConfidenceScore({
         uniqueSources: [
             { domain: 'openrouter.ai', quality: 'catalog', outputUsdPer1M: 0.5 },
-            { domain: 'github.com', quality: 'catalog', outputUsdPer1M: 5.0 },
-            { domain: 'models.dev', quality: 'catalog', outputUsdPer1M: 1.0 }
+            { domain: 'deepseek.com', quality: 'official', outputUsdPer1M: 5.0 },
+            { domain: 'artificialanalysis.ai', quality: 'official', outputUsdPer1M: 1.0 }
         ],
         agreement: 'conflict',
         hasIntelligence: true,
@@ -91,6 +92,72 @@ test('computeConfidenceScore แยกชัดเจนระหว่าง 0 
     });
     assert.ok(conflicted.score < threeAgreed.score - 20, 'conflict must drop confidence sharply');
     assert.equal(conflicted.breakdown.agreementDelta, -20);
+});
+
+test('computeConfidenceScore นับ 3 แคตตาล็อกรวบรวมเป็น 1 แหล่งอิสระ และให้ confidence ต่ำกว่ากรณีที่มีเว็บผู้ผลิตเพิ่ม', () => {
+    const threeCatalogsOnly = researcher.computeConfidenceScore({
+        uniqueSources: [
+            { provider: 'openrouter', domain: 'openrouter.ai', quality: 'catalog', outputUsdPer1M: 0.6 },
+            { provider: 'litellm', domain: 'github.com', quality: 'catalog', url: 'https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json', outputUsdPer1M: 0.6 },
+            { provider: 'modelsdev', domain: 'models.dev', quality: 'catalog', outputUsdPer1M: 0.6 }
+        ],
+        agreement: 'high',
+        hasIntelligence: true,
+        hasPricing: true
+    });
+
+    assert.equal(threeCatalogsOnly.uniqueDomainCount, 3, 'ยังเก็บจำนวนโดเมนจริงครบ 3 สำหรับแสดงผล');
+    assert.equal(threeCatalogsOnly.independentSourceCount, 1, '3 แคตตาล็อกรวบรวมต้องนับเป็น 1 แหล่งอิสระ');
+    assert.equal(threeCatalogsOnly.catalogOnly, true);
+    assert.equal(threeCatalogsOnly.meetsMinSources, false, 'มีแต่แคตตาล็อกต้องยังไม่ผ่านเกณฑ์ >= 3 แหล่งอิสระ');
+    assert.equal(threeCatalogsOnly.breakdown.base, 42);
+    assert.ok(threeCatalogsOnly.score <= 55, `catalog-only confidence must be capped at medium (<=55), got ${threeCatalogsOnly.score}`);
+
+    const catalogsPlusVendor = researcher.computeConfidenceScore({
+        uniqueSources: [
+            { provider: 'openrouter', domain: 'openrouter.ai', quality: 'catalog', outputUsdPer1M: 0.6 },
+            { provider: 'litellm', domain: 'github.com', quality: 'catalog', outputUsdPer1M: 0.6 },
+            { provider: 'modelsdev', domain: 'models.dev', quality: 'catalog', outputUsdPer1M: 0.6 },
+            { domain: 'deepseek.com', quality: 'official', outputUsdPer1M: 0.6 }
+        ],
+        agreement: 'high',
+        hasIntelligence: true,
+        hasPricing: true
+    });
+
+    assert.equal(catalogsPlusVendor.uniqueDomainCount, 4);
+    assert.equal(catalogsPlusVendor.independentSourceCount, 2, '3 แคตตาล็อก + เว็บผู้ผลิต 1 แห่ง = 2 แหล่งอิสระ');
+    assert.equal(catalogsPlusVendor.catalogOnly, false);
+    assert.equal(catalogsPlusVendor.meetsMinSources, false);
+    assert.ok(
+        threeCatalogsOnly.score < catalogsPlusVendor.score,
+        `3 catalogs only (${threeCatalogsOnly.score}) must score lower than catalogs + vendor (${catalogsPlusVendor.score})`
+    );
+
+    const catalogsPlusTwoIndependent = researcher.computeConfidenceScore({
+        uniqueSources: [
+            { provider: 'openrouter', domain: 'openrouter.ai', quality: 'catalog', outputUsdPer1M: 0.6 },
+            { provider: 'litellm', domain: 'github.com', quality: 'catalog', outputUsdPer1M: 0.6 },
+            { provider: 'modelsdev', domain: 'models.dev', quality: 'catalog', outputUsdPer1M: 0.6 },
+            { domain: 'deepseek.com', quality: 'official', outputUsdPer1M: 0.6 },
+            { domain: 'artificialanalysis.ai', quality: 'official', outputUsdPer1M: 0.6 }
+        ],
+        agreement: 'high',
+        hasIntelligence: true,
+        hasPricing: true
+    });
+
+    assert.equal(catalogsPlusTwoIndependent.independentSourceCount, 3);
+    assert.equal(catalogsPlusTwoIndependent.meetsMinSources, true);
+    assert.ok(catalogsPlusTwoIndependent.score > catalogsPlusVendor.score);
+    assert.ok(catalogsPlusTwoIndependent.score >= 85);
+
+    // repo ทางการของผู้ผลิตบน github.com ที่ไม่ใช่ LiteLLM ต้องไม่ถูกยุบรวมเข้ากลุ่มแคตตาล็อก
+    const officialGithub = researcher.countIndependentSources([
+        { provider: 'openrouter', domain: 'openrouter.ai', quality: 'catalog' },
+        { domain: 'github.com', quality: 'official', url: 'https://github.com/deepseek-ai/DeepSeek-V3' }
+    ]);
+    assert.equal(officialGithub.independentCount, 2);
 });
 
 test('analyzeAgreement ตรวจจับราคาขัดแย้ง >2x ได้ถูกต้อง', () => {
@@ -132,14 +199,31 @@ test('researchModels จัดกลุ่มตามตระกูล (Family
     const high = res.find((m) => m.id === 'gpt-oss-120b-high');
     const unk = res.find((m) => m.id === 'gemini-4-unknown-medium');
 
-    assert.equal(low.meetsMinSources, true);
     assert.equal(low.uniqueDomainCount, 3);
+    assert.equal(low.sources.length, 3, 'ยังเก็บรายชื่อทั้ง 3 แคตตาล็อกไว้แสดงผลครบ');
+    assert.equal(low.independentSourceCount, 1, '3 แคตตาล็อกนับเป็น 1 แหล่งอิสระ');
+    assert.equal(low.meetsMinSources, false);
     assert.equal(high.uniqueDomainCount, 3);
+    assert.equal(high.independentSourceCount, 1);
     assert.ok(high.scores.avgQ > low.scores.avgQ, 'high effort should have higher effective avgQ than low');
     assert.ok(high.pricing.effectiveCost > low.pricing.effectiveCost, 'high effort should have higher effective cost than low');
     assert.equal(unk.meetsMinSources, false);
     assert.equal(unk.uniqueDomainCount, 0);
-    assert.ok(low.confidence > unk.confidence + 40, '3-source verified model must have much higher confidence than 0-source model');
+    assert.ok(low.confidence <= 55, `catalog-only confidence should be capped at medium, got ${low.confidence}`);
+    assert.ok(low.confidence > unk.confidence + 30, 'catalog-verified model must have higher confidence than 0-source model');
+
+    // เมื่อมีเว็บผู้ผลิตเพิ่มเข้ามา ต้องได้ confidence สูงกว่ากรณีมีเฉพาะ 3 แคตตาล็อก
+    const withVendor = await researcher.researchModel(models[0], {
+        disableNetwork: true,
+        skipCache: true,
+        catalogData: mockCatalogs,
+        extraSources: [
+            { provider: 'official', domain: 'openai.com', quality: 'official', title: 'OpenAI GPT-OSS 120B', url: 'https://openai.com/gpt-oss-120b', outputUsdPer1M: 0.60 }
+        ]
+    });
+    assert.equal(withVendor.sources.length, 4);
+    assert.equal(withVendor.independentSourceCount, 2);
+    assert.ok(withVendor.confidence > low.confidence, `with vendor (${withVendor.confidence}) must exceed catalogs-only (${low.confidence})`);
 
     const ranked = researcher.rankModels(res, { sortBy: 'confidence' });
     assert.equal(ranked[0].rank, 1);

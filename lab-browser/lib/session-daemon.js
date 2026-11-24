@@ -30,8 +30,8 @@ const SENSITIVE_CHECK_CMDS = new Set(['open', 'visit', 'navigate', 'click', 'pre
 const AUTH_PULL_BEFORE_CMDS = new Set(['open', 'visit', 'navigate', 'click', 'eval']);
 
 const MAX_FRAME_BACKPRESSURE_BYTES = 2 * 1024 * 1024; // 2 MB
-const MIN_FRAME_INTERVAL_MS = 50; // ~20 fps max
-const KEEPALIVE_FRAME_INTERVAL_MS = 750;
+const MIN_FRAME_INTERVAL_MS = 120; // ~8 fps max to protect CPU/RAM
+const KEEPALIVE_FRAME_INTERVAL_MS = 2000;
 const AUTH_SYNC_DEBOUNCE_MS = 1500;
 const AUTH_WATCH_INTERVAL_MS = 1000;
 const SHUTDOWN_AUTH_TIMEOUT_MS = 3000;
@@ -1014,13 +1014,60 @@ async function main() {
   }
 
   // ── Idle Timer & Shutdown ──────────────────────────────────────────────────
+  let lastCommandAtMs = Date.now();
+  const MAX_VIEWER_IDLE_MS = 20 * 60 * 1000; // 20 min max passive viewer without commands
+  const MAX_SESSION_RSS_MB = 1200; // Hard cap 1.2 GB for session + chromium children
+
+  const rssWatchdog = setInterval(() => {
+    if (closing) return;
+    try {
+      const { execFileSync } = require('child_process');
+      const out = execFileSync('ps', ['-eo', 'pid,ppid,rss'], { encoding: 'utf8', timeout: 2000 });
+      const children = new Map();
+      const rssByPid = new Map();
+      for (const line of out.trim().split('\n').slice(1)) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 3) continue;
+        const p = Number(parts[0]), pp = Number(parts[1]), r = Number(parts[2]);
+        rssByPid.set(p, r);
+        if (!children.has(pp)) children.set(pp, []);
+        children.get(pp).push(p);
+      }
+      let totalKb = 0;
+      const stack = [process.pid];
+      const seen = new Set();
+      while (stack.length) {
+        const cur = stack.pop();
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        totalKb += (rssByPid.get(cur) || 0);
+        for (const c of (children.get(cur) || [])) stack.push(c);
+      }
+      const totalMb = Math.round(totalKb / 1024);
+      if (totalMb > MAX_SESSION_RSS_MB) {
+        console.error(`[lab-browser] Session ${sessionName} exceeded memory limit (${totalMb} MB > ${MAX_SESSION_RSS_MB} MB), shutting down to protect homelab.`);
+        shutdown('memory_limit_exceeded').catch(() => process.exit(0));
+      }
+    } catch (_) {}
+  }, 30000);
+  if (typeof rssWatchdog.unref === 'function') rssWatchdog.unref();
+
   function resetIdleTimer() {
     lastActivityAt = new Date().toISOString();
+    lastCommandAtMs = Date.now();
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       if (closing) return;
-      if (subscribers.size > 0 || pendingSubscribers > 0 || aiBusy) {
-        resetIdleTimer();
+      const idleDurationMs = Date.now() - lastCommandAtMs;
+      if (aiBusy || ((subscribers.size > 0 || pendingSubscribers > 0) && idleDurationMs < MAX_VIEWER_IDLE_MS)) {
+        idleTimer = setTimeout(() => {
+          if (!closing && !aiBusy && (Date.now() - lastCommandAtMs >= MAX_VIEWER_IDLE_MS || subscribers.size === 0)) {
+            shutdown('idle_timeout').catch(() => process.exit(0));
+          } else if (!closing) {
+            resetIdleTimer();
+          }
+        }, Math.min(idleTtlSec * 1000, 60000));
+        idleTimer.unref();
         return;
       }
       shutdown('idle_timeout').catch(() => process.exit(0));

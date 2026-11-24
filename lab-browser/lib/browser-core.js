@@ -17,6 +17,9 @@ const LAUNCH_ARGS = [
   '--disable-dev-shm-usage',
   '--disable-blink-features=AutomationControlled',
   '--lang=th-TH',
+  '--js-flags=--max-old-space-size=512',
+  '--renderer-process-limit=2',
+  '--disable-gpu',
 ];
 
 function checkRamGuard() {

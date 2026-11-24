@@ -2881,8 +2881,10 @@ async function getValidAccessToken(tokenFile, forceRefresh = false, home = HOME_
 }
 
 // `agy -p /usage` prints the app's "View Usage" table as TSV: group \t label \t NN% \t resetISO
-const AGY_USAGE_TTL_MS = 60 * 1000;
-const agyUsageCache = new Map(); // accountId -> { at, rows }
+const AGY_USAGE_TTL_MS = 3 * 60 * 1000;
+const AGY_USAGE_FAIL_COOLDOWN_MS = 2 * 60 * 1000;
+const agyUsageCache = new Map(); // accountId -> { at, rows, failedAt }
+const agyUsageInflight = new Map(); // accountId -> Promise
 
 function parseAgyUsage(text) {
     const rows = [];
@@ -2903,23 +2905,42 @@ function parseAgyUsage(text) {
 }
 
 async function getAgyUsage(account) {
+    const now = Date.now();
     const hit = agyUsageCache.get(account.id);
-    if (hit && Date.now() - hit.at < AGY_USAGE_TTL_MS) return hit.rows;
-    let rows = null;
-    try {
-        const { stdout } = await execFileAsync(AGY_BIN, ['-p', '/usage', '--print-timeout', '30s'], {
-            timeout: 40000,
-            cwd: path.join(GEMINI_DIR, 'router-tmp'),
-            env: { ...process.env, HOME: account.home, FORCE_COLOR: '0' }
-        });
-        rows = parseAgyUsage(stdout);
-    } catch (err) {
-        console.error(`[GeminiManager] agy /usage failed for ${account.label}: ${String(err.message || err).slice(0, 160)}`);
+    if (hit) {
+        if (hit.rows && now - hit.at < AGY_USAGE_TTL_MS) return hit.rows;
+        if (hit.failedAt && now - hit.failedAt < AGY_USAGE_FAIL_COOLDOWN_MS) return hit.rows || null;
     }
-    // Keep the last good reading if this one failed
-    if (!rows || !rows.length) return hit ? hit.rows : null;
-    agyUsageCache.set(account.id, { at: Date.now(), rows });
-    return rows;
+    if (agyUsageInflight.has(account.id)) {
+        return agyUsageInflight.get(account.id);
+    }
+    const task = (async () => {
+        let rows = null;
+        try {
+            const { stdout } = await execFileAsync(AGY_BIN, ['-p', '/usage', '--print-timeout', '15s'], {
+                timeout: 20000,
+                cwd: path.join(GEMINI_DIR, 'router-tmp'),
+                env: { ...process.env, HOME: account.home, FORCE_COLOR: '0' }
+            });
+            rows = parseAgyUsage(stdout);
+        } catch (err) {
+            console.error(`[GeminiManager] agy /usage failed for ${account.label}: ${String(err.message || err).slice(0, 160)}`);
+        }
+        if (!rows || !rows.length) {
+            agyUsageCache.set(account.id, {
+                at: hit ? hit.at : 0,
+                rows: hit ? hit.rows : null,
+                failedAt: Date.now()
+            });
+            return hit ? hit.rows : null;
+        }
+        agyUsageCache.set(account.id, { at: Date.now(), rows, failedAt: 0 });
+        return rows;
+    })().finally(() => {
+        agyUsageInflight.delete(account.id);
+    });
+    agyUsageInflight.set(account.id, task);
+    return task;
 }
 
 async function postCloudCode(endpoint, accessToken, bodyObj) {

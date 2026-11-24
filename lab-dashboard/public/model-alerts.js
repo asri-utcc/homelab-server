@@ -23,7 +23,7 @@
   let modalOpen = false;
   let scanning = false;
   let researching = false;
-  let sortBy = 'composite';
+  let sortBy = 'cost';
   let audioUnlocked = false;
 
   function injectStyles() {
@@ -326,6 +326,13 @@
       .mra-st-disabled { background: rgba(100, 116, 139, 0.25); color: #cbd5e1; }
       .mra-st-missing { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
       .mra-st-rejected { background: rgba(153, 27, 27, 0.28); color: #fecaca; }
+      .mra-group-row td {
+        padding: 8px 12px;
+        background: rgba(56, 189, 248, 0.08);
+        color: #7dd3fc;
+        font-size: 12px;
+        font-weight: 700;
+      }
       .mra-sub {
         font-size: 11px;
         color: #94a3b8;
@@ -692,16 +699,36 @@
 
     const rawModels = Array.isArray(registryState.models) ? [...registryState.models] : [];
     const models = rawModels.map((m) => ({ m, metrics: computeRowMetrics(m) }));
+    // DeepSeek จ่ายตามการใช้งานจริง → อยู่นอกกฎเกณฑ์ แยกกลุ่มต่อท้าย ไม่มีเลขอันดับ
+    // Claude + Gemini (ซับสคริปชัน) จัดอันดับรวมกัน
+    const isPayPerUse = (m) => m.engine === 'deepseek' || String(m.id || '').startsWith('deepseek');
     models.sort((a, b) => {
+      const pa = isPayPerUse(a.m) ? 1 : 0;
+      const pb = isPayPerUse(b.m) ? 1 : 0;
+      if (pa !== pb) return pa - pb;
       if (sortBy === 'confidence') return (b.metrics.conf - a.metrics.conf) || (b.metrics.avgQ - a.metrics.avgQ);
       if (sortBy === 'intelligence') return (b.metrics.avgQ - a.metrics.avgQ) || (b.metrics.conf - a.metrics.conf);
       if (sortBy === 'value') return (b.metrics.valueScore - a.metrics.valueScore) || (b.metrics.avgQ - a.metrics.avgQ);
-      if (sortBy === 'cost') return (a.metrics.effCost - b.metrics.effCost) || (b.metrics.avgQ - a.metrics.avgQ);
+      if (sortBy === 'cost') return (a.metrics.effCost - b.metrics.effCost) || (b.metrics.avgQ - a.metrics.avgQ) || (b.metrics.conf - a.metrics.conf);
       return (b.metrics.compositeScore - a.metrics.compositeScore) || (b.metrics.conf - a.metrics.conf);
     });
 
+    let rankNo = 0;
+    let lastGroup = null;
     for (let idx = 0; idx < models.length; idx += 1) {
       const { m, metrics } = models[idx];
+      const payPerUse = isPayPerUse(m);
+      const group = payPerUse ? 'ppu' : 'sub';
+      if (group !== lastGroup) {
+        lastGroup = group;
+        const head = document.createElement('tr');
+        head.className = 'mra-group-row';
+        head.innerHTML = `<td colspan="8">${payPerUse
+          ? '💳 จ่ายตามการใช้งานจริง (DeepSeek) · อยู่นอกการจัดอันดับ'
+          : '🎟️ ซับสคริปชันที่จ่ายไปแล้ว (Claude + Gemini) · เรียงต้นทุนรวมกัน'}</td>`;
+        tbody.appendChild(head);
+      }
+      if (!payPerUse) rankNo += 1;
       const tr = document.createElement('tr');
       const st = STATUS_META[m.status] || { label: m.status || '-', cls: 'mra-st-disabled' };
       const sug = m.suggested || {};
@@ -729,7 +756,7 @@
         : '';
 
       tr.innerHTML = `
-        <td><strong>#${idx + 1} ${escapeHtml(m.id)}</strong></td>
+        <td><strong>${payPerUse ? '—' : '#' + rankNo} ${escapeHtml(m.id)}</strong></td>
         <td>${escapeHtml(m.name || '-')}</td>
         <td>${escapeHtml(m.engine || '-')}</td>
         <td><span class="mra-st ${st.cls}">${st.label}</span></td>
@@ -835,11 +862,11 @@
           </div>
           <div class="mra-modal-controls">
             <select id="mra-sort-select" class="mra-select" title="เรียงลำดับโมเดล">
+              <option value="cost">เรียง: ต้นทุนต่ำ→สูง</option>
               <option value="composite">เรียง: คะแนนรวม</option>
               <option value="confidence">เรียง: ความมั่นใจ</option>
               <option value="intelligence">เรียง: ความฉลาด (avgQ)</option>
               <option value="value">เรียง: ความคุ้มค่า</option>
-              <option value="cost">เรียง: ต้นทุนต่ำ→สูง</option>
             </select>
             <button type="button" class="mra-btn mra-btn-primary" id="mra-btn-research">🔎 วิจัยภายนอก</button>
             <button type="button" class="mra-btn mra-btn-primary" id="mra-btn-scan">🔄 สแกนเดี๋ยวนี้</button>

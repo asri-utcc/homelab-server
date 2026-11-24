@@ -146,3 +146,17 @@ test('researchModels จัดกลุ่มตามตระกูล (Family
     assert.ok(ranked[0].id.startsWith('gpt-oss-120b-'));
     assert.equal(ranked[2].id, 'gemini-4-unknown-medium');
 });
+
+test('rankModels: Claude+Gemini จัดอันดับรวมกันตามต้นทุน, DeepSeek แยกกลุ่มไม่มีอันดับ', () => {
+    const mk = (id, engine, cost, avgQ) => ({ id, engine, confidence: 80, scores: { avgQ }, pricing: { effectiveCost: cost } });
+    const ranked = researcher.rankModels([
+        mk('deepseek-flash', 'deepseek', 0.05, 74),
+        mk('gemini-4-neon-high', 'agy', 2, 96),
+        mk('claude-code-haiku', 'claude-code', 0.15, 68),
+        mk('claude-sonnet-5-5-low', 'agy', 1.33, 90)
+    ], { sortBy: 'cost' });
+    assert.deepEqual(ranked.map((m) => m.id), ['claude-code-haiku', 'claude-sonnet-5-5-low', 'gemini-4-neon-high', 'deepseek-flash']);
+    assert.deepEqual(ranked.map((m) => m.rank), [1, 2, 3, null]);
+    assert.equal(ranked[3].billing, 'pay-per-use');
+    assert.equal(ranked[3].outsideRanking, true);
+});

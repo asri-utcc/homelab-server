@@ -1304,6 +1304,13 @@ async function researchModels(models, opts = {}) {
 }
 
 // ── Ranking ────────────────────────────────────────────────────────────────────
+/** DeepSeek = จ่ายตามการใช้งาน (pay-per-use) · ที่เหลือ (agy/Claude Code) = ซับสคริปชันที่จ่ายไปแล้ว */
+function billingOf(m) {
+    const engine = String((m && m.engine) || '').toLowerCase();
+    const id = String((m && m.id) || '').toLowerCase();
+    return engine === 'deepseek' || id.startsWith('deepseek') ? 'pay-per-use' : 'subscription';
+}
+
 function rankModels(evaluatedModels, { sortBy = 'composite' } = {}) {
     const list = (Array.isArray(evaluatedModels) ? evaluatedModels : []).map((m) => {
         const avgQ = Number(m.scores && m.scores.avgQ) || 75;
@@ -1321,7 +1328,7 @@ function rankModels(evaluatedModels, { sortBy = 'composite' } = {}) {
         };
     });
 
-    list.sort((a, b) => {
+    const cmp = (a, b) => {
         if (sortBy === 'confidence') {
             return (b.confidence - a.confidence) || (b.scores.avgQ - a.scores.avgQ);
         }
@@ -1332,15 +1339,27 @@ function rankModels(evaluatedModels, { sortBy = 'composite' } = {}) {
             return ((b.scores.valueScore || 0) - (a.scores.valueScore || 0)) || (b.scores.avgQ - a.scores.avgQ);
         }
         if (sortBy === 'cost') {
-            return ((a.pricing.effectiveCost || 0) - (b.pricing.effectiveCost || 0)) || (b.scores.avgQ - a.scores.avgQ);
+            // ถูกสุดก่อน · ราคาเท่ากัน → ฉลาดกว่าก่อน → มั่นใจกว่าก่อน
+            return ((a.pricing.effectiveCost || 0) - (b.pricing.effectiveCost || 0))
+                || (b.scores.avgQ - a.scores.avgQ)
+                || (b.confidence - a.confidence);
         }
         // default: composite (ฉลาด + มั่นใจ + คุ้มค่า)
         return (b.scores.compositeScore - a.scores.compositeScore)
             || (b.confidence - a.confidence)
             || (b.scores.avgQ - a.scores.avgQ);
-    });
+    };
 
-    return list.map((m, idx) => ({ ...m, rank: idx + 1 }));
+    // Claude + Gemini จ่ายซับสคริปชันไปแล้ว (cost = อัตรากินโควตา) จึงจัดอันดับรวมกัน
+    // DeepSeek จ่ายตามการใช้งานจริง (USD) จึงอยู่นอกกฎเกณฑ์: เรียงในกลุ่มตัวเองต่อท้าย ไม่มีเลขอันดับ
+    const withBilling = list.map((m) => ({ ...m, billing: billingOf(m) }));
+    const subscription = withBilling.filter((m) => m.billing === 'subscription').sort(cmp);
+    const payPerUse = withBilling.filter((m) => m.billing === 'pay-per-use').sort(cmp);
+
+    return [
+        ...subscription.map((m, idx) => ({ ...m, rank: idx + 1 })),
+        ...payPerUse.map((m) => ({ ...m, rank: null, outsideRanking: true }))
+    ];
 }
 
 // ── Optional Gemini Synthesis (สังเคราะห์บทบาท/จุดเด่นจากผลวิจัยจริง) ─────────────
@@ -1442,6 +1461,7 @@ module.exports = {
     researchModel,
     researchModels,
     rankModels,
+    billingOf,
     synthesizeRankingWithGemini,
     clearCaches
 };

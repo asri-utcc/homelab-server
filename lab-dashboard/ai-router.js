@@ -92,6 +92,57 @@ for (const f of MODEL_FAMILIES) {
 }
 for (const d of DEEPSEEK_MODELS) MODEL_LABELS[d.model] = d.label;
 
+let registry = null;
+try {
+    registry = require('./model-registry');
+} catch (_) {
+    registry = null;
+}
+
+let registryInitialized = false;
+function ensureRegistryInit() {
+    if (!registry || registryInitialized) return;
+    registryInitialized = true;
+    try {
+        registry.init({
+            families: MODEL_FAMILIES,
+            deepseekModels: DEEPSEEK_MODELS.map((d) => ({ id: d.model, name: d.label })),
+            claudeCodeModels: MODEL_FAMILIES.filter((f) => f.engine === 'claude-code').map((f) => ({ id: f.model, name: f.label })),
+            listAccounts: listAgyAccounts,
+            agyBin: AGY_BIN,
+            healBinaryCache,
+            isBinaryCrash,
+            poolOf: agyPoolId
+        });
+    } catch (_) {}
+}
+
+function activeFamilies() {
+    try {
+        ensureRegistryInit();
+        return registry ? registry.getEffectiveFamilies(MODEL_FAMILIES) : MODEL_FAMILIES;
+    } catch (_) {
+        return MODEL_FAMILIES;
+    }
+}
+
+function modelUsable(id) {
+    try {
+        ensureRegistryInit();
+        return !registry || registry.isModelUsable(id);
+    } catch (_) {
+        return true;
+    }
+}
+
+function getRoutes() {
+    const fams = activeFamilies();
+    return {
+        families: fams.map(({ id, engine, label, variants, q, cost }) => ({ id, engine, label, variants, q, cost })),
+        paid: DEEPSEEK_MODELS.filter((d) => modelUsable(d.model)).map(({ model, q }) => ({ model, q }))
+    };
+}
+
 const CODE_HINT_RE = /code|โค้ด|bug|บั๊ก|แก้|fix|script|สคริปต์|deploy|config|\.js|\.py|function|error|api|sql|docker|pm2|git/i;
 // Go / Bun runtime crash before the CLI even finishes starting — on this host that means a RAM bit flip in the
 // page-cached binary (see homelab RAM notes). Evicting the file from page cache reloads it from disk.
@@ -193,7 +244,27 @@ function engineOf(model) {
 }
 
 function modelLabel(model) {
-    return MODEL_LABELS[model] || model;
+    if (MODEL_LABELS[model]) return MODEL_LABELS[model];
+    try {
+        for (const f of activeFamilies()) {
+            if (f.model && f.model === model) return f.label || model;
+            if (f.prefix && model && model.startsWith(f.prefix)) {
+                const v = model.slice(f.prefix.length);
+                if (v) {
+                    const pretty = v === 'xhigh' ? 'XHigh' : v[0].toUpperCase() + v.slice(1);
+                    return `${f.label} (${pretty})`;
+                }
+                return f.label || model;
+            }
+        }
+        if (registry) {
+            ensureRegistryInit();
+            const snap = registry.getSnapshot();
+            const entry = snap && Array.isArray(snap.models) && snap.models.find((m) => m && m.id === model);
+            if (entry && entry.name) return entry.name;
+        }
+    } catch (_) {}
+    return model;
 }
 
 // ── บัญชี Google Antigravity ──────────────────────────────────────────────────
@@ -480,10 +551,10 @@ function pickEffort(family, tier, mode) {
 }
 
 function scoreCandidate({ family, effort, budget, qType, tier, sticky, load }) {
-    const q = family.q[qType] + (effort ? EFFORT_Q[effort] : 0);
+    const q = family.q[qType] + (effort ? (EFFORT_Q[effort] ?? 0) : 0);
     const target = TIER_TARGET_Q[tier];
     const under = Math.max(0, target - q) * 4;                       // อ่อนเกินงาน → โทษหนัก
-    const costW = family.cost * (effort ? EFFORT_COST[effort] : 1);
+    const costW = family.cost * (effort ? (EFFORT_COST[effort] ?? 1) : 1);
     const over = Math.max(0, q - target) * 0.6 * costW * (MODE_THRIFT[budget.mode] || 1); // เกินงาน → เปลืองโควตา
     const budgetScore = budget.surplus * 30 + (budget.remainingPct < PRIMARY_THRESHOLD ? -15 : 0) + (MODE_SCORE_BONUS[budget.mode] || 0)
         + (budget.expiring || 0) * EXPIRING_WEIGHT;
@@ -517,6 +588,7 @@ async function buildCandidates(cls, { hasImages = false, sessionAccount = null, 
         if (modeOverride) budget = { ...budget, mode: modeOverride };
         const effort = pickEffort(family, tier, budget.mode);
         const model = family.model || `${family.prefix}${effort}`;
+        if (!modelUsable(model)) return;
         const cand = { ...base, model, engine: family.engine };
         if (isInCooldown(cand)) return;
         const score = scoreCandidate({
@@ -528,7 +600,7 @@ async function buildCandidates(cls, { hasImages = false, sessionAccount = null, 
     };
 
     const bigParallel = Boolean(cls.parallelizable) && (cls.complexity || 0) >= 70;
-    for (const family of MODEL_FAMILIES) {
+    for (const family of activeFamilies()) {
         if (family.requires === 'parallel' && !bigParallel) continue;
         if (family.engine === 'agy') {
             for (const acc of accounts) {
@@ -547,6 +619,7 @@ async function buildCandidates(cls, { hasImages = false, sessionAccount = null, 
             ? DEEPSEEK_MODELS.filter((d) => d.vision)
             : (TIERS.indexOf(tier) >= 2 ? DEEPSEEK_MODELS : [...DEEPSEEK_MODELS].reverse());
         for (const d of order) {
+            if (!modelUsable(d.model)) continue;
             const dsCand = { model: d.model, engine: 'deepseek', account: 'deepseek', accountLabel: 'DeepSeek (จ่ายตามใช้)', balance: deepseekInfo.totalBalance, paid: true };
             if (isInCooldown(dsCand)) continue;
             out.push(dsCand);
@@ -808,6 +881,7 @@ function upgradeNeonRoleCandidate(cand, tier = 'high') {
     }
     const model = `gemini-4-neon-${targetEffort}`;
     if (model === cand.model) return cand;
+    if (!modelUsable(model)) return cand;
     return { ...cand, effort: targetEffort, model, label: modelLabel(model) };
 }
 
@@ -908,8 +982,9 @@ async function buildWorkerCandidates(requestedFamily = 'neon', { preferredAccoun
     const claudeWebInfo = (quotas.g1 && quotas.g1.claudeWeb) || (provQuotas && provQuotas.claudeWeb) || null;
 
     const subs = [];
+    const families = activeFamilies();
     for (let rank = 0; rank < chain.length; rank++) {
-        const family = MODEL_FAMILIES.find((f) => f.id === chain[rank]);
+        const family = families.find((f) => f.id === chain[rank]);
         if (!family) continue;
         if (family.engine === 'agy') {
             for (const acc of accounts) {
@@ -919,6 +994,7 @@ async function buildWorkerCandidates(requestedFamily = 'neon', { preferredAccoun
                 if (modeOverride) budget = { ...budget, mode: modeOverride };
                 const effort = pickEffort(family, effTier, budget.mode);
                 const model = family.model || `${family.prefix}${effort}`;
+                if (!modelUsable(model)) continue;
                 const cand = { model, engine: family.engine, account: acc.id, accountLabel: acc.label, home: acc.home };
                 if (isInCooldown(cand)) continue;
                 const sc = scoreCandidate({
@@ -946,6 +1022,7 @@ async function buildWorkerCandidates(requestedFamily = 'neon', { preferredAccoun
             if (modeOverride) budget = { ...budget, mode: modeOverride };
             const effort = pickEffort(family, effTier, budget.mode);
             const model = family.model || `${family.prefix}${effort}`;
+            if (!modelUsable(model)) continue;
             const cand = { model, engine: family.engine, account: 'claude-pro', accountLabel: 'Claude Pro' };
             if (isInCooldown(cand)) continue;
             const sc = scoreCandidate({ family, effort, budget, qType, tier: effTier, sticky: false, load: recentLoad(poolKey(cand)) });
@@ -971,6 +1048,7 @@ async function buildWorkerCandidates(requestedFamily = 'neon', { preferredAccoun
     if (deepseekUsable(deepseekInfo)) {
         const order = hasImages ? DEEPSEEK_MODELS.filter((d) => d.vision) : DEEPSEEK_MODELS;
         for (const d of order) {
+            if (!modelUsable(d.model)) continue;
             const dsCand = { model: d.model, engine: 'deepseek', account: 'deepseek', accountLabel: 'DeepSeek (จ่ายตามใช้)', balance: deepseekInfo.totalBalance, paid: true };
             if (!isInCooldown(dsCand)) out.push(dsCand);
         }
@@ -1258,7 +1336,13 @@ async function calibrationReport(limit = 2000) {
 module.exports = {
     AUTO_MODEL_ID,
     CROSS_TEAM_MIN_COMPLEXITY,
-    ROUTES,
+    get ROUTES() { return getRoutes(); },
+    getRoutes,
+    activeFamilies,
+    modelUsable,
+    MODEL_FAMILIES,
+    DEEPSEEK_MODELS,
+    modelRegistry: registry,
     routeTask,
     classifyTask,
     isShortcutText,

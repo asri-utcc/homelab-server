@@ -33,6 +33,7 @@ const wgManager = require('./wireguard-manager');
 const geminiManager = require('./gemini-manager');
 const audit = require('./audit-logger');
 const aiRouter = require('./ai-router');
+const modelRegistry = require('./model-registry');
 const bgRemoveManager = require('./bg-remove-manager');
 const assetVaultManager = require('./asset-vault-manager');
 const videoStudioManager = require('./video-studio-manager');
@@ -2250,6 +2251,99 @@ const server = http.createServer(async (req, res) => {
                 routes: aiRouter.ROUTES
             });
         }
+        // ── 🧭 Model Registry & Watchdog ─────────────────────────────
+        if (p === '/api/model-registry' && req.method === 'GET') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const reg = modelRegistry.loadRegistry();
+                const models = Object.values((reg && reg.models) || {});
+                const pendingCount = models.filter((m) => m && m.status === 'pending').length;
+                return sendJson(res, 200, {
+                    ok: true,
+                    lastScanAt: (reg && reg.lastScanAt) || null,
+                    lastScanOk: Boolean(reg && reg.lastScanOk),
+                    models,
+                    customFamilies: (reg && reg.customFamilies) || [],
+                    pendingCount
+                });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/scan' && req.method === 'POST') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const result = await modelRegistry.scan();
+                return sendJson(res, 200, { ok: true, ...result });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/approve' && req.method === 'POST') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const body = await readJsonBody(req);
+                const modelId = body && body.modelId;
+                if (typeof modelId !== 'string' || !/^[a-z0-9.\-_]{1,80}$/i.test(modelId)) {
+                    return sendJson(res, 400, { ok: false, error: 'invalid modelId' });
+                }
+                const result = await modelRegistry.approve(modelId, { q: body.q, cost: body.cost });
+                return sendJson(res, 200, { ok: true, ...result });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/reject' && req.method === 'POST') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const body = await readJsonBody(req);
+                const modelId = body && body.modelId;
+                if (typeof modelId !== 'string' || !/^[a-z0-9.\-_]{1,80}$/i.test(modelId)) {
+                    return sendJson(res, 400, { ok: false, error: 'invalid modelId' });
+                }
+                const result = await modelRegistry.reject(modelId);
+                return sendJson(res, 200, { ok: true, ...result });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/toggle' && req.method === 'POST') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const body = await readJsonBody(req);
+                const modelId = body && body.modelId;
+                if (typeof modelId !== 'string' || !/^[a-z0-9.\-_]{1,80}$/i.test(modelId)) {
+                    return sendJson(res, 400, { ok: false, error: 'invalid modelId' });
+                }
+                const result = await modelRegistry.toggle(modelId, Boolean(body.enabled));
+                return sendJson(res, 200, { ok: true, ...result });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/alerts' && req.method === 'GET') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const unackedParam = url.searchParams.get('unacked');
+                const unacked = unackedParam === '1' || unackedParam === 'true';
+                const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get('limit'), 10) || 50));
+                const alerts = await modelRegistry.listAlerts({ unacked, limit });
+                return sendJson(res, 200, { ok: true, alerts });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/alerts/ack' && req.method === 'POST') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const body = await readJsonBody(req);
+                const ids = body && body.ids === 'all' ? 'all' : (Array.isArray(body && body.ids) ? body.ids : []);
+                const result = await modelRegistry.ackAlerts(ids);
+                return sendJson(res, 200, { ok: true, ...result });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
         if (req.method === 'POST' && p === '/api/gemini/claude-key') {
             const body = await readJsonBody(req);
             return sendJson(res, 200, await geminiManager.setClaudeSessionKey(body.sessionKey || ''));
@@ -2888,6 +2982,12 @@ if (browserVisionBridge && typeof browserVisionBridge.attachUpgrade === 'functio
 
 server.listen(PORT, HOST, () => {
     log(`lab-dashboard listening on ${HOST}:${PORT}`);
+    try {
+        if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+        modelRegistry.startWatchdog();
+    } catch (e) {
+        log('Notice: modelRegistry watchdog skipped:', e.message);
+    }
     // Sync initial WireGuard client policies with iptables
     (async () => {
         try {

@@ -1574,6 +1574,73 @@ def run_scene_art_step(job_dir: Path, script: dict[str, Any], request: dict[str,
         append_log(job_dir, f"[scene-art] skipped: {exc}")
 
 
+def _trim_scene_art_png(src: str) -> str:
+    """Autocrop transparent margins (alpha > 16) with 4% padding, caching <name>_trim.png beside original.
+
+    Never modifies the original file; returns original src on any error.
+    """
+    if not src or src.startswith(("http://", "https://")):
+        return src
+    try:
+        public_dir = BASE_DIR / "public"
+        if src.startswith("/") and Path(src).is_file():
+            orig_path = Path(src)
+            is_public_rel = False
+        else:
+            orig_path = public_dir / src.lstrip("/")
+            is_public_rel = True
+
+        if orig_path.suffix.lower() != ".png" or not orig_path.is_file():
+            return src
+        if orig_path.stem.endswith("_trim"):
+            return src
+
+        trim_path = orig_path.with_name(f"{orig_path.stem}_trim{orig_path.suffix}")
+        if is_public_rel:
+            rel_str = str(trim_path.relative_to(public_dir)).replace("\\", "/")
+            trim_src = f"/{rel_str}" if src.startswith("/") else rel_str
+        else:
+            trim_src = str(trim_path)
+
+        if (
+            trim_path.is_file()
+            and trim_path.stat().st_size > 0
+            and trim_path.stat().st_mtime >= orig_path.stat().st_mtime
+        ):
+            return trim_src
+
+        from PIL import Image
+
+        with Image.open(orig_path) as im:
+            rgba = im.convert("RGBA")
+            w, h = rgba.size
+            alpha = rgba.getchannel("A")
+            mask = alpha.point(lambda v: 255 if v > 16 else 0)
+            bbox = mask.getbbox()
+            if not bbox:
+                return src
+            x0, y0, x1, y1 = bbox
+            bw = x1 - x0
+            bh = y1 - y0
+            if bw <= 0 or bh <= 0:
+                return src
+            pad_x = int(round(bw * 0.04))
+            pad_y = int(round(bh * 0.04))
+            crop_box = (
+                max(0, x0 - pad_x),
+                max(0, y0 - pad_y),
+                min(w, x1 + pad_x),
+                min(h, y1 + pad_y),
+            )
+            cropped = rgba.crop(crop_box)
+            tmp_path = trim_path.with_name(f".{trim_path.name}.tmp.{os.getpid()}")
+            cropped.save(tmp_path, format="PNG")
+            tmp_path.replace(trim_path)
+        return trim_src
+    except Exception:
+        return src
+
+
 def scene_art_for(job_dir: Path, scene_id: str) -> dict[str, Any] | None:
     doc = read_json(job_dir / "scene_art.json", None)
     entry = ((doc or {}).get("scenes") or {}).get(scene_id) if isinstance(doc, dict) else None
@@ -1676,6 +1743,8 @@ def build_props(
             ]
         art = scene_art_for(job_dir, str(merged.get("id") or ""))
         if art:
+            if isinstance(art.get("src"), str):
+                art["src"] = _trim_scene_art_png(art["src"])
             merged["art"] = art
         else:
             merged.pop("art", None)

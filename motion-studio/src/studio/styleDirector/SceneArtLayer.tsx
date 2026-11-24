@@ -12,6 +12,7 @@ export interface ArtPlacement {
   top?: number;
   bottom?: number;
   widthFrac: number;
+  maxHeight?: number;
 }
 
 export interface ArtLayout {
@@ -24,11 +25,14 @@ export interface ArtLayout {
 
 /**
  * Picks an art-aware composition layout so 3D props read as large heroes without obscuring
- * the main title or the subtitle bar (StudioEngine places SubtitleBar at bottom: 320, y ~1460..1600, zIndex: 50).
+ * the caption card (unscaled y ~1230..1358) or the subtitle bar (StudioEngine SubtitleBar
+ * at bottom: 320, y ~1460..1600, zIndex: 50).
  *
- * - Data shots and DynamicMotionStage vector scenes keep full-bleed framing ('hero-corner', 48% width).
- * - Standard directed shots rotate through 'stack-bottom' (70% width), 'split-right' (58% width),
- *   and 'split-left' (58% width), scaling the shot into a framed card to open generous stage space.
+ * - Data shots and DynamicMotionStage vector scenes keep full-bleed framing ('hero-corner',
+ *   48% width, tucked strictly below the subtitle bar y >= 1608).
+ * - Standard directed shots rotate through 'stack-bottom' (66% width), 'split-right' (58% width),
+ *   and 'split-left' (58% width), scaling the shot card above y ~860..960 and anchoring the
+ *   trimmed 3D art strictly above the subtitle bar (bottom: 476 -> y <= 1444).
  */
 const FRAMED_LAYOUTS: readonly ('stack-bottom' | 'split-right' | 'split-left')[] = [
   'stack-bottom',
@@ -50,40 +54,44 @@ export function pickArtLayout(
       shotOrigin: '50% 50%',
       shotTranslate: { x: 0, y: 0 },
       art: placeRight
-        ? { right: 20, bottom: 20, widthFrac: 0.48 }
-        : { left: 20, bottom: 20, widthFrac: 0.48 },
+        ? { right: 16, bottom: 0, widthFrac: 0.5, maxHeight: 350 }
+        : { left: 16, bottom: 0, widthFrac: 0.5, maxHeight: 350 },
     };
   }
 
   const chosen = FRAMED_LAYOUTS[Math.abs(sceneIndex) % FRAMED_LAYOUTS.length];
 
   if (chosen === 'stack-bottom') {
+    // Shot card (scale 0.62 from top) ends at y=1202; its caption card (1230..1358) sits at y=775..854.
+    // Art sits strictly above subtitle bar (bottom: 476 -> y=824..1444).
     return {
       name: 'stack-bottom',
-      shotScale: 0.8,
+      shotScale: 0.62,
       shotOrigin: '50% 0%',
-      shotTranslate: { x: 0, y: 0 },
-      art: { centerX: true, bottom: 48, widthFrac: 0.7 },
+      shotTranslate: { x: 0, y: 12 },
+      art: { centerX: true, bottom: 476, widthFrac: 0.68, maxHeight: 620 },
     };
   }
 
   if (chosen === 'split-right') {
+    // Shot card (scale 0.68 from top-left) maps caption card (1230..1358) to y=873..960 on the left.
+    // Art sits on the right strictly above subtitle bar (bottom: 476 -> y=934..1444).
     return {
       name: 'split-right',
-      shotScale: 0.74,
-      shotOrigin: '0% 10%',
-      shotTranslate: { x: 24, y: 0 },
-      art: { right: 8, top: 920, widthFrac: 0.58 },
+      shotScale: 0.68,
+      shotOrigin: '0% 6%',
+      shotTranslate: { x: 20, y: 0 },
+      art: { right: 12, bottom: 476, widthFrac: 0.58, maxHeight: 510 },
     };
   }
 
   // 'split-left': mirror of 'split-right'
   return {
     name: 'split-left',
-    shotScale: 0.74,
-    shotOrigin: '100% 10%',
-    shotTranslate: { x: -24, y: 0 },
-    art: { left: 8, top: 920, widthFrac: 0.58 },
+    shotScale: 0.68,
+    shotOrigin: '100% 6%',
+    shotTranslate: { x: -20, y: 0 },
+    art: { left: 12, bottom: 476, widthFrac: 0.58, maxHeight: 510 },
   };
 }
 
@@ -156,10 +164,16 @@ export const SceneArtLayer: React.FC<SceneArtLayerProps> = ({
       extrapolateRight: 'clamp',
     });
   } else {
-    motionTranslateY = Math.sin(tSec * 2.2) * 14;
+    motionTranslateY = Math.sin(tSec * 2.2) * 10;
   }
 
   const widthPx = Math.round(STAGE_W * resolvedLayout.art.widthFrac);
+  const maxHeightPx = resolvedLayout.art.maxHeight;
+  const objectPosition = resolvedLayout.art.centerX
+    ? 'center bottom'
+    : typeof resolvedLayout.art.right === 'number'
+      ? 'right bottom'
+      : 'left bottom';
   let baseTransform = '';
   const posStyle: React.CSSProperties = {
     position: 'absolute',
@@ -221,8 +235,10 @@ export const SceneArtLayer: React.FC<SceneArtLayerProps> = ({
           position: 'relative',
           width: '100%',
           height: 'auto',
+          ...(typeof maxHeightPx === 'number' ? { maxHeight: maxHeightPx } : {}),
           display: 'block',
           objectFit: 'contain',
+          objectPosition,
           transform: `translateY(${motionTranslateY.toFixed(2)}px) rotate(${motionRotateDeg.toFixed(2)}deg)`,
           filter: 'drop-shadow(0 18px 32px rgba(0, 0, 0, 0.38))',
         }}

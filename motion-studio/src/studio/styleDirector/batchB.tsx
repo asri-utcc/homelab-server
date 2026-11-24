@@ -794,12 +794,12 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
 
   // Coin dropping into piggy slot
   const coinCycle = ((localFrame + v * 11) * 0.045) % 1;
-  const coinY = interpolate(coinCycle, [0, 0.75, 1], [460, 745, 760]);
+  const coinY = interpolate(coinCycle, [0, 0.75, 1], [410, 685, 700]);
   const coinOpacity = coinCycle < 0.72 ? 1 : 1 - (coinCycle - 0.72) / 0.28;
 
   const crackReveal = stressed ? clamp01((localFrame - 14) / 22) : 0;
   const headerIn = appear(localFrame, 0, 14);
-  const items = getFallbackItems(scene, [t.subtitle || 'ออมสม่ำเสมอสร้างฐานการเงิน']).slice(0, 2);
+  const items = getFallbackItems(scene, [t.subtitle || 'ออมสม่ำเสมอสร้างฐานการเงิน']).slice(0, 3);
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
@@ -823,7 +823,7 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
         <rect width={STAGE_W} height={STAGE_H} fill={`url(#m11-pig-bg-${sceneIndex})`} />
 
         {/* Soft studio floor shadow */}
-        <ellipse cx={540} cy={1085} rx={265 * swell} ry={38} fill="#0F172A" opacity={0.16} />
+        <ellipse cx={540} cy={1025} rx={265 * swell} ry={38} fill="#0F172A" opacity={0.16} />
 
         {/* Dropping coin into slot (positive savings mood) */}
         {!stressed && (
@@ -837,7 +837,7 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
 
         {/* 3D Ceramic Piggy Bank (mirrors facing direction on odd variants, keeps text upright) */}
         <g
-          transform={`translate(${(540 + shakeX).toFixed(1)}, 865) rotate(${tiltDeg}) scale(${(
+          transform={`translate(${(540 + shakeX).toFixed(1)}, 805) rotate(${tiltDeg}) scale(${(
             (mirrored ? -1 : 1) *
             pop *
             swell
@@ -963,7 +963,7 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
           const ang = (i / 6) * Math.PI * 2 + localFrame * 0.03 + v * 0.6;
           const r = 325 + Math.sin(localFrame * 0.12 + i + v) * 14;
           const sx = 540 + Math.cos(ang) * r;
-          const sy = 900 + Math.sin(ang) * (r * 0.68);
+          const sy = 840 + Math.sin(ang) * (r * 0.68);
           return (
             <circle
               key={i}
@@ -1008,21 +1008,21 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
         <FitText text={t.title} baseSize={54} minSize={34} maxLines={3} color="#0F172A" fontWeight={900} />
       </div>
 
-      {/* Bottom Cards (strictly above subtitle bar y <= 1375) */}
+      {/* Bottom Cards (strictly above SAFE_BOTTOM = 1540 and below piggy bank) */}
       <div
         style={{
           position: 'absolute',
-          top: 1155,
+          top: 1095,
           left: 64,
           right: 64,
-          maxHeight: 225,
+          maxHeight: SAFE_BOTTOM - 1095,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 12,
+          gap: 10,
         }}
       >
-        {items.map((item, i) => (
+        {items.slice(0, 3).map((item, i) => (
           <div
             key={i}
             style={{
@@ -1030,19 +1030,62 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
               maxWidth: 880,
               background: '#FFFFFF',
               borderRadius: 20,
-              padding: '13px 26px',
+              padding: '11px 24px',
               border: `2px solid ${stressed ? '#FECDD3' : '#CBD5E1'}`,
               boxShadow: '0 10px 26px rgba(15,23,42,0.08)',
               opacity: stagger(i, localFrame, 8, 10, 14),
             }}
           >
-            <FitText text={item} baseSize={28} minSize={20} maxLines={2} color="#1E293B" fontWeight={700} align="center" />
+            <FitText text={item} baseSize={26} minSize={18} maxLines={2} color="#1E293B" fontWeight={700} align="center" />
           </div>
         ))}
       </div>
     </div>
   );
 };
+
+function segmentThaiWordsForPit(text: string): string[] {
+  const clean = String(text || '').trim();
+  if (!clean) return [];
+  try {
+    const IntlAny = Intl as unknown as {
+      Segmenter?: new (
+        locale: string,
+        options: { granularity: 'word' | 'grapheme' | 'sentence' },
+      ) => { segment(input: string): Iterable<{ segment: string }> };
+    };
+    if (typeof Intl !== 'undefined' && typeof IntlAny.Segmenter === 'function') {
+      const seg = new IntlAny.Segmenter('th', { granularity: 'word' });
+      const out: string[] = [];
+      for (const part of seg.segment(clean)) {
+        if (part.segment) out.push(part.segment);
+      }
+      if (out.length > 0) return out;
+    }
+  } catch {
+    // fallback below
+  }
+  return clean.split(/(\s+)/).filter((s) => s.length > 0);
+}
+
+function wrapThaiLinesForPit(text: string, maxCharsPerLine: number): string[] {
+  const words = segmentThaiWordsForPit(text);
+  if (words.length === 0) return [];
+  const lines: string[] = [];
+  let current = '';
+  for (const w of words) {
+    if (!current) {
+      current = w.trimStart();
+    } else if (current.length + w.length <= maxCharsPerLine) {
+      current += w;
+    } else {
+      lines.push(current.trimEnd());
+      current = w.trimStart();
+    }
+  }
+  if (current.trim()) lines.push(current.trimEnd());
+  return lines;
+}
 
 const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({
   scene,
@@ -1056,14 +1099,19 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({
   const v = Math.max(0, Math.floor(variant || 0));
   const mirrored = v % 2 === 1;
   const amberGlow = v >= 2;
-  const steps = getFallbackItems(scene, ['หยุดสร้างหนี้เพิ่ม', 'จัดลำดับดอกเบี้ยสูง', 'สร้างกองเงินสำรอง']).slice(0, 4);
+  const rawSteps = getFallbackItems(scene, ['หยุดสร้างหนี้เพิ่ม', 'จัดลำดับดอกเบี้ยสูง', 'สร้างกองเงินสำรอง'])
+    .map((s) => String(s || '').trim())
+    .filter((s) => s.length > 0)
+    .slice(0, 3);
+  const steps = rawSteps.length > 0 ? rawSteps : [t.subtitle || t.title || 'ตั้งหลักใหม่'];
   const animShift = (v % 3) * 3;
   const climbProgress = easeOutCubic(clamp01((localFrame - 6 - animShift) / Math.max(28, durationFrames * 0.65)));
   const cx = mirrored ? 655 : 425;
   const cy = 1090;
   const headerIn = appear(localFrame, 0, 14);
 
-  const stepCount = Math.max(3, steps.length);
+  const stepCount = steps.length;
+  const stairCount = Math.max(3, stepCount);
   const stepZ = amberGlow ? 124 : 114;
 
   return (
@@ -1119,7 +1167,7 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({
         })}
 
         {/* Pass 1: Isometric Cash-Brick Staircase climbing OUT of the pit */}
-        {Array.from({ length: stepCount }, (_, i) => {
+        {Array.from({ length: stairCount }, (_, i) => {
           const stepSp = spring({
             frame: Math.max(0, localFrame - animShift - i * 8),
             fps,
@@ -1154,43 +1202,73 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({
           );
         })}
 
-        {/* Pass 2: Foreground Step Badge Pills (never occluded by stairs) */}
-        {Array.from({ length: stepCount }, (_, i) => {
+        {/* Pass 2: Foreground Step Badge Pills (exact count of steps, word-wrapped in Thai) */}
+        {steps.map((stepText, i) => {
+          const stairIdx = stepCount === 1 ? 1 : i;
           const stepSp = spring({
-            frame: Math.max(0, localFrame - animShift - i * 8),
+            frame: Math.max(0, localFrame - animShift - stairIdx * 8),
             fps,
             config: { damping: 14, stiffness: 140 },
           });
-          const bx = mirrored ? 85 - i * 92 : -195 + i * 96;
-          const by = 110 - i * 86;
-          const baseZ = i * stepZ;
+          const bx = mirrored ? 85 - stairIdx * 92 : -195 + stairIdx * 96;
+          const by = 110 - stairIdx * 86;
+          const baseZ = stairIdx * stepZ;
           const liftZ = (1 - stepSp) * -120;
           const [topSx, topSy] = isoProject(mirrored ? bx + 8 : bx + 124, by + 44, baseZ + 82 + liftZ, cx, cy);
-          const pillX = mirrored ? 54 : 678;
-          const pillY = Math.max(575, Math.min(1170, 1085 - i * 195));
+          const pillW = stepCount === 1 ? 460 : 390;
+          const pillX = mirrored ? 48 : stepCount === 1 ? 568 : 638;
+          const pillY = stepCount === 1 ? 920 : Math.max(575, Math.min(1170, 1085 - i * 195));
+
+          const labelText = `${i + 1}. ${stepText}`;
+          let fontSize = 22;
+          let lines = wrapThaiLinesForPit(labelText, Math.floor((pillW - 36) / 11.5));
+          if (lines.length > 2) {
+            fontSize = 19;
+            lines = wrapThaiLinesForPit(labelText, Math.floor((pillW - 36) / 10));
+          }
+          if (lines.length > 3) {
+            fontSize = 17;
+            lines = wrapThaiLinesForPit(labelText, Math.floor((pillW - 36) / 9));
+          }
+          const lineHeight = Math.round(fontSize * 1.35);
+          const pillH = Math.max(60, lines.length * lineHeight + 24);
+          const firstBaselineY = pillY - ((lines.length - 1) * lineHeight) / 2 + fontSize * 0.35;
 
           return (
             <g key={`pill-${i}`} opacity={clamp01(stepSp * 1.3)}>
               <line
                 x1={topSx}
                 y1={topSy}
-                x2={mirrored ? pillX + 350 : pillX - 10}
+                x2={mirrored ? pillX + pillW - 8 : pillX - 10}
                 y2={pillY}
                 stroke="#4ADE80"
                 strokeWidth={2.5}
                 strokeDasharray="6 6"
               />
               <circle cx={topSx} cy={topSy} r={6} fill="#4ADE80" />
-              <rect x={pillX - 8} y={pillY - 30} width={356} height={60} rx={18} fill="#0F172A" stroke="#4ADE80" strokeWidth={2.2} />
+              <rect
+                x={pillX - 8}
+                y={pillY - pillH / 2}
+                width={pillW}
+                height={pillH}
+                rx={18}
+                fill="#0F172A"
+                stroke="#4ADE80"
+                strokeWidth={2.2}
+              />
               <text
                 x={pillX + 14}
-                y={pillY + 8}
+                y={firstBaselineY}
                 fill="#F8FAFC"
-                fontSize={22}
+                fontSize={fontSize}
                 fontFamily={THAI_FONT_FAMILY}
                 fontWeight={700}
               >
-                {`${i + 1}. ${truncateText(steps[i] || '', 21)}`}
+                {lines.map((line, li) => (
+                  <tspan key={li} x={pillX + 14} dy={li === 0 ? 0 : lineHeight}>
+                    {line}
+                  </tspan>
+                ))}
               </text>
             </g>
           );
@@ -1198,7 +1276,7 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({
 
         {/* Animated upward glowing escape arrow following the staircase */}
         {(() => {
-          const progIdx = climbProgress * (stepCount - 1);
+          const progIdx = climbProgress * (stairCount - 1);
           const ax = (mirrored ? 85 - progIdx * 92 : -195 + progIdx * 96) + 64;
           const ay = 110 - progIdx * 86 + 42;
           const az = progIdx * (stepZ + 4) + 145;

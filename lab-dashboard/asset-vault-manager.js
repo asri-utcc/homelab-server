@@ -2450,6 +2450,10 @@ async function handleRequest(req, res, url, helpers = {}) {
         return false;
     }
 
+    if (p.startsWith('/api/3d-vault/ai/')) {
+        return require('./asset-vault-ai').handleRequest(req, res, url, helpers);
+    }
+
     try {
         // GET /api/3d-vault/stats
         if (method === 'GET' && p === '/api/3d-vault/stats') {
@@ -2712,4 +2716,13 @@ module.exports = {
     convertFromGlb,
     resolveSafeFile,
     VAULT_DIR,
+    withBlenderLock,
+    execFileAsync,
+    inspectGlb,
+    getAssetDir,
+    readMetaRaw,
+    BLENDER_BIN,
+    OUTPUTS_3D_DIR,
+    makeError,
+    assertValidAssetId,
 };

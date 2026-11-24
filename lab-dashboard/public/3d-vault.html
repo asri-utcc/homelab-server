@@ -1739,6 +1739,7 @@
       </div>
       <button type="button" class="btn btn-sm" id="btn-viewer-fav" title="สลับรายการโปรด">☆</button>
       <button type="button" class="btn btn-sm" id="btn-copy-link" title="คัดลอกลิงก์ตรงถึงเวอร์ชันนี้">คัดลอกลิงก์</button>
+      <button type="button" id="btn-viewer-ai" class="btn btn-sm">✨ AI ปรับแต่ง</button>
       <button type="button" class="btn btn-sm btn-primary" id="btn-viewer-add-ver">+ เวอร์ชันใหม่</button>
       <button type="button" class="btn btn-sm" id="btn-toggle-inspector" title="ซ่อน/แสดงแผงด้านข้าง">แผงข้อมูล</button>
     </div>
@@ -1968,6 +1969,7 @@
         </div>
       </div>
     </aside>
+    <aside id="vault-ai-panel" class="vault-ai-panel" hidden></aside>
   </div>
 </div>
 
@@ -3248,6 +3250,7 @@ async function openViewer(assetId, preferredVersion = null, startCompare = false
       exitCompareMode();
       await loadViewerVersion(targetV);
     }
+    document.dispatchEvent(new CustomEvent('vault:viewer-change', { detail: { assetId: asset.id, v: state.currentVersion } }));
   } catch (err) {
     $('stage-loader').classList.remove('show');
     showToast(`เปิดโมเดลไม่สำเร็จ: ${err.message}`, 'err');
@@ -3409,6 +3412,7 @@ async function loadViewerVersion(v) {
       $('stage-loader').classList.remove('show');
     }
   }
+  document.dispatchEvent(new CustomEvent('vault:viewer-change', { detail: { assetId: asset.id, v: state.currentVersion } }));
 }
 
 async function loadSourceCodeTab(assetId, v, verObj) {
@@ -4553,7 +4557,9 @@ async function boot() {
   }
 }
 
+window.__vaultViewer = { open: openViewer, reloadAssets: loadAssets };
 boot();
 </script>
+<script type="module" src="/3d-vault-ai.js?v=1"></script>
 </body>
 </html>

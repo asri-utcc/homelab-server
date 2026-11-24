@@ -29,6 +29,7 @@
 .au-ev b{color:var(--ink-muted,#4b94a8);font-weight:400}
 .au-more{width:100%;margin-top:4px}
 .btn-msg-audit{background:none;border:1px solid var(--border,#0aa);color:var(--ink-2,#8ceeff);border-radius:6px;font-size:11px;padding:1px 6px;cursor:pointer}
+#btn-audit-open-mobile{display:none;width:100%;align-items:center;justify-content:center;margin:0 0 12px;padding:10px 12px;border-radius:12px;background:rgba(0,229,255,.10);border:1px solid rgba(0,229,255,.32);color:var(--ink-1,#e8fcff);font-size:13px;font-weight:600;cursor:pointer}
 @media(max-width:760px){.au-body{grid-template-columns:1fr}.au-list{max-height:34vh}}
 `;
   const st = document.createElement('style');
@@ -161,9 +162,24 @@
     b.textContent = '📜 ประวัติงาน AI';
     b.addEventListener('click', () => window.openAuditExplorer());
     host.insertBefore(b, host.firstChild);
+    // Mobile: the topbar is too tight, so the entry lives at the top of the settings sheet instead.
+    const sheet = document.querySelector('#modal-settings .modal-card');
+    let mb = null;
+    if (sheet && !document.getElementById('btn-audit-open-mobile')) {
+      mb = document.createElement('button');
+      mb.type = 'button'; mb.id = 'btn-audit-open-mobile'; mb.className = 'au-mobile-entry';
+      mb.textContent = '📜 ประวัติงาน AI (Black Box)';
+      mb.addEventListener('click', () => {
+        const m = document.getElementById('modal-settings');
+        if (m) m.classList.remove('is-open', 'open', 'show');
+        window.openAuditExplorer();
+      });
+      const title = sheet.querySelector('.modal-title');
+      if (title) title.insertAdjacentElement('afterend', mb); else sheet.insertBefore(mb, sheet.firstChild);
+    }
     api('/api/audit/runs?limit=50&from=' + new Date(Date.now() - 864e5).toISOString().slice(0, 10)).then((d) => {
       const bad = d.runs.filter((r) => r.startedAt > Date.now() - 864e5 && (r.status === 'crashed_midway' || r.unreportedFilesCount > 0)).length;
-      if (bad) b.textContent = `📜 ประวัติงาน AI ⚠️${bad}`;
+      if (bad) { b.textContent = `📜 ประวัติงาน AI ⚠️${bad}`; if (mb) mb.textContent = `📜 ประวัติงาน AI (Black Box) ⚠️${bad}`; }
     }).catch(() => {});
   }
   addButton();

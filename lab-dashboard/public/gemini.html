@@ -2687,6 +2687,43 @@ body::before {
   .msg__time, .msg__duration, .msg__model-badge, .msg__token-badge { font-size: 9.5px; padding: 1px 5px; }
   .msg__token-sub { font-size: 9px; }
   .msg__body { font-size: 14.5px; line-height: 1.55; }
+
+  /* Premium mobile cleanup: no horizontal bleed, tidy message header, decluttered top bar */
+  .messages { overflow-x: hidden; }
+  .msg, .msg--assistant, .msg--user { min-width: 0; box-sizing: border-box; }
+  .msg__body { overflow-wrap: anywhere; min-width: 0; }
+  .msg__body pre, .msg__body table { max-width: 100%; overflow-x: auto; display: block; }
+  .msg__body img, .msg__body video { max-width: 100%; height: auto; }
+  .msg__meta {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 6px;
+    padding-bottom: 7px;
+    margin-bottom: 8px;
+  }
+  .msg__meta-left { flex: 1 1 100%; min-width: 0; max-width: 100%; gap: 5px 6px; }
+  .msg__meta-right { margin-left: 0; flex: 1 1 100%; flex-wrap: wrap; gap: 5px; }
+  .msg__author { font-size: 10.5px; letter-spacing: 0.08em; }
+  .msg__model-badge {
+    display: inline-block;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .msg__token-badge {
+    max-width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
+    border-radius: 999px;
+    padding: 2px 9px;
+    row-gap: 0;
+  }
+  .msg__time, .msg__duration { border-radius: 999px; padding: 2px 8px; }
+  #btn-audit-open { display: none !important; }
+  .au-mobile-entry { display: flex !important; }
   .btn-scroll-bottom {
     right: 12px;
     bottom: 66px;

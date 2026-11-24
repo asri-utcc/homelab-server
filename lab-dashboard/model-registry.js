@@ -406,7 +406,8 @@ function execAgyModels(agyBin, homeDir) {
                     ok: !err,
                     stdout: String(stdout || ''),
                     stderr: String(stderr || ''),
-                    error: err ? (err.message || String(err)) : null
+                    error: err ? (err.message || String(err)) : null,
+                    signal: err && err.signal ? String(err.signal) : null
                 });
             }
         );
@@ -469,7 +470,11 @@ async function discoverAgyModels() {
 
     const results = await Promise.all(accounts.map(async (acc) => {
         let res = await execAgyModels(agyBin, acc.home);
-        if (!res.ok && isBinaryCrash(res.stderr)) {
+        // core dump จาก RAM page-cache เสียมักไม่มี stderr ให้จับ → ถือว่า crash เมื่อถูก signal ฆ่า
+        // หรือล้มโดยไม่มีผลลัพธ์เลย แล้ว heal + ลองใหม่ได้สูงสุด 2 รอบ
+        const looksCrashed = (r) => !r.ok && !/Please sign in/i.test(r.stdout + r.stderr)
+            && (isBinaryCrash(r.stderr) || (r.signal && r.signal !== 'SIGTERM') || !r.stdout.trim());
+        for (let attempt = 0; attempt < 2 && looksCrashed(res); attempt += 1) {
             try {
                 await healBinaryCache(agyBin);
             } catch (_) {}

@@ -194,3 +194,27 @@ test('ackAlerts แล้ว listAlerts({unacked:true}) ต้องว่าง
     // alert ยังอยู่ในไฟล์ (ack ไม่ลบ jsonl)
     assert.ok(reg.listAlerts({ limit: 500 }).length >= unacked.length);
 });
+
+test('agy crash เงียบ (ไม่มี stderr) → heal แล้วลองใหม่ สแกนสำเร็จ', async () => {
+    fresh();
+    const marker = path.join(tmp, `crash-marker-${n}`);
+    const flaky = path.join(tmp, `agy-flaky-${n}`);
+    // ครั้งแรกถูก SIGSEGV ฆ่าโดยไม่มี output (เหมือน core dump) ครั้งที่สองปกติ
+    fs.writeFileSync(flaky, `#!/bin/bash
+if [ ! -f "${marker}" ]; then touch "${marker}"; kill -SEGV $$; fi
+printf 'gemini-4-neon-low\\tNeon Low\\n'
+`);
+    fs.chmodSync(flaky, 0o755);
+    let heals = 0;
+    reg.init({
+        families: FAMILIES, deepseekModels: [], claudeCodeModels: [],
+        listAccounts: () => [{ id: 'acc1', label: 'acc1', home: tmp, ready: true }],
+        agyBin: flaky,
+        isBinaryCrash: () => false,
+        healBinaryCache: async () => { heals += 1; return true; }
+    });
+    const d = await reg.discoverAgyModels();
+    assert.equal(d.ok, true);
+    assert.equal(heals, 1);
+    assert.ok(d.union.has('gemini-4-neon-low'));
+});

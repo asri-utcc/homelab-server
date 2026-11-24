@@ -7,6 +7,7 @@ import { FlatCartoonLayout } from './flatCartoon';
 import { IllustratedLayout } from './director/IllustratedLayout';
 import { isIllustratedStyle } from './director/doodleKit';
 import { StyleDirectedLayout } from './styleDirector/StyleDirectedLayout';
+import { DynamicMotionStage } from './styleDirector/DynamicMotionStage';
 import { hasStyleDirector } from './styleDirector/registry';
 import { getHeroStyleAccent, hasHeroSignature } from './signatures';
 import {
@@ -1652,6 +1653,9 @@ const HeroStyleSceneLayout: React.FC<FamilySceneRendererProps> = ({
 // ============================================================================
 
 export const FamilySceneRenderer: React.FC<FamilySceneRendererProps> = (props) => {
+  if (!hasStyleDirector(props.styleId) && props.scene.vector?.elements?.length) {
+    return <DynamicMotionStage {...props} />;
+  }
   if (isIllustratedStyle(props.styleId)) {
     return <IllustratedLayout {...props} />;
   }

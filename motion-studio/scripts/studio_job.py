@@ -1582,6 +1582,43 @@ def scene_art_for(job_dir: Path, scene_id: str) -> dict[str, Any] | None:
     return {k: entry[k] for k in ("src", "composition", "motionHint", "hero") if entry.get(k)}
 
 
+def run_scene_vector_step(job_dir: Path, script: dict[str, Any], request: dict[str, Any]) -> None:
+    """Generate AI vector motion-stage specs per selected scene (non-fatal; skipped when disabled)."""
+    mode = str(request.get("dynamicStage") or os.environ.get("MS_DYNAMIC_STAGE") or "auto").strip().lower()
+    if mode in ("off", "0", "false", "none"):
+        return
+    try:
+        write_status(
+            job_dir,
+            status="rendering",
+            stage="scene-vector",
+            progress=38,
+            message="กำลังออกแบบฉากเวกเตอร์แอนิเมชันด้วย AI...",
+        )
+        import scene_vector  # local module in scripts/
+
+        scene_vector.run_scene_vector_stage(job_dir, script, {**request, "id": request.get("id") or job_dir.name})
+    except Exception as exc:  # never block the video on optional vector stage
+        append_log(job_dir, f"[scene-vector] skipped: {exc}")
+
+
+def scene_vector_for(
+    job_dir: Path,
+    scene_id: str,
+    palette: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    doc = read_json(job_dir / "scene_vector.json", None)
+    entry = ((doc or {}).get("scenes") or {}).get(scene_id) if isinstance(doc, dict) else None
+    if not isinstance(entry, dict) or not entry.get("elements"):
+        return None
+    try:
+        import scene_vector  # local module in scripts/
+
+        return scene_vector.validate_vector_spec(entry, palette or {})
+    except Exception:
+        return None
+
+
 def build_props(
     job_dir: Path,
     script: dict[str, Any],
@@ -1642,6 +1679,15 @@ def build_props(
             merged["art"] = art
         else:
             merged.pop("art", None)
+        vec = scene_vector_for(
+            job_dir,
+            str(merged.get("id") or ""),
+            palette=tokens.get("palette") if isinstance(tokens, dict) else None,
+        )
+        if vec:
+            merged["vector"] = vec
+        else:
+            merged.pop("vector", None)
         merged_scenes.append(merged)
 
     fps = int(timeline.get("fps") or script.get("fps") or 30)
@@ -1941,6 +1987,7 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
             script, timeline = maybe_shorten_after_tts(job_dir, script, timeline, request)
         timeline_path = job_dir / "work" / "timeline.json"
         run_scene_art_step(job_dir, script, request)
+        run_scene_vector_step(job_dir, script, request)
         props_path = build_props(job_dir, script, timeline, request)
 
         delta = credit_ledger.summarize_ledger_slice(ledger_start)

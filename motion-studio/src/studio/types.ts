@@ -171,6 +171,86 @@ export interface StudioQuoteData {
   source?: string;
 }
 
+export type StudioVectorBgType = 'solid' | 'linear' | 'radial';
+
+export interface StudioVectorBg {
+  type: StudioVectorBgType;
+  colors: string[];
+  angle?: number;
+}
+
+export type StudioVectorElementKind =
+  | 'rect'
+  | 'circle'
+  | 'ellipse'
+  | 'path'
+  | 'polygon'
+  | 'line'
+  | 'group';
+
+export type StudioVectorEnterAnim =
+  | 'fade'
+  | 'pop'
+  | 'slide-up'
+  | 'slide-left'
+  | 'slide-right'
+  | 'draw'
+  | 'none';
+
+export type StudioVectorLoopAnim =
+  | 'none'
+  | 'float'
+  | 'pulse'
+  | 'spin'
+  | 'sway'
+  | 'orbit';
+
+export interface StudioVectorAnim {
+  enter?: StudioVectorEnterAnim;
+  delay?: number;
+  dur?: number;
+  loop?: StudioVectorLoopAnim;
+  loopAmp?: number;
+  loopSpeed?: number;
+}
+
+export interface StudioVectorElement {
+  id?: string;
+  kind: StudioVectorElementKind;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  r?: number;
+  rx?: number;
+  ry?: number;
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  d?: string;
+  points?: Array<[number, number]>;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  opacity?: number;
+  rotate?: number;
+  children?: StudioVectorElement[];
+  anim?: StudioVectorAnim;
+}
+
+export type StudioVectorTextZone = 'top' | 'middle' | 'bottom';
+
+export interface StudioVectorSpec {
+  version?: number;
+  bg?: StudioVectorBg;
+  elements: StudioVectorElement[];
+  textZone?: StudioVectorTextZone;
+  motif?: string;
+  model?: string;
+  cached?: boolean;
+}
+
 export interface StudioScene {
   id: string;
   index?: number;
@@ -207,6 +287,7 @@ export interface StudioScene {
     motionHint?: 'float' | 'spin' | 'rise' | string;
     hero?: string;
   };
+  vector?: StudioVectorSpec;
 }
 
 export type StudioProps = {

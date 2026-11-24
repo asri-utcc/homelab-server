@@ -10,6 +10,11 @@ export interface StyleShotArgs {
   tokens: any;
   styleId: string;
   shot: string;
+  /**
+   * 0 = ใช้ช็อตนี้ครั้งแรก, 1+ = ใช้ซ้ำครั้งที่ n
+   * ช็อตควรเปลี่ยนมุมกล้อง/สลับด้าน/จัดวางใหม่ตามค่านี้
+   */
+  variant?: number;
 }
 
 export interface StyleDirectorDef {

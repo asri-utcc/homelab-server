@@ -146,7 +146,7 @@ const BillBrick: React.FC<{
 };
 
 // ============================================================================
-// LOOK-11: MONEY STACK (4 distinct 3D shots)
+// LOOK-11: MONEY STACK (7 distinct 3D shots)
 // ============================================================================
 
 const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
@@ -156,36 +156,51 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
   durationFrames,
   fps,
   tokens,
+  variant = 0,
 }) => {
   const t = sceneTexts(scene);
   const primary = parsePrimaryNumber(scene);
-  const accent = '#059669';
-  const accentSoft = '#10B981';
-  const bgTop = tokens?.isLight ? tokens.palette.bg : '#F4F6F8';
+  const v = Math.max(0, Math.floor(variant || 0));
+  const mirrored = v % 2 === 1;
+  const altPalette = v >= 2;
+  const accent = altPalette ? '#0D9488' : '#059669';
+  const accentSoft = altPalette ? '#14B8A6' : '#10B981';
+  const bgTop = tokens?.isLight ? tokens.palette.bg : altPalette ? '#F0FDF9' : '#F4F6F8';
 
   const headerIn = appear(localFrame, 0, 14);
-  const countProgress = easeOutCubic(clamp01((localFrame - 4) / Math.max(24, durationFrames * 0.55)));
+  const animShift = (v % 3) * 3;
+  const countProgress = easeOutCubic(clamp01((localFrame - 4 - animShift) / Math.max(24, durationFrames * 0.55)));
   const currentNum = Math.round(primary.value * countProgress);
   const formattedVal = `${primary.prefix}${currentNum.toLocaleString('en-US')}${primary.suffix}`;
 
-  // Determine tower height (5..8 layers) proportional to value or progress
-  const targetLayers =
+  // Determine tower height (5..8 layers) proportional to value or progress, adjusted by variant
+  const baseLayers =
     typeof scene.stat?.progress === 'number'
       ? Math.max(4, Math.min(8, Math.round((scene.stat.progress / 100) * 8)))
       : Math.max(5, Math.min(8, 4 + Math.round(Math.log10(Math.max(10, primary.value)))));
+  const targetLayers = Math.max(4, Math.min(8, baseLayers + (mirrored ? 1 : 0) - (altPalette ? 1 : 0)));
 
   const visibleLayers = Math.max(1, Math.min(targetLayers, Math.ceil(countProgress * targetLayers)));
-  const cx = 465;
-  const cy = 1045;
-  const floatBob = Math.sin(localFrame * 0.1) * 4;
-  const slots: Array<[number, number]> = [
-    [-142, -126],
-    [8, -126],
-    [-142, -32],
-    [8, -32],
-    [-142, 62],
-    [8, 62],
-  ];
+  const cx = mirrored ? 610 : 465;
+  const cy = mirrored ? 1025 : 1045;
+  const floatBob = Math.sin(localFrame * 0.1 + v * 1.4) * 4;
+  const slots: Array<[number, number]> = mirrored
+    ? [
+        [-138, -108],
+        [12, -108],
+        [-138, -14],
+        [12, -14],
+        [-138, 80],
+        [12, 80],
+      ]
+    : [
+        [-142, -126],
+        [8, -126],
+        [-142, -32],
+        [8, -32],
+        [-142, 62],
+        [8, 62],
+      ];
 
   const bullets = getFallbackItems(scene, [t.subtitle || 'สะสมมูลค่าเติบโตเป็นชั้น']).slice(0, 2);
 
@@ -198,7 +213,7 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
             <stop offset="65%" stopColor="#E6EAEE" />
             <stop offset="100%" stopColor="#D4DCE5" />
           </linearGradient>
-          <radialGradient id={`m11-tower-spot-${sceneIndex}`} cx="45%" cy="55%" r="48%">
+          <radialGradient id={`m11-tower-spot-${sceneIndex}`} cx={mirrored ? '58%' : '45%'} cy="55%" r="48%">
             <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.85" />
             <stop offset="100%" stopColor="#E2E8F0" stopOpacity="0" />
           </radialGradient>
@@ -272,7 +287,7 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
 
         {/* Isometric Cash Tower */}
         {Array.from({ length: visibleLayers }, (_, layerIdx) => {
-          const layerDelay = 4 + layerIdx * 5;
+          const layerDelay = 4 + animShift + layerIdx * 5;
           const dropSp = spring({
             frame: Math.max(0, localFrame - layerDelay),
             fps,
@@ -281,17 +296,19 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
           const zBase = 24 + layerIdx * 36;
           const zOffset = (1 - dropSp) * 140;
           const isTop = layerIdx === visibleLayers - 1;
+          const activeSlots = altPalette && layerIdx >= visibleLayers - 2 ? slots.slice(0, 4) : slots;
 
           return (
             <g key={layerIdx}>
-              {slots.map(([sx, sy], sIdx) => {
-                const extraBob = isTop && sIdx === 5 ? Math.max(0, 12 + floatBob) : 0;
+              {activeSlots.map(([sx, sy], sIdx) => {
+                const stepLift = mirrored && sIdx % 2 === 1 ? 14 : 0;
+                const extraBob = isTop && sIdx === activeSlots.length - 1 ? Math.max(0, 12 + floatBob) : 0;
                 return (
                   <BillBrick
                     key={`b-${layerIdx}-${sIdx}`}
                     bx={sx}
                     by={sy}
-                    bz={zBase + zOffset + extraBob}
+                    bz={zBase + zOffset + stepLift + extraBob}
                     cx={cx}
                     cy={cy}
                     opacity={clamp01(dropSp * 1.4)}
@@ -302,9 +319,9 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
           );
         })}
 
-        {/* Right-side vertical height ruler gauge */}
+        {/* Vertical height ruler gauge (swaps side when mirrored) */}
         {(() => {
-          const gaugeX = 875;
+          const gaugeX = mirrored ? 185 : 875;
           const bottomY = 1110;
           const maxH = 380;
           const fillH = maxH * (visibleLayers / 8) * clamp01(countProgress * 1.15);
@@ -326,8 +343,9 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
                   <g key={idx}>
                     <line x1={gaugeX - 12} y1={ty} x2={gaugeX + 12} y2={ty} stroke="#64748B" strokeWidth={2.5} />
                     <text
-                      x={gaugeX + 24}
+                      x={mirrored ? gaugeX - 24 : gaugeX + 24}
                       y={ty + 7}
+                      textAnchor={mirrored ? 'end' : 'start'}
                       fill="#475569"
                       fontSize={20}
                       fontFamily="monospace"
@@ -340,7 +358,11 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
               })}
               {/* Floating level pointer */}
               <polygon
-                points={`${gaugeX - 28},${bottomY - fillH - 10} ${gaugeX - 10},${bottomY - fillH} ${gaugeX - 28},${bottomY - fillH + 10}`}
+                points={
+                  mirrored
+                    ? `${gaugeX + 28},${bottomY - fillH - 10} ${gaugeX + 10},${bottomY - fillH} ${gaugeX + 28},${bottomY - fillH + 10}`
+                    : `${gaugeX - 28},${bottomY - fillH - 10} ${gaugeX - 10},${bottomY - fillH} ${gaugeX - 28},${bottomY - fillH + 10}`
+                }
                 fill={accent}
               />
             </g>
@@ -460,9 +482,18 @@ const MoneyCashTowerShot: React.FC<StyleShotArgs> = ({
   );
 };
 
-const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, durationFrames }) => {
+const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({
+  scene,
+  sceneIndex,
+  localFrame,
+  durationFrames,
+  variant = 0,
+}) => {
   const t = sceneTexts(scene);
   const primary = parsePrimaryNumber(scene);
+  const v = Math.max(0, Math.floor(variant || 0));
+  const mirrored = v % 2 === 1;
+  const wideJar = v >= 2;
   const targetPct =
     typeof scene.stat?.progress === 'number'
       ? clamp01(scene.stat.progress / 100)
@@ -470,11 +501,13 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
         ? clamp01(primary.value / 100)
         : 0.72;
 
-  const fillProgress = easeOutCubic(clamp01((localFrame - 4) / Math.max(26, durationFrames * 0.62)));
+  const animShift = (v % 3) * 3;
+  const fillProgress = easeOutCubic(clamp01((localFrame - 4 - animShift) / Math.max(26, durationFrames * 0.62)));
   const currentPct = Math.round(targetPct * 100 * fillProgress);
 
-  const jarX = 330;
-  const jarW = 420;
+  const jarW = wideJar ? 460 : 420;
+  const jarX = mirrored ? 360 - (wideJar ? 20 : 0) : 330 - (wideJar ? 20 : 0);
+  const jarCenterX = jarX + jarW / 2;
   const jarTop = 605;
   const jarBottom = 1185;
   const jarInnerH = jarBottom - jarTop - 40;
@@ -482,13 +515,14 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
   const fillY = jarBottom - 18 - fillH;
 
   // Deterministic falling coins (kept strictly below top header y >= 370)
-  const fallingCoins = Array.from({ length: 12 }, (_, i) => {
-    const speed = 13 + (i % 4) * 3.5;
-    const laneX = 395 + hashSeed(i * 17 + 3) * 290;
+  const coinCount = mirrored ? 16 : 12;
+  const fallingCoins = Array.from({ length: coinCount }, (_, i) => {
+    const speed = (mirrored ? 15 : 13) + (i % 4) * 3.5;
+    const laneX = jarX + 55 + hashSeed(i * 17 + 3 + v * 29) * (jarW - 110);
     const startY = 395 - (i % 3) * 18;
     const travelRange = Math.max(160, fillY - startY + 20);
-    const y = startY + ((localFrame * speed + i * 53) % travelRange);
-    const spin = Math.cos(localFrame * 0.22 + i * 1.1);
+    const y = startY + ((localFrame * speed + i * 53 + v * 37) % travelRange);
+    const spin = Math.cos(localFrame * 0.22 + i * 1.1 + v * 0.8);
     const rx = Math.max(8, Math.abs(spin) * 26);
     return { x: laneX, y, rx, key: i };
   });
@@ -503,7 +537,7 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
       <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}>
         <defs>
           <linearGradient id={`m11-coin-bg-${sceneIndex}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#F8FAFC" />
+            <stop offset="0%" stopColor={wideJar ? '#FFFBEB' : '#F8FAFC'} />
             <stop offset="68%" stopColor="#ECEFF4" />
             <stop offset="100%" stopColor="#DDE4EC" />
           </linearGradient>
@@ -526,7 +560,7 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
         <rect width={STAGE_W} height={STAGE_H} fill={`url(#m11-coin-bg-${sceneIndex})`} />
 
         {/* Studio pedestal shadow */}
-        <ellipse cx={540} cy={jarBottom + 22} rx={245} ry={34} fill="#0F172A" opacity={0.16} />
+        <ellipse cx={jarCenterX} cy={jarBottom + 22} rx={jarW * 0.58} ry={34} fill="#0F172A" opacity={0.16} />
 
         {/* Falling 3D Gold Coins above & entering jar */}
         {fallingCoins.map((c) => (
@@ -574,10 +608,11 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
           />
           {Array.from({ length: Math.min(22, settledRows + 1) }, (_, row) => {
             const ry = jarBottom - 26 - row * 26;
+            const cols = wideJar ? 8 : 7;
             return (
               <g key={row}>
-                {Array.from({ length: 7 }, (_, col) => {
-                  const jitter = (hashSeed(row * 31 + col * 13) - 0.5) * 14;
+                {Array.from({ length: cols }, (_, col) => {
+                  const jitter = (hashSeed(row * 31 + col * 13 + v * 19) - 0.5) * 14;
                   const cxCoin = jarX + 46 + col * 54 + jitter;
                   return (
                     <g key={col}>
@@ -611,15 +646,30 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
           strokeWidth={3.5}
         />
         {/* Vertical glass specular highlight */}
-        <rect x={jarX + 26} y={jarTop + 48} width={22} height={jarBottom - jarTop - 105} rx={11} fill="#FFFFFF" opacity={0.55} />
+        <rect
+          x={mirrored ? jarX + jarW - 48 : jarX + 26}
+          y={jarTop + 48}
+          width={22}
+          height={jarBottom - jarTop - 105}
+          rx={11}
+          fill="#FFFFFF"
+          opacity={0.55}
+        />
         {/* Jar metal neck collar */}
         <rect x={jarX + 44} y={jarTop - 32} width={jarW - 88} height={42} rx={14} fill="#CBD5E1" stroke="#64748B" strokeWidth={2.5} />
-        <ellipse cx={540} cy={jarTop - 28} rx={(jarW - 96) / 2} ry={14} fill="#94A3B8" stroke="#475569" strokeWidth={2} />
+        <ellipse cx={jarCenterX} cy={jarTop - 28} rx={(jarW - 96) / 2} ry={14} fill="#94A3B8" stroke="#475569" strokeWidth={2} />
 
-        {/* Graduated % measurement ticks on right side of jar */}
+        {/* Graduated % measurement ticks (swaps side when mirrored) */}
         {[25, 50, 75, 100].map((pct) => {
           const ty = jarBottom - 18 - jarInnerH * (pct / 100);
-          return (
+          return mirrored ? (
+            <g key={pct}>
+              <line x1={jarX - 18} y1={ty} x2={jarX + 24} y2={ty} stroke="#475569" strokeWidth={3} />
+              <text x={jarX - 28} y={ty + 7} textAnchor="end" fill="#334155" fontSize={22} fontFamily="monospace" fontWeight={800}>
+                {pct}%
+              </text>
+            </g>
+          ) : (
             <g key={pct}>
               <line x1={jarX + jarW - 24} y1={ty} x2={jarX + jarW + 18} y2={ty} stroke="#475569" strokeWidth={3} />
               <text x={jarX + jarW + 28} y={ty + 7} fill="#334155" fontSize={22} fontFamily="monospace" fontWeight={800}>
@@ -630,13 +680,23 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
         })}
 
         {/* Floating current % indicator pill tracking fill level */}
-        <g transform={`translate(${jarX - 18}, ${Math.max(jarTop + 40, Math.min(jarBottom - 50, fillY))})`}>
-          <rect x={-195} y={-34} width={182} height={68} rx={22} fill="#0F172A" />
-          <polygon points="-14,-10 4,0 -14,10" fill="#0F172A" />
-          <text x={-104} y={11} textAnchor="middle" fill="#FDE047" fontSize={36} fontFamily={THAI_FONT_FAMILY} fontWeight={900}>
-            {currentPct}%
-          </text>
-        </g>
+        {mirrored ? (
+          <g transform={`translate(${jarX + jarW + 18}, ${Math.max(jarTop + 40, Math.min(jarBottom - 50, fillY))})`}>
+            <rect x={13} y={-34} width={182} height={68} rx={22} fill="#0F172A" />
+            <polygon points="14,-10 -4,0 14,10" fill="#0F172A" />
+            <text x={104} y={11} textAnchor="middle" fill="#FDE047" fontSize={36} fontFamily={THAI_FONT_FAMILY} fontWeight={900}>
+              {currentPct}%
+            </text>
+          </g>
+        ) : (
+          <g transform={`translate(${jarX - 18}, ${Math.max(jarTop + 40, Math.min(jarBottom - 50, fillY))})`}>
+            <rect x={-195} y={-34} width={182} height={68} rx={22} fill="#0F172A" />
+            <polygon points="-14,-10 4,0 -14,10" fill="#0F172A" />
+            <text x={-104} y={11} textAnchor="middle" fill="#FDE047" fontSize={36} fontFamily={THAI_FONT_FAMILY} fontWeight={900}>
+              {currentPct}%
+            </text>
+          </g>
+        )}
       </svg>
 
       {/* Top Headline */}
@@ -711,25 +771,29 @@ const MoneyCoinRainShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFr
   );
 };
 
-const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, fps }) => {
+const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, fps, variant = 0 }) => {
   const t = sceneTexts(scene);
   const primary = parsePrimaryNumber(scene);
   const stressed = isNegativeMood(scene);
+  const v = Math.max(0, Math.floor(variant || 0));
+  const mirrored = v % 2 === 1;
+  const goldEdition = v >= 2 && !stressed;
 
   const pop = spring({
-    frame: localFrame,
+    frame: Math.max(0, localFrame - (v % 3) * 3),
     fps,
     config: { damping: 12, stiffness: 140, mass: 0.9 },
   });
 
   // Breathing / swelling animation
   const swell = stressed
-    ? 1 + 0.06 * Math.sin(localFrame * 0.25) + clamp01(localFrame / 60) * 0.08
-    : 1 + 0.035 * Math.sin(localFrame * 0.14);
+    ? 1 + 0.06 * Math.sin(localFrame * 0.25 + v) + clamp01(localFrame / 60) * 0.08
+    : 1 + 0.035 * Math.sin(localFrame * 0.14 + v * 1.1);
   const shakeX = stressed ? Math.sin(localFrame * 0.9) * 4 : 0;
+  const tiltDeg = mirrored ? 3.5 : v >= 2 ? -3 : 0;
 
   // Coin dropping into piggy slot
-  const coinCycle = (localFrame * 0.045) % 1;
+  const coinCycle = ((localFrame + v * 11) * 0.045) % 1;
   const coinY = interpolate(coinCycle, [0, 0.75, 1], [460, 745, 760]);
   const coinOpacity = coinCycle < 0.72 ? 1 : 1 - (coinCycle - 0.72) / 0.28;
 
@@ -742,13 +806,13 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
       <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}>
         <defs>
           <linearGradient id={`m11-pig-bg-${sceneIndex}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={stressed ? '#FFF1F2' : '#F4F7FA'} />
-            <stop offset="100%" stopColor={stressed ? '#FFE4E6' : '#DCE4EE'} />
+            <stop offset="0%" stopColor={stressed ? '#FFF1F2' : goldEdition ? '#FFFBEB' : '#F4F7FA'} />
+            <stop offset="100%" stopColor={stressed ? '#FFE4E6' : goldEdition ? '#FEF3C7' : '#DCE4EE'} />
           </linearGradient>
           <radialGradient id={`m11-pig-body-${sceneIndex}`} cx="38%" cy="32%" r="68%">
-            <stop offset="0%" stopColor={stressed ? '#FECDD3' : '#FDA4AF'} />
-            <stop offset="52%" stopColor={stressed ? '#F43F5E' : '#FB7185'} />
-            <stop offset="100%" stopColor={stressed ? '#9F1239' : '#BE123C'} />
+            <stop offset="0%" stopColor={stressed ? '#FECDD3' : goldEdition ? '#FEF08A' : '#FDA4AF'} />
+            <stop offset="52%" stopColor={stressed ? '#F43F5E' : goldEdition ? '#F59E0B' : '#FB7185'} />
+            <stop offset="100%" stopColor={stressed ? '#9F1239' : goldEdition ? '#B45309' : '#BE123C'} />
           </radialGradient>
           <linearGradient id={`m11-pig-coin-${sceneIndex}`} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#FEF08A" />
@@ -771,19 +835,23 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
           </g>
         )}
 
-        {/* 3D Ceramic Piggy Bank */}
+        {/* 3D Ceramic Piggy Bank (mirrors facing direction on odd variants, keeps text upright) */}
         <g
-          transform={`translate(${(540 + shakeX).toFixed(1)}, 865) scale(${(pop * swell).toFixed(4)})`}
+          transform={`translate(${(540 + shakeX).toFixed(1)}, 865) rotate(${tiltDeg}) scale(${(
+            (mirrored ? -1 : 1) *
+            pop *
+            swell
+          ).toFixed(4)}, ${(pop * swell).toFixed(4)})`}
         >
           {/* Back legs */}
-          <rect x={-155} y={118} width={62} height={92} rx={24} fill="#9F1239" />
-          <rect x={78} y={118} width={62} height={92} rx={24} fill="#9F1239" />
+          <rect x={-155} y={118} width={62} height={92} rx={24} fill={goldEdition ? '#92400E' : '#9F1239'} />
+          <rect x={78} y={118} width={62} height={92} rx={24} fill={goldEdition ? '#92400E' : '#9F1239'} />
 
           {/* Curly tail */}
           <path
             d="M 228 -18 C 282 -44, 294 26, 256 36 C 232 42, 236 6, 266 10"
             fill="none"
-            stroke="#E11D48"
+            stroke={goldEdition ? '#D97706' : '#E11D48'}
             strokeWidth={14}
             strokeLinecap="round"
           />
@@ -795,18 +863,40 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
           <ellipse cx={-62} cy={-86} rx={96} ry={34} fill="#FFFFFF" opacity={0.34} transform="rotate(-14 -62 -86)" />
 
           {/* Coin slot on back */}
-          <rect x={-52} y={-158} width={104} height={18} rx={9} fill="#4C0519" stroke="#FDA4AF" strokeWidth={2.5} />
+          <rect
+            x={-52}
+            y={-158}
+            width={104}
+            height={18}
+            rx={9}
+            fill={goldEdition ? '#451A03' : '#4C0519'}
+            stroke={goldEdition ? '#FDE68A' : '#FDA4AF'}
+            strokeWidth={2.5}
+          />
 
           {/* Cute 3D Ear */}
-          <path d="M -145 -112 C -175 -195, -88 -205, -72 -136 Z" fill="#FB7185" stroke="#BE123C" strokeWidth={4} />
-          <path d="M -132 -122 C -148 -166, -104 -172, -94 -134 Z" fill="#FECDD3" />
+          <path
+            d="M -145 -112 C -175 -195, -88 -205, -72 -136 Z"
+            fill={goldEdition ? '#F59E0B' : '#FB7185'}
+            stroke={goldEdition ? '#B45309' : '#BE123C'}
+            strokeWidth={4}
+          />
+          <path d="M -132 -122 C -148 -166, -104 -172, -94 -134 Z" fill={goldEdition ? '#FEF3C7' : '#FECDD3'} />
 
           {/* Snout */}
           <g transform="translate(-236, 10)">
-            <ellipse cx={0} cy={0} rx={48} ry={66} fill="#F43F5E" stroke="#9F1239" strokeWidth={4} />
-            <ellipse cx={-6} cy={0} rx={36} ry={52} fill="#FDA4AF" />
-            <ellipse cx={-16} cy={-14} rx={8} ry={15} fill="#881337" />
-            <ellipse cx={8} cy={-14} rx={8} ry={15} fill="#881337" />
+            <ellipse
+              cx={0}
+              cy={0}
+              rx={48}
+              ry={66}
+              fill={goldEdition ? '#D97706' : '#F43F5E'}
+              stroke={goldEdition ? '#92400E' : '#9F1239'}
+              strokeWidth={4}
+            />
+            <ellipse cx={-6} cy={0} rx={36} ry={52} fill={goldEdition ? '#FDE68A' : '#FDA4AF'} />
+            <ellipse cx={-16} cy={-14} rx={8} ry={15} fill={goldEdition ? '#78350F' : '#881337'} />
+            <ellipse cx={8} cy={-14} rx={8} ry={15} fill={goldEdition ? '#78350F' : '#881337'} />
           </g>
 
           {/* Eye */}
@@ -814,22 +904,42 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
           <circle cx={-157} cy={-44} r={5.5} fill="#FFFFFF" />
 
           {/* Front legs */}
-          <rect x={-122} y={128} width={66} height={94} rx={26} fill="#E11D48" stroke="#9F1239" strokeWidth={3} />
-          <rect x={108} y={128} width={66} height={94} rx={26} fill="#E11D48" stroke="#9F1239" strokeWidth={3} />
+          <rect
+            x={-122}
+            y={128}
+            width={66}
+            height={94}
+            rx={26}
+            fill={goldEdition ? '#D97706' : '#E11D48'}
+            stroke={goldEdition ? '#92400E' : '#9F1239'}
+            strokeWidth={3}
+          />
+          <rect
+            x={108}
+            y={128}
+            width={66}
+            height={94}
+            rx={26}
+            fill={goldEdition ? '#D97706' : '#E11D48'}
+            stroke={goldEdition ? '#92400E' : '#9F1239'}
+            strokeWidth={3}
+          />
 
-          {/* Value Emblem on Piggy Side */}
-          <text
-            x={26}
-            y={22}
-            textAnchor="middle"
-            fill="#FFFFFF"
-            fontSize={52}
-            fontFamily={THAI_FONT_FAMILY}
-            fontWeight={900}
-            opacity={0.94}
-          >
-            {primary.raw}
-          </text>
+          {/* Value Emblem on Piggy Side (un-flipped so text always reads left-to-right) */}
+          <g transform={mirrored ? 'scale(-1, 1)' : undefined}>
+            <text
+              x={mirrored ? -26 : 26}
+              y={22}
+              textAnchor="middle"
+              fill="#FFFFFF"
+              fontSize={52}
+              fontFamily={THAI_FONT_FAMILY}
+              fontWeight={900}
+              opacity={0.94}
+            >
+              {primary.raw}
+            </text>
+          </g>
 
           {/* Animated stress crack lines when mood is negative */}
           {stressed && crackReveal > 0.05 && (
@@ -850,8 +960,8 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
 
         {/* Sparkles (positive) or Warning pulses (negative) */}
         {Array.from({ length: 6 }, (_, i) => {
-          const ang = (i / 6) * Math.PI * 2 + localFrame * 0.03;
-          const r = 325 + Math.sin(localFrame * 0.12 + i) * 14;
+          const ang = (i / 6) * Math.PI * 2 + localFrame * 0.03 + v * 0.6;
+          const r = 325 + Math.sin(localFrame * 0.12 + i + v) * 14;
           const sx = 540 + Math.cos(ang) * r;
           const sy = 900 + Math.sin(ang) * (r * 0.68);
           return (
@@ -934,15 +1044,27 @@ const MoneyPiggyBankShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localF
   );
 };
 
-const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFrame, durationFrames, fps }) => {
+const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({
+  scene,
+  sceneIndex,
+  localFrame,
+  durationFrames,
+  fps,
+  variant = 0,
+}) => {
   const t = sceneTexts(scene);
+  const v = Math.max(0, Math.floor(variant || 0));
+  const mirrored = v % 2 === 1;
+  const amberGlow = v >= 2;
   const steps = getFallbackItems(scene, ['หยุดสร้างหนี้เพิ่ม', 'จัดลำดับดอกเบี้ยสูง', 'สร้างกองเงินสำรอง']).slice(0, 4);
-  const climbProgress = easeOutCubic(clamp01((localFrame - 6) / Math.max(28, durationFrames * 0.65)));
-  const cx = 425;
+  const animShift = (v % 3) * 3;
+  const climbProgress = easeOutCubic(clamp01((localFrame - 6 - animShift) / Math.max(28, durationFrames * 0.65)));
+  const cx = mirrored ? 655 : 425;
   const cy = 1090;
   const headerIn = appear(localFrame, 0, 14);
 
   const stepCount = Math.max(3, steps.length);
+  const stepZ = amberGlow ? 124 : 114;
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
@@ -958,8 +1080,8 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
             <stop offset="100%" stopColor="#020617" />
           </linearGradient>
           <radialGradient id={`m11-pit-red-${sceneIndex}`} cx="50%" cy="88%" r="48%">
-            <stop offset="0%" stopColor="#EF4444" stopOpacity="0.42" />
-            <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />
+            <stop offset="0%" stopColor={amberGlow ? '#F97316' : '#EF4444'} stopOpacity="0.42" />
+            <stop offset="100%" stopColor={amberGlow ? '#F97316' : '#EF4444'} stopOpacity="0" />
           </radialGradient>
         </defs>
 
@@ -976,10 +1098,17 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         <polygon points="80,535 200,1370 80,1480 0,1480 0,470" fill="#1E293B" opacity={0.7} />
         <polygon points="1000,535 880,1370 1000,1480 1080,1480 1080,470" fill="#0F172A" opacity={0.85} />
 
-        {/* Depth ruler markers on left pit wall */}
+        {/* Depth ruler markers (swaps wall when mirrored) */}
         {['0m', '-20m', '-40m', '-60m'].map((lbl, idx) => {
           const ly = 580 + idx * 230;
-          return (
+          return mirrored ? (
+            <g key={lbl} opacity={0.55}>
+              <line x1={958} y1={ly} x2={1004} y2={ly} stroke="#94A3B8" strokeWidth={2.5} />
+              <text x={948} y={ly + 7} textAnchor="end" fill="#94A3B8" fontSize={20} fontFamily="monospace" fontWeight={700}>
+                {lbl}
+              </text>
+            </g>
+          ) : (
             <g key={lbl} opacity={0.55}>
               <line x1={76} y1={ly} x2={122} y2={ly} stroke="#94A3B8" strokeWidth={2.5} />
               <text x={132} y={ly + 7} fill="#94A3B8" fontSize={20} fontFamily="monospace" fontWeight={700}>
@@ -992,13 +1121,13 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         {/* Pass 1: Isometric Cash-Brick Staircase climbing OUT of the pit */}
         {Array.from({ length: stepCount }, (_, i) => {
           const stepSp = spring({
-            frame: Math.max(0, localFrame - i * 8),
+            frame: Math.max(0, localFrame - animShift - i * 8),
             fps,
             config: { damping: 14, stiffness: 140 },
           });
-          const bx = -195 + i * 96;
+          const bx = mirrored ? 85 - i * 92 : -195 + i * 96;
           const by = 110 - i * 86;
-          const baseZ = i * 114;
+          const baseZ = i * stepZ;
           const liftZ = (1 - stepSp) * -120;
 
           return (
@@ -1028,16 +1157,16 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         {/* Pass 2: Foreground Step Badge Pills (never occluded by stairs) */}
         {Array.from({ length: stepCount }, (_, i) => {
           const stepSp = spring({
-            frame: Math.max(0, localFrame - i * 8),
+            frame: Math.max(0, localFrame - animShift - i * 8),
             fps,
             config: { damping: 14, stiffness: 140 },
           });
-          const bx = -195 + i * 96;
+          const bx = mirrored ? 85 - i * 92 : -195 + i * 96;
           const by = 110 - i * 86;
-          const baseZ = i * 114;
+          const baseZ = i * stepZ;
           const liftZ = (1 - stepSp) * -120;
-          const [topSx, topSy] = isoProject(bx + 124, by + 44, baseZ + 82 + liftZ, cx, cy);
-          const pillX = 678;
+          const [topSx, topSy] = isoProject(mirrored ? bx + 8 : bx + 124, by + 44, baseZ + 82 + liftZ, cx, cy);
+          const pillX = mirrored ? 54 : 678;
           const pillY = Math.max(575, Math.min(1170, 1085 - i * 195));
 
           return (
@@ -1045,7 +1174,7 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
               <line
                 x1={topSx}
                 y1={topSy}
-                x2={pillX - 10}
+                x2={mirrored ? pillX + 350 : pillX - 10}
                 y2={pillY}
                 stroke="#4ADE80"
                 strokeWidth={2.5}
@@ -1070,9 +1199,9 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         {/* Animated upward glowing escape arrow following the staircase */}
         {(() => {
           const progIdx = climbProgress * (stepCount - 1);
-          const ax = -195 + progIdx * 96 + 64;
+          const ax = (mirrored ? 85 - progIdx * 92 : -195 + progIdx * 96) + 64;
           const ay = 110 - progIdx * 86 + 42;
-          const az = progIdx * 118 + 145;
+          const az = progIdx * (stepZ + 4) + 145;
           const [sx, sy] = isoProject(ax, ay, az, cx, cy);
           const pulse = 1 + 0.14 * Math.sin(localFrame * 0.2);
           return (
@@ -1139,6 +1268,1082 @@ const MoneyDebtPitShot: React.FC<StyleShotArgs> = ({ scene, sceneIndex, localFra
         >
           <FitText
             text={t.subtitle || 'ไต่บันไดทีละขั้นจากฐานลึกสู่ความมั่นคงทางการเงิน'}
+            baseSize={26}
+            minSize={20}
+            maxLines={2}
+            color="#F8FAFC"
+            fontWeight={700}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Shared gold bullion isometric bar renderer for look-11 gold-vault & money-scale
+const GoldBar: React.FC<{
+  bx: number;
+  by: number;
+  bz: number;
+  dx?: number;
+  dy?: number;
+  dz?: number;
+  cx: number;
+  cy: number;
+  opacity?: number;
+}> = ({ bx, by, bz, dx = 92, dy = 44, dz = 26, cx, cy, opacity = 1 }) => (
+  <g opacity={opacity}>
+    <IsoBox
+      x={bx}
+      y={by}
+      z={bz}
+      dx={dx}
+      dy={dy}
+      dz={dz}
+      cx={cx}
+      cy={cy}
+      topColor="#FEF08A"
+      leftColor="#F59E0B"
+      rightColor="#B45309"
+      stroke="#92400E"
+      strokeWidth={1.3}
+    />
+  </g>
+);
+
+const MoneyGoldVaultShot: React.FC<StyleShotArgs> = ({
+  scene,
+  sceneIndex,
+  localFrame,
+  durationFrames,
+  fps,
+  variant = 0,
+}) => {
+  const t = sceneTexts(scene);
+  const v = Math.max(0, Math.floor(variant || 0));
+  const openRight = v % 2 === 1;
+  const headerIn = appear(localFrame, 0, 14);
+
+  // Phase 1: wheel spins to unlock; Phase 2: circular vault door swings open revealing gold bullion shelves
+  const unlockProg = easeOutCubic(clamp01((localFrame - 4) / 22));
+  const openProg = spring({
+    frame: Math.max(0, localFrame - 16),
+    fps,
+    config: { damping: 16, stiffness: 95, mass: 1.1 },
+  });
+  const wheelAngle = unlockProg * 210 + (openRight ? -20 : 20);
+  const doorScaleX = interpolate(openProg, [0, 1], [1, 0.24]);
+  const doorShiftX = interpolate(openProg, [0, 1], [0, openRight ? 228 : -228]);
+  const goldGlow = 0.22 + openProg * 0.52 + Math.sin(localFrame * 0.14) * 0.06;
+
+  const vaultCx = 540;
+  const vaultCy = 808;
+  const items = getFallbackItems(scene, [
+    t.subtitle || 'ตั้งกฎเหล็กปกป้องเงินทุนก่อนสร้างกำไร',
+    'แยกสิทธิ์และควบคุมความเสี่ยงอย่างเป็นระบบ',
+  ]).slice(0, 3);
+
+  const goldCx = 540;
+  const goldCy = 888;
+  const goldBars: Array<[number, number, number]> = [
+    // Bottom shelf
+    [-95, -24, 0],
+    [10, -24, 0],
+    [-95, 32, 0],
+    [10, 32, 0],
+    // Middle tier stacked
+    [-85, -16, 28],
+    [16, -16, 28],
+    [-42, 34, 28],
+    // Top crown bar
+    [-42, 4, 56],
+  ];
+
+  const isUnlocked = localFrame >= 20;
+  const totalSecProg = clamp01(localFrame / Math.max(30, durationFrames * 0.5));
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
+      <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}>
+        <defs>
+          <linearGradient id={`m11-vault-bg-${sceneIndex}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F1F5F9" />
+            <stop offset="60%" stopColor="#E2E8F0" />
+            <stop offset="100%" stopColor="#CBD5E1" />
+          </linearGradient>
+          <radialGradient id={`m11-vault-goldglow-${sceneIndex}`} cx="50%" cy="50%" r="52%">
+            <stop offset="0%" stopColor="#FDE047" stopOpacity="0.88" />
+            <stop offset="55%" stopColor="#F59E0B" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id={`m11-vault-steel-${sceneIndex}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#475569" />
+            <stop offset="48%" stopColor="#334155" />
+            <stop offset="100%" stopColor="#0F172A" />
+          </linearGradient>
+          <linearGradient id={`m11-vault-door-${sceneIndex}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#94A3B8" />
+            <stop offset="50%" stopColor="#475569" />
+            <stop offset="100%" stopColor="#1E293B" />
+          </linearGradient>
+          <clipPath id={`m11-vault-inner-clip-${sceneIndex}`}>
+            <circle cx={vaultCx} cy={vaultCy} r={214} />
+          </clipPath>
+        </defs>
+
+        <rect width={STAGE_W} height={STAGE_H} fill={`url(#m11-vault-bg-${sceneIndex})`} />
+
+        {/* Studio ground shadow */}
+        <ellipse cx={540} cy={1108} rx={310} ry={40} fill="#0F172A" opacity={0.18} />
+
+        {/* Armored 3D Vault Outer Frame */}
+        <rect
+          x={222}
+          y={468}
+          width={636}
+          height={636}
+          rx={52}
+          fill={`url(#m11-vault-steel-${sceneIndex})`}
+          stroke="#0F172A"
+          strokeWidth={6}
+        />
+        {/* Inner metallic bevel */}
+        <rect
+          x={252}
+          y={494}
+          width={576}
+          height={584}
+          rx={38}
+          fill="#1E293B"
+          stroke="#64748B"
+          strokeWidth={3}
+        />
+
+        {/* Corner steel bolts */}
+        {[
+          [282, 524],
+          [798, 524],
+          [282, 1046],
+          [798, 1046],
+        ].map(([bx, by], i) => (
+          <g key={i}>
+            <circle cx={bx} cy={by} r={12} fill="#64748B" stroke="#0F172A" strokeWidth={2.5} />
+            <line x1={bx - 6} y1={by} x2={bx + 6} y2={by} stroke="#0F172A" strokeWidth={2.5} />
+          </g>
+        ))}
+
+        {/* Status LED Bar at top of vault (clear above circular rim) */}
+        <rect x={428} y={512} width={224} height={36} rx={18} fill="#0F172A" stroke="#475569" strokeWidth={2} />
+        <circle cx={456} cy={530} r={8} fill={isUnlocked ? '#22C55E' : '#F59E0B'} />
+        <text
+          x={552}
+          y={537}
+          textAnchor="middle"
+          fill={isUnlocked ? '#4ADE80' : '#FDE047'}
+          fontSize={18}
+          fontFamily="monospace"
+          fontWeight={800}
+          letterSpacing={2}
+        >
+          {isUnlocked ? 'SECURED' : 'VERIFYING'}
+        </text>
+
+        {/* Circular Vault Opening Rim */}
+        <circle cx={vaultCx} cy={vaultCy} r={232} fill="#0F172A" stroke="#64748B" strokeWidth={8} />
+        <circle cx={vaultCx} cy={vaultCy} r={216} fill="#020617" />
+
+        {/* Inside Vault Chamber: Golden light + Shelved Isometric Gold Bars */}
+        <g clipPath={`url(#m11-vault-inner-clip-${sceneIndex})`}>
+          <circle cx={vaultCx} cy={vaultCy} r={230} fill={`url(#m11-vault-goldglow-${sceneIndex})`} opacity={goldGlow} />
+
+          {/* Interior steel shelves */}
+          <rect x={315} y={915} width={450} height={18} rx={4} fill="#334155" stroke="#64748B" strokeWidth={2} />
+          <rect x={335} y={741} width={410} height={14} rx={4} fill="#334155" stroke="#475569" strokeWidth={1.5} opacity={0.7} />
+
+          {/* Upper shelf mini gold bars */}
+          {[-72, 8].map((gx, i) => (
+            <GoldBar
+              key={`top-gold-${i}`}
+              bx={gx}
+              by={-20}
+              bz={0}
+              dx={76}
+              dy={36}
+              dz={22}
+              cx={goldCx}
+              cy={737}
+              opacity={clamp01(openProg * 1.4)}
+            />
+          ))}
+
+          {/* Main lower shelf isometric gold bullion stack */}
+          {goldBars.map(([gx, gy, gz], idx) => (
+            <GoldBar
+              key={`gold-${idx}`}
+              bx={gx}
+              by={gy}
+              bz={gz}
+              cx={goldCx}
+              cy={goldCy}
+              opacity={clamp01(openProg * 1.5 - idx * 0.04)}
+            />
+          ))}
+
+          {/* Deterministic gold sparkles */}
+          {Array.from({ length: 6 }, (_, i) => {
+            const sx = 390 + hashSeed(i * 23 + v * 11) * 300;
+            const sy = 650 + hashSeed(i * 41 + 7) * 240;
+            const spAlpha = openProg * (0.35 + 0.55 * Math.abs(Math.sin(localFrame * 0.16 + i * 1.3)));
+            return (
+              <g key={i} transform={`translate(${sx.toFixed(1)}, ${sy.toFixed(1)})`} opacity={spAlpha}>
+                <path d="M 0 -12 L 3 -3 L 12 0 L 3 3 L 0 12 L -3 3 L -12 0 L -3 -3 Z" fill="#FEF9C3" />
+              </g>
+            );
+          })}
+        </g>
+
+        {/* Heavy Hinge Assembly */}
+        <rect
+          x={openRight ? 764 : 292}
+          y={712}
+          width={24}
+          height={146}
+          rx={8}
+          fill="#64748B"
+          stroke="#0F172A"
+          strokeWidth={3}
+        />
+
+        {/* Circular Vault Door swinging open with 3D perspective compression */}
+        <g
+          transform={`translate(${(vaultCx + doorShiftX).toFixed(1)}, ${vaultCy}) scale(${doorScaleX.toFixed(4)}, 1)`}
+        >
+          {/* Steel door thickness rim */}
+          <circle cx={openRight ? -18 : 18} cy={0} r={220} fill="#1E293B" stroke="#0F172A" strokeWidth={4} />
+          {/* Door front plate */}
+          <circle cx={0} cy={0} r={216} fill={`url(#m11-vault-door-${sceneIndex})`} stroke="#CBD5E1" strokeWidth={5} />
+          <circle cx={0} cy={0} r={178} fill="none" stroke="#94A3B8" strokeWidth={3} strokeDasharray="16 12" />
+
+          {/* Locking bolts around rim */}
+          {Array.from({ length: 8 }, (_, i) => {
+            const a = (i / 8) * Math.PI * 2;
+            const boltRetract = unlockProg * 16;
+            const r1 = 186 - boltRetract;
+            const r2 = 218 - boltRetract;
+            return (
+              <line
+                key={i}
+                x1={Math.cos(a) * r1}
+                y1={Math.sin(a) * r1}
+                x2={Math.cos(a) * r2}
+                y2={Math.sin(a) * r2}
+                stroke="#E2E8F0"
+                strokeWidth={14}
+                strokeLinecap="round"
+              />
+            );
+          })}
+
+          {/* Rotating spoke wheel */}
+          <g transform={`rotate(${wheelAngle.toFixed(1)})`}>
+            <circle cx={0} cy={0} r={96} fill="none" stroke="#E2E8F0" strokeWidth={18} />
+            <circle cx={0} cy={0} r={96} fill="none" stroke="#475569" strokeWidth={4} />
+            {[0, 60, 120, 180, 240, 300].map((deg) => (
+              <line
+                key={deg}
+                x1={0}
+                y1={0}
+                x2={Math.cos((deg * Math.PI) / 180) * 92}
+                y2={Math.sin((deg * Math.PI) / 180) * 92}
+                stroke="#CBD5E1"
+                strokeWidth={12}
+                strokeLinecap="round"
+              />
+            ))}
+            <circle cx={0} cy={0} r={34} fill="#F59E0B" stroke="#FEF08A" strokeWidth={5} />
+            <circle cx={0} cy={0} r={14} fill="#78350F" />
+          </g>
+        </g>
+
+        {/* Subtle progress ring indicator bottom-right of vault */}
+        <g opacity={appear(localFrame, 10, 14)}>
+          <rect x={252} y={1064} width={576} height={8} rx={4} fill="#0F172A" />
+          <rect x={252} y={1064} width={576 * totalSecProg} height={8} rx={4} fill="#10B981" />
+        </g>
+      </svg>
+
+      {/* Top Headline */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 96,
+          left: 64,
+          right: 64,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 12,
+          opacity: headerIn,
+          transform: `translateY(${(1 - headerIn) * 22}px)`,
+        }}
+      >
+        <div
+          style={{
+            padding: '7px 22px',
+            borderRadius: 999,
+            background: '#0F172A',
+            border: '2px solid #F59E0B',
+            color: '#FDE047',
+            fontFamily: THAI_FONT_FAMILY,
+            fontSize: 22,
+            fontWeight: 800,
+          }}
+        >
+          {t.badge || 'VAULT · กฎเหล็กปกป้องพอร์ต'}
+        </div>
+        <FitText text={t.title} baseSize={54} minSize={34} maxLines={3} color="#0F172A" fontWeight={900} />
+      </div>
+
+      {/* Bottom Security Rules Strip (strictly above subtitle bar y <= 1375) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 1142,
+          left: 64,
+          right: 64,
+          maxHeight: 235,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        {items.slice(0, 2).map((item, i) => (
+          <div
+            key={i}
+            style={{
+              width: '100%',
+              maxWidth: 880,
+              background: '#FFFFFF',
+              border: '2px solid #CBD5E1',
+              borderLeft: '8px solid #F59E0B',
+              borderRadius: 18,
+              padding: '13px 26px',
+              boxShadow: '0 10px 24px rgba(15,23,42,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              opacity: stagger(i, localFrame, 8, 12, 14),
+              transform: `translateY(${(1 - stagger(i, localFrame, 8, 12, 14)) * 16}px)`,
+            }}
+          >
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                background: '#FEF3C7',
+                border: '2px solid #F59E0B',
+                color: '#B45309',
+                fontFamily: 'monospace',
+                fontSize: 18,
+                fontWeight: 900,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {i + 1}
+            </div>
+            <div style={{ flex: 1 }}>
+              <FitText text={item} baseSize={28} minSize={20} maxLines={2} color="#0F172A" fontWeight={700} align="left" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const MoneyScaleShot: React.FC<StyleShotArgs> = ({
+  scene,
+  sceneIndex,
+  localFrame,
+  fps,
+  variant = 0,
+}) => {
+  const t = sceneTexts(scene);
+  const v = Math.max(0, Math.floor(variant || 0));
+  const headerIn = appear(localFrame, 0, 14);
+
+  const cmp = scene.compare;
+  const fallbackItems = getFallbackItems(scene, [t.subtitle || 'ฝั่งต้นทุนและข้อจำกัด', 'ฝั่งผลตอบแทนและความได้เปรียบ']);
+  const leftTitle = cmp?.leftTitle || cmp?.leftLabel || 'ฝั่งซ้าย';
+  const rightTitle = cmp?.rightTitle || cmp?.rightLabel || 'ฝั่งขวา';
+  const leftItems = (cmp?.leftItems && cmp.leftItems.length > 0 ? cmp.leftItems : [fallbackItems[0] || 'ข้อจำกัดเดิม']).slice(0, 2);
+  const rightItems = (
+    cmp?.rightItems && cmp.rightItems.length > 0
+      ? cmp.rightItems
+      : [fallbackItems[1] || fallbackItems[0] || 'โอกาสใหม่ที่คุ้มกว่า']
+  ).slice(0, 2);
+
+  // Determine heavier side for balance beam tilt
+  const winner: 'left' | 'right' =
+    cmp?.winner || (v % 2 === 1 ? 'left' : rightItems.length >= leftItems.length ? 'right' : 'left');
+  const targetTiltDeg = winner === 'right' ? 11.5 : -11.5;
+
+  const tiltSp = spring({
+    frame: Math.max(0, localFrame - 6),
+    fps,
+    config: { damping: 9, stiffness: 75, mass: 1.1 },
+  });
+  const idleSway = Math.sin(localFrame * 0.09 + v) * 1.3;
+  const beamDeg = targetTiltDeg * tiltSp + idleSway;
+  const beamRad = (beamDeg * Math.PI) / 180;
+
+  const pivotX = 540;
+  const pivotY = 665;
+  const armHalf = 290;
+  const leftHookX = pivotX - Math.cos(beamRad) * armHalf;
+  const leftHookY = pivotY - Math.sin(beamRad) * armHalf;
+  const rightHookX = pivotX + Math.cos(beamRad) * armHalf;
+  const rightHookY = pivotY + Math.sin(beamRad) * armHalf;
+
+  const chainLen = 185;
+  const leftPanX = leftHookX;
+  const leftPanY = leftHookY + chainLen;
+  const rightPanX = rightHookX;
+  const rightPanY = rightHookY + chainLen;
+
+  const leftBricks = winner === 'left' ? 4 : 2;
+  const rightBricks = winner === 'right' ? 4 : 2;
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
+      <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}>
+        <defs>
+          <linearGradient id={`m11-scale-bg-${sceneIndex}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F8FAFC" />
+            <stop offset="65%" stopColor="#E8EEF4" />
+            <stop offset="100%" stopColor="#D6E0EA" />
+          </linearGradient>
+          <linearGradient id={`m11-scale-pillar-${sceneIndex}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#475569" />
+            <stop offset="50%" stopColor="#1E293B" />
+            <stop offset="100%" stopColor="#0F172A" />
+          </linearGradient>
+          <linearGradient id={`m11-scale-brass-${sceneIndex}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#FEF08A" />
+            <stop offset="50%" stopColor="#F59E0B" />
+            <stop offset="100%" stopColor="#B45309" />
+          </linearGradient>
+        </defs>
+
+        <rect width={STAGE_W} height={STAGE_H} fill={`url(#m11-scale-bg-${sceneIndex})`} />
+
+        {/* Subtle isometric floor grid */}
+        <g opacity={0.22} stroke="#94A3B8" strokeWidth={1.2}>
+          {Array.from({ length: 9 }, (_, i) => {
+            const o = (i - 4) * 105;
+            const [x1, y1] = isoProject(o, -320, 0, 540, 1085);
+            const [x2, y2] = isoProject(o, 320, 0, 540, 1085);
+            const [x3, y3] = isoProject(-320, o, 0, 540, 1085);
+            const [x4, y4] = isoProject(320, o, 0, 540, 1085);
+            return (
+              <g key={i}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} />
+                <line x1={x3} y1={y3} x2={x4} y2={y4} />
+              </g>
+            );
+          })}
+        </g>
+
+        {/* Ground shadow & Isometric Pedestal Base */}
+        <IsoShadow x={-130} y={-95} dx={260} dy={190} cx={540} cy={1108} opacity={0.22} />
+        <IsoBox
+          x={-130}
+          y={-95}
+          z={0}
+          dx={260}
+          dy={190}
+          dz={34}
+          cx={540}
+          cy={1088}
+          topColor="#475569"
+          leftColor="#334155"
+          rightColor="#0F172A"
+          stroke="#0F172A"
+          strokeWidth={1.5}
+        />
+        <IsoBox
+          x={-72}
+          y={-52}
+          z={34}
+          dx={144}
+          dy={104}
+          dz={24}
+          cx={540}
+          cy={1088}
+          topColor="#64748B"
+          leftColor="#475569"
+          rightColor="#1E293B"
+        />
+
+        {/* Central Pillar */}
+        <rect x={518} y={660} width={44} height={385} rx={12} fill={`url(#m11-scale-pillar-${sceneIndex})`} />
+        <rect x={532} y={672} width={8} height={360} rx={4} fill="#94A3B8" opacity={0.35} />
+
+        {/* Balance Beam */}
+        <line
+          x1={leftHookX}
+          y1={leftHookY}
+          x2={rightHookX}
+          y2={rightHookY}
+          stroke={`url(#m11-scale-brass-${sceneIndex})`}
+          strokeWidth={22}
+          strokeLinecap="round"
+        />
+        <line
+          x1={leftHookX}
+          y1={leftHookY}
+          x2={rightHookX}
+          y2={rightHookY}
+          stroke="#78350F"
+          strokeWidth={3}
+          strokeLinecap="round"
+          opacity={0.45}
+        />
+
+        {/* Center Pivot Fulcrum */}
+        <polygon points={`${pivotX},${pivotY - 46} ${pivotX - 24},${pivotY + 12} ${pivotX + 24},${pivotY + 12}`} fill="#0F172A" />
+        <circle cx={pivotX} cy={pivotY} r={26} fill={`url(#m11-scale-brass-${sceneIndex})`} stroke="#78350F" strokeWidth={4} />
+        <circle cx={pivotX} cy={pivotY} r={9} fill="#0F172A" />
+
+        {/* Left Suspension Chains & Pan */}
+        <line x1={leftHookX} y1={leftHookY} x2={leftPanX - 115} y2={leftPanY} stroke="#64748B" strokeWidth={4} />
+        <line x1={leftHookX} y1={leftHookY} x2={leftPanX + 115} y2={leftPanY} stroke="#64748B" strokeWidth={4} />
+        <circle cx={leftHookX} cy={leftHookY} r={10} fill="#F59E0B" stroke="#78350F" strokeWidth={2.5} />
+        <ellipse cx={leftPanX} cy={leftPanY + 12} rx={138} ry={34} fill="#1E293B" />
+        <ellipse cx={leftPanX} cy={leftPanY} rx={138} ry={34} fill="#CBD5E1" stroke="#475569" strokeWidth={3.5} />
+        {/* Left side cash stack */}
+        {Array.from({ length: leftBricks }, (_, i) => (
+          <BillBrick
+            key={`lbrick-${i}`}
+            bx={-62}
+            by={-36}
+            bz={i * 28}
+            dx={116}
+            dy={70}
+            dz={26}
+            cx={leftPanX}
+            cy={leftPanY + 6}
+            opacity={appear(localFrame, 8 + i * 4, 12)}
+          />
+        ))}
+
+        {/* Right Suspension Chains & Pan */}
+        <line x1={rightHookX} y1={rightHookY} x2={rightPanX - 115} y2={rightPanY} stroke="#64748B" strokeWidth={4} />
+        <line x1={rightHookX} y1={rightHookY} x2={rightPanX + 115} y2={rightPanY} stroke="#64748B" strokeWidth={4} />
+        <circle cx={rightHookX} cy={rightHookY} r={10} fill="#F59E0B" stroke="#78350F" strokeWidth={2.5} />
+        <ellipse cx={rightPanX} cy={rightPanY + 12} rx={138} ry={34} fill="#0F172A" />
+        <ellipse cx={rightPanX} cy={rightPanY} rx={138} ry={34} fill="#FEF3C7" stroke="#D97706" strokeWidth={3.5} />
+        {/* Right side gold/cash stack */}
+        {Array.from({ length: rightBricks }, (_, i) =>
+          i % 2 === 1 ? (
+            <GoldBar
+              key={`rgold-${i}`}
+              bx={-52}
+              by={-28}
+              bz={i * 28}
+              dx={104}
+              dy={56}
+              dz={25}
+              cx={rightPanX}
+              cy={rightPanY + 6}
+              opacity={appear(localFrame, 8 + i * 4, 12)}
+            />
+          ) : (
+            <BillBrick
+              key={`rbrick-${i}`}
+              bx={-62}
+              by={-36}
+              bz={i * 28}
+              dx={116}
+              dy={70}
+              dz={26}
+              cx={rightPanX}
+              cy={rightPanY + 6}
+              opacity={appear(localFrame, 8 + i * 4, 12)}
+            />
+          )
+        )}
+
+        {/* VS Badge above fulcrum */}
+        <g transform={`translate(${pivotX}, 548)`} opacity={appear(localFrame, 6, 12)}>
+          <rect x={-48} y={-28} width={96} height={56} rx={28} fill="#0F172A" stroke="#F59E0B" strokeWidth={3} />
+          <text x={0} y={11} textAnchor="middle" fill="#FDE047" fontSize={28} fontFamily="monospace" fontWeight={900}>
+            VS
+          </text>
+        </g>
+      </svg>
+
+      {/* Top Headline */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 96,
+          left: 64,
+          right: 64,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 12,
+          opacity: headerIn,
+          transform: `translateY(${(1 - headerIn) * 22}px)`,
+        }}
+      >
+        <div
+          style={{
+            padding: '7px 22px',
+            borderRadius: 999,
+            background: '#0F172A',
+            color: '#FDE047',
+            fontFamily: THAI_FONT_FAMILY,
+            fontSize: 22,
+            fontWeight: 800,
+          }}
+        >
+          {t.badge || 'COMPARE · ชั่งน้ำหนักให้ชัด'}
+        </div>
+        <FitText text={t.title} baseSize={54} minSize={34} maxLines={3} color="#0F172A" fontWeight={900} />
+      </div>
+
+      {/* Bottom 2-Column Compare Cards (strictly above subtitle bar y <= 1375) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 1126,
+          left: 56,
+          right: 56,
+          maxHeight: 250,
+          display: 'flex',
+          gap: 20,
+          opacity: appear(localFrame, 10, 14),
+        }}
+      >
+        {/* Left Card */}
+        <div
+          style={{
+            flex: 1,
+            background: '#FFFFFF',
+            borderRadius: 22,
+            border: `2.5px solid ${winner === 'left' ? '#059669' : '#CBD5E1'}`,
+            borderTop: `8px solid ${winner === 'left' ? '#059669' : '#64748B'}`,
+            padding: '14px 20px',
+            boxShadow: '0 10px 26px rgba(15,23,42,0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          <FitText
+            text={leftTitle}
+            baseSize={28}
+            minSize={20}
+            maxLines={1}
+            color={winner === 'left' ? '#059669' : '#334155'}
+            fontWeight={900}
+            align="center"
+          />
+          {leftItems.map((it, idx) => (
+            <FitText
+              key={idx}
+              text={`• ${it}`}
+              baseSize={22}
+              minSize={18}
+              maxLines={2}
+              color="#334155"
+              fontWeight={700}
+              align="left"
+            />
+          ))}
+        </div>
+
+        {/* Right Card */}
+        <div
+          style={{
+            flex: 1,
+            background: '#FFFFFF',
+            borderRadius: 22,
+            border: `2.5px solid ${winner === 'right' ? '#059669' : '#CBD5E1'}`,
+            borderTop: `8px solid ${winner === 'right' ? '#059669' : '#D97706'}`,
+            padding: '14px 20px',
+            boxShadow: '0 10px 26px rgba(15,23,42,0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          <FitText
+            text={rightTitle}
+            baseSize={28}
+            minSize={20}
+            maxLines={1}
+            color={winner === 'right' ? '#059669' : '#B45309'}
+            fontWeight={900}
+            align="center"
+          />
+          {rightItems.map((it, idx) => (
+            <FitText
+              key={idx}
+              text={`• ${it}`}
+              baseSize={22}
+              minSize={18}
+              maxLines={2}
+              color="#334155"
+              fontWeight={700}
+              align="left"
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MoneyCashConveyorShot: React.FC<StyleShotArgs> = ({
+  scene,
+  sceneIndex,
+  localFrame,
+  durationFrames,
+  fps,
+  variant = 0,
+}) => {
+  const t = sceneTexts(scene);
+  const v = Math.max(0, Math.floor(variant || 0));
+  const reverseDir = v % 2 === 1;
+  const headerIn = appear(localFrame, 0, 14);
+
+  // Extract station labels from steps[].title or bullets
+  const rawStations: string[] = [];
+  if (Array.isArray(scene.steps) && scene.steps.length > 0) {
+    for (const st of scene.steps) {
+      const label = typeof st === 'string' ? st.trim() : String(st?.title || '').trim();
+      if (label) rawStations.push(label);
+    }
+  }
+  const stations =
+    rawStations.length > 0
+      ? rawStations.slice(0, 4)
+      : getFallbackItems(scene, ['รับสัญญาณตลาด', 'คำนวณเงื่อนไข', 'ส่งคำสั่งอัตโนมัติ']).slice(0, 4);
+  const stationCount = Math.max(2, Math.min(4, stations.length));
+
+  const cx = 540;
+  const cy = 835;
+  const beltMin = -310;
+  const beltMax = 310;
+  const beltLen = beltMax - beltMin;
+  const beltSpeed = 6.5;
+
+  // Which station is currently highlighted along the scene timeline
+  const flowProg = clamp01(localFrame / Math.max(24, durationFrames * 0.72));
+  const activeStationIdx = Math.min(stationCount - 1, Math.floor(flowProg * stationCount));
+
+  // Moving banknote bundles riding along the isometric conveyor belt
+  const movingPacks = Array.from({ length: 4 }, (_, i) => {
+    const rawOffset = (localFrame * beltSpeed + i * (beltLen / 4)) % beltLen;
+    const pos = reverseDir ? beltMax - rawOffset : beltMin + rawOffset;
+    return { pos, key: i };
+  });
+
+  // Moving belt slats
+  const slatCount = 14;
+  const slats = Array.from({ length: slatCount }, (_, i) => {
+    const rawOffset = (localFrame * beltSpeed + i * (beltLen / slatCount)) % beltLen;
+    return reverseDir ? beltMax - rawOffset : beltMin + rawOffset;
+  });
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
+      <svg width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}>
+        <defs>
+          <linearGradient id={`m11-conv-bg-${sceneIndex}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F1F5F9" />
+            <stop offset="65%" stopColor="#E2E8F0" />
+            <stop offset="100%" stopColor="#CBD5E1" />
+          </linearGradient>
+        </defs>
+
+        <rect width={STAGE_W} height={STAGE_H} fill={`url(#m11-conv-bg-${sceneIndex})`} />
+
+        {/* Subtle factory floor isometric grid */}
+        <g opacity={0.24} stroke="#94A3B8" strokeWidth={1.2}>
+          {Array.from({ length: 11 }, (_, i) => {
+            const o = (i - 5) * 95;
+            const [x1, y1] = isoProject(o, -380, -45, cx, cy);
+            const [x2, y2] = isoProject(o, 380, -45, cx, cy);
+            const [x3, y3] = isoProject(-380, o, -45, cx, cy);
+            const [x4, y4] = isoProject(380, o, -45, cx, cy);
+            return (
+              <g key={i}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} />
+                <line x1={x3} y1={y3} x2={x4} y2={y4} />
+              </g>
+            );
+          })}
+        </g>
+
+        {/* Ground shadow under conveyor bed */}
+        <IsoShadow x={beltMin - 20} y={-88} dx={beltLen + 40} dy={176} cx={cx} cy={cy + 62} opacity={0.2} />
+
+        {/* Conveyor Support Legs */}
+        {[-250, 0, 230].map((lx, idx) => (
+          <IsoBox
+            key={`leg-${idx}`}
+            x={lx}
+            y={-64}
+            z={-55}
+            dx={34}
+            dy={128}
+            dz={55}
+            cx={cx}
+            cy={cy}
+            topColor="#475569"
+            leftColor="#334155"
+            rightColor="#0F172A"
+          />
+        ))}
+
+        {/* Conveyor Metallic Frame & Belt Surface */}
+        <IsoBox
+          x={beltMin - 24}
+          y={-82}
+          z={0}
+          dx={beltLen + 48}
+          dy={164}
+          dz={34}
+          cx={cx}
+          cy={cy}
+          topColor="#334155"
+          leftColor="#1E293B"
+          rightColor="#0F172A"
+          stroke="#0F172A"
+          strokeWidth={1.5}
+        />
+        {/* Moving rubber belt inner track */}
+        <IsoBox
+          x={beltMin - 12}
+          y={-62}
+          z={34}
+          dx={beltLen + 24}
+          dy={124}
+          dz={6}
+          cx={cx}
+          cy={cy}
+          topColor="#1E293B"
+          leftColor="#0F172A"
+          rightColor="#020617"
+        />
+
+        {/* Animated Belt Slats */}
+        {slats.map((sx, idx) => {
+          const [p1x, p1y] = isoProject(sx, -58, 41, cx, cy);
+          const [p2x, p2y] = isoProject(sx, 58, 41, cx, cy);
+          return <line key={`slat-${idx}`} x1={p1x} y1={p1y} x2={p2x} y2={p2y} stroke="#475569" strokeWidth={3} />;
+        })}
+
+        {/* Rotating Side Rollers along conveyor edge */}
+        {[-280, -140, 0, 140, 280].map((rx, idx) => {
+          const [rcx, rcy] = isoProject(rx, 82, 16, cx, cy);
+          const rot = (localFrame * (reverseDir ? -10 : 10) + idx * 35) % 360;
+          return (
+            <g key={`roller-${idx}`} transform={`translate(${rcx.toFixed(1)}, ${rcy.toFixed(1)})`}>
+              <circle cx={0} cy={0} r={11} fill="#94A3B8" stroke="#0F172A" strokeWidth={2.5} />
+              <line
+                x1={Math.cos((rot * Math.PI) / 180) * -7}
+                y1={Math.sin((rot * Math.PI) / 180) * -7}
+                x2={Math.cos((rot * Math.PI) / 180) * 7}
+                y2={Math.sin((rot * Math.PI) / 180) * 7}
+                stroke="#0F172A"
+                strokeWidth={2.5}
+              />
+            </g>
+          );
+        })}
+
+        {/* Banknote Bundles travelling on belt */}
+        {movingPacks.map((p) => (
+          <BillBrick
+            key={`pack-${p.key}`}
+            bx={p.pos - 52}
+            by={-36}
+            bz={42}
+            dx={104}
+            dy={72}
+            dz={28}
+            cx={cx}
+            cy={cy}
+          />
+        ))}
+
+        {/* Overhead Automated Processing Stations (Arches + Status LEDs + Callout Pills) */}
+        {Array.from({ length: stationCount }, (_, i) => {
+          const frac = stationCount === 1 ? 0.5 : i / (stationCount - 1);
+          const stX = beltMin + 70 + frac * (beltLen - 140);
+          const isActive = i <= activeStationIdx;
+          const sp = spring({
+            frame: Math.max(0, localFrame - 4 - i * 6),
+            fps,
+            config: { damping: 14, stiffness: 150 },
+          });
+
+          const [postBackX, postBackY] = isoProject(stX, -76, 138, cx, cy);
+          const [postFrontX, postFrontY] = isoProject(stX, 76, 138, cx, cy);
+          const [baseBackX, baseBackY] = isoProject(stX, -76, 34, cx, cy);
+          const [baseFrontX, baseFrontY] = isoProject(stX, 76, 34, cx, cy);
+          const midTopX = (postBackX + postFrontX) / 2;
+          const midTopY = (postBackY + postFrontY) / 2;
+
+          // Alternate callouts cleanly above & below conveyor so labels never collide
+          const placeAbove = i % 2 === 0;
+          const pillW = 352;
+          const pillH = 66;
+          const pillX = Math.max(44, Math.min(STAGE_W - pillW - 44, midTopX - pillW / 2));
+          const pillY = placeAbove ? 470 + (i >= 2 ? 78 : 0) : 1075 + (i >= 3 ? 78 : 0);
+          const anchorY = placeAbove ? pillY + pillH : pillY;
+
+          return (
+            <g key={`station-${i}`} opacity={clamp01(sp * 1.3)}>
+              {/* Scanner Gate Frame */}
+              <line x1={baseBackX} y1={baseBackY} x2={postBackX} y2={postBackY} stroke="#475569" strokeWidth={10} strokeLinecap="round" />
+              <line x1={baseFrontX} y1={baseFrontY} x2={postFrontX} y2={postFrontY} stroke="#334155" strokeWidth={10} strokeLinecap="round" />
+              <line
+                x1={postBackX}
+                y1={postBackY}
+                x2={postFrontX}
+                y2={postFrontY}
+                stroke={isActive ? '#059669' : '#64748B'}
+                strokeWidth={14}
+                strokeLinecap="round"
+              />
+              {/* Laser scan curtain when active */}
+              {isActive && (
+                <polygon
+                  points={`${postBackX},${postBackY + 6} ${postFrontX},${postFrontY + 6} ${baseFrontX},${baseFrontY} ${baseBackX},${baseBackY}`}
+                  fill="#10B981"
+                  opacity={0.14 + 0.08 * Math.sin(localFrame * 0.25 + i)}
+                />
+              )}
+              {/* Connector dashed line to label pill */}
+              <line
+                x1={midTopX}
+                y1={midTopY}
+                x2={pillX + pillW / 2}
+                y2={anchorY}
+                stroke={isActive ? '#059669' : '#64748B'}
+                strokeWidth={2.5}
+                strokeDasharray="6 6"
+              />
+              {/* Station number badge on gate */}
+              <circle cx={midTopX} cy={midTopY} r={18} fill={isActive ? '#10B981' : '#334155'} stroke="#FFFFFF" strokeWidth={3} />
+              <text x={midTopX} y={midTopY + 6} textAnchor="middle" fill="#FFFFFF" fontSize={16} fontFamily="monospace" fontWeight={900}>
+                {i + 1}
+              </text>
+
+              {/* Station Label Pill */}
+              <rect
+                x={pillX}
+                y={pillY}
+                width={pillW}
+                height={pillH}
+                rx={18}
+                fill="#FFFFFF"
+                stroke={isActive ? '#10B981' : '#94A3B8'}
+                strokeWidth={3}
+              />
+              <rect x={pillX + 10} y={pillY + 13} width={40} height={40} rx={12} fill={isActive ? '#059669' : '#334155'} />
+              <text
+                x={pillX + 30}
+                y={pillY + 40}
+                textAnchor="middle"
+                fill="#FFFFFF"
+                fontSize={20}
+                fontFamily="monospace"
+                fontWeight={900}
+              >
+                {`0${i + 1}`}
+              </text>
+              <text
+                x={pillX + 62}
+                y={pillY + 41}
+                fill="#0F172A"
+                fontSize={21}
+                fontFamily={THAI_FONT_FAMILY}
+                fontWeight={800}
+              >
+                {truncateText(stations[i] || `สถานี ${i + 1}`, 21)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Top Headline */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 96,
+          left: 64,
+          right: 64,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 12,
+          opacity: headerIn,
+          transform: `translateY(${(1 - headerIn) * 22}px)`,
+        }}
+      >
+        <div
+          style={{
+            padding: '7px 22px',
+            borderRadius: 999,
+            background: '#059669',
+            color: '#FFFFFF',
+            fontFamily: THAI_FONT_FAMILY,
+            fontSize: 22,
+            fontWeight: 800,
+          }}
+        >
+          {t.badge || 'AUTO FLOW · ระบบทำงานเป็นขั้นตอน'}
+        </div>
+        <FitText text={t.title} baseSize={54} minSize={34} maxLines={3} color="#0F172A" fontWeight={900} />
+      </div>
+
+      {/* Bottom Summary Strip (strictly above subtitle bar y <= 1375) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 1260,
+          left: 64,
+          right: 64,
+          maxHeight: 115,
+          display: 'flex',
+          justifyContent: 'center',
+          opacity: appear(localFrame, 12, 16),
+        }}
+      >
+        <div
+          style={{
+            background: '#0F172A',
+            border: '2px solid #10B981',
+            borderRadius: 20,
+            padding: '14px 32px',
+            maxWidth: 880,
+          }}
+        >
+          <FitText
+            text={t.subtitle || stations.join(' → ')}
             baseSize={26}
             minSize={20}
             maxLines={2}
@@ -2498,19 +3703,29 @@ export const BATCH_B: StyleDirectorDef[] = [
       'coin-rain': MoneyCoinRainShot,
       'piggy-bank': MoneyPiggyBankShot,
       'debt-pit': MoneyDebtPitShot,
+      'gold-vault': MoneyGoldVaultShot,
+      'money-scale': MoneyScaleShot,
+      'cash-conveyor': MoneyCashConveyorShot,
     },
     shotLabels: {
       'cash-tower': 'กองธนบัตรซ้อนสูง',
       'coin-rain': 'เหรียญทองโปรยลงโถ',
       'piggy-bank': 'กระปุกออมสิน',
       'debt-pit': 'หลุมหนี้กับบันไดกองเงิน',
+      'gold-vault': 'ตู้เซฟประตูกลมกับแท่งทอง',
+      'money-scale': 'ตาชั่งสองแขนเทียบมูลค่า',
+      'cash-conveyor': 'สายพานโรงงานคัดแยกธนบัตร',
     },
     infer: (scene) => {
       const h = sceneHaystack(scene);
+      const vis = typeof scene.visual === 'string' ? scene.visual : scene.visual?.type;
+      if (vis === 'compare' || /เทียบ|vs|ต่าง/.test(h)) return 'money-scale';
+      if (vis === 'steps' || /ขั้น|กลไก|อัตโนมัติ|ระบบ/.test(h)) return 'cash-conveyor';
+      if (/ปลอดภัย|กฎ|ป้องกัน|เกราะ|สิทธิ์/.test(h)) return 'gold-vault';
       if (/หนี้|ติดลบ|ขาดทุน|ดอกเบี้ย|จ่ายเกิน|ผ่อน|หลุม/.test(h)) return 'debt-pit';
       if (/ออม|เก็บเงิน|กระปุก|ฉุกเฉิน|สำรอง|ประหยัด/.test(h)) return 'piggy-bank';
       if (/เหรียญ|สะสม|ปันผล|%|เปอร์เซ็นต์|ทีละนิด|ทุกวัน/.test(h)) return 'coin-rain';
-      if (scene.visual === 'stat' || /ล้าน|แสน|หมื่น|พัน|บาท|รายได้|กำไร|มูลค่า|กอง/.test(h)) return 'cash-tower';
+      if (vis === 'stat' || /ล้าน|แสน|หมื่น|พัน|บาท|รายได้|กำไร|มูลค่า|กอง/.test(h)) return 'cash-tower';
       return null;
     },
   },

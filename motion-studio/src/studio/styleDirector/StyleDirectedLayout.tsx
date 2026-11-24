@@ -3,12 +3,14 @@ import { useVideoConfig } from 'remotion';
 import type { FamilySceneRendererProps } from '../families';
 import type { StudioScene } from '../types';
 import { STAGE_H, STAGE_W } from './kit';
-import { pickStyleShots } from './plan';
+import { planStyleShots } from './plan';
 import { getStyleDirector } from './registry';
 
 export interface StyleDirectedLayoutProps extends FamilySceneRendererProps {
   allScenes?: StudioScene[];
 }
+
+const ODD_VARIANT_ORIGINS = ['32% 38%', '68% 42%', '36% 62%', '64% 36%'] as const;
 
 export const StyleDirectedLayout: React.FC<StyleDirectedLayoutProps> = ({
   scene,
@@ -23,20 +25,27 @@ export const StyleDirectedLayout: React.FC<StyleDirectedLayoutProps> = ({
   const def = getStyleDirector(styleId);
   const scenes = allScenes && allScenes.length > sceneIndex ? allScenes : [scene];
 
-  const shotPlan = useMemo(() => (def ? pickStyleShots(def, scenes) : []), [def, scenes]);
+  const shotPlan = useMemo(() => (def ? planStyleShots(def, scenes) : []), [def, scenes]);
 
   if (!def) return null;
 
   const shotKeys = Object.keys(def.shots);
   const fallbackShot = shotKeys[0] || '';
-  const plannedShot = shotPlan[Math.min(sceneIndex, Math.max(0, shotPlan.length - 1))] || fallbackShot;
-  const activeShot = def.shots[plannedShot] ? plannedShot : fallbackShot;
+  const planned = shotPlan[Math.min(sceneIndex, Math.max(0, shotPlan.length - 1))];
+  const plannedShot = planned?.shot || fallbackShot;
+  const hasPlannedShot = Boolean(def.shots[plannedShot]);
+  const activeShot = hasPlannedShot ? plannedShot : fallbackShot;
+  const variant = hasPlannedShot ? (planned?.variant ?? 0) : 0;
   const ShotComponent = def.shots[activeShot];
 
   if (!ShotComponent) return null;
 
   const p = Math.min(1, Math.max(0, localFrame / Math.max(1, durationFrames)));
-  const scale = 1 + p * 0.03;
+  const isOddVariant = variant % 2 === 1;
+  const scale = isOddVariant ? 1.03 - p * 0.03 : 1 + p * 0.03;
+  const transformOrigin = isOddVariant
+    ? ODD_VARIANT_ORIGINS[Math.floor(variant / 2) % ODD_VARIANT_ORIGINS.length]
+    : '50% 50%';
 
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
@@ -45,7 +54,7 @@ export const StyleDirectedLayout: React.FC<StyleDirectedLayoutProps> = ({
           position: 'absolute',
           inset: 0,
           transform: `scale(${scale.toFixed(4)})`,
-          transformOrigin: '50% 50%',
+          transformOrigin,
         }}
       >
         <ShotComponent
@@ -57,6 +66,7 @@ export const StyleDirectedLayout: React.FC<StyleDirectedLayoutProps> = ({
           tokens={tokens}
           styleId={styleId || def.styleId}
           shot={activeShot}
+          variant={variant}
         />
       </div>
     </div>

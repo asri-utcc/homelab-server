@@ -105,6 +105,9 @@ STYLE_DIRECTOR_SHOTS: dict[str, dict[str, str]] = {
         "coin-rain": "เหรียญทองโปรยลงโถ",
         "piggy-bank": "กระปุกออมสิน",
         "debt-pit": "หลุมหนี้กับบันไดกองเงิน",
+        "gold-vault": "ตู้เซฟประตูกลมกับแท่งทอง",
+        "money-scale": "ตาชั่งสองแขนเทียบมูลค่า",
+        "cash-conveyor": "สายพานโรงงานคัดแยกธนบัตร",
     },
     "look-12": {
         "card-flip": "บัตรพรีเมียมพลิกจากด้านหน้าไปด้านหลังเผยข้อความและข้อเสนอหลัก",
@@ -316,15 +319,26 @@ STYLE_DIRECTOR_SHOTS: dict[str, dict[str, str]] = {
 }
 
 
+DATA_DIRECTOR_SHOTS: dict[str, str] = {
+    "data-counter": "ตัวเลขสถิติใหญ่นับขึ้น",
+    "data-steps": "ไปป์ไลน์ขั้นตอนเชื่อมโหนด",
+    "data-versus": "จอแยกเปรียบเทียบซ้าย/ขวา",
+    "data-list": "การ์ดรายการซ้อนโผล่ทีละใบ",
+    "data-quote": "คำคมตัวใหญ่ปรากฏทีละคำ",
+    "data-chart": "กราฟแท่ง/เส้นจากตัวเลขในซีน",
+}
+
+
 def sanitize_direction(raw: Any, style_id: str | None = None) -> dict[str, Any] | None:
     """Keep only known vocabulary from the AI's per-scene staging directions."""
     if not isinstance(raw, dict):
         return None
     out: dict[str, Any] = {}
     sid = str(style_id or "").strip().lower()
+    is_style_directed = sid in STYLE_DIRECTOR_SHOTS
     style_shots = STYLE_DIRECTOR_SHOTS.get(sid) or {}
     shot = str(raw.get("shot") or "").strip().lower()
-    if shot in DIRECTION_SHOTS or shot in style_shots:
+    if shot in DIRECTION_SHOTS or shot in style_shots or (is_style_directed and shot in DATA_DIRECTOR_SHOTS):
         out["shot"] = shot
     mood = str(raw.get("mood") or "").strip().lower()
     if mood in DIRECTION_MOODS:
@@ -1058,7 +1072,7 @@ def build_direction_rules(scene_count: int, style_id: str | None = None) -> str:
     """Extra staging instructions for illustrated and style-directed styles."""
     sid = str(style_id or "").strip().lower()
     if sid in STYLE_DIRECTOR_SHOTS:
-        shots_map = STYLE_DIRECTOR_SHOTS[sid]
+        shots_map = {**STYLE_DIRECTOR_SHOTS[sid], **DATA_DIRECTOR_SHOTS}
         shot_ids = ", ".join(shots_map.keys())
         shot_desc = "\n".join(f"  - {k}: {v}" for k, v in shots_map.items())
         return (
@@ -1067,8 +1081,10 @@ def build_direction_rules(scene_count: int, style_id: str | None = None) -> str:
             '"direction": {"shot": "...", "action": "อธิบายสั้นๆ ว่าซีนนี้เน้นภาพอะไร"}\n'
             f"- shot ต้องเลือกจากรายการนี้เท่านั้น: {shot_ids}\n"
             f"{shot_desc}\n"
-            "- ห้ามใช้ช็อตเดียวกันกับซีนติดกัน\n"
-            f"- ใน {scene_count} ซีนให้สลับใช้ช็อตอย่างหลากหลายตามข้อมูลของแต่ละซีน (ตัวเลข/เปรียบเทียบ/ขั้นตอน/สรุป)\n"
+            "- ห้ามใช้ช็อตซ้ำกันเลยในคลิป ถ้าจำนวนซีนไม่เกินจำนวนช็อต\n"
+            "- ซีนที่มี stat/steps/compare/bullets/quote ให้พิจารณา data-* ที่ตรงชนิดหรือช็อตเฉพาะสไตล์ที่สื่อเนื้อหานั้น\n"
+            "- ซีนแรกและซีนสุดท้ายให้ใช้ช็อตเฉพาะสไตล์\n"
+            "- action ต้องบรรยายภาพที่ไม่ซ้ำกับซีนอื่น\n"
         )
 
     return (

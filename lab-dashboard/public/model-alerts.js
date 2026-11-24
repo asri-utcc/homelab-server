@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // index.html ฝัง gemini.html ไว้ใน iframe และทั้งสองหน้าโหลดสคริปต์นี้ → ให้เฉพาะหน้า top-level สร้าง UI
+  // ไม่งั้นปุ่ม "โมเดล" จะซ้ำสองชุด (guard ด้านล่างแยกตาม window จึงกันไม่ได้)
+  try { if (window.top !== window.self) return; } catch (_) { return; }
   if (window.__mraInitialized) return;
   window.__mraInitialized = true;
 
@@ -54,12 +57,28 @@
         background: rgba(15, 23, 42, 0.96);
       }
       @media (max-width: 768px) {
+        /* มือถือ: เหลือแค่ไอคอนวงกลมเล็ก ลอยเหนือแถบพิมพ์ ไม่ทับปุ่มส่ง/ช่องพิมพ์ */
         .mra-fab {
-          right: 14px;
-          bottom: 74px;
-          padding: 9px 12px;
-          font-size: 12px;
+          right: 8px;
+          bottom: calc(172px + env(safe-area-inset-bottom, 0px));
+          width: 38px;
+          height: 38px;
+          padding: 0;
+          justify-content: center;
+          font-size: 17px;
+          opacity: 0.88;
         }
+        .mra-fab .mra-fab-label { display: none; }
+        .mra-fab .mra-badge {
+          position: absolute;
+          top: -5px;
+          right: -5px;
+          min-width: 17px;
+          height: 17px;
+          font-size: 10px;
+          padding: 0 4px;
+        }
+        .mra-fab .mra-badge[data-count="0"] { display: none; }
       }
       .mra-badge {
         display: inline-flex;
@@ -424,8 +443,10 @@
     fab = document.createElement('button');
     fab.id = 'mra-fab';
     fab.type = 'button';
+    fab.title = 'จัดการโมเดล AI';
+    fab.setAttribute('aria-label', 'จัดการโมเดล AI');
     fab.className = 'mra-fab';
-    fab.innerHTML = '<span>🧠 โมเดล</span><span class="mra-badge" id="mra-fab-badge" data-count="0">0</span>';
+    fab.innerHTML = '<span aria-hidden="true">🧠</span><span class="mra-fab-label">โมเดล</span><span class="mra-badge" id="mra-fab-badge" data-count="0">0</span>';
     fab.addEventListener('click', () => openModal());
     document.body.appendChild(fab);
     return fab;

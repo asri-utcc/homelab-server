@@ -32,7 +32,7 @@
       .mra-fab {
         position: fixed;
         right: 20px;
-        bottom: 20px;
+        bottom: calc(132px + env(safe-area-inset-bottom, 0px)); /* พ้นแถบพิมพ์/ปุ่มส่งของหน้าแชท */
         z-index: 9990;
         display: inline-flex;
         align-items: center;

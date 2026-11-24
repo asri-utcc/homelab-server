@@ -5,6 +5,7 @@
  * Usage: node scripts/qa_scene_stills.mjs <props.json> <outDir> [--style look-8] [--at 0.6]
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -59,3 +60,5 @@ const filter = `${files.map((_, i) => `[${i}:v]scale=360:-1[v${i}]`).join(';')};
   .join('|')}:fill=white`;
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', filter, '-q:v', '3', sheet]);
 console.log(sheet);
+
+if (serveUrl.startsWith(os.tmpdir())) fs.rmSync(serveUrl, { recursive: true, force: true });

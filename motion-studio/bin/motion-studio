@@ -114,12 +114,19 @@ PYEOF
       echo "[render-node] homelab (fallback: remote rc=$rc)"
       rm -f "$out"
     fi
+    # Private TMPDIR so the webpack bundle (~50MB each, tmpfs /tmp = RAM) is always removed, even on kill/crash
+    RENDER_TMP="$(mktemp -d /tmp/remotion-run.XXXXXX)"
+    trap 'rm -rf "$RENDER_TMP"' EXIT
+    trap 'exit 143' INT TERM HUP
+    export TMPDIR="$RENDER_TMP"
+    rc=0
     if [[ -n "$still" ]]; then
-      exec npx remotion still src/index.ts "$comp" "$out" --frame="$still" "${args[@]}"
+      npx remotion still src/index.ts "$comp" "$out" --frame="$still" "${args[@]}" || rc=$?
     else
       echo "[render-node] homelab"
-      exec npx remotion render src/index.ts "$comp" "$out" --codec=h264 --pixel-format=yuv420p --crf=18 "${args[@]}"
+      npx remotion render src/index.ts "$comp" "$out" --codec=h264 --pixel-format=yuv420p --crf=18 "${args[@]}" || rc=$?
     fi
+    exit "$rc"
     ;;
 
   mix)

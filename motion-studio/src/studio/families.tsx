@@ -159,16 +159,99 @@ const THAI_SEGMENTER: ThaiSegmenterLike | null = (() => {
     : null;
 })();
 
+const THAI_KEEP_WHOLE_WORDS = new Set([
+  'สตูดิโอ',
+  'สตอรี่',
+  'สตอรี่บอร์ด',
+  'วิดีโอ',
+  'โปรเจกต์',
+  'โมชัน',
+  'แอนิเมชัน',
+  'เรนเดอร์',
+  'คอนเทนต์',
+  'กราฟิก',
+  'ดีไซน์',
+  'สไตล์',
+  'ไอเดีย',
+  'เอไอ',
+  'ริโซ',
+  'สวิส',
+  'ระดับ',
+  'ระบบ',
+  'สเต็ป',
+  'วิกฤต',
+  'อวาตาร์',
+  'โพเดียม',
+  'ไฮไลต์',
+  'คิวอาร์',
+  'ไทม์ไลน์',
+  'แพลตฟอร์ม',
+  'เทคโนโลยี',
+  'คอมพิวเตอร์',
+  'อินเตอร์เน็ต',
+  'ดิจิทัล',
+  'ซอฟต์แวร์',
+  'ฮาร์ดแวร์',
+  'นิตยสาร',
+  'คอมเมนต์',
+  'แคปชัน',
+  'แบนเนอร์',
+  'สไลเดอร์',
+  'สกอร์บอร์ด',
+  'โฮโลแกรม',
+  'ม็อกอัป',
+  'คัทเอาต์',
+]);
+
 export function splitThaiWords(text: string): string[] {
   if (!text) return [];
-  if (THAI_SEGMENTER) {
-    const out: string[] = [];
-    for (const part of THAI_SEGMENTER.segment(text)) {
-      if (part.segment) out.push(part.segment);
-    }
-    return out;
+  if (!THAI_SEGMENTER) {
+    return text.split(/(\s+)/).filter(Boolean);
   }
-  return text.split(/(\s+)/).filter(Boolean);
+
+  const raw: string[] = [];
+  for (const part of THAI_SEGMENTER.segment(text)) {
+    if (part.segment) raw.push(part.segment);
+  }
+
+  // Merge common Thai loanwords & compound terms that Intl.Segmenter splits mid-word
+  const dictMerged: string[] = [];
+  for (let i = 0; i < raw.length; ) {
+    let matched = 0;
+    for (let k = Math.min(4, raw.length - i); k >= 2; k--) {
+      const joined = raw.slice(i, i + k).join('');
+      if (THAI_KEEP_WHOLE_WORDS.has(joined)) {
+        dictMerged.push(joined);
+        i += k;
+        matched = k;
+        break;
+      }
+    }
+    if (!matched) {
+      dictMerged.push(raw[i]);
+      i += 1;
+    }
+  }
+
+  // Structural Thai syllable safety: never isolate a single leading consonant or trailing mark/karan cluster
+  const out: string[] = [];
+  for (let i = 0; i < dictMerged.length; i++) {
+    const tok = dictMerged[i];
+    if (/^[ก-ฮ]$/.test(tok) && i + 1 < dictMerged.length && /^[\u0E01-\u0E5B]/.test(dictMerged[i + 1])) {
+      dictMerged[i + 1] = tok + dictMerged[i + 1];
+      continue;
+    }
+    if (
+      out.length > 0 &&
+      /[\u0E01-\u0E5B]$/.test(out[out.length - 1]) &&
+      (/^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/.test(tok) || /^[ก-ฮ]{1,3}\u0E4C$/.test(tok))
+    ) {
+      out[out.length - 1] += tok;
+      continue;
+    }
+    out.push(tok);
+  }
+  return out;
 }
 
 export function renderHighlightedText(

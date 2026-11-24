@@ -979,18 +979,18 @@ const Look44RisoPosterTitle: React.FC<StyleShotArgs> = ({
     <g>
       {/* Top-left halftone corner block (visible on frame 0) */}
       {headerTr.visible && (
-        <g transform={toSvgTransformP(headerTr, SAFE_X_P + 160, SAFE_TOP_P + 26)}>
+        <g transform={toSvgTransformP(headerTr, SAFE_X_P + 190, SAFE_TOP_P + 26)}>
           <rect
             x={SAFE_X_P}
             y={SAFE_TOP_P}
-            width={340}
+            width={396}
             height={50}
             fill={`url(#${ids.pinkHalftoneMid})`}
           />
           <rect
             x={SAFE_X_P}
             y={SAFE_TOP_P}
-            width={340}
+            width={396}
             height={50}
             fill="none"
             stroke={L44_COLORS.pink}
@@ -1160,7 +1160,7 @@ const Look44RisoPosterTitle: React.FC<StyleShotArgs> = ({
             position: 'absolute',
             left: SAFE_X_P + 14,
             top: SAFE_TOP_P + 4,
-            width: 312,
+            width: 368,
             height: 42,
             display: 'flex',
             alignItems: 'center',
@@ -1169,15 +1169,15 @@ const Look44RisoPosterTitle: React.FC<StyleShotArgs> = ({
         >
           <FitText
             text={editionLabel}
-            baseSize={24}
-            minSize={18}
+            baseSize={22}
+            minSize={15}
             maxLines={1}
             color={L44_COLORS.pink}
             fontFamily={L44_FONT}
             fontWeight={800}
             align="left"
             lineHeight={1.2}
-            style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}
+            style={{ letterSpacing: '0.04em', textTransform: 'uppercase' }}
           />
         </div>
       )}
@@ -1193,7 +1193,7 @@ const Look44RisoPosterTitle: React.FC<StyleShotArgs> = ({
             position: 'absolute',
             left: SAFE_X_P + 14,
             top: SAFE_TOP_P + 4,
-            width: 312,
+            width: 368,
             height: 42,
             display: 'flex',
             alignItems: 'center',
@@ -1202,15 +1202,15 @@ const Look44RisoPosterTitle: React.FC<StyleShotArgs> = ({
         >
           <FitText
             text={editionLabel}
-            baseSize={24}
-            minSize={18}
+            baseSize={22}
+            minSize={15}
             maxLines={1}
             color={L44_COLORS.blue}
             fontFamily={L44_FONT}
             fontWeight={800}
             align="left"
             lineHeight={1.2}
-            style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}
+            style={{ letterSpacing: '0.04em', textTransform: 'uppercase' }}
           />
         </div>
       )}
@@ -1440,10 +1440,10 @@ const Look44RisoLineupList: React.FC<StyleShotArgs> = ({
         <rect
           x={SAFE_X_P}
           y={SAFE_TOP_P}
-          width={300}
+          width={384}
           height={46}
           fill={L44_COLORS.pink}
-          transform={toSvgTransformP(headerTr, SAFE_X_P + 150, SAFE_TOP_P + 23)}
+          transform={toSvgTransformP(headerTr, SAFE_X_P + 192, SAFE_TOP_P + 23)}
         />
       )}
       <Look44RegCross cx={STAGE_W - SAFE_X_P - 24} cy={SAFE_TOP_P + 23} r={14} color={L44_COLORS.pink} />
@@ -1512,10 +1512,10 @@ const Look44RisoLineupList: React.FC<StyleShotArgs> = ({
         <rect
           x={SAFE_X_P}
           y={SAFE_TOP_P}
-          width={300}
+          width={384}
           height={46}
           fill={L44_COLORS.blue}
-          transform={toSvgTransformP(headerTr, SAFE_X_P + 150, SAFE_TOP_P + 23)}
+          transform={toSvgTransformP(headerTr, SAFE_X_P + 192, SAFE_TOP_P + 23)}
         />
       )}
       <Look44RegCross cx={STAGE_W - SAFE_X_P - 24} cy={SAFE_TOP_P + 23} r={14} color={L44_COLORS.blue} />
@@ -1597,7 +1597,7 @@ const Look44RisoLineupList: React.FC<StyleShotArgs> = ({
             position: 'absolute',
             left: SAFE_X_P + 12,
             top: SAFE_TOP_P + 2,
-            width: 276,
+            width: 360,
             height: 42,
             display: 'flex',
             alignItems: 'center',
@@ -1607,15 +1607,15 @@ const Look44RisoLineupList: React.FC<StyleShotArgs> = ({
         >
           <FitText
             text={kicker}
-            baseSize={24}
-            minSize={18}
+            baseSize={22}
+            minSize={15}
             maxLines={1}
             color={L44_COLORS.paper}
             fontFamily={L44_FONT}
             fontWeight={800}
             align="center"
             lineHeight={1.2}
-            style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}
+            style={{ letterSpacing: '0.04em', textTransform: 'uppercase' }}
           />
         </div>
       )}

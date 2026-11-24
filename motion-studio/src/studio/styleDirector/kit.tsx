@@ -144,7 +144,29 @@ export const FitText: React.FC<FitTextProps> = ({
   }
   const computed = Math.max(minSize, Math.min(baseSize, Math.round(size)));
   const words = splitThaiWords(clean);
-  const wrapped = words.length > 1 ? words.join('\u200B') : clean;
+  const content: React.ReactNode =
+    words.length > 1
+      ? words.map((w, idx) => {
+          if (/^\s+$/.test(w)) {
+            return <React.Fragment key={idx}>{w}</React.Fragment>;
+          }
+          const sep = idx > 0 && !/^\s+$/.test(words[idx - 1]) ? '\u200B' : null;
+          if (w.length <= 20) {
+            return (
+              <React.Fragment key={idx}>
+                {sep}
+                <span style={{ whiteSpace: 'nowrap' }}>{w}</span>
+              </React.Fragment>
+            );
+          }
+          return (
+            <React.Fragment key={idx}>
+              {sep}
+              {w}
+            </React.Fragment>
+          );
+        })
+      : clean;
 
   const clampStyle: React.CSSProperties = maxLines
     ? {
@@ -172,7 +194,7 @@ export const FitText: React.FC<FitTextProps> = ({
         ...style,
       }}
     >
-      {wrapped}
+      {content}
     </div>
   );
 };

@@ -30,6 +30,51 @@ const SAFE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const BASE_WIDTH = 1080;
 const BASE_HEIGHT = 1920;
 
+const HERO_SHOT_BY_STYLE = {
+  "look-1": "glow-portal",
+  "look-3": "holo-table",
+  "look-4": "relief-map",
+  "look-6": "cosmic-zoom",
+  "look-9": "gear-mechanism",
+  "look-10": "turntable-spin",
+  "look-11": "cash-tower",
+  "look-12": "card-flip",
+  "look-13": "receipt-print",
+  "look-14": "iceberg-reveal",
+  "look-15": "chat-burst",
+  "look-16": "size-lineup",
+  "look-17": "trophy-podium",
+  "look-18": "donut-build",
+  "look-19": "globe-arcs",
+  "look-20": "lid-open-hero",
+  "look-21": "conveyor-pipeline",
+  "look-22": "lockscreen-flood",
+  "look-23": "split-slider",
+  "look-24": "race-bars",
+  "look-25": "post-card",
+  "look-26": "flip-calendar",
+  "look-27": "split-duel",
+  "look-28": "tilted-city-route",
+  "look-29": "vertical-explode",
+  "look-30": "ink-landscape-title",
+  "look-31": "desk-overhead",
+  "look-32": "tilted-article-flyin",
+  "look-33": "counter-line",
+  "look-34": "phone-hero-rotate",
+  "look-35": "window-zoom-click",
+  "look-36": "horizontal-track",
+  "look-37": "breathing-orb-line",
+  "look-38": "glass-search-type",
+  "look-39": "one-take-hero-morph",
+  "look-40": "crt-power-on",
+  "look-41": "scope-trace-title",
+  "look-42": "mag-spread-headline",
+  "look-43": "blue-sliced-title",
+  "look-44": "riso-poster-title",
+  "look-45": "swiss-manifesto-title",
+  "look-46": "blueprint-object-title"
+};
+
 const FAMILY_LABELS = {
   'glow-world': 'โลกเรืองแสง · Glow',
   'editorial-paper': 'งานพิมพ์ · Editorial',
@@ -44,7 +89,7 @@ function parseArgs(argv) {
     only: [],
     force: false,
     customOnly: false,
-    frame: 50,
+    frame: 84,
     scale: 1 / 3,
   };
 
@@ -198,6 +243,7 @@ function buildInputProps(style, frame) {
     startFrame: 0,
     endFrame: totalFrames,
     durationFrames: totalFrames,
+    ...(HERO_SHOT_BY_STYLE[id] ? { direction: { shot: HERO_SHOT_BY_STYLE[id] } } : {}),
     cues: [
       {
         text: cueText,

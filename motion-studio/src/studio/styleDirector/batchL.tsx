@@ -652,7 +652,7 @@ const Look35WindowZoomClick: React.FC<StyleShotArgs> = ({
   const zoomStart = Math.round(safeDur * 0.16);
   const pillEnter = Math.min(safeDur - 12, clickFrame + 7);
 
-  // Camera zoom spring (1 -> 1.42) lagging 1 beat behind cursor, smooth damped landing
+  // Camera zoom spring (1 -> 1.32) keeping window edges balanced while focusing on the primary action button
   const zoomSpring =
     localFrame >= zoomStart
       ? spring({
@@ -662,19 +662,18 @@ const Look35WindowZoomClick: React.FC<StyleShotArgs> = ({
         })
       : 0;
   const zoomP = clamp01(zoomSpring);
-  const camScale = interpolate(zoomP, [0, 1], [1, 1.42]);
+  const camScale = interpolate(zoomP, [0, 1], [1, 1.32]);
 
   // Window geometry in world space: x ∈ [80, 1000], y ∈ [360, 840]
-  // Button center in world space: (820, 760)
-  // At scale=1.42: button lands near (700, 910), keeping window edges well-framed above y=1420
-  const targetTx = 700 - 1.42 * 820; // -464.4
-  const targetTy = 910 - 1.42 * 760; // -169.2
+  // Button center in world space: (820, 760); keep right window edge cleanly inside stage
+  const targetTx = 842 - 1.32 * 820; // -240.4
+  const targetTy = 900 - 1.32 * 760; // -103.2
   const camTx = interpolate(zoomP, [0, 1], [0, targetTx]);
   const camTy = interpolate(zoomP, [0, 1], [0, targetTy]);
 
-  // Curved cursor path (quadratic Bezier, easeOutCubic)
+  // Curved cursor path (quadratic Bezier, easeOutCubic) landing on bottom-right corner of button so text stays readable
   const moveProg = easeOutCubic((localFrame - moveStart) / moveDur);
-  const [curX, curY] = quadBezierL(moveProg, [365, 485], [515, 705], [866, 774]);
+  const [curX, curY] = quadBezierL(moveProg, [365, 485], [535, 710], [906, 782]);
 
   // Button hover + physical press response at clickFrame
   const isHovered = moveProg > 0.88;
@@ -2347,7 +2346,19 @@ const Look37OrbitRingsPoints: React.FC<StyleShotArgs> = ({
     { dotX: 432, dotY: 966, cardX: 250, cardY: 1140, cardW: 580, align: 'left' },
   ];
 
-  const activeSlots = safePts.length <= 3 ? slots3 : slots4;
+  const slots2: Array<{
+    dotX: number;
+    dotY: number;
+    cardX: number;
+    cardY: number;
+    cardW: number;
+    align: 'left' | 'right';
+  }> = [
+    { dotX: 356, dotY: 536, cardX: 64, cardY: 332, cardW: 440, align: 'left' },
+    { dotX: 724, dotY: 864, cardX: 576, cardY: 1106, cardW: 440, align: 'right' },
+  ];
+
+  const activeSlots = safePts.length <= 2 ? slots2 : safePts.length === 3 ? slots3 : slots4;
   const titleSpring = spring({
     frame: localFrame,
     fps: safeFps,
@@ -3128,7 +3139,10 @@ export const BATCH_L: StyleDirectorDef[] = [
       if (scene.stat) {
         return 'orb-stat';
       }
-      if (Array.isArray(scene.bullets) && scene.bullets.length >= 3) {
+      if (
+        (Array.isArray(scene.steps) && scene.steps.length >= 2) ||
+        (Array.isArray(scene.bullets) && scene.bullets.length >= 2)
+      ) {
         return 'orbit-rings-points';
       }
       return null;

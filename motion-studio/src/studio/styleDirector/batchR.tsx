@@ -1452,9 +1452,10 @@ const L46DetailDim: React.FC<{
 }> = ({ ax, ay, lx, ly, labelPrefix, labelNum, unit, dimP, tickP, arrowFrame, fps }) => {
   if (dimP <= 0.01) return null;
   const lineP = clamp01(dimP * 1.25);
-  const shelfX = lx + 92;
+  const shelfW = 118;
+  const shelfX = lx + shelfW;
   const d1 = l46SegmentLen(ax, ay, lx, ly);
-  const d2 = 92;
+  const d2 = shelfW;
   const total = d1 + d2;
   const arrowScale = spring({
     frame: Math.max(0, arrowFrame - 8),
@@ -1771,13 +1772,13 @@ const Look46BlueprintObjectTitle: React.FC<StyleShotArgs> = ({
   const leftX = originX + obj.bbox.left * scale;
   const rightX = originX + obj.bbox.right * scale;
   const topY = groundY + obj.bbox.top * scale;
-  const dimRightX = Math.min(932, rightX + 128);
   const dimBottomY = 1272;
 
   const detailAx = originX + obj.detailCallout.ax * scale;
   const detailAy = groundY + obj.detailCallout.ay * scale;
-  const detailLx = Math.min(820, originX + obj.detailCallout.lx * scale);
+  const detailLx = Math.min(720, originX + obj.detailCallout.lx * scale);
   const detailLy = Math.max(410, groundY + obj.detailCallout.ly * scale);
+  const dimRightX = Math.min(946, Math.max(rightX + 132, detailLx + 196));
   const detailPrefix = obj.detailLabel.startsWith('Ø')
     ? 'Ø '
     : obj.detailLabel.startsWith('R')
@@ -2084,7 +2085,6 @@ const Look46BlueprintDimensionStat: React.FC<StyleShotArgs> = ({
   const leftX = originX + obj.bbox.left * scale;
   const rightX = originX + obj.bbox.right * scale;
   const topY = groundY + obj.bbox.top * scale;
-  const dimRightX = Math.min(936, rightX + 124);
 
   const spanLeft = 104;
   const spanRight = 976;
@@ -2101,8 +2101,9 @@ const Look46BlueprintDimensionStat: React.FC<StyleShotArgs> = ({
   const tickedStat = formatTickNumberR(stat.display, stat.numeric, tl.tickP);
   const detailAx = originX + obj.detailCallout.ax * scale;
   const detailAy = groundY + obj.detailCallout.ay * scale;
-  const detailLx = Math.min(820, originX + obj.detailCallout.lx * scale);
+  const detailLx = Math.min(720, originX + obj.detailCallout.lx * scale);
   const detailLy = Math.max(365, groundY + obj.detailCallout.ly * scale);
+  const dimRightX = Math.min(946, Math.max(rightX + 132, detailLx + 196));
   const detailPrefix = obj.detailLabel.startsWith('Ø')
     ? 'Ø '
     : obj.detailLabel.startsWith('R')
@@ -2408,12 +2409,12 @@ const Look46BlueprintSketchVsSpec: React.FC<StyleShotArgs> = ({
 
   const rightX = originX + obj.bbox.right * scale;
   const topY = groundY + obj.bbox.top * scale;
-  const dimRightX = Math.min(952, rightX + 118);
 
   const detailAx = originX + Math.abs(obj.detailCallout.ax) * scale;
   const detailAy = groundY + obj.detailCallout.ay * scale;
-  const detailLx = Math.min(826, originX + Math.max(88, obj.detailCallout.lx * scale));
+  const detailLx = Math.min(706, originX + Math.max(88, obj.detailCallout.lx * scale));
   const detailLy = Math.max(350, groundY + obj.detailCallout.ly * scale);
+  const dimRightX = Math.min(946, Math.max(rightX + 132, detailLx + 202));
   const detailPrefix = obj.detailLabel.startsWith('Ø')
     ? 'Ø '
     : obj.detailLabel.startsWith('R')
@@ -2827,13 +2828,13 @@ const Look46BlueprintSketchVsSpec: React.FC<StyleShotArgs> = ({
                 </div>
               </div>
 
-              {/* Attribution on blueprint side (y = 1310..1385 < 1420) */}
+              {/* Attribution on blueprint side (y = 1304..1388 < 1420) */}
               <div
                 style={{
                   position: 'absolute',
-                  left: 584,
-                  top: 1316,
-                  width: 412,
+                  left: 556,
+                  top: 1304,
+                  width: 446,
                   overflow: 'hidden',
                   pointerEvents: 'none',
                 }}
@@ -2841,15 +2842,15 @@ const Look46BlueprintSketchVsSpec: React.FC<StyleShotArgs> = ({
                 <div style={{ transform: `translateY(${(1 - tl.labelP) * 18}px)` }}>
                   <FitText
                     text={`— ${quoteAuthor}`}
-                    baseSize={30}
-                    minSize={20}
-                    maxLines={1}
+                    baseSize={26}
+                    minSize={16}
+                    maxLines={2}
                     color={L46.inkWhite}
                     fontFamily={FONT_L46}
                     fontWeight={500}
                     align="right"
-                    lineHeight={1.25}
-                    style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}
+                    lineHeight={1.26}
+                    style={{ letterSpacing: '0.02em', textTransform: 'uppercase' }}
                   />
                 </div>
               </div>

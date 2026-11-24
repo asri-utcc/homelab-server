@@ -1,11 +1,13 @@
 ---
 name: offload-jobs
-description: Dispatch any heavy compute, batch processing, media conversion, Python/Node script, ML/Whisper/OCR, or cross-machine workload to connected Homelab Agent Hub worker nodes (e.g. asridaytrade, servergigi) using the generic `job.run` pipeline via `/home/dev/.local/bin/agent-ctl run`, with automatic node selection, cached setup environments, live log streaming, cancel/timeout safety, and local fallback when no worker is online.
+description: MANDATORY self-protection offload skill — dispatch ALL heavy CPU/RAM/GPU compute, Whisper speech-to-text transcription, media/audio/video/image rendering, multi-step media assembly, OCR, ML models, or batch Python/Node scripts to connected Homelab Agent Hub worker nodes (e.g. asridaytrade, servergigi) via `/home/dev/.local/bin/agent-ctl` (`run`, `remotion`, `render`, `blender`), with cached `--setup` dependency installation on workers and automatic fallback ONLY when no worker is online (exit code 3).
 ---
 
-# Generic Distributed Job Offload (`job.run` / Homelab Agent Hub)
+# Mandatory Heavy Workload & Media Offload (`job.run` / Homelab Agent Hub)
 
-Use this skill whenever you need to run a **heavy, CPU/GPU-intensive, or long-running workload** on Homelab Agent Hub worker nodes without writing a custom Go handler or recompiling `homelab-agent.exe`.
+> **MANDATORY SELF-PROTECTION POLICY:** Never run heavy CPU/RAM (>1 GB) media, transcription (`faster-whisper` / `whisper`), rendering, local neural audio synthesis, or multi-step media assembly directly on `homelab` when a worker node is online. Even if extra libraries, Python venvs, or model weights must be installed on the worker first, ALWAYS offload via `--setup` + `--cache-key` (cached permanently in `LAB_CACHE_DIR` after first install). Fall back to local `homelab` **ONLY** if `agent-ctl` exits with code `3` (`NO_NODE`).
+
+Use this skill whenever you need to run a **heavy, CPU/GPU/RAM-intensive, media, transcription, rendering, or long-running workload** on Homelab Agent Hub worker nodes without writing a custom Go handler or recompiling `homelab-agent.exe`.
 
 ## CLI & Endpoints
 - CLI (always call by full path — PM2 PATH lacks `~/.local/bin`): `/home/dev/.local/bin/agent-ctl`
@@ -58,26 +60,51 @@ Every `job.run` command runs via `cmd.exe /S /C` on Windows (use `%VAR%`, or inv
 
 ## Examples
 
-### 1. Cross-platform Python batch job with input files & cached setup
+### 1. Audio/Video Speech-to-Text (`faster-whisper`) on Worker Node (Recommended Script Pattern — Avoids `cmd.exe` Quote Escaping)
+Write a tiny `transcribe_job.py` into `/tmp/whisper_job/` alongside (or referencing) the audio/video file, then pass both via `--input`:
+```python
+# /tmp/whisper_job/transcribe_job.py
+import glob, json, os
+from faster_whisper import WhisperModel
+
+in_dir, out_dir, cache_dir = os.environ["LAB_IN_DIR"], os.environ["LAB_OUT_DIR"], os.environ["LAB_CACHE_DIR"]
+media = [p for p in glob.glob(os.path.join(in_dir, "*")) if not p.endswith(".py")][0]
+print("LAB_PROGRESS 15 Loading faster-whisper model...", flush=True)
+model = WhisperModel("medium", device="auto", compute_type="int8", download_root=os.path.join(cache_dir, "models"))
+segments, info = model.transcribe(media, language="th", vad_filter=True)
+rows = [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segments]
+with open(os.path.join(out_dir, "transcript.json"), "w", encoding="utf-8") as f:
+    json.dump({"language": info.language, "duration": info.duration, "segments": rows}, f, ensure_ascii=False, indent=2)
+print("LAB_PROGRESS 100 Done", flush=True)
+```
+Dispatch to worker (auto-installs `faster-whisper` once in `%LAB_CACHE_DIR%\venv` and caches model weights in `%LAB_CACHE_DIR%\models`):
 ```bash
 /home/dev/.local/bin/agent-ctl run \
-  --name "transcribe-clip" \
-  --requires python,gpu \
-  --input /home/dev/.gemini/outputs/videos/sample.mp4 \
-  --cache-key whisper-v1 \
-  --setup "python -m venv venv && venv/Scripts/pip install faster-whisper" \
-  --cmd-win '"%LAB_CACHE_DIR%\venv\Scripts\python.exe" -c "import os; open(os.path.join(os.environ[\"LAB_OUT_DIR\"], \"done.txt\"), \"w\").write(\"ok\")"' \
-  --cmd-posix '"$LAB_CACHE_DIR/venv/bin/python" -c "import os; open(os.path.join(os.environ[\"LAB_OUT_DIR\"], \"done.txt\"), \"w\").write(\"ok\")"' \
-  --out-dir /home/dev/.gemini/outputs/offload/transcribe-clip
+  --name "whisper-transcribe" \
+  --requires python \
+  --input /tmp/whisper_job/transcribe_job.py \
+  --input /tmp/whisper_job/audio.wav \
+  --cache-key whisper-ct2-v1 \
+  --setup "python -m venv venv && (if exist venv\\Scripts\\pip.exe (venv\\Scripts\\pip install -U pip faster-whisper) else (venv/bin/pip install -U pip faster-whisper))" \
+  --cmd-win '"%LAB_CACHE_DIR%\venv\Scripts\python.exe" "%LAB_IN_DIR%\transcribe_job.py"' \
+  --cmd-posix '"$LAB_CACHE_DIR/venv/bin/python" "$LAB_IN_DIR/transcribe_job.py"' \
+  --out-dir /home/dev/.gemini/outputs/offload/whisper-transcribe
 ```
 
-### 2. Fallback to local `homelab` when exit code is 3
+### 2. Dedicated Rendering & Media Subcommands (`remotion` / `blender` / `render`)
+- **Remotion video render:** `/home/dev/.local/bin/agent-ctl remotion --comp <CompId> --props /tmp/work/timeline.json -o /tmp/work/video_silent.mp4` *(or call `/home/dev/.local/bin/motion-studio render ...`, which delegates automatically)*
+- **Blender 3D render:** `/home/dev/.local/bin/agent-ctl blender --script /tmp/scene.py --wait`
+- **Distributed FFmpeg encode/composite:** `/home/dev/.local/bin/agent-ctl render ...` or `agent-ctl run --requires ffmpeg ...`
+
+### 3. Safe Fallback to Local `homelab` ONLY When Exit Code is `3` (`NO_NODE`)
 ```bash
 /home/dev/.local/bin/agent-ctl run --name "heavy-task" --requires python --cmd-win "..." --cmd-posix "..." --out-dir "$OUT"
 rc=$?
 if [[ $rc -eq 3 ]]; then
-  echo "No worker online — running locally on homelab..."
-  python3 local_script.py
+  echo "No worker online — running throttled fallback on homelab..."
+  # For STT fallback ONLY when workers are offline, reuse existing daemon instead of loading Whisper in RAM:
+  # curl -sS -X POST "http://127.0.0.1:8096/transcribe?language=th" --data-binary @audio.wav
+  nice -n 15 OMP_NUM_THREADS=2 python3 local_script.py
 fi
 ```
 

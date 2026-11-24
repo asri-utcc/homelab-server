@@ -233,20 +233,27 @@ test('researchModel และ researchAll อัปเดต confidence, researc
         ]
     };
 
+    const extraSources = [
+        { domain: 'google.dev', url: 'https://ai.google.dev/gemini-api/docs/models', tier: 'official', inputUsdPer1M: 3.0, outputUsdPer1M: 15.0, contextLength: 1000000 },
+        { domain: 'artificialanalysis.ai', url: 'https://artificialanalysis.ai/models/gemini-4-neon', tier: 'benchmark', inputUsdPer1M: 3.0, outputUsdPer1M: 15.0, contextLength: 1000000 }
+    ];
+
     const single = await reg.researchModel('gemini-4-neon-high', {
         disableNetwork: true,
         skipCache: true,
-        catalogData: mockCatalogs
+        catalogData: mockCatalogs,
+        extraSources
     });
     assert.equal(single.ok, true);
     assert.equal(single.model.research.meetsMinSources, true);
-    assert.equal(single.model.research.uniqueDomainCount, 3);
+    assert.equal(single.model.research.uniqueDomainCount, 5);
     assert.ok(single.model.confidence >= 85);
 
     const all = await reg.researchAll({
         disableNetwork: true,
         skipCache: true,
         catalogData: mockCatalogs,
+        extraSources,
         sortBy: 'confidence'
     });
     assert.equal(all.ok, true);
@@ -314,4 +321,41 @@ test('seed DeepSeek: รายการที่ผู้ใช้ override (dec
     assert.equal(m.suggested.q.code, 91);
     assert.equal(m.suggested.q.analysis, 92);
     assert.equal(m.suggested.q.chat, 93);
+});
+
+test('ai-router: ensureRegistryInit ส่ง q ของ DeepSeek (74/86) เข้า registry.init จริงและอัปเดตค่า 80 เดิม', () => {
+    n += 1;
+    const regFile = path.join(tmp, `reg-${n}.json`);
+    process.env.MODEL_REGISTRY_FILE = regFile;
+    process.env.MODEL_ALERTS_FILE = path.join(tmp, `alerts-${n}.jsonl`);
+    process.env.MODEL_ALERTS_ACK_FILE = path.join(tmp, `acked-${n}.json`);
+
+    reg.init({
+        families: FAMILIES,
+        deepseekModels: [
+            { model: 'deepseek-flash', label: 'DeepSeek Flash', q: 80 },
+            { model: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', q: 80 }
+        ],
+        claudeCodeModels: [],
+        listAccounts: () => [{ id: 'acc1', label: 'acc1', home: tmp, ready: true }],
+        agyBin: fakeAgy
+    });
+    let snap = reg.getSnapshot();
+    assert.equal(snap.models.find((x) => x.id === 'deepseek-flash').suggested.q.code, 80);
+    assert.equal(snap.models.find((x) => x.id === 'deepseek-v4-pro').suggested.q.code, 80);
+
+    const routerPath = require.resolve('../ai-router');
+    delete require.cache[routerPath];
+    const aiRouter = require('../ai-router');
+    aiRouter.activeFamilies();
+
+    snap = reg.getSnapshot();
+    const flash = snap.models.find((x) => x.id === 'deepseek-flash');
+    const pro = snap.models.find((x) => x.id === 'deepseek-v4-pro');
+    assert.equal(flash.suggested.q.code, 74);
+    assert.equal(flash.suggested.q.analysis, 74);
+    assert.equal(flash.suggested.q.chat, 74);
+    assert.equal(pro.suggested.q.code, 86);
+    assert.equal(pro.suggested.q.analysis, 86);
+    assert.equal(pro.suggested.q.chat, 86);
 });

@@ -106,7 +106,7 @@ function ensureRegistryInit() {
     try {
         registry.init({
             families: MODEL_FAMILIES,
-            deepseekModels: DEEPSEEK_MODELS.map((d) => ({ id: d.model, name: d.label })),
+            deepseekModels: DEEPSEEK_MODELS.map((d) => ({ id: d.model, name: d.label, q: d.q })),
             claudeCodeModels: MODEL_FAMILIES.filter((f) => f.engine === 'claude-code').map((f) => ({ id: f.model, name: f.label })),
             listAccounts: listAgyAccounts,
             agyBin: AGY_BIN,

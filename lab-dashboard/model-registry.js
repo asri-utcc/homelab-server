@@ -215,9 +215,12 @@ function buildSeedRegistry() {
         if (models[id]) {
             if (models[id].source === 'builtin' && models[id].decidedBy === 'auto' && Number.isFinite(Number(d.q))) {
                 const baseQ = clampQ(Number(d.q));
-                models[id].suggested = models[id].suggested || {};
-                models[id].suggested.q = { code: baseQ, analysis: baseQ, chat: baseQ };
-                models[id].lastSeen = now;
+                const curQ = models[id].suggested && models[id].suggested.q;
+                if (!curQ || curQ.code !== baseQ || curQ.analysis !== baseQ || curQ.chat !== baseQ) {
+                    models[id].suggested = models[id].suggested || {};
+                    models[id].suggested.q = { code: baseQ, analysis: baseQ, chat: baseQ };
+                    models[id].lastSeen = now;
+                }
             }
             continue;
         }
@@ -395,10 +398,13 @@ function init(injectedDeps = {}) {
             const m = loaded.models[id];
             if (m.source === 'builtin' && m.decidedBy === 'auto' && Number.isFinite(Number(d.q))) {
                 const baseQ = clampQ(Number(d.q));
-                m.suggested = m.suggested || {};
-                m.suggested.q = { code: baseQ, analysis: baseQ, chat: baseQ };
-                m.lastSeen = now;
-                changed = true;
+                const curQ = m.suggested && m.suggested.q;
+                if (!curQ || curQ.code !== baseQ || curQ.analysis !== baseQ || curQ.chat !== baseQ) {
+                    m.suggested = m.suggested || {};
+                    m.suggested.q = { code: baseQ, analysis: baseQ, chat: baseQ };
+                    m.lastSeen = now;
+                    changed = true;
+                }
             }
         }
         if (changed) saveRegistry(loaded);

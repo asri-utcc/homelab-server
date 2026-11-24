@@ -81,10 +81,10 @@ Import reusable deterministic FX primitives from `../../components/fx` (see [ref
    ```bash
    # แนะนำ (สมจริงระดับสตูดิโอ): Google Gemini 2.5 Flash/Pro TTS (ต้องมี GEMINI_API_KEY ใน /home/dev/projects/.tts.env)
    /home/dev/.local/bin/motion-studio tts /path/to/script.json -o /tmp/work_dir \
-     --voice gemini:Sulafat --style spiritual --model gemini-2.5-flash-preview-tts
+     --voice gemini:Charon --style religious --model gemini-2.5-flash-preview-tts
 
    # ทดสอบฟังเสียง Gemini 2.5 TTS หลายโทนพร้อมส่ง Telegram
-   /home/dev/.local/bin/motion-studio gemini-test --voices Aoede,Sulafat,Kore,Charon --style spiritual --send-telegram
+   /home/dev/.local/bin/motion-studio gemini-test --voices Charon,Algenib,Orus --style religious --send-telegram
 
    # ออฟไลน์ / ฟรี: VachanaTTS Local (`vachana:th_f_1`) หรือ Edge-TTS (`en-US-AvaMultilingualNeural`, `th-TH-NiwatNeural`)
    /home/dev/.local/bin/motion-studio tts /path/to/script.json -o /tmp/work_dir --voice vachana:th_f_1 --style documentary
@@ -162,6 +162,14 @@ Import reusable deterministic FX primitives from `../../components/fx` (see [ref
 5. **ภาษาอาหรับและคำศัพท์ไทยให้ถูกต้องสม่ำเสมอ:**
    - ข้อความอาหรับใช้ `ArabicText` (`Noto Naskh Arabic`, `direction: 'rtl'`, `lineHeight >= 1.6`, padding/clip-inset กว้างกันตัชกีลแหว่ง)
    - ใช้คำไทยให้สม่ำเสมอตลอดทั้งคลิป (เช่น `ร็อกอะฮ์`, `ศ็อลลัลลอฮุอะลัยฮิวะซัลลัม` หรือ `ﷺ`, `อัลลอฮ์ ﷻ`, `เศาะดะเกาะฮ์`, `อัลเอาวาบีน`) และปิดท้ายด้วย **`วัลลอฮุอะอฺลัม`** (`وَاللَّهُ أَعْلَمُ`)
+6. **เสียงพากย์เริ่มต้นสำหรับคลิปศาสนา:**
+   - ใช้เสียงผู้ชาย (`gemini:Charon`, `gemini:Algenib`, หรือ `gemini:Orus`) คู่กับ `--style religious` เป็นค่าเริ่มต้นเสมอ เว้นแต่ผู้ใช้จะระบุเสียงอื่นเอง
+7. **ห้ามกระซิบและห้ามโทน ASMR:**
+   - ห้ามใช้เสียงกระซิบ (never whisper), ห้าม ASMR, ห้าม breathy/intimate เด็ดขาด และซีนแรกต้องพูดด้วยระดับเสียงปกติเต็มเสียงตั้งแต่คำแรก
+8. **ซับไตเติลและข้อความบนจอต้องตรงเสียงพูด:**
+   - ชื่อซีน/ข้อความบนจอ (on-screen title) และซับไตเติลต้องตรงกับคำที่กำลังพูดจริงในซีนนั้น และแบ่งซับไตเติลท่อนละ **ไม่เกิน 18 ตัวอักษรไทย** ตามขอบเขตคำ/วลี
+9. **โครงสร้างเนื้อหา 1 ซีนต่อ 1 ประเด็น:**
+   - เรียงลำดับ **Hook → Context → Evidence (ระบุแหล่งอ้างอิงตามจริง ห้ามแต่งหมายเลขหะดีษเอง) → Takeaway → Closing** และจำกัด 1 ประเด็นหลักต่อ 1 ซีน
 
 ## Safety & Resource Rules (Homelab 4 CPU / 11 GB RAM)
 - เรนเดอร์ Remotion **ทีละ 1 งาน** เท่านั้น และใช้ `--concurrency=2` เพื่อไม่ให้ RAM ชนกับ PM2/Docker/Whisper

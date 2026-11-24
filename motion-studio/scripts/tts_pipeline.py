@@ -22,7 +22,10 @@ import urllib.request
 import wave
 from typing import Any
 
-import edge_tts
+try:
+    import edge_tts  # type: ignore
+except ImportError:
+    edge_tts = None  # type: ignore
 
 import credit_ledger
 
@@ -40,12 +43,12 @@ GEMINI_MODELS = (
 # Curated Gemini 2.5 TTS voice directory (subset of Google's 30 prebuilt studio voices)
 GEMINI_VOICE_PRESETS = {
     "Aoede": "หญิง · อบอุ่น นุ่มนวล เป็นธรรมชาติ (แนะนำทั่วไป/แรงบันดาลใจ)",
-    "Sulafat": "หญิง · อ่อนโยน มีอารมณ์ความรู้สึก สงบ (แนะนำเนื้อหาศาสนา/อบอุ่น)",
+    "Sulafat": "หญิง · อ่อนโยน สงบ (เหมาะเนื้อหาผ่อนคลาย/ไลฟ์สไตล์)",
     "Kore": "หญิง · ชัดถ้อยชัดคำ มั่นใจ (แนะนำคลิปอธิบายความรู้/เทคโนโลยี)",
     "Leda": "หญิง · อ่อนหวาน ผ่อนคลาย น่าฟัง",
     "Zephyr": "หญิง · สดใส กระฉับกระเฉง เป็นกันเอง",
     "Vindemiatrix": "หญิง · นุ่มลึก สุภาพ ละมุนแบบผู้ใหญ่",
-    "Charon": "ชาย · สุขุม นุ่มลึก มีพลัง (แนะนำสารคดี/The Story Room)",
+    "Charon": "ชาย · สุขุม นุ่มลึก มีพลัง (แนะนำสารคดี/เนื้อหาศาสนา)",
     "Algenib": "ชาย · ทุ้มต่ำ เข้ม แมน สุขุมนุ่มลึก",
     "Alnilam": "ชาย · หนักแน่น มั่นคง น่าเกรงขาม",
     "Puck": "ชาย · สดใส มีชีวิตชีวา เล่าเรื่องสนุก",
@@ -68,11 +71,19 @@ STYLE_PROMPTS = {
         "Speak smoothly with natural human breathing, clear articulation, gentle phrasing pauses "
         "at commas and clause boundaries, and rich emotional depth. Never rush or sound robotic."
     ),
+    "religious": (
+        "Narrate as a mature Thai male narrator, like a respectful Dhamma or khutbah lecturer "
+        "or documentary host. Speak at a normal, clearly audible speaking volume with a full "
+        "chest voice from the very first word. Keep the delivery steady, clear, dignified, and "
+        "sincere at a natural pace (~13-14 syllables per second) with short pauses only at "
+        "sentence ends. NEVER whisper, never breathy, never ASMR, never intimate or sensual, "
+        "and never sing-song. Pronounce Thai and Arabic-origin terms clearly and respectfully."
+    ),
     "spiritual": (
-        "Narrate in a deeply calm, gentle, warm, and reverent Thai voiceover tone suitable for "
-        "inspirational Islamic spiritual reflection. Keep the pacing unhurried and heartfelt, "
-        "with soft natural breaths, tender warmth, and clear respectful pronunciation of Thai "
-        "and Arabic-origin terms. Never sound hurried, harsh, or synthetic."
+        "Narrate in a sincere, steady, clearly audible, and reverent Thai voiceover tone suitable "
+        "for inspirational spiritual reflection. Keep the pacing natural and grounded with clear "
+        "articulation and respectful pronunciation of Thai and Arabic-origin terms. "
+        "Never whisper, never breathy, never ASMR, and never sound hurried or synthetic."
     ),
     "explainer": (
         "Narrate in a clear, engaging, friendly, and confident Thai explainer voiceover style. "
@@ -85,10 +96,28 @@ STYLE_PROMPTS = {
         "and speak as if sharing a fascinating story with a close friend."
     ),
     "warm": (
-        "Narrate in a deeply warm, soft, soothing, and intimate Thai voice with unhurried pacing, "
-        "gentle human pauses, and comforting sincerity."
+        "Narrate in a warm, steady, and clearly audible Thai voice with natural pacing, "
+        "clear phrasing pauses, and comforting sincerity. "
+        "Never whisper, never breathy, and never ASMR."
     ),
 }
+
+_TTS_BANNED_WORDS_RE = re.compile(
+    r"\b(?:whisper(?:ing|ed)?|breathy|ASMR|intimate|hushed|sensual)\b|กระซิบ|แผ่วเบา",
+    re.IGNORECASE,
+)
+_NORMAL_VOLUME_CLAUSE = (
+    "Speak at a normal, clearly audible volume from the very first word; never whisper."
+)
+
+
+def _sanitize_tts_prompt(text: str) -> str:
+    """Strip whisper/ASMR/breathy instructions and enforce normal-volume delivery."""
+    cleaned = _TTS_BANNED_WORDS_RE.sub("", text or "")
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+    if "clearly audible volume from the very first word" not in cleaned.lower():
+        cleaned = f"{cleaned} {_NORMAL_VOLUME_CLAUSE}".strip()
+    return cleaned
 
 MASTER_FILTERS = {
     "none": "",
@@ -204,8 +233,9 @@ def _synth_gemini_sync(
     timeout_sec: int = 45,
 ) -> dict[str, Any]:
     """Call Google Gemini 2.5 TTS REST API and write raw 24kHz mono WAV. Returns usage dict."""
+    clean_style = _sanitize_tts_prompt(style_prompt)
     director_prompt = (
-        f"{style_prompt.strip()}\n"
+        f"{clean_style}\n"
         "Read ONLY the exact script below aloud in Thai without adding commentary, "
         "greetings, or extra words:\n\n"
         f"{text}"
@@ -290,7 +320,7 @@ def _synth_gemini_sync(
 
 def _synth_vachana_sync(text: str, voice_id: str, style: str, out_mp3: str) -> None:
     """Synthesize via local stt-service VachanaTTS endpoint."""
-    st_map = {"documentary": "calm", "spiritual": "warm", "explainer": "natural", "storytelling": "natural", "warm": "warm"}
+    st_map = {"religious": "calm", "gravitas": "calm", "documentary": "calm", "spiritual": "warm", "explainer": "natural", "storytelling": "natural", "warm": "warm"}
     payload = json.dumps(
         {"text": text, "voice": voice_id, "style": st_map.get(style, "natural")},
         ensure_ascii=False,
@@ -310,6 +340,8 @@ def _synth_vachana_sync(text: str, voice_id: str, style: str, out_mp3: str) -> N
 
 
 async def _synth_edge_once(text: str, voice: str, rate: str, pitch: str) -> tuple[bytes, list[dict]]:
+    if edge_tts is None:
+        raise RuntimeError("edge_tts is not installed in this Python environment")
     communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
     boundaries: list[dict] = []
     audio_bytes = bytearray()
@@ -525,6 +557,54 @@ def postprocess_scene_audio(
     return ffprobe_duration(wav_path)
 
 
+def detect_pauses(
+    wav_path: str, noise_db: float = -35.0, min_dur: float = 0.15
+) -> list[tuple[float, float]]:
+    """Detect real silence/pause intervals in a scene WAV via ffmpeg silencedetect.
+
+    Returns a list of (silence_start, silence_end) tuples in seconds relative to wav_path.
+    Never raises; returns [] on any error.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                wav_path,
+                "-af",
+                f"silencedetect=noise={noise_db}dB:d={min_dur}",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        pauses: list[tuple[float, float]] = []
+        cur_start: float | None = None
+        start_re = re.compile(r"silence_start:\s*(-?\d+(?:\.\d+)?)")
+        end_re = re.compile(r"silence_end:\s*(-?\d+(?:\.\d+)?)")
+        for line in (proc.stderr or "").splitlines():
+            ms = start_re.search(line)
+            if ms:
+                cur_start = max(0.0, float(ms.group(1)))
+            me = end_re.search(line)
+            if me and cur_start is not None:
+                end_val = max(cur_start, float(me.group(1)))
+                pauses.append((cur_start, end_val))
+                cur_start = None
+        if cur_start is not None:
+            dur = ffprobe_duration(wav_path)
+            if dur >= cur_start:
+                pauses.append((cur_start, dur))
+        return pauses
+    except Exception:
+        return []
+
+
 def distribute_subtitles(subtitles: list[dict], speech_dur: float, start_sec: float, fps: int) -> list[dict]:
     """Distribute scene subtitle cues proportionally by Thai character length across actual spoken duration."""
     if not subtitles:
@@ -547,6 +627,193 @@ def distribute_subtitles(subtitles: list[dict], speech_dur: float, start_sec: fl
             }
         )
         cursor = end
+    return cues
+
+
+def align_subtitles(
+    subtitles: list[dict],
+    speech_dur: float,
+    start_sec: float,
+    fps: int,
+    pauses: list[tuple[float, float]],
+    boundaries: list[dict] | None = None,
+) -> list[dict]:
+    """Align scene subtitle cues to real Edge WordBoundary offsets or detected audio pauses.
+
+    Falls back to proportional character-weight distribution when no timing anchors match.
+    Pause/boundary times are relative to the scene WAV; start_sec is added for timeline output.
+    """
+    if not subtitles:
+        return []
+    if speech_dur <= 0:
+        fallback = distribute_subtitles(subtitles, max(0.0, speech_dur), start_sec, fps)
+        for c in fallback:
+            c["aligned"] = "proportional"
+        return fallback
+
+    n = len(subtitles)
+    weights = [max(4, len(item["text"].replace(" ", ""))) for item in subtitles]
+    total_w = sum(weights)
+    min_cue = min(0.6, speech_dur / max(1, n))
+
+    # Proportional internal boundary estimates (relative to scene wav)
+    prop_bounds = [0.0]
+    cum_w = 0
+    for w in weights[:-1]:
+        cum_w += w
+        prop_bounds.append(speech_dur * (cum_w / total_w))
+    prop_bounds.append(speech_dur)
+
+    # 1) Edge TTS WordBoundary path
+    word_bounds = [
+        b
+        for b in (boundaries or [])
+        if isinstance(b, dict) and b.get("type") == "WordBoundary" and "offsetSec" in b
+    ]
+    if word_bounds:
+        wb_weights = [max(1, len(str(b.get("text", "")).replace(" ", ""))) for b in word_bounds]
+        wb_total_w = sum(wb_weights)
+        last_wb = word_bounds[-1]
+        wb_span = float(last_wb["offsetSec"]) + float(last_wb.get("durationSec", 0.0))
+        scale = (speech_dur / wb_span) if wb_span > 0.05 else 1.0
+
+        wb_cum: list[tuple[float, float]] = []
+        acc = 0
+        for b, ww in zip(word_bounds, wb_weights):
+            wb_cum.append((acc / wb_total_w, max(0.0, min(speech_dur, float(b["offsetSec"]) * scale))))
+            acc += ww
+
+        first_start = wb_cum[0][1] if wb_cum[0][1] > 0.1 else 0.0
+        rel_bounds = [first_start]
+        c_w = 0
+        for i in range(n - 1):
+            c_w += weights[i]
+            target_frac = c_w / total_w
+            best_t = min(wb_cum, key=lambda pair: abs(pair[0] - target_frac))[1]
+            lo = rel_bounds[-1] + min_cue
+            hi = speech_dur - (n - 1 - i) * min_cue
+            clamped = max(lo, min(hi, best_t)) if lo <= hi else prop_bounds[i + 1]
+            rel_bounds.append(clamped)
+        rel_bounds.append(speech_dur)
+
+        cues: list[dict] = []
+        for i, item in enumerate(subtitles):
+            abs_s = start_sec + rel_bounds[i]
+            abs_e = start_sec + rel_bounds[i + 1]
+            cues.append(
+                {
+                    "text": item["text"],
+                    "highlight": item.get("highlight", ""),
+                    "startSec": round(abs_s, 3),
+                    "endSec": round(abs_e, 3),
+                    "startFrame": int(round(abs_s * fps)),
+                    "endFrame": int(round(abs_e * fps)),
+                    "aligned": "edge",
+                }
+            )
+        return cues
+
+    # 2) Pause-aligned path (silencedetect)
+    sorted_pauses = sorted(
+        [(max(0.0, float(ps)), min(speech_dur, float(pe))) for ps, pe in (pauses or []) if pe > ps],
+        key=lambda p: p[0],
+    )
+    used_indices: set[int] = set()
+
+    # Leading silence: pause starting at <= 0.05s shifts first cue start to its end
+    first_start = 0.0
+    leading_aligned = False
+    for idx_p, (ps, pe) in enumerate(sorted_pauses):
+        if ps <= 0.05 and pe < speech_dur - min_cue * max(1, n) * 0.5:
+            first_start = pe
+            used_indices.add(idx_p)
+            leading_aligned = True
+            break
+
+    eff_min_cue = min(0.6, max(0.05, (speech_dur - first_start) / max(1, n)))
+
+    # Snap each internal boundary i (1..n-1) to nearest unused pause midpoint within +-1.2s
+    snapped: list[tuple[float, float] | None] = [None] * (n - 1)
+    prev_cue_start = first_start
+    prev_anchor = first_start
+
+    for i in range(n - 1):
+        est = prop_bounds[i + 1]
+        best_idx: int | None = None
+        best_dist = float("inf")
+        remaining = n - 1 - i
+
+        for idx_p, (ps, pe) in enumerate(sorted_pauses):
+            if idx_p in used_indices:
+                continue
+            mid = (ps + pe) * 0.5
+            dist = abs(mid - est)
+            if dist > 1.2:
+                continue
+            if mid <= prev_anchor:
+                continue
+            next_start = max(0.0, pe - 0.08)
+            if ps - prev_cue_start < eff_min_cue:
+                continue
+            if speech_dur - next_start < remaining * eff_min_cue:
+                continue
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = idx_p
+
+        if best_idx is not None:
+            ps, pe = sorted_pauses[best_idx]
+            used_indices.add(best_idx)
+            snapped[i] = (ps, pe)
+            prev_cue_start = max(0.0, pe - 0.08)
+            prev_anchor = (ps + pe) * 0.5
+        else:
+            lo = prev_cue_start + eff_min_cue
+            hi = speech_dur - remaining * eff_min_cue
+            fallback_t = max(lo, min(hi, est)) if lo <= hi else est
+            prev_cue_start = fallback_t
+            prev_anchor = fallback_t
+
+    # Build cues from snapped pauses + proportional fallbacks
+    cues = []
+    cur_start = first_start
+    prev_was_pause = leading_aligned
+    for i, item in enumerate(subtitles):
+        if i < n - 1:
+            if snapped[i] is not None:
+                ps, pe = snapped[i]  # type: ignore[misc]
+                cur_end = max(cur_start + 0.05, ps)
+                next_start = max(0.0, pe - 0.08)
+                end_was_pause = True
+            else:
+                remaining = n - 1 - i
+                lo = cur_start + eff_min_cue
+                hi = speech_dur - remaining * eff_min_cue
+                est = prop_bounds[i + 1]
+                cur_end = max(lo, min(hi, est)) if lo <= hi else max(cur_start + 0.05, est)
+                next_start = cur_end
+                end_was_pause = False
+        else:
+            cur_end = max(cur_start + 0.05, speech_dur)
+            next_start = cur_end
+            end_was_pause = False
+
+        abs_s = start_sec + cur_start
+        abs_e = start_sec + cur_end
+        cues.append(
+            {
+                "text": item["text"],
+                "highlight": item.get("highlight", ""),
+                "startSec": round(abs_s, 3),
+                "endSec": round(abs_e, 3),
+                "startFrame": int(round(abs_s * fps)),
+                "endFrame": int(round(abs_e * fps)),
+                "aligned": "pause" if (prev_was_pause or end_was_pause) else "proportional",
+            }
+        )
+        cur_start = next_start
+        prev_was_pause = end_was_pause
+
     return cues
 
 
@@ -634,7 +901,8 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         scene_end = speech_start + speech_dur + pad_after
 
         raw_subs = sc.get("subtitles") or [{"text": sc["narration"], "highlight": ""}]
-        cues = distribute_subtitles(raw_subs, speech_dur, speech_start, fps)
+        pauses = detect_pauses(wav_path)
+        cues = align_subtitles(raw_subs, speech_dur, speech_start, fps, pauses, boundaries)
         all_cues.extend(cues)
 
         for ev in sc.get("sfx", []):
@@ -799,7 +1067,7 @@ def main() -> int:
         "--style",
         default=None,
         choices=sorted(STYLE_PROMPTS.keys()),
-        help="Voiceover tone preset for Gemini/Vachana (documentary, spiritual, explainer, storytelling, warm)",
+        help="Voiceover tone preset for Gemini/Vachana (religious, gravitas, documentary, spiritual, explainer, storytelling, warm)",
     )
     parser.add_argument("--prompt", default="", help="Custom Gemini director style instruction override")
     parser.add_argument(

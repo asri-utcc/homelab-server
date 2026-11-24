@@ -27,8 +27,8 @@
 รองรับ 3 เครื่องยนต์ใน `motion-studio tts` พร้อมระบบถนอมลมหายใจท้ายประโยค (`-55dB` + fade 30ms) และ Vocal Mastering อัตโนมัติ:
 - **Google Gemini 2.5 TTS (`gemini:<Voice>`, แนะนำสูงสุดด้านความสมจริง):**
   - โมเดล: `gemini-2.5-flash-preview-tts` (เร็ว มี Free Tier ใน Google AI Studio) หรือ `gemini-2.5-pro-preview-tts` (Paid, อารมณ์ละเอียดสูงสุด)
-  - เสียงยอดนิยม: `gemini:Aoede` (หญิงอบอุ่น), `gemini:Sulafat` (หญิงอ่อนโยน/ศาสนา), `gemini:Kore` (หญิงชัดถ้อยชัดคำ/อธิบาย), `gemini:Charon` (ชายสุขุมสารคดี), `gemini:Puck` (ชายสดใส)
-  - สไตล์ (`--style`): `spiritual`, `documentary`, `explainer`, `storytelling`, `warm` หรือกำหนด `ttsPrompt` เฉพาะซีน + `narrationPhonetic` แยกคำอ่านพากย์ออกจากซับไตเติลได้ใน `script.json`
+  - เสียงยอดนิยม: `gemini:Aoede` (หญิงอบอุ่น), `gemini:Sulafat` (หญิงอ่อนโยน/ผ่อนคลาย/ไลฟ์สไตล์), `gemini:Kore` (หญิงชัดถ้อยชัดคำ/อธิบาย), `gemini:Charon` (ชายสุขุม/แนะนำศาสนา/สารคดี), `gemini:Algenib` (ชายนุ่มลึก), `gemini:Orus` (ชายหนักแน่น), `gemini:Puck` (ชายสดใส)
+  - สไตล์ (`--style`): `religious` (แนะนำสำหรับคลิปศาสนา/ธรรมะ), `documentary`, `explainer`, `storytelling`, `warm`, `spiritual` หรือกำหนด `ttsPrompt` เฉพาะซีน + `narrationPhonetic` แยกคำอ่านพากย์ออกจากซับไตเติลได้ใน `script.json`
   - คีย์ API: เก็บไว้ที่ `/home/dev/projects/.tts.env` (`GEMINI_API_KEY=...`, `chmod 600`) ซึ่งใช้ร่วมกับ `stt-service` ได้ทันที
 - **Local VachanaTTS (`vachana:th_f_1`, `th_f_2`, `th_m_1`, `th_m_2`):** ฟรี ออฟไลน์ 100% ผ่าน `stt-service`
 - **Microsoft Edge Neural TTS (`en-US-AvaMultilingualNeural`, `en-US-AndrewMultilingualNeural`, `th-TH-NiwatNeural`, `th-TH-PremwadeeNeural`):** ฟรีผ่านอินเทอร์เน็ต *(หมายเหตุ: `Premwadee` อาจไม่เสถียรเป็นบางช่วง)*

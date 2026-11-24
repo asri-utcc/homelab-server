@@ -375,6 +375,57 @@ DEFAULT_TTS_PROMPT = (
     "Pronounce Thai and English terms cleanly and naturally."
 )
 
+RELIGIOUS_TTS_PROMPT = (
+    "Narrate as a mature, dignified Thai male lecturer or documentary narrator delivering respectful "
+    "religious or Dhamma/khutbah knowledge. Speak at a normal, clearly audible speaking volume with a "
+    "full chest voice from the very first word—steady, clear, warm, and sincere. Keep a natural, "
+    "measured pace (~13-14 syllables per second) with short pauses only at sentence ends. "
+    "Pronounce Thai and Arabic-origin terms cleanly and accurately. "
+    "Maintain a clear, full-volume speaking tone throughout, never soft-spoken or sing-song."
+)
+
+RELIGIOUS_KEYWORDS = (
+    "อิสลาม", "ศาสนา", "หะดีษ", "อัลกุรอาน", "ละหมาด", "ดุอา", "อัลลอฮ์", "นบี",
+    "รอมฎอน", "ซุนนะฮ์", "ศาสดา", "พุทธ", "ธรรมะ", "คริสต์",
+    "islam", "hadith", "quran", "dua", "prayer", "sunnah",
+)
+
+FEMALE_VOICES = {
+    "gemini:Aoede",
+    "gemini:Sulafat",
+    "gemini:Kore",
+    "gemini:Leda",
+    "gemini:Zephyr",
+    "gemini:Vindemiatrix",
+}
+
+_WHISPER_WORDS_RE = re.compile(
+    r"\b(?:whisper(?:ing|ed|s)?|breathy|asmr|intimate(?:ly)?|hushed|sensual(?:ly)?)\b|กระซิบ|แผ่วเบา",
+    re.I,
+)
+
+
+def is_religious_topic(topic: str, notes: str = "") -> bool:
+    """Return True when topic or notes match religious/spiritual keywords (case-insensitive)."""
+    haystack = f"{topic or ''} {notes or ''}".lower()
+    return any(kw in haystack for kw in RELIGIOUS_KEYWORDS)
+
+
+def _is_female_voice(voice: str) -> bool:
+    v = str(voice or "").strip()
+    return v in FEMALE_VOICES or v.startswith("vachana:th_f_")
+
+
+def _strip_whisper_words(text: str) -> str:
+    """Remove whisper/ASMR/breathy/intimate/hushed/sensual words from a TTS prompt."""
+    if not text:
+        return ""
+    cleaned = _WHISPER_WORDS_RE.sub("", str(text))
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
+    cleaned = re.sub(r",\s*,+", ",", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip(" ,;")
+
 CRASH_RE = re.compile(
     r"unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|"
     r"segmentation (fault|violation)|oh no: Bun has crashed|panic\(main thread\)|"
@@ -834,12 +885,28 @@ def normalize_script(
 ) -> dict[str, Any]:
     """Ensure all required TTS + StudioScene fields exist with clean defaults."""
     topic = str(request.get("topic") or "วิดีโอสรุปความรู้").strip()
+    notes = str(request.get("notes") or "").strip()
+    explicit_voice = str(request.get("voice") or "").strip()
     voice = (
-        str(request.get("voice") or "").strip()
+        explicit_voice
         or str(preset.get("defaultVoice") or "").strip()
         or str(script.get("voice") or "").strip()
         or "gemini:Charon"
     )
+    religious = is_religious_topic(topic, notes)
+    raw_script_style = str(script.get("ttsStyle") or "").strip()
+    tts_style = raw_script_style or str(preset.get("defaultTtsStyle") or "storytelling")
+    tts_prompt = str(script.get("ttsPrompt") or preset.get("defaultTtsPrompt") or DEFAULT_TTS_PROMPT)
+
+    if religious and not explicit_voice:
+        if _is_female_voice(voice):
+            voice = "gemini:Charon"
+        if raw_script_style not in ("gravitas", "religious"):
+            tts_style = "religious"
+        tts_prompt = RELIGIOUS_TTS_PROMPT
+
+    tts_prompt = _strip_whisper_words(tts_prompt) or (RELIGIOUS_TTS_PROMPT if religious else DEFAULT_TTS_PROMPT)
+
     speed_raw = request.get("speed") if request.get("speed") is not None else script.get("speed", 1.12)
     try:
         speed = round(float(speed_raw), 2)
@@ -854,8 +921,8 @@ def normalize_script(
         "height": int(script.get("height") or 1920),
         "voice": voice,
         "ttsModel": str(script.get("ttsModel") or "gemini-2.5-flash-preview-tts"),
-        "ttsStyle": str(script.get("ttsStyle") or preset.get("defaultTtsStyle") or "storytelling"),
-        "ttsPrompt": str(script.get("ttsPrompt") or preset.get("defaultTtsPrompt") or DEFAULT_TTS_PROMPT),
+        "ttsStyle": tts_style,
+        "ttsPrompt": tts_prompt,
         "masterPreset": str(script.get("masterPreset") or "light"),
         "speed": speed,
         "leadInSec": float(script.get("leadInSec") if script.get("leadInSec") is not None else 0.35),
@@ -944,6 +1011,10 @@ def normalize_script(
                 scene_obj[opt_key] = val
         if scene_obj.get("highlightWord") and not scene_obj.get("highlight"):
             scene_obj["highlight"] = scene_obj["highlightWord"]
+        if sc.get("ttsPrompt"):
+            cleaned_scene_prompt = _strip_whisper_words(str(sc.get("ttsPrompt") or ""))
+            if cleaned_scene_prompt:
+                scene_obj["ttsPrompt"] = cleaned_scene_prompt
         style_id = str(preset.get("id") or request.get("styleId") or "").strip().lower()
         direction = sanitize_direction(sc.get("direction"), style_id)
         if direction:
@@ -954,6 +1025,14 @@ def normalize_script(
 
 def build_research_prompt(topic: str, duration_sec: int, notes: str = "") -> str:
     extra = f"\nรายละเอียดเพิ่มเติมจากผู้ใช้: {notes}\n" if notes else ""
+    religious_note = ""
+    if is_religious_topic(topic, notes):
+        religious_note = (
+            "\nกติกาเพิ่มเติมสำหรับเนื้อหาศาสนา:\n"
+            "- ระบุแหล่งอ้างอิงให้ชัดเจน (เช่น บันทึกโดยบุคอรี/มุสลิม พร้อมหมายเลขที่ตรวจสอบได้จริง หรือซูเราะฮ์และอายะฮ์)\n"
+            "- ห้ามแต่งหรือเดาหมายเลขหะดีษ/อายะฮ์เอง หากไม่แน่ใจหมายเลขให้ระบุว่า \"มีรายงานในหะดีษ\" โดยไม่ต้องใส่ตัวเลข\n"
+            "- แยกหลักฐานแต่ละประเด็นให้ชัดเจน ไม่นำหลายหะดีษมาปะปนกัน และไม่ใส่ตัวเลข/สถิติที่ไม่มีแหล่งยืนยัน\n"
+        )
     return (
         f'ค้นหาข้อมูลล่าสุดจากเว็บเกี่ยวกับหัวข้อ: "{topic}"{extra}\n'
         f"สรุปเป็นรายงานข้อเท็จจริงภาษาไทยที่ถูกต้อง กระชับ และน่าสนใจสำหรับทำวิดีโออธิบายความยาวประมาณ {duration_sec} วินาที\n"
@@ -962,6 +1041,7 @@ def build_research_prompt(topic: str, duration_sec: int, notes: str = "") -> str
         "2. ข้อเท็จจริง กลไก หรือขั้นตอนสำคัญ (พร้อมตัวเลข/สถิติจริงถ้ามี)\n"
         "3. ข้อเปรียบเทียบหรือประเด็นสรุปที่คนดูจำได้ง่าย\n"
         "4. แหล่งอ้างอิง (ชื่อแหล่งและ URL ถ้ามี)\n"
+        f"{religious_note}"
         "ตอบเป็น Markdown ภาษาไทยโดยตรง ไม่ต้องอธิบายขั้นตอนการทำงานของคุณ"
     )
 
@@ -988,6 +1068,25 @@ def build_script_prompt(
     per_scene_chars = max(25, int(round(total_chars / max(1, scene_count))))
     max_per_scene_chars = max(per_scene_chars + 5, int(round(max_total_chars / max(1, scene_count))))
     extra = f"\nคำสั่งเพิ่มเติมจากผู้ใช้: {notes}\n" if notes else ""
+    religious = is_religious_topic(topic, notes)
+    example_tts_style = "religious" if religious else "storytelling"
+
+    clarity_rules = (
+        "\n=== กติกาความชัดเจนของเนื้อหา ===\n"
+        "- โครงเรื่องต้องเรียงลำดับชัดเจน: Hook (เปิดด้วยคำถามหรือข้อเท็จจริงด้วยน้ำเสียงปกติชัดเจน ห้ามกระซิบ) → Context (บริบท) → Evidence (หลักฐาน/ข้อเท็จจริง) → Takeaway (ข้อคิดนำไปใช้จริง) → Closing (สรุปปิดท้าย)\n"
+        "- หนึ่งซีนต่อหนึ่งประเด็นเท่านั้น (One idea per scene) ห้ามอัดหลายประเด็นในซีนเดียว\n"
+        "- ทุกซีนต้องเชื่อมโยงต่อเนื่องจากซีนก่อนหน้าอย่างมีเหตุผล ไม่กระโดดข้ามประเด็น\n"
+        "- ซับไตเติล (subtitles) แต่ละท่อนต้องไม่เกิน 18 ตัวอักษรภาษาไทย และต้องตัดแบ่งที่ขอบคำหรือวลีที่อ่านเข้าใจง่าย (ห้ามตัดกลางคำ)\n"
+        "- ข้อความหัวข้อบนจอ (title) ต้องตรงกับสิ่งที่กำลังพูดในซีนนั้น\n"
+        "- ห้ามใส่ตัวเลขหรือสถิติใดๆ ที่ไม่มีอยู่ในข้อมูลจากการค้นคว้า (research.md)\n"
+    )
+    if religious:
+        clarity_rules += (
+            "- [เฉพาะเนื้อหาศาสนา] ระบุแหล่งอ้างอิงให้ชัดเจนตามที่มีในข้อมูลค้นคว้า (เช่น \"บันทึกโดยบุคอรี หมายเลข ...\") ห้ามแต่งหรือเดาหมายเลขหะดีษหรืออายะฮ์เองเด็ดขาด หากไม่แน่ใจหมายเลขให้เขียนว่า \"มีรายงานในหะดีษ\" โดยไม่ต้องใส่ตัวเลข\n"
+            "- [เฉพาะเนื้อหาศาสนา] ห้ามนำหลายหะดีษมาปะปนกันในซีนเดียวกัน\n"
+            "- [เฉพาะเนื้อหาศาสนา] ใช้น้ำเสียงและภาษาที่สุภาพ สำรวม ให้เกียรติ ไม่เร้าอารมณ์เกินจริง และไม่ทำโทนลึกลับหรือน่ากลัว (horror)\n"
+            "- [เฉพาะเนื้อหาศาสนา] ใช้เสียงผู้ชาย (\"voice\": \"gemini:Charon\") และ \"ttsStyle\": \"religious\" พูดด้วยระดับเสียงปกติชัดเจนตั้งแต่คำแรก\n"
+        )
 
     retry_block = ""
     if retry_errors:
@@ -1022,7 +1121,7 @@ def build_script_prompt(
         '  "height": 1920,\n'
         '  "voice": "gemini:Charon",\n'
         '  "ttsModel": "gemini-2.5-flash-preview-tts",\n'
-        '  "ttsStyle": "storytelling",\n'
+        f'  "ttsStyle": "{example_tts_style}",\n'
         '  "ttsPrompt": "...",\n'
         '  "masterPreset": "light",\n'
         '  "speed": 1.12,\n'
@@ -1057,6 +1156,7 @@ def build_script_prompt(
         "- ซีนแรกควรใช้ visual='title' ซีนสุดท้ายใช้ visual='quote' หรือ 'title' และ padAfterSec=1.4\n"
         f"- sfx.name ต้องเลือกจากรายการนี้เท่านั้น: {', '.join(VALID_SFX)}\n"
         "- ห้ามใส่เครื่องหมายพิเศษที่อ่านยากใน narrationPhonetic ให้ถอดคำทับศัพท์เป็นภาษาไทยที่อ่านออกเสียงถูกต้อง\n"
+        + clarity_rules
         + (
             build_direction_rules(scene_count, str(preset.get("id") or "").strip().lower())
             if (

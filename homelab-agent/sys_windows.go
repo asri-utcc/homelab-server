@@ -166,6 +166,30 @@ func hideWindowAttr() *syscall.SysProcAttr {
 	}
 }
 
+func newShellCmd(command string) *exec.Cmd {
+	cmd := exec.Command("cmd.exe")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CmdLine:       `cmd.exe /S /C "` + command + `"`,
+		CreationFlags: 0x00000200, // CREATE_NEW_PROCESS_GROUP
+	}
+	return cmd
+}
+
+func killProcessTree(c *exec.Cmd) {
+	if c == nil || c.Process == nil {
+		return
+	}
+	pid := c.Process.Pid
+	if pid <= 0 {
+		return
+	}
+	tk := exec.Command("taskkill.exe", "/T", "/F", "/PID", fmt.Sprintf("%d", pid))
+	tk.SysProcAttr = hideWindowAttr()
+	_ = tk.Run()
+	_ = c.Process.Kill()
+}
+
 func collectPlatformStaticSpecs() (cpuModel string, cpuCores int, gpuModel string, gpuVramMB int, osCaption string) {
 	psScript := `$ErrorActionPreference='SilentlyContinue';
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 Name, NumberOfCores, NumberOfLogicalProcessors;

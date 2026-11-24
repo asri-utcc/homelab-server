@@ -29,6 +29,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.error
 import urllib.parse
@@ -70,9 +71,13 @@ def hub_request(method: str, path: str, body: dict | None = None, timeout: int =
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="replace")
         try:
-            return json.loads(err_body)
+            parsed = json.loads(err_body)
+            if isinstance(parsed, dict):
+                parsed.setdefault("_http_status", e.code)
+                return parsed
+            return {"ok": False, "_http_status": e.code, "error": f"HTTP {e.code}: {err_body}"}
         except Exception:
-            return {"ok": False, "error": f"HTTP {e.code}: {err_body}"}
+            return {"ok": False, "_http_status": e.code, "error": f"HTTP {e.code}: {err_body}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -247,6 +252,34 @@ def main() -> int:
 
     p_upd = sub.add_parser("update", help="Trigger self-update on a remote node")
     p_upd.add_argument("node")
+
+    p_run = sub.add_parser("run", help="Dispatch a generic offload job (job.run) to a worker node")
+    p_run.add_argument("--name", default=None, help="Job name label (e.g. whisper-transcribe)")
+    p_run.add_argument("--requires", default=None, help="Comma-separated required capabilities (e.g. python,nvidia-gpu)")
+    p_run.add_argument("--os", default=None, choices=["any", "windows", "linux", "darwin"], help="Target OS (default: any)")
+    p_run.add_argument("--node", default=None, help="Target node ID, alias, or 'auto' (default: auto)")
+    p_run.add_argument("--input", action="append", default=None, help="Input file/dir path on homelab (repeatable)")
+    p_run.add_argument("--cmd", dest="cmd_str", default=None, help="Shell command string to execute")
+    p_run.add_argument("--cmd-win", dest="cmd_win", default=None, help="Windows-specific command string")
+    p_run.add_argument("--cmd-posix", dest="cmd_posix", default=None, help="POSIX (Linux/macOS) command string")
+    p_run.add_argument("--setup", default=None, help="Setup command (e.g. pip install ...)")
+    p_run.add_argument("--cache-key", dest="cache_key", default=None, help="Setup cache key ([a-zA-Z0-9._-]{1,64})")
+    p_run.add_argument("--collect", action="append", default=None, help="Relative path/glob to collect into result.tar.gz (repeatable)")
+    p_run.add_argument("--env", action="append", default=None, help="Environment variable KEY=VAL (repeatable)")
+    p_run.add_argument("--timeout", type=int, default=None, help="Job timeout in seconds")
+    p_run.add_argument("--out-dir", dest="out_dir", default=None, help="Local output dir (default: /home/dev/.gemini/outputs/offload/<jobId>)")
+    p_run.add_argument("--spec", default=None, help="Load job spec from JSON file (CLI flags override)")
+    p_run.add_argument("--json", action="store_true", help="Print final result as single-line JSON")
+    p_run.add_argument("--no-wait", dest="no_wait", action="store_true", help="Submit job and exit immediately with jobId")
+
+    p_cancel = sub.add_parser("cancel", help="Cancel a running job on Agent Hub")
+    p_cancel.add_argument("job_id", metavar="jobId", help="Job ID to cancel")
+    p_cancel.add_argument("--json", action="store_true", help="Print response as JSON")
+
+    p_jobs = sub.add_parser("jobs", help="List recent jobs on Agent Hub")
+    p_jobs.add_argument("--kind", default=None, help="Filter by job kind (e.g. generic, remotion, blender)")
+    p_jobs.add_argument("--limit", type=int, default=20, help="Maximum number of jobs to show (default: 20)")
+    p_jobs.add_argument("--json", action="store_true", help="Print response as JSON")
 
     args = parser.parse_args()
     if not args.cmd or args.cmd == "nodes":
@@ -585,7 +618,291 @@ def main() -> int:
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0 if res.get("ok") else 1
 
+    if args.cmd == "cancel":
+        res = hub_request("POST", f"/api/agent-hub/jobs/{urllib.parse.quote(args.job_id)}/cancel", {}, timeout=15)
+        if args.json:
+            print(json.dumps(res, ensure_ascii=False))
+        else:
+            if res.get("ok"):
+                print(f"Cancelled job {args.job_id}: {res.get('status', 'cancelling')}")
+            else:
+                print(f"Error cancelling {args.job_id}: {res.get('error', 'unknown error')}", file=sys.stderr)
+        return 0 if res.get("ok") else 1
+
+    if args.cmd == "jobs":
+        params = {"limit": str(max(1, args.limit))}
+        if args.kind:
+            params["kind"] = args.kind
+        qs = urllib.parse.urlencode(params)
+        res = hub_request("GET", f"/api/agent-hub/jobs?{qs}", timeout=15)
+        if args.json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+            return 0 if res.get("ok") else 1
+        if not res.get("ok"):
+            print(f"Error: {res.get('error', 'failed to fetch jobs')}", file=sys.stderr)
+            return 1
+        jobs_list = res.get("jobs") or []
+        if not jobs_list:
+            print("(no jobs)")
+            return 0
+        header = f"{'JOB ID':<24} {'KIND':<10} {'NAME':<22} {'NODE':<18} {'STATUS':<11} {'PROG':>5}"
+        print(header)
+        print("-" * len(header))
+        for j in jobs_list:
+            jid = str(j.get("jobId") or "")[:24]
+            kind = str(j.get("kind") or "")[:10]
+            name = str(j.get("name") or j.get("compositionId") or "")[:22]
+            node = str(j.get("nodeAlias") or j.get("alias") or j.get("nodeId") or "")[:18]
+            status = str(j.get("status") or "")[:11]
+            prog = f"{int(j.get('progress') or 0)}%"
+            print(f"{jid:<24} {kind:<10} {name:<22} {node:<18} {status:<11} {prog:>5}")
+        return 0
+
+    if args.cmd == "run":
+        return handle_run_cmd(args)
+
     return 0
+
+
+def _extract_new_log_lines(prev_lines: list[str], cur_lines: list[str]) -> list[str]:
+    if not cur_lines:
+        return []
+    if not prev_lines:
+        return cur_lines
+    max_k = min(len(prev_lines), len(cur_lines))
+    for k in range(max_k, 0, -1):
+        if prev_lines[-k:] == cur_lines[:k]:
+            return cur_lines[k:]
+    return cur_lines
+
+
+def _safe_extract_tar(tar_path: str, dest_dir: str) -> list[str]:
+    dest_real = os.path.realpath(dest_dir)
+    extracted: list[str] = []
+    with tarfile.open(tar_path, "r:gz") as tf:
+        members = tf.getmembers()
+        if sys.version_info >= (3, 12):
+            tf.extractall(dest_dir, filter="data")
+        else:
+            for m in members:
+                if m.islnk() or m.issym():
+                    link_base = os.path.dirname(m.name) if m.issym() else ""
+                    target_real = os.path.realpath(os.path.join(dest_real, link_base, m.linkname))
+                    if not (target_real == dest_real or target_real.startswith(dest_real + os.sep)):
+                        raise ValueError(f"Unsafe link in tar: {m.name} -> {m.linkname}")
+                member_real = os.path.realpath(os.path.join(dest_real, m.name))
+                if not (member_real == dest_real or member_real.startswith(dest_real + os.sep)):
+                    raise ValueError(f"Unsafe path in tar: {m.name}")
+            tf.extractall(dest_dir)
+        for m in members:
+            if m.isfile():
+                extracted.append(os.path.join(dest_dir, m.name))
+    return extracted
+
+
+def handle_run_cmd(args) -> int:
+    payload: dict = {}
+    if args.spec:
+        if not os.path.isfile(args.spec):
+            print(f"Error: spec file not found: {args.spec}", file=sys.stderr)
+            return 1
+        try:
+            with open(args.spec, "r", encoding="utf-8") as f:
+                spec_data = json.load(f)
+            if not isinstance(spec_data, dict):
+                print("Error: spec JSON must be an object", file=sys.stderr)
+                return 1
+            payload.update(spec_data)
+        except Exception as e:
+            print(f"Error reading spec file: {e}", file=sys.stderr)
+            return 1
+
+    if args.name is not None:
+        payload["name"] = args.name
+    if args.requires is not None:
+        payload["requires"] = [r.strip() for r in args.requires.split(",") if r.strip()]
+    if args.os is not None:
+        payload["os"] = args.os
+    else:
+        payload.setdefault("os", "any")
+
+    node_ref = args.node if args.node is not None else (payload.get("nodeId") or "auto")
+    if str(node_ref).strip().lower() != "auto":
+        payload["nodeId"] = resolve_node_target(str(node_ref))
+    else:
+        payload["nodeId"] = "auto"
+
+    if args.input is not None:
+        payload["inputs"] = [os.path.abspath(p) for p in args.input]
+
+    if args.cmd_win is not None or args.cmd_posix is not None:
+        cmd_obj = dict(payload["command"]) if isinstance(payload.get("command"), dict) else {}
+        if args.cmd_win is not None:
+            cmd_obj["windows"] = args.cmd_win
+        if args.cmd_posix is not None:
+            cmd_obj["posix"] = args.cmd_posix
+        payload["command"] = cmd_obj
+    elif args.cmd_str is not None:
+        payload["command"] = args.cmd_str
+
+    if not payload.get("command"):
+        print("Error: --cmd (or --cmd-win/--cmd-posix or spec.command) is required", file=sys.stderr)
+        return 1
+
+    if args.setup is not None:
+        payload["setup"] = args.setup
+    if args.cache_key is not None:
+        payload["cacheKey"] = args.cache_key
+    if args.collect is not None:
+        payload["collect"] = args.collect
+    if args.env is not None:
+        env_dict = dict(payload.get("env") or {})
+        for item in args.env:
+            if "=" not in item:
+                print(f"Error: invalid --env '{item}', expected KEY=VAL", file=sys.stderr)
+                return 1
+            k, v = item.split("=", 1)
+            env_dict[k] = v
+        payload["env"] = env_dict
+    if args.timeout is not None:
+        payload["timeoutSec"] = args.timeout
+
+    res = hub_request("POST", "/api/agent-hub/jobs", payload, timeout=30)
+    http_status = res.get("_http_status")
+    err_code = res.get("code")
+    if http_status == 404:
+        msg = "hub ยังไม่รองรับ job.run (รอ restart)"
+        print(f"[offload] {msg}", file=sys.stderr, flush=True)
+        if args.json:
+            print(json.dumps({"ok": False, "code": "NO_NODE", "error": msg}, ensure_ascii=False), flush=True)
+        return 3
+    if http_status == 409 or err_code == "NO_NODE":
+        print("[offload] no node available", file=sys.stderr, flush=True)
+        if args.json:
+            print(json.dumps({"ok": False, "code": "NO_NODE", "error": res.get("error") or "no node available"}, ensure_ascii=False), flush=True)
+        return 3
+    if not res.get("ok") or not (res.get("job") or {}).get("jobId"):
+        err_msg = res.get("error") or err_code or "hub unavailable"
+        if http_status is None:
+            print(f"[offload] no node available: {err_msg}", file=sys.stderr, flush=True)
+            if args.json:
+                print(json.dumps({"ok": False, "code": "NO_NODE", "error": err_msg}, ensure_ascii=False), flush=True)
+            return 3
+        print(f"Error: {err_msg}", file=sys.stderr, flush=True)
+        if args.json:
+            print(json.dumps({"ok": False, "code": err_code or "ERROR", "error": err_msg}, ensure_ascii=False), flush=True)
+        return 1
+
+    job = res["job"]
+    job_id = job["jobId"]
+    node_label = job.get("alias") or job.get("nodeAlias") or job.get("hostname") or job.get("nodeId") or payload.get("nodeId") or "unknown"
+
+    if not args.json:
+        print(f"[render-node] {node_label}", flush=True)
+
+    if args.no_wait:
+        if args.json:
+            print(json.dumps({"ok": True, "jobId": job_id, "node": node_label, "status": job.get("status", "queued")}, ensure_ascii=False), flush=True)
+        else:
+            print(job_id, flush=True)
+        return 0
+
+    wait_timeout = int(payload.get("timeoutSec") or 1800)
+    start_t = time.time()
+    last_activity = None
+    prev_log_lines: list[str] = []
+
+    try:
+        while True:
+            if time.time() - start_t > wait_timeout:
+                hub_request("POST", f"/api/agent-hub/jobs/{urllib.parse.quote(job_id)}/cancel", {}, timeout=10)
+                if args.json:
+                    print(json.dumps({"ok": False, "jobId": job_id, "node": node_label, "status": "timeout", "error": f"timed out after {wait_timeout}s"}, ensure_ascii=False), flush=True)
+                else:
+                    print(f"Error: job {job_id} timed out after {wait_timeout}s", file=sys.stderr, flush=True)
+                return 4
+
+            jres = hub_request("GET", f"/api/agent-hub/jobs/{urllib.parse.quote(job_id)}", timeout=15)
+            if jres.get("ok") and jres.get("job"):
+                j = jres["job"]
+                status = j.get("status", "")
+                progress = j.get("progress", 0) or 0
+                message = j.get("message", "") or ""
+
+                log_tail = j.get("logTail")
+                if log_tail:
+                    if isinstance(log_tail, list):
+                        cur_lines = [str(x) for x in log_tail]
+                    else:
+                        cur_lines = str(log_tail).splitlines()
+                    new_lines = _extract_new_log_lines(prev_log_lines, cur_lines)
+                    if not args.json:
+                        for ln in new_lines:
+                            print(ln, flush=True)
+                    prev_log_lines = cur_lines
+
+                activity = (status, progress, message)
+                if activity != last_activity:
+                    last_activity = activity
+                    if not args.json:
+                        print(f"[{status}] {round(progress)}% {message}".rstrip(), flush=True)
+
+                if status in ("completed", "failed", "lost", "timeout", "timed_out", "cancelled"):
+                    exit_code = j.get("exitCode")
+                    result_url = j.get("resultUrl")
+                    out_dir = args.out_dir or os.path.join("/home/dev/.gemini/outputs/offload", job_id)
+                    extracted_files: list[str] = []
+
+                    if status in ("completed", "failed") and result_url:
+                        os.makedirs(out_dir, exist_ok=True)
+                        tar_path = os.path.join(out_dir, "result.tar.gz")
+                        dl_path = urllib.parse.urlparse(result_url).path if result_url.startswith("http") else result_url
+                        if hub_download(dl_path, tar_path, timeout=600):
+                            try:
+                                extracted_files = _safe_extract_tar(tar_path, out_dir)
+                                if not args.json:
+                                    print(f"Extracted {len(extracted_files)} file(s) to {out_dir}:", flush=True)
+                                    for fp in extracted_files:
+                                        print(f"  - {fp}", flush=True)
+                            except Exception as e:
+                                print(f"Warning: failed to extract result.tar.gz: {e}", file=sys.stderr, flush=True)
+                        else:
+                            print(f"Warning: failed to download result from {result_url}", file=sys.stderr, flush=True)
+
+                    if status == "cancelled":
+                        rc = 130
+                    elif status in ("lost", "timeout", "timed_out"):
+                        rc = 4
+                    elif status == "failed" or (exit_code is not None and exit_code != 0):
+                        rc = 2
+                    else:
+                        rc = 0
+
+                    if args.json:
+                        summary = {
+                            "ok": rc == 0,
+                            "jobId": job_id,
+                            "node": node_label,
+                            "status": status,
+                            "exitCode": exit_code,
+                            "outDir": out_dir if result_url else None,
+                            "files": extracted_files,
+                            "error": j.get("error") or (message if rc != 0 else None),
+                        }
+                        print(json.dumps(summary, ensure_ascii=False), flush=True)
+                    elif rc != 0:
+                        err = j.get("error") or message or f"job ended with status={status} exitCode={exit_code}"
+                        print(f"Error: {err}", file=sys.stderr, flush=True)
+                    return rc
+
+            time.sleep(2)
+    except KeyboardInterrupt:
+        hub_request("POST", f"/api/agent-hub/jobs/{urllib.parse.quote(job_id)}/cancel", {}, timeout=10)
+        if args.json:
+            print(json.dumps({"ok": False, "jobId": job_id, "node": node_label, "status": "cancelled"}, ensure_ascii=False), flush=True)
+        else:
+            print(f"\nCancelled job {job_id}", file=sys.stderr, flush=True)
+        return 130
 
 
 if __name__ == "__main__":

@@ -6,12 +6,14 @@
  * Central Control Hub for Homelab Worker Agents (homelab-agent.exe / Linux / macOS).
  *
  * Responsibilities:
- *  - Persistent token & node registry in /home/dev/.gemini/agent-hub/
+ *  - Persistent token & node registry in HUB_ROOT (default /home/dev/.gemini/agent-hub/,
+ *    override via env AGENT_HUB_ROOT; set AGENT_HUB_SKIP_SIDE_EFFECTS=1 to skip iptables/auto-compile on init)
  *  - On-demand & startup Go cross-compilation of homelab-agent.exe (Windows amd64),
  *    homelab-agent-linux-amd64, and homelab-agent-darwin-arm64 with baked-in token & URLs
  *  - Heartbeat ingestion (5s live telemetry: CPU, RAM, GPU, VRAM, Disks, Capabilities)
- *  - Instant Long-Polling + Command Queue RPC dispatcher (exec, fs.*, sysinfo, render.ffmpeg, self-update)
- *  - Distributed Render Job Queue & Multipart Output Upload receiver
+ *  - Instant Long-Polling + Command Queue RPC dispatcher (exec, fs.*, sysinfo, render.*, job.run, job.cancel, self-update)
+ *  - Distributed Render & Generic Job Runner (POST/GET /api/agent-hub/jobs, cancel, result tar.gz,
+ *    per-node maxJobs pending queue, live log tail, and offline/timeout watchdog)
  *  - PowerShell 1-liner installer (/api/agent-hub/install.ps1) & Bash installer (/api/agent-hub/install.sh)
  */
 
@@ -23,7 +25,12 @@ const crypto = require('crypto');
 const { execFile } = require('child_process');
 const audit = require('./audit-logger');
 
-const HUB_ROOT = '/home/dev/.gemini/agent-hub';
+const HUB_ROOT = process.env.AGENT_HUB_ROOT
+    ? path.resolve(process.env.AGENT_HUB_ROOT)
+    : '/home/dev/.gemini/agent-hub';
+const SKIP_SIDE_EFFECTS =
+    process.env.AGENT_HUB_SKIP_SIDE_EFFECTS === '1' ||
+    String(process.env.AGENT_HUB_SKIP_SIDE_EFFECTS || '').toLowerCase() === 'true';
 const BIN_DIR = path.join(HUB_ROOT, 'bin');
 const JOBS_DIR = path.join(HUB_ROOT, 'jobs');
 const BUNDLES_DIR = path.join(HUB_ROOT, 'bundles');
@@ -45,11 +52,30 @@ const DEFAULT_HUB_URLS = [
 ];
 
 const ONLINE_THRESHOLD_MS = 18000; // 18 seconds (3.5 heartbeats)
+const JOB_WATCHDOG_INTERVAL_MS = 10000; // 10 seconds
+const JOB_NODE_LOST_MS = Math.max(20000, Number(process.env.AGENT_HUB_LOST_MS) || 45000);
+const JOB_CANCELLING_GRACE_MS = 20000;
+const GENERIC_INPUT_ALLOWED_ROOTS = ['/home/dev/projects/', '/home/dev/.gemini/', '/tmp/'];
+const MAX_JOB_INPUT_TAR_BYTES = 500 * 1024 * 1024;
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'lost', 'timeout', 'timed_out', 'cancelled']);
+const ACTIVE_DISPATCHED_STATUSES = new Set([
+    'queued',
+    'downloading',
+    'installing',
+    'setup',
+    'rendering',
+    'running',
+    'collecting',
+    'uploading',
+    'cancelling',
+]);
+
+let jobWatchdogTimer = null;
 
 let hubConfig = {
     token: DEFAULT_TOKEN,
     hubUrls: DEFAULT_HUB_URLS,
-    agentVersion: '1.0.3',
+    agentVersion: '1.1.0',
     createdAt: new Date().toISOString(),
 };
 
@@ -232,6 +258,7 @@ async function compileBinaries(force = false) {
 }
 
 function ensurePort8090NatRedirect() {
+    if (SKIP_SIDE_EFFECTS) return;
     const rules = [
         ['-t', 'nat', '-i', 'tailscale0', '-p', 'tcp', '--dport', '8090', '-j', 'REDIRECT', '--to-ports', '80'],
         ['-t', 'nat', '-i', 'enp1s0', '-p', 'tcp', '--dport', '8090', '-j', 'REDIRECT', '--to-ports', '80'],
@@ -249,10 +276,13 @@ function init() {
     if (initialized) return;
     initialized = true;
     loadStateSync();
-    ensurePort8090NatRedirect();
-    compileBinaries(false).catch((err) => {
-        console.error('[AgentHub] Initial binary build error:', err.message);
-    });
+    if (!SKIP_SIDE_EFFECTS) {
+        ensurePort8090NatRedirect();
+        compileBinaries(false).catch((err) => {
+            console.error('[AgentHub] Initial binary build error:', err.message);
+        });
+    }
+    startJobWatchdog();
 }
 
 init();
@@ -312,6 +342,34 @@ function isPublicOrAgentAuthorized(req, uriPath) {
     return false;
 }
 
+function getNodeMaxJobs(node) {
+    const raw = (node && node.maxJobs) ?? (node && node.specs && node.specs.maxJobs);
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1) return Math.floor(n);
+    return 1;
+}
+
+function countNodeActiveJobs(nodeId) {
+    const targetId = String(nodeId || '').trim().toLowerCase();
+    if (!targetId) return 0;
+    let count = 0;
+    for (const j of renderJobs.values()) {
+        if (j && String(j.nodeId || '').trim().toLowerCase() === targetId && ACTIVE_DISPATCHED_STATUSES.has(j.status)) {
+            count++;
+        }
+    }
+    return count;
+}
+
+function getNodeAlias(nodeId, fallbackAlias = '') {
+    const key = String(nodeId || '').trim().toLowerCase();
+    const rec = key ? nodes.get(key) : null;
+    if (rec && typeof rec.alias === 'string' && rec.alias.trim()) {
+        return rec.alias.trim();
+    }
+    return String(fallbackAlias || '').trim();
+}
+
 function decorateNode(n) {
     const now = Date.now();
     const lastSeenMs = n.lastSeenAt ? Date.parse(n.lastSeenAt) : 0;
@@ -322,6 +380,8 @@ function decorateNode(n) {
     const alias = String(n.alias || '').trim();
     const notes = String(n.notes || '').trim();
     const hostname = String((n.specs && n.specs.hostname) || n.nodeId || '').trim();
+    const maxJobs = getNodeMaxJobs(n);
+    const activeJobs = countNodeActiveJobs(n.nodeId);
     return {
         ...n,
         alias,
@@ -329,6 +389,8 @@ function decorateNode(n) {
         displayName: alias || hostname,
         online,
         ageMs,
+        maxJobs,
+        activeJobs,
         longPollConnected: Boolean(waiters && waiters.size > 0),
         queuedCommands: q.length,
     };
@@ -382,6 +444,7 @@ async function updateNodeMeta(identifier, body = {}) {
     const target = nodes.get(resolved.node.nodeId);
     const hasAlias = Object.prototype.hasOwnProperty.call(body, 'alias');
     const hasNotes = Object.prototype.hasOwnProperty.call(body, 'notes');
+    const hasMaxJobs = Object.prototype.hasOwnProperty.call(body, 'maxJobs');
     const nextAlias = hasAlias ? String(body.alias ?? '').trim().slice(0, 80) : String(target.alias || '').trim();
     const nextNotes = hasNotes ? String(body.notes ?? '').trim().slice(0, 500) : String(target.notes || '').trim();
 
@@ -399,6 +462,14 @@ async function updateNodeMeta(identifier, body = {}) {
 
     target.alias = nextAlias;
     target.notes = nextNotes;
+    if (hasMaxJobs) {
+        const v = Number(body.maxJobs);
+        if (Number.isFinite(v) && v >= 1) {
+            target.maxJobs = Math.floor(v);
+        } else {
+            delete target.maxJobs;
+        }
+    }
     target.metaUpdatedAt = new Date().toISOString();
     nodes.set(target.nodeId, target);
     await saveNodesNow();
@@ -436,6 +507,9 @@ function handleHeartbeat(body, clientIp) {
 
     nodes.set(nodeId, record);
     scheduleSaveNodes();
+
+    // Dispatch any pending generic jobs if this node is ready with free capacity
+    pumpGenericQueue();
 
     const queued = drainPendingCommands(nodeId);
     return {
@@ -583,6 +657,68 @@ function handleCommandResult(body) {
                     audit.finishRun(id, { status: resultRecord.ok ? 'completed' : 'error', error: resultRecord.error, answer: out, exitCode: resultRecord.ok ? 0 : 1 });
                 }
             } catch (_) {}
+        }
+    }
+
+    // Safety net for job.run / job.cancel in case final job-progress was missed or handler returned early error
+    if (resultRecord.action === 'job.run') {
+        const data = (resultRecord.data && typeof resultRecord.data === 'object') ? resultRecord.data : {};
+        const jobId = String(data.jobId || (hist && hist.payload && hist.payload.jobId) || '').trim();
+        const job = jobId ? renderJobs.get(jobId) : null;
+        if (job && !TERMINAL_JOB_STATUSES.has(job.status)) {
+            const nowIso = new Date().toISOString();
+            const dataStatus = typeof data.status === 'string' ? data.status.trim() : '';
+            const exitCode = typeof data.exitCode === 'number' && Number.isFinite(data.exitCode)
+                ? data.exitCode
+                : undefined;
+            const durationMs = typeof data.durationMs === 'number' && Number.isFinite(data.durationMs)
+                ? data.durationMs
+                : (resultRecord.durationMs || 0);
+
+            let finalStatus = 'completed';
+            if (dataStatus && TERMINAL_JOB_STATUSES.has(dataStatus)) {
+                finalStatus = dataStatus;
+            } else if (job.status === 'cancelling') {
+                finalStatus = 'cancelled';
+            } else if (!resultRecord.ok) {
+                finalStatus = 'failed';
+            } else if (exitCode !== undefined && exitCode !== 0) {
+                finalStatus = 'failed';
+            }
+
+            job.status = finalStatus;
+            if (exitCode !== undefined && (job.exitCode === undefined || job.exitCode === null)) {
+                job.exitCode = exitCode;
+            }
+            if (durationMs && !job.durationMs) {
+                job.durationMs = durationMs;
+            }
+            if (!resultRecord.ok && resultRecord.error && !job.error) {
+                job.error = String(resultRecord.error);
+            }
+            if (finalStatus === 'completed' && (typeof job.progress !== 'number' || job.progress < 100)) {
+                job.progress = 100;
+            }
+            if (finalStatus === 'failed' && (!job.message || job.message === `ส่งงานไปยัง ${job.nodeId} แล้ว`)) {
+                job.message = job.error || `งานล้มเหลว (exitCode=${job.exitCode ?? '?'})`;
+            }
+            job.finishedAt = job.finishedAt || resultRecord.finishedAt || nowIso;
+            job.updatedAt = nowIso;
+            saveJobs();
+            pumpGenericQueue();
+        }
+    } else if (resultRecord.action === 'job.cancel' && !resultRecord.ok) {
+        const jobId = String((hist && hist.payload && hist.payload.jobId) || '').trim();
+        const job = jobId ? renderJobs.get(jobId) : null;
+        const errStr = String(resultRecord.error || '').toLowerCase();
+        if (job && job.status === 'cancelling' && errStr.includes('not running')) {
+            const nowIso = new Date().toISOString();
+            job.status = 'cancelled';
+            job.message = 'ยกเลิกงานแล้ว';
+            job.finishedAt = job.finishedAt || nowIso;
+            job.updatedAt = nowIso;
+            saveJobs();
+            pumpGenericQueue();
         }
     }
 
@@ -975,15 +1111,794 @@ async function createRemotionJob(opts = {}) {
     return job;
 }
 
+// -----------------------------------------------------------------------------
+// Generic Job Runner (job.run / job.cancel / pending queue / watchdog)
+// -----------------------------------------------------------------------------
+
+function nodeHasCapability(node, reqCap) {
+    const r = String(reqCap || '').trim().toLowerCase();
+    if (!r) return true;
+    const specs = (node && node.specs) || {};
+    const caps = Array.isArray(specs.capabilities)
+        ? specs.capabilities.map((c) => String(c).toLowerCase())
+        : [];
+    const capSet = new Set(caps);
+    if (capSet.has(r)) return true;
+    if (r === 'gpu' && (capSet.has('nvidia-gpu') || Boolean(specs.hasNvidiaSmi))) return true;
+    if (r === 'nvenc' && (capSet.has('ffmpeg-nvenc') || Boolean(specs.hasNvenc))) return true;
+    if (r === 'node' && (capSet.has('nodejs') || Boolean(specs.nodePath))) return true;
+    if (r === 'python3' && (capSet.has('python') || Boolean(specs.pythonPath))) return true;
+    if (r === 'blender' && (capSet.has('blender-3d') || Boolean(specs.blenderPath))) return true;
+    return false;
+}
+
+function nodeMatchesOs(node, osReq) {
+    const req = String(osReq || 'any').trim().toLowerCase();
+    if (!req || req === 'any') return true;
+    const nodeOs = String((node && node.specs && node.specs.os) || '').trim().toLowerCase();
+    if (!nodeOs) return false;
+    if (req === 'windows' || req === 'win') return nodeOs === 'windows';
+    if (req === 'linux') return nodeOs === 'linux';
+    if (req === 'darwin' || req === 'macos') return nodeOs === 'darwin';
+    if (req === 'posix') return nodeOs === 'linux' || nodeOs === 'darwin';
+    return nodeOs === req;
+}
+
+function resolveCommandForNode(command, node) {
+    if (typeof command === 'string') return command.trim();
+    if (!command || typeof command !== 'object') return '';
+    const nodeOs = String((node && node.specs && node.specs.os) || '').trim().toLowerCase();
+    if (nodeOs === 'windows') {
+        return String(command.windows || command.win || '').trim();
+    }
+    if (nodeOs === 'linux' || nodeOs === 'darwin') {
+        return String(command[nodeOs] || command.posix || '').trim();
+    }
+    return String(command.posix || command.windows || '').trim();
+}
+
+function findMatchingGenericNodes(opts = {}) {
+    const pref = String(opts.nodeId || 'auto').trim();
+    const requires = Array.isArray(opts.requires) ? opts.requires.filter(Boolean) : [];
+    const osReq = String(opts.os || 'any').trim().toLowerCase() || 'any';
+    const command = opts.command;
+    const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+
+    let candidates = allOnline;
+    if (pref && pref.toLowerCase() !== 'auto') {
+        const res = resolveNodeRef(pref, allOnline);
+        if (!res.node) return [];
+        candidates = [res.node];
+    }
+
+    const matched = candidates.filter((n) => {
+        if (!nodeMatchesOs(n, osReq)) return false;
+        if (command !== undefined && command !== null && !resolveCommandForNode(command, n)) return false;
+        for (const cap of requires) {
+            if (!nodeHasCapability(n, cap)) return false;
+        }
+        return true;
+    });
+
+    const wantsGpu = requires.some((c) => {
+        const lc = String(c).toLowerCase();
+        return lc === 'gpu' || lc === 'nvidia-gpu' || lc === 'nvenc' || lc === 'ffmpeg-nvenc' || lc === 'cuda';
+    });
+
+    matched.sort((a, b) => {
+        const aMax = getNodeMaxJobs(a);
+        const bMax = getNodeMaxJobs(b);
+        const aActive = countNodeActiveJobs(a.nodeId);
+        const bActive = countNodeActiveJobs(b.nodeId);
+        const aFree = aActive < aMax ? 1 : 0;
+        const bFree = bActive < bMax ? 1 : 0;
+        if (aFree !== bFree) return bFree - aFree;
+
+        const score = (n, active) => {
+            const sp = n.specs || {};
+            const mt = n.metrics || {};
+            const gpuBase = wantsGpu ? 1000 : 250;
+            const gpuBonus = sp.hasNvenc ? gpuBase : (sp.hasNvidiaSmi ? Math.round(gpuBase * 0.8) : 0);
+            const vramBonus = wantsGpu ? Math.min(400, ((sp.gpuVramMB || 0) / 1024) * 20) : 0;
+            const threads = (sp.cpuThreads || 1) * 20;
+            const loadPenalty = (mt.cpuPct || 0) * 3;
+            const activePenalty = active * 500;
+            return gpuBonus + vramBonus + threads - loadPenalty - activePenalty;
+        };
+
+        const diff = score(b, bActive) - score(a, aActive);
+        if (diff !== 0) return diff;
+        return String(a.nodeId).localeCompare(String(b.nodeId));
+    });
+
+    return matched;
+}
+
+function selectBestGenericNode(opts = {}) {
+    const matched = findMatchingGenericNodes(opts);
+    if (matched.length === 0) return null;
+    if (opts.allowBusy) return matched[0];
+    for (const n of matched) {
+        if (countNodeActiveJobs(n.nodeId) < getNodeMaxJobs(n)) {
+            return n;
+        }
+    }
+    return null;
+}
+
+function isPathUnderAllowedRoots(absPath, roots = GENERIC_INPUT_ALLOWED_ROOTS) {
+    const normalized = path.resolve(String(absPath || ''));
+    return roots.some((root) => {
+        const normRoot = root.endsWith(path.sep) ? root : root + path.sep;
+        return normalized.startsWith(normRoot);
+    });
+}
+
+function validateJobInputs(inputs) {
+    if (inputs === undefined || inputs === null) return [];
+    if (!Array.isArray(inputs)) {
+        const err = new Error('inputs must be an array of file/directory paths');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (inputs.length > 50) {
+        const err = new Error('inputs exceeds maximum of 50 items');
+        err.statusCode = 400;
+        throw err;
+    }
+    const seenBasenames = new Set();
+    const validated = [];
+    for (const raw of inputs) {
+        if (typeof raw !== 'string' || !raw.trim()) {
+            const err = new Error('Each input path must be a non-empty string');
+            err.statusCode = 400;
+            throw err;
+        }
+        const resolvedPath = path.resolve(raw.trim());
+        if (!isPathUnderAllowedRoots(resolvedPath)) {
+            const err = new Error(`ไม่อนุญาตให้เข้าถึง input path นอกขอบเขต: ${resolvedPath}`);
+            err.statusCode = 400;
+            throw err;
+        }
+        if (!fs.existsSync(resolvedPath)) {
+            const err = new Error(`ไม่พบไฟล์หรือโฟลเดอร์ input: ${resolvedPath}`);
+            err.statusCode = 400;
+            throw err;
+        }
+        const realPath = fs.realpathSync(resolvedPath);
+        if (!isPathUnderAllowedRoots(realPath)) {
+            const err = new Error(`ไม่อนุญาตให้เข้าถึง input path นอกขอบเขต (symlink): ${resolvedPath}`);
+            err.statusCode = 400;
+            throw err;
+        }
+        const st = fs.statSync(realPath);
+        if (!st.isFile() && !st.isDirectory()) {
+            const err = new Error(`input ต้องเป็นไฟล์หรือโฟลเดอร์เท่านั้น: ${resolvedPath}`);
+            err.statusCode = 400;
+            throw err;
+        }
+        const base = path.basename(realPath);
+        if (!base || base === '.' || base === '..') {
+            const err = new Error(`ชื่อไฟล์ input ไม่ถูกต้อง: ${resolvedPath}`);
+            err.statusCode = 400;
+            throw err;
+        }
+        if (seenBasenames.has(base)) {
+            const err = new Error(`ชื่อไฟล์/โฟลเดอร์ input ซ้ำกัน: ${base}`);
+            err.statusCode = 400;
+            throw err;
+        }
+        seenBasenames.add(base);
+        validated.push({
+            rawPath: raw.trim(),
+            resolvedPath,
+            realPath,
+            dir: path.dirname(realPath),
+            base,
+        });
+    }
+    return validated;
+}
+
+async function packJobInputs(job, inputs) {
+    if (!job || !job.jobId) {
+        const err = new Error('Missing job object for packJobInputs');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (!inputs || inputs.length === 0) {
+        job.inputFilePath = '';
+        job.inputUrl = '';
+        job.inputSize = 0;
+        job.inputNames = [];
+        return { inputFilePath: '', inputUrl: '', size: 0, names: [] };
+    }
+
+    const validated = (typeof inputs[0] === 'string')
+        ? validateJobInputs(inputs)
+        : inputs;
+
+    const jobDir = path.join(JOBS_DIR, job.jobId);
+    await fsp.mkdir(jobDir, { recursive: true });
+    const outPath = path.join(jobDir, 'input.tar.gz');
+    const tmpPath = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+
+    const tarArgs = ['-czf', tmpPath];
+    for (const item of validated) {
+        tarArgs.push('-C', item.dir, item.base);
+    }
+
+    try {
+        await execFileAsync('tar', tarArgs, { timeout: 120000 });
+        const st = await fsp.stat(tmpPath);
+        if (st.size > MAX_JOB_INPUT_TAR_BYTES) {
+            await fsp.unlink(tmpPath).catch(() => {});
+            const err = new Error(`ขนาดไฟล์ input รวมเกิน 500MB (${st.size} bytes)`);
+            err.statusCode = 400;
+            throw err;
+        }
+        await fsp.rename(tmpPath, outPath);
+        job.inputFilePath = outPath;
+        job.inputUrl = `/api/agent-hub/jobs/${encodeURIComponent(job.jobId)}/input`;
+        job.inputSize = st.size;
+        job.inputNames = validated.map((v) => v.base);
+        return {
+            inputFilePath: outPath,
+            inputUrl: job.inputUrl,
+            size: st.size,
+            names: job.inputNames,
+        };
+    } catch (err) {
+        await fsp.unlink(tmpPath).catch(() => {});
+        throw err;
+    }
+}
+
+function dispatchGenericJobToNode(job, node) {
+    const nowIso = new Date().toISOString();
+    const resolvedCommand = resolveCommandForNode(job.command, node);
+    const resolvedSetup = job.setup ? resolveCommandForNode(job.setup, node) : '';
+    const alias = String(node.alias || '').trim();
+    const hostname = String((node.specs && node.specs.hostname) || node.nodeId).trim();
+
+    job.nodeId = node.nodeId;
+    job.hostname = hostname;
+    job.alias = alias;
+    job.nodeAlias = alias;
+    job.status = 'queued';
+    job.message = `ส่งงานไปยัง ${alias || hostname || node.nodeId} แล้ว`;
+    job.dispatchedAt = nowIso;
+    job.updatedAt = nowIso;
+
+    const { cmd } = enqueueCommand(node.nodeId, 'job.run', {
+        jobId: job.jobId,
+        name: job.name,
+        command: resolvedCommand,
+        setup: resolvedSetup,
+        cacheKey: job.cacheKey || '',
+        inputUrl: job.inputUrl || '',
+        collect: Array.isArray(job.collect) ? job.collect : [],
+        env: (job.env && typeof job.env === 'object') ? job.env : {},
+        timeoutSec: job.timeoutSec || 1800,
+    });
+    job.commandId = cmd.id;
+    return cmd;
+}
+
+function pumpGenericQueue() {
+    const pendingJobs = [...renderJobs.values()]
+        .filter((j) => j && j.kind === 'generic' && j.status === 'pending')
+        .sort((a, b) => (Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0));
+
+    if (pendingJobs.length === 0) return 0;
+
+    let dispatchedCount = 0;
+    for (const job of pendingJobs) {
+        const node = selectBestGenericNode({
+            nodeId: job.requestedNodeId || 'auto',
+            requires: job.requires || [],
+            os: job.os || 'any',
+            command: job.command,
+        });
+        if (!node) continue;
+        dispatchGenericJobToNode(job, node);
+        dispatchedCount++;
+    }
+
+    if (dispatchedCount > 0) {
+        saveJobs();
+    }
+    return dispatchedCount;
+}
+
+async function createGenericJob(opts = {}) {
+    // 1. Validate command
+    const rawCmd = opts.command;
+    let command = null;
+    if (typeof rawCmd === 'string') {
+        const trimmed = rawCmd.trim();
+        if (trimmed) command = trimmed;
+    } else if (rawCmd && typeof rawCmd === 'object' && !Array.isArray(rawCmd)) {
+        const cleaned = {};
+        for (const k of ['windows', 'win', 'posix', 'linux', 'darwin']) {
+            if (typeof rawCmd[k] === 'string' && rawCmd[k].trim()) {
+                cleaned[k] = rawCmd[k].trim();
+            }
+        }
+        if (Object.keys(cleaned).length > 0) command = cleaned;
+    }
+    if (!command) {
+        const err = new Error('ต้องระบุ command (string หรือ {windows, posix})');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    // 2. Validate os
+    const rawOs = String(opts.os || 'any').trim().toLowerCase() || 'any';
+    const osNormMap = { any: 'any', windows: 'windows', win: 'windows', linux: 'linux', darwin: 'darwin', macos: 'darwin', posix: 'posix' };
+    if (!Object.prototype.hasOwnProperty.call(osNormMap, rawOs)) {
+        const err = new Error(`ค่า os ไม่ถูกต้อง: ${rawOs} (รองรับ any, windows, linux, darwin, posix)`);
+        err.statusCode = 400;
+        throw err;
+    }
+    const osReq = osNormMap[rawOs];
+
+    // 3. Validate requires
+    let requires = [];
+    if (Array.isArray(opts.requires)) {
+        requires = opts.requires.map((r) => String(r || '').trim()).filter(Boolean);
+    } else if (typeof opts.requires === 'string' && opts.requires.trim()) {
+        requires = opts.requires.split(',').map((r) => r.trim()).filter(Boolean);
+    }
+    if (requires.length > 30) {
+        const err = new Error('requires เกินจำนวนสูงสุด (30)');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    // 4. Validate setup
+    let setup = '';
+    if (typeof opts.setup === 'string') {
+        setup = opts.setup.trim();
+    } else if (opts.setup && typeof opts.setup === 'object' && !Array.isArray(opts.setup)) {
+        const cleaned = {};
+        for (const k of ['windows', 'win', 'posix', 'linux', 'darwin']) {
+            if (typeof opts.setup[k] === 'string' && opts.setup[k].trim()) {
+                cleaned[k] = opts.setup[k].trim();
+            }
+        }
+        if (Object.keys(cleaned).length > 0) setup = cleaned;
+    }
+
+    // 5. Validate cacheKey
+    const cacheKey = String(opts.cacheKey || '').trim();
+    if (cacheKey && !/^[a-zA-Z0-9._-]{1,80}$/.test(cacheKey)) {
+        const err = new Error('cacheKey ต้องใช้ตัวอักษร a-z, A-Z, 0-9, ., _, - เท่านั้น (ไม่เกิน 80 ตัว)');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    // 6. Validate collect globs
+    let collect = [];
+    if (opts.collect !== undefined && opts.collect !== null) {
+        if (!Array.isArray(opts.collect)) {
+            const err = new Error('collect ต้องเป็น array ของ relative glob');
+            err.statusCode = 400;
+            throw err;
+        }
+        for (const g of opts.collect) {
+            const s = String(g || '').trim();
+            if (!s) continue;
+            if (s.startsWith('/') || s.startsWith('\\') || /^[a-zA-Z]:/.test(s) || /(^|[\\/])\.\.([\\/]|$)/.test(s)) {
+                const err = new Error(`collect glob ต้องเป็น relative path และห้ามมี '..': ${s}`);
+                err.statusCode = 400;
+                throw err;
+            }
+            collect.push(s);
+        }
+    }
+
+    // 7. Validate env
+    const env = {};
+    if (opts.env !== undefined && opts.env !== null) {
+        if (typeof opts.env !== 'object' || Array.isArray(opts.env)) {
+            const err = new Error('env ต้องเป็น object { KEY: VALUE }');
+            err.statusCode = 400;
+            throw err;
+        }
+        const entries = Object.entries(opts.env);
+        if (entries.length > 100) {
+            const err = new Error('env เกินจำนวนสูงสุด (100)');
+            err.statusCode = 400;
+            throw err;
+        }
+        for (const [k, v] of entries) {
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) {
+                const err = new Error(`ชื่อตัวแปร env ไม่ถูกต้อง: ${k}`);
+                err.statusCode = 400;
+                throw err;
+            }
+            env[k] = String(v ?? '');
+        }
+    }
+
+    // 8. Validate timeoutSec
+    let timeoutSec = 1800;
+    if (opts.timeoutSec !== undefined && opts.timeoutSec !== null && opts.timeoutSec !== '') {
+        const parsed = Number(opts.timeoutSec);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            const err = new Error('timeoutSec ต้องเป็นตัวเลขมากกว่า 0');
+            err.statusCode = 400;
+            throw err;
+        }
+        timeoutSec = Math.min(86400, Math.max(1, Math.floor(parsed)));
+    }
+
+    // 9. Validate inputs BEFORE checking node availability (invalid paths always return 400)
+    const validatedInputs = validateJobInputs(opts.inputs);
+
+    // 10. Validate requested nodeId & check matching online nodes
+    const requestedNodeId = String(opts.nodeId || 'auto').trim() || 'auto';
+    if (requestedNodeId.toLowerCase() !== 'auto') {
+        const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+        const resolved = resolveNodeRef(requestedNodeId, allOnline);
+        if (resolved.ambiguous) {
+            const err = new Error(`ชื่อเครื่อง "${requestedNodeId}" ตรงกับหลายเครื่อง: ${resolved.matches.map((m) => m.nodeId).join(', ')}`);
+            err.statusCode = 409;
+            err.code = 'AMBIGUOUS_NODE';
+            throw err;
+        }
+    }
+
+    const matchingNodes = findMatchingGenericNodes({
+        nodeId: requestedNodeId,
+        requires,
+        os: osReq,
+        command,
+    });
+    if (matchingNodes.length === 0) {
+        const capDesc = requires.length > 0 ? ` (requires: ${requires.join(', ')})` : '';
+        const osDesc = osReq !== 'any' ? ` (os: ${osReq})` : '';
+        const err = new Error(`ไม่มีเครื่อง Worker Agent ที่ออนไลน์และตรงเงื่อนไข${capDesc}${osDesc}`);
+        err.code = 'NO_NODE';
+        err.statusCode = 409;
+        throw err;
+    }
+
+    const freeNode = matchingNodes.find((n) => countNodeActiveJobs(n.nodeId) < getNodeMaxJobs(n)) || null;
+
+    // 11. Create job record & pack inputs
+    const jobId = `gjob_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
+    const name = String(opts.name || '').trim().slice(0, 120) || 'job';
+    const nowIso = new Date().toISOString();
+
+    const job = {
+        jobId,
+        kind: 'generic',
+        name,
+        requestedNodeId,
+        nodeId: '',
+        hostname: '',
+        alias: '',
+        nodeAlias: '',
+        status: 'pending',
+        progress: 0,
+        message: 'รอเครื่องว่าง (คิว)',
+        requires,
+        os: osReq,
+        command,
+        setup,
+        cacheKey,
+        collect,
+        env,
+        timeoutSec,
+        inputFilePath: '',
+        inputUrl: '',
+        inputSize: 0,
+        inputNames: [],
+        resultFilePath: '',
+        resultUrl: '',
+        resultSize: 0,
+        exitCode: null,
+        error: null,
+        durationMs: 0,
+        commandId: '',
+        createdAt: nowIso,
+        startedAt: null,
+        dispatchedAt: null,
+        updatedAt: nowIso,
+        finishedAt: null,
+    };
+
+    if (validatedInputs.length > 0) {
+        await packJobInputs(job, validatedInputs);
+    }
+
+    renderJobs.set(jobId, job);
+
+    if (freeNode) {
+        dispatchGenericJobToNode(job, freeNode);
+    } else if (requestedNodeId.toLowerCase() !== 'auto') {
+        const target = matchingNodes[0];
+        job.nodeId = target.nodeId;
+        job.hostname = String((target.specs && target.specs.hostname) || target.nodeId).trim();
+        job.alias = String(target.alias || '').trim();
+        job.nodeAlias = job.alias;
+        job.message = `รอคิวบน ${job.alias || job.hostname || job.nodeId} (maxJobs=${getNodeMaxJobs(target)})`;
+    }
+
+    await saveJobs();
+    return job;
+}
+
+async function cancelJob(jobId) {
+    const id = String(jobId || '').trim();
+    const job = renderJobs.get(id);
+    if (!job) {
+        return { ok: false, statusCode: 404, error: 'Job not found' };
+    }
+
+    const nowIso = new Date().toISOString();
+    if (job.status === 'cancelled') {
+        return { ok: true, jobId: id, status: 'cancelled' };
+    }
+    if (TERMINAL_JOB_STATUSES.has(job.status)) {
+        return {
+            ok: false,
+            statusCode: 409,
+            jobId: id,
+            status: job.status,
+            error: `Job already finished with status=${job.status}`,
+        };
+    }
+
+    // Case 1: Pending in hub queue (never dispatched yet)
+    if (job.status === 'pending') {
+        job.status = 'cancelled';
+        job.message = 'ยกเลิกงานจากคิวสำเร็จ';
+        job.error = 'Cancelled by user';
+        job.finishedAt = nowIso;
+        job.updatedAt = nowIso;
+        await saveJobs();
+        pumpGenericQueue();
+        return { ok: true, jobId: id, status: 'cancelled' };
+    }
+
+    // Case 2: Command still queued in pendingCommands (agent hasn't pulled it yet)
+    if (job.nodeId && job.commandId) {
+        const q = pendingCommands.get(job.nodeId);
+        if (Array.isArray(q)) {
+            const idx = q.findIndex((c) => c && c.id === job.commandId);
+            if (idx !== -1) {
+                q.splice(idx, 1);
+                job.status = 'cancelled';
+                job.message = 'ยกเลิกงานก่อนส่งถึงเครื่องลูกข่ายสำเร็จ';
+                job.error = 'Cancelled by user';
+                job.finishedAt = nowIso;
+                job.updatedAt = nowIso;
+                await saveJobs();
+                pumpGenericQueue();
+                return { ok: true, jobId: id, status: 'cancelled' };
+            }
+        }
+    }
+
+    // Case 3: Dispatched / running on worker node
+    const rawNode = job.nodeId ? nodes.get(job.nodeId) : null;
+    const dec = rawNode ? decorateNode(rawNode) : null;
+    if (!dec || !dec.online) {
+        job.status = 'cancelled';
+        job.message = 'ยกเลิกงานแล้ว (เครื่องลูกข่ายออฟไลน์)';
+        job.error = 'Cancelled by user (node offline)';
+        job.finishedAt = nowIso;
+        job.updatedAt = nowIso;
+        await saveJobs();
+        pumpGenericQueue();
+        return { ok: true, jobId: id, status: 'cancelled' };
+    }
+
+    job.status = 'cancelling';
+    job.cancelRequestedAt = job.cancelRequestedAt || nowIso;
+    job.message = 'กำลังส่งคำสั่งยกเลิกงานไปยังเครื่องลูกข่าย...';
+    job.updatedAt = nowIso;
+    enqueueCommand(job.nodeId, 'job.cancel', { jobId: id });
+    await saveJobs();
+    return { ok: true, jobId: id, status: 'cancelling' };
+}
+
+function runJobWatchdogTick() {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    let changed = false;
+
+    for (const job of renderJobs.values()) {
+        if (!job || job.kind !== 'generic') continue;
+        if (TERMINAL_JOB_STATUSES.has(job.status)) continue;
+
+        if (ACTIVE_DISPATCHED_STATUSES.has(job.status)) {
+            // 1. Cancelling grace timeout
+            if (job.status === 'cancelling') {
+                const cancelRef = Date.parse(job.cancelRequestedAt || job.updatedAt || '') || 0;
+                if (cancelRef && now - cancelRef > JOB_CANCELLING_GRACE_MS) {
+                    job.status = 'cancelled';
+                    job.error = job.error || 'Cancelled (agent confirmation timeout)';
+                    job.message = 'ยกเลิกงานแล้ว';
+                    job.finishedAt = nowIso;
+                    job.updatedAt = nowIso;
+                    changed = true;
+                    continue;
+                }
+            }
+
+            // 2. Worker node heartbeat lost detection
+            const node = job.nodeId ? nodes.get(job.nodeId) : null;
+            const lastSeenMs = node && node.lastSeenAt ? Date.parse(node.lastSeenAt) : 0;
+            const ageMs = lastSeenMs ? Math.max(0, now - lastSeenMs) : Infinity;
+            if (!node || ageMs > JOB_NODE_LOST_MS) {
+                job.status = 'lost';
+                const secs = Number.isFinite(ageMs) ? Math.round(ageMs / 1000) : 'unknown';
+                job.error = `Worker node ${job.nodeId || 'unknown'} went offline (last seen ${secs}s ago)`;
+                job.message = 'เครื่องลูกข่ายขาดการติดต่อระหว่างทำงาน';
+                job.finishedAt = nowIso;
+                job.updatedAt = nowIso;
+                changed = true;
+                continue;
+            }
+
+            // 3. Hard timeout safety net (give agent +30s grace to report timeout itself)
+            if (typeof job.timeoutSec === 'number' && job.timeoutSec > 0) {
+                const startRef = Date.parse(job.startedAt || job.dispatchedAt || job.createdAt || '') || 0;
+                if (startRef && now - startRef > (job.timeoutSec * 1000 + 30000)) {
+                    job.status = 'timeout';
+                    job.error = `Job exceeded timeout of ${job.timeoutSec}s (hub watchdog)`;
+                    job.message = 'งานหมดเวลา (watchdog)';
+                    job.finishedAt = nowIso;
+                    job.updatedAt = nowIso;
+                    changed = true;
+                    if (job.nodeId) {
+                        try { enqueueCommand(job.nodeId, 'job.cancel', { jobId: job.jobId }); } catch (_) {}
+                    }
+                    continue;
+                }
+            }
+        }
+    }
+
+    const dispatched = pumpGenericQueue();
+    if (changed && dispatched === 0) {
+        saveJobs();
+    }
+}
+
+function startJobWatchdog() {
+    if (jobWatchdogTimer) return jobWatchdogTimer;
+    jobWatchdogTimer = setInterval(() => {
+        try {
+            runJobWatchdogTick();
+        } catch (err) {
+            console.error('[AgentHub] Job watchdog error:', err.message);
+        }
+    }, JOB_WATCHDOG_INTERVAL_MS);
+    if (typeof jobWatchdogTimer.unref === 'function') {
+        jobWatchdogTimer.unref();
+    }
+    return jobWatchdogTimer;
+}
+
+function sanitizeJobForList(job) {
+    if (!job || typeof job !== 'object') return null;
+    const alias = getNodeAlias(job.nodeId, job.alias || job.nodeAlias);
+    const out = {
+        jobId: job.jobId,
+        kind: job.kind || '',
+        nodeId: job.nodeId || '',
+        hostname: job.hostname || '',
+        alias,
+        nodeAlias: alias,
+        status: job.status || 'queued',
+        progress: typeof job.progress === 'number' ? job.progress : 0,
+        message: job.message || '',
+        createdAt: job.createdAt || null,
+        updatedAt: job.updatedAt || null,
+    };
+    if (job.name !== undefined) out.name = job.name;
+    if (job.compositionId !== undefined) out.compositionId = job.compositionId;
+    if (job.phase !== undefined) out.phase = job.phase;
+    if (job.exitCode !== undefined) out.exitCode = job.exitCode;
+    if (job.error !== undefined) out.error = job.error;
+    if (job.resultUrl !== undefined) out.resultUrl = job.resultUrl;
+    if (job.resultSize !== undefined) out.resultSize = job.resultSize;
+    if (job.downloadUrl !== undefined) out.downloadUrl = job.downloadUrl;
+    if (job.previewUrl !== undefined) out.previewUrl = job.previewUrl;
+    if (job.outputName !== undefined) out.outputName = job.outputName;
+    if (job.outputSize !== undefined) out.outputSize = job.outputSize;
+    if (job.encoder !== undefined) out.encoder = job.encoder;
+    if (job.renderDurationMs !== undefined) out.renderDurationMs = job.renderDurationMs;
+    if (job.durationMs !== undefined) out.durationMs = job.durationMs;
+    if (job.requires !== undefined) out.requires = job.requires;
+    if (job.os !== undefined) out.os = job.os;
+    if (job.cacheKey !== undefined) out.cacheKey = job.cacheKey;
+    if (job.timeoutSec !== undefined) out.timeoutSec = job.timeoutSec;
+    if (job.inputUrl !== undefined) out.inputUrl = job.inputUrl;
+    if (job.inputSize !== undefined) out.inputSize = job.inputSize;
+    if (job.inputNames !== undefined) out.inputNames = job.inputNames;
+    if (job.startedAt !== undefined) out.startedAt = job.startedAt;
+    if (job.finishedAt !== undefined) out.finishedAt = job.finishedAt;
+    return out;
+}
+
+function listJobs({ kind = '', limit = 50 } = {}) {
+    const kindFilter = String(kind || '').trim().toLowerCase();
+    const lim = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    let items = [...renderJobs.values()].filter(Boolean);
+    if (kindFilter) {
+        items = items.filter((j) => String(j.kind || '').trim().toLowerCase() === kindFilter);
+    }
+    items.sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
+    return items.slice(0, lim).map(sanitizeJobForList);
+}
+
 function handleJobProgress(body) {
     const jobId = String((body && body.jobId) || '').trim();
     const job = renderJobs.get(jobId);
     if (!job) return { ok: false, error: 'Job not found' };
-    if (body.status) job.status = String(body.status);
-    if (typeof body.progress === 'number') job.progress = body.progress;
-    if (body.message) job.message = String(body.message);
-    job.updatedAt = new Date().toISOString();
+
+    const nowIso = new Date().toISOString();
+    if (TERMINAL_JOB_STATUSES.has(job.status)) {
+        // Respect already-finished terminal status; only backfill missing exitCode/durationMs
+        if ((job.exitCode === undefined || job.exitCode === null) && typeof body.exitCode === 'number' && Number.isFinite(body.exitCode)) {
+            job.exitCode = body.exitCode;
+        }
+        if (!job.durationMs && typeof body.durationMs === 'number' && Number.isFinite(body.durationMs)) {
+            job.durationMs = body.durationMs;
+        }
+        return { ok: true, job, ignored: true };
+    }
+
+    const nextStatus = body.status ? String(body.status).trim() : '';
+    if (nextStatus) {
+        if (job.status === 'cancelling' && !TERMINAL_JOB_STATUSES.has(nextStatus)) {
+            // Do not revert 'cancelling' back to 'running'/'uploading'
+        } else {
+            job.status = nextStatus;
+        }
+    }
+    if (typeof body.progress === 'number' && Number.isFinite(body.progress)) {
+        job.progress = Math.max(0, Math.min(100, body.progress));
+    }
+    if (body.message !== undefined && body.message !== null && String(body.message) !== '') {
+        job.message = String(body.message);
+    }
+    if (typeof body.exitCode === 'number' && Number.isFinite(body.exitCode)) {
+        job.exitCode = body.exitCode;
+    }
+    if (body.error !== undefined && body.error !== null && String(body.error) !== '') {
+        job.error = String(body.error);
+    }
+    if (typeof body.durationMs === 'number' && Number.isFinite(body.durationMs)) {
+        job.durationMs = body.durationMs;
+    }
+    if (body.startedAt && !job.startedAt) {
+        job.startedAt = String(body.startedAt);
+    }
+    if (!job.startedAt && (job.status === 'running' || job.status === 'setup' || job.status === 'downloading' || job.status === 'rendering')) {
+        job.startedAt = nowIso;
+    }
+
+    const nowTerminal = TERMINAL_JOB_STATUSES.has(job.status);
+    if (nowTerminal && !job.finishedAt) {
+        job.finishedAt = body.finishedAt ? String(body.finishedAt) : nowIso;
+    }
+    if (job.status === 'completed' && (typeof job.progress !== 'number' || job.progress < 100)) {
+        job.progress = 100;
+    }
+
+    job.updatedAt = nowIso;
     saveJobs();
+
+    if (nowTerminal) {
+        pumpGenericQueue();
+    }
     return { ok: true, job };
 }
 
@@ -1011,7 +1926,7 @@ function handleJobLog(body) {
         }
     }
 
-    if (typeof body.progress === 'number' && Number.isFinite(body.progress) && job.status !== 'failed') {
+    if (typeof body.progress === 'number' && Number.isFinite(body.progress) && !TERMINAL_JOB_STATUSES.has(job.status)) {
         const clamped = Math.max(0, Math.min(100, body.progress));
         job.progress = Math.max(typeof job.progress === 'number' ? job.progress : 0, clamped);
     }
@@ -1025,7 +1940,8 @@ function handleJobLog(body) {
     }
 
     if (job.status === 'queued') {
-        job.status = 'rendering';
+        job.status = job.kind === 'generic' ? 'running' : 'rendering';
+        if (!job.startedAt) job.startedAt = new Date().toISOString();
     }
 
     job.updatedAt = new Date().toISOString();
@@ -1189,6 +2105,10 @@ async function handleJobUpload(req, url) {
         job.previewUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/preview`;
         job.liveSeq = (job.liveSeq || 0) + 1;
         job.liveUpdatedAt = nowIso;
+    } else if (job.kind === 'generic' && safeName === 'result.tar.gz') {
+        job.resultFilePath = outPath;
+        job.resultUrl = `/api/agent-hub/jobs/${encodeURIComponent(jobId)}/result`;
+        job.resultSize = fileData.length;
     } else {
         job.status = 'completed';
         job.progress = 100;
@@ -1213,6 +2133,7 @@ async function handleJobUpload(req, url) {
         liveSeq: job.liveSeq || 0,
         downloadUrl: job.downloadUrl || '',
         previewUrl: job.previewUrl || '',
+        resultUrl: job.resultUrl || '',
     };
 }
 
@@ -1354,7 +2275,10 @@ async function getHubStatus() {
             finishedAt: c.finishedAt || null,
             result: c.result,
         })),
-        renderJobs: [...renderJobs.values()].slice(-25).reverse(),
+        renderJobs: [...renderJobs.values()]
+            .slice(-25)
+            .reverse()
+            .map((j) => sanitizeJobForList(j)),
     };
 }
 
@@ -1528,6 +2452,46 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         return true;
     }
 
+    if (req.method === 'POST' && p === '/api/agent-hub/jobs') {
+        let body;
+        try {
+            body = await readJsonBody(req, 2 * 1024 * 1024);
+        } catch (err) {
+            sendJson(res, 400, { ok: false, error: err.message || 'Invalid JSON body' });
+            return true;
+        }
+        try {
+            const job = await createGenericJob(body || {});
+            sendJson(res, 200, { ok: true, job: sanitizeJobForList(job) });
+        } catch (err) {
+            if (err && (err.code === 'NO_NODE' || err.statusCode === 409)) {
+                sendJson(res, 409, { ok: false, code: err.code || 'NO_NODE', error: err.message });
+            } else {
+                sendJson(res, (err && err.statusCode) || 400, { ok: false, error: err.message });
+            }
+        }
+        return true;
+    }
+
+    if (req.method === 'GET' && p === '/api/agent-hub/jobs') {
+        const kind = String(url.searchParams.get('kind') || '').trim();
+        const limit = url.searchParams.get('limit') || '50';
+        const jobs = listJobs({ kind, limit });
+        res.setHeader('Cache-Control', 'no-store');
+        sendJson(res, 200, { ok: true, jobs });
+        return true;
+    }
+
+    const jobCancelMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/cancel$/);
+    if (req.method === 'POST' && jobCancelMatch) {
+        const [, jobId] = jobCancelMatch;
+        const out = await cancelJob(jobId);
+        const statusCode = out.statusCode || (out.ok ? 200 : 400);
+        const { statusCode: _sc, ...payload } = out;
+        sendJson(res, statusCode, payload);
+        return true;
+    }
+
     const jobStatusMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)$/);
     if (req.method === 'GET' && jobStatusMatch) {
         const [, jobId] = jobStatusMatch;
@@ -1537,12 +2501,21 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             return true;
         }
         res.setHeader('Cache-Control', 'no-store');
-        sendJson(res, 200, { ok: true, job });
+        const alias = getNodeAlias(job.nodeId, job.alias || job.nodeAlias);
+        sendJson(res, 200, {
+            ok: true,
+            job: {
+                ...job,
+                alias,
+                nodeAlias: alias,
+                logTail: jobLogs.get(jobId) || [],
+            },
+        });
         return true;
     }
 
-    const jobFileMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/(input|output|preview|live)$/);
-    if (req.method === 'GET' && jobFileMatch) {
+    const jobFileMatch = p.match(/^\/api\/agent-hub\/jobs\/([a-zA-Z0-9_-]+)\/(input|output|preview|live|result)$/);
+    if (isGetOrHead && jobFileMatch) {
         const [, jobId, kind] = jobFileMatch;
         const job = renderJobs.get(jobId);
         if (!job) {
@@ -1555,7 +2528,9 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
                 ? job.previewFilePath
                 : kind === 'live'
                     ? (job.liveFramePath || job.previewFilePath)
-                    : job.outputFilePath;
+                    : kind === 'result'
+                        ? job.resultFilePath
+                        : job.outputFilePath;
         if (!targetPath || !fs.existsSync(targetPath)) {
             sendJson(res, 404, { ok: false, error: `${kind} file not found` });
             return true;
@@ -1566,6 +2541,9 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
         const mimeMap = {
             '.mp4': 'video/mp4',
             '.json': 'application/json; charset=utf-8',
+            '.gz': 'application/gzip',
+            '.tgz': 'application/gzip',
+            '.tar': 'application/x-tar',
             '.png': 'image/png',
             '.jpg': 'image/jpeg',
             '.jpeg': 'image/jpeg',
@@ -1586,7 +2564,11 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             'Content-Disposition': disp,
             'Cache-Control': 'no-store',
         });
-        fs.createReadStream(targetPath).pipe(res);
+        if (req.method === 'HEAD') {
+            res.end();
+        } else {
+            fs.createReadStream(targetPath).pipe(res);
+        }
         return true;
     }
 
@@ -1811,6 +2793,13 @@ module.exports = {
     selectBestBlenderNode,
     createRemotionJob,
     selectBestRemotionNode,
+    selectBestGenericNode,
+    createGenericJob,
+    packJobInputs,
+    pumpGenericQueue,
+    cancelJob,
+    startJobWatchdog,
+    listJobs,
     resolveNodeRef,
     updateNodeMeta,
 };

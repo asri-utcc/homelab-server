@@ -1079,34 +1079,129 @@ function renderNodesList() {
   }
 }
 
+function fmtDurMs(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n < 0) return '';
+  if (n < 1000) return `${Math.round(n)}ms`;
+  if (n < 60000) return `${(n / 1000).toFixed(1)}s`;
+  return fmtDur(Math.round(n / 1000));
+}
+
+function safeJobUrl(u) {
+  if (typeof u !== 'string') return '';
+  const s = u.trim();
+  return /^(https?:\/\/|\/)/i.test(s) ? s : '';
+}
+
+function getJobStatusColor(status) {
+  switch (String(status || '').toLowerCase()) {
+    case 'completed': return '#34d399';
+    case 'failed':
+    case 'lost': return '#f87171';
+    case 'cancelled':
+    case 'cancelling': return '#fb923c';
+    case 'timeout':
+    case 'timed_out': return '#fbbf24';
+    case 'setup':
+    case 'installing':
+    case 'downloading': return '#a78bfa';
+    case 'collecting':
+    case 'uploading': return '#22d3ee';
+    case 'pending':
+    case 'queued': return '#94a3b8';
+    case 'running':
+    default: return '#38bdf8';
+  }
+}
+
 function renderJobsList(jobs) {
   const box = $('#render-jobs-list');
   if (!jobs || !jobs.length) {
     box.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text-2);">ยังไม่มีประวัติงานเรนเดอร์ระยะไกล</div>';
     return;
   }
+  const activeStatuses = new Set(['pending', 'queued', 'downloading', 'installing', 'setup', 'running', 'collecting', 'uploading', 'cancelling']);
   box.innerHTML = jobs.map((j) => {
+    if (j.kind === 'generic') {
+      const status = String(j.status || 'pending').toLowerCase();
+      const badgeColor = getJobStatusColor(status);
+      const pct = Number.isFinite(Number(j.progress)) ? Math.max(0, Math.min(100, Number(j.progress))) : 0;
+      const node = hubState.nodes.find((n) => n.nodeId === j.nodeId);
+      const nodeLabel = j.alias || j.hostname || (node && (node.alias || (node.specs && node.specs.hostname))) || j.nodeId || '—';
+      const title = j.name || j.jobId || 'generic-job';
+      const durText = fmtDurMs(j.durationMs);
+      const hasExit = j.exitCode !== undefined && j.exitCode !== null && j.exitCode !== '';
+      const isActive = activeStatuses.has(status);
+      const resultUrl = safeJobUrl(j.resultUrl);
+      const fileSize = j.resultSize || j.outputSize || 0;
+
+      const metaParts = [];
+      if (j.name && j.jobId) metaParts.push(`ID: ${esc(j.jobId)}`);
+      if (hasExit) metaParts.push(`exit: ${esc(j.exitCode)}`);
+      if (durText) metaParts.push(`เวลา: ${esc(durText)}`);
+      if (fileSize) metaParts.push(`ขนาดไฟล์ ${esc(fmtBytes(fileSize))}`);
+      if (j.message) metaParts.push(esc(j.message));
+
+      return `
+        <div class="job-row">
+          <div>
+            <div style="font-weight:700;font-family:var(--mono);font-size:0.86rem;">
+              ⚙️ ${esc(title)} → <span style="color:var(--accent)">${esc(nodeLabel)}</span>
+              <span class="status-pill" style="color:${badgeColor};border-color:${badgeColor}44;background:${badgeColor}18;margin-left:8px;">
+                ${esc(status.toUpperCase())} ${esc(pct)}%
+              </span>
+            </div>
+            ${metaParts.length ? `<div style="font-size:0.79rem;color:var(--text-1);margin-top:3px;">${metaParts.join(' · ')}</div>` : ''}
+            ${j.error ? `<div style="font-size:0.79rem;color:#f87171;margin-top:3px;">❌ ${esc(j.error)}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            ${isActive ? `<button type="button" class="btn btn--sm btn--danger" data-cancel-job="${esc(j.jobId)}" ${status === 'cancelling' ? 'disabled' : ''}>✖ ยกเลิก</button>` : ''}
+            ${resultUrl ? `<a href="${esc(resultUrl)}" class="btn btn--sm btn--primary" download>⬇️ ดาวน์โหลดผล</a>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
     const isDone = j.status === 'completed';
     const isFail = j.status === 'failed';
     const badgeColor = isDone ? '#34d399' : (isFail ? '#f87171' : '#38bdf8');
+    const dlUrl = safeJobUrl(j.downloadUrl);
     return `
       <div class="job-row">
         <div>
           <div style="font-weight:700;font-family:var(--mono);font-size:0.86rem;">
             ${esc(j.jobId)} → <span style="color:var(--accent)">${esc(j.nodeId)}</span>
-            <span style="color:${badgeColor};margin-left:8px;">[${esc(j.status.toUpperCase())} ${j.progress || 0}%]</span>
+            <span style="color:${badgeColor};margin-left:8px;">[${esc(String(j.status || '').toUpperCase())} ${esc(j.progress || 0)}%]</span>
           </div>
           <div style="font-size:0.79rem;color:var(--text-1);margin-top:3px;">
-            ${esc(j.message || '')} ${j.outputSize ? `· ขนาดไฟล์ ${fmtBytes(j.outputSize)}` : ''}
+            ${esc(j.message || '')} ${j.outputSize ? `· ขนาดไฟล์ ${esc(fmtBytes(j.outputSize))}` : ''}
           </div>
         </div>
         <div style="display:flex;gap:8px;">
-          ${j.downloadUrl ? `<a href="${esc(j.downloadUrl)}" class="btn btn--sm btn--primary" download>⬇️ ดาวน์โหลด MP4</a>` : ''}
+          ${dlUrl ? `<a href="${esc(dlUrl)}" class="btn btn--sm btn--primary" download>⬇️ ดาวน์โหลด MP4</a>` : ''}
         </div>
       </div>
     `;
   }).join('');
 }
+
+$('#render-jobs-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-cancel-job]');
+  if (!btn) return;
+  const jobId = btn.dataset.cancelJob;
+  if (!jobId) return;
+  btn.disabled = true;
+  try {
+    await apiFetch(`/api/agent-hub/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST',
+    });
+    showToast(`🛑 ส่งคำสั่งยกเลิกงาน ${jobId} แล้ว`);
+    await loadStatus();
+  } catch (err) {
+    showToast('ยกเลิกงานไม่สำเร็จ: ' + err.message);
+    btn.disabled = false;
+  }
+});
 
 async function runNodeCommand(action, payload = {}, timeoutMs = 45000) {
   if (!hubState.selectedNodeId) {

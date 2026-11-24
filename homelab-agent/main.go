@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
@@ -14,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"mime/multipart"
 	"net"
@@ -32,7 +34,7 @@ import (
 )
 
 var (
-	AgentVersion   = "1.0.5"
+	AgentVersion   = "1.1.0"
 	DefaultHubURLs = "https://homelab.tail285279.ts.net,http://100.93.214.79,http://100.93.214.79:8090,http://192.168.1.123,https://192.168.1.123"
 	DefaultToken   = "hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b"
 )
@@ -309,7 +311,7 @@ func refreshStaticSpecs(installDir string) StaticSpecs {
 		cpuCores = runtime.NumCPU()
 	}
 
-	caps := []string{"remote-exec", "file-ops"}
+	caps := []string{"remote-exec", "file-ops", "job-run"}
 	hasNvidiaSmi := false
 	if _, err := exec.LookPath("nvidia-smi"); err == nil {
 		hasNvidiaSmi = true
@@ -644,6 +646,12 @@ func executeCommand(cmd AgentCommand) (map[string]interface{}, error) {
 
 	case "render.remotion":
 		return handleRenderRemotion(cmd.Payload)
+
+	case "job.run":
+		return handleJobRun(cmd.Payload)
+
+	case "job.cancel":
+		return handleJobCancel(cmd.Payload)
 
 	case "self-update":
 		return handleSelfUpdate(cmd.Payload)
@@ -2500,6 +2508,1144 @@ func handleRenderRemotion(p map[string]interface{}) (map[string]interface{}, err
 		"outputSize":       st.Size(),
 		"renderDurationMs": renderDurationMs,
 		"hubUpload":        upData,
+	}, nil
+}
+
+const maxJobResultBytes int64 = 480 * 1024 * 1024
+
+var errArchiveTooLarge = fmt.Errorf("result archive exceeds 480 MB limit")
+
+type runningJobEntry struct {
+	cancel    context.CancelFunc
+	cancelled atomic.Bool
+}
+
+var (
+	runningJobs sync.Map // jobId -> *runningJobEntry
+	jobSetupMus sync.Map // cacheKey -> *sync.Mutex
+)
+
+type limitedWriter struct {
+	w       io.Writer
+	limit   int64
+	written int64
+}
+
+func (lw *limitedWriter) Write(p []byte) (int, error) {
+	if lw.written+int64(len(p)) > lw.limit {
+		return 0, errArchiveTooLarge
+	}
+	n, err := lw.w.Write(p)
+	lw.written += int64(n)
+	return n, err
+}
+
+type jobLogPayload struct {
+	JobID    string   `json:"jobId"`
+	NodeID   string   `json:"nodeId"`
+	Lines    []string `json:"lines"`
+	Progress *float64 `json:"progress,omitempty"`
+}
+
+type jobLogStreamer struct {
+	jobID       string
+	logFile     *os.File
+	mu          sync.Mutex
+	pending     []string
+	hasProgress bool
+	progress    float64
+	lastLines   []string
+	flushCh     chan struct{}
+	stopCh      chan struct{}
+	doneCh      chan struct{}
+	stopOnce    sync.Once
+	loggedWarn  bool
+}
+
+func newJobLogStreamer(jobID string, logPath string) (*jobLogStreamer, error) {
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, err
+	}
+	s := &jobLogStreamer{
+		jobID:   jobID,
+		logFile: f,
+		flushCh: make(chan struct{}, 1),
+		stopCh:  make(chan struct{}),
+		doneCh:  make(chan struct{}),
+	}
+	go s.runLoop()
+	return s, nil
+}
+
+func (s *jobLogStreamer) runLoop() {
+	defer close(s.doneCh)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.flush()
+		case <-s.flushCh:
+			s.flush()
+		case <-s.stopCh:
+			s.flush()
+			return
+		}
+	}
+}
+
+func (s *jobLogStreamer) AddLine(line string) {
+	s.mu.Lock()
+	if s.logFile != nil {
+		_, _ = s.logFile.WriteString(line + "\n")
+	}
+	shortLine := truncateRunes(line, 500)
+	s.pending = append(s.pending, shortLine)
+	if len(s.pending) > 1000 {
+		s.pending = append([]string(nil), s.pending[len(s.pending)-500:]...)
+	}
+	s.lastLines = append(s.lastLines, shortLine)
+	if len(s.lastLines) > 40 {
+		s.lastLines = s.lastLines[len(s.lastLines)-40:]
+	}
+	shouldFlush := len(s.pending) >= 50
+	s.mu.Unlock()
+
+	if shouldFlush {
+		select {
+		case s.flushCh <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (s *jobLogStreamer) SetProgress(pct float64) {
+	if pct < 0 {
+		pct = 0
+	}
+	if pct > 100 {
+		pct = 100
+	}
+	pct = math.Round(pct*10) / 10
+	s.mu.Lock()
+	s.progress = pct
+	s.hasProgress = true
+	s.mu.Unlock()
+}
+
+func (s *jobLogStreamer) Tail(maxRunes int) string {
+	s.mu.Lock()
+	lines := append([]string(nil), s.lastLines...)
+	s.mu.Unlock()
+	return tailString(strings.Join(lines, "\n"), maxRunes)
+}
+
+func (s *jobLogStreamer) flush() {
+	s.mu.Lock()
+	var batch []string
+	if len(s.pending) > 200 {
+		batch = append([]string(nil), s.pending[len(s.pending)-200:]...)
+	} else if len(s.pending) > 0 {
+		batch = append([]string(nil), s.pending...)
+	}
+	s.pending = nil
+	var progPtr *float64
+	if s.hasProgress {
+		v := s.progress
+		progPtr = &v
+		s.hasProgress = false
+	}
+	s.mu.Unlock()
+
+	if len(batch) == 0 && progPtr == nil {
+		return
+	}
+	if batch == nil {
+		batch = []string{}
+	}
+
+	payload := jobLogPayload{
+		JobID:    s.jobID,
+		NodeID:   agentCfg.NodeID,
+		Lines:    batch,
+		Progress: progPtr,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	resp, _, reqErr := doHubRequest(httpClient, "POST", "/api/agent-hub/agent/job-log", body, "application/json")
+	if reqErr != nil {
+		if !s.loggedWarn {
+			fmt.Printf("[job:%s] job-log post failed: %v\n", s.jobID, reqErr)
+			s.loggedWarn = true
+		}
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode >= 400 && !s.loggedWarn {
+		fmt.Printf("[job:%s] job-log endpoint returned HTTP %d\n", s.jobID, resp.StatusCode)
+		s.loggedWarn = true
+	}
+}
+
+func (s *jobLogStreamer) Close() {
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+		<-s.doneCh
+		s.mu.Lock()
+		if s.logFile != nil {
+			_ = s.logFile.Sync()
+			_ = s.logFile.Close()
+			s.logFile = nil
+		}
+		s.mu.Unlock()
+	})
+}
+
+func reportJobFinal(jobID string, status string, exitCode int, errMsg string, durationMs int64) {
+	if jobID == "" {
+		return
+	}
+	pct := 100.0
+	if status != "completed" {
+		pct = 0
+	}
+	msg := errMsg
+	if msg == "" {
+		switch status {
+		case "completed":
+			msg = fmt.Sprintf("Job completed on %s (%d ms)", agentCfg.NodeID, durationMs)
+		case "cancelled":
+			msg = "Job cancelled"
+		case "timeout":
+			msg = "Job timed out"
+		default:
+			msg = fmt.Sprintf("Job failed (exitCode=%d)", exitCode)
+		}
+	}
+	payload := map[string]interface{}{
+		"jobId":      jobID,
+		"nodeId":     agentCfg.NodeID,
+		"status":     status,
+		"progress":   pct,
+		"message":    msg,
+		"exitCode":   exitCode,
+		"durationMs": durationMs,
+		"reportedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+	if errMsg != "" {
+		payload["error"] = errMsg
+	}
+	body, _ := json.Marshal(payload)
+	resp, _, err := doHubRequest(httpClient, "POST", "/api/agent-hub/agent/job-progress", body, "application/json")
+	if err == nil && resp != nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
+}
+
+func resolveOSCommand(raw interface{}, required bool) (string, error) {
+	if raw == nil {
+		if required {
+			return "", fmt.Errorf("missing command for job.run")
+		}
+		return "", nil
+	}
+	switch v := raw.(type) {
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			if required {
+				return "", fmt.Errorf("empty command for job.run")
+			}
+			return "", nil
+		}
+		return s, nil
+	case map[string]interface{}:
+		if len(v) == 0 {
+			if required {
+				return "", fmt.Errorf("empty command map for job.run")
+			}
+			return "", nil
+		}
+		if runtime.GOOS == "windows" {
+			if s, ok := v["windows"].(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s), nil
+			}
+			return "", fmt.Errorf("no command provided for OS %s (expected command.windows)", runtime.GOOS)
+		}
+		if s, ok := v[runtime.GOOS].(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s), nil
+		}
+		if s, ok := v["posix"].(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s), nil
+		}
+		return "", fmt.Errorf("no command provided for OS %s (expected command.posix)", runtime.GOOS)
+	default:
+		return "", fmt.Errorf("unsupported command type %T", raw)
+	}
+}
+
+func sanitizeCacheKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range raw {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+		if b.Len() >= 64 {
+			break
+		}
+	}
+	res := strings.Trim(b.String(), ".")
+	if res == "" || res == "." || res == ".." {
+		return "default"
+	}
+	return res
+}
+
+func getJobSetupMutex(key string) *sync.Mutex {
+	if v, ok := jobSetupMus.Load(key); ok {
+		return v.(*sync.Mutex)
+	}
+	mu := &sync.Mutex{}
+	actual, _ := jobSetupMus.LoadOrStore(key, mu)
+	return actual.(*sync.Mutex)
+}
+
+func buildJobEnv(workDir, inDir, outDir, cacheDir, jobID, jobName string, extra map[string]interface{}, specs StaticSpecs) []string {
+	env := os.Environ()
+
+	setEnv := func(k, val string) {
+		if k == "" || strings.ContainsAny(k, "=\x00") {
+			return
+		}
+		for i, kv := range env {
+			idx := strings.IndexByte(kv, '=')
+			if idx <= 0 {
+				continue
+			}
+			existingKey := kv[:idx]
+			match := existingKey == k
+			if runtime.GOOS == "windows" {
+				match = strings.EqualFold(existingKey, k)
+			}
+			if match {
+				env[i] = k + "=" + val
+				return
+			}
+		}
+		env = append(env, k+"="+val)
+	}
+
+	// Ensure detected tool directories (e.g. on Windows) are available on PATH
+	var extraDirs []string
+	seenDir := map[string]bool{}
+	for _, p := range []string{specs.PythonPath, specs.NodePath, specs.FFmpegPath, specs.GitPath, specs.BlenderPath} {
+		if p == "" {
+			continue
+		}
+		d := filepath.Dir(p)
+		key := d
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(d)
+		}
+		if d != "" && d != "." && !seenDir[key] {
+			seenDir[key] = true
+			extraDirs = append(extraDirs, d)
+		}
+	}
+	if len(extraDirs) > 0 {
+		sep := string(os.PathListSeparator)
+		updated := false
+		for i, kv := range env {
+			idx := strings.IndexByte(kv, '=')
+			if idx <= 0 {
+				continue
+			}
+			k := kv[:idx]
+			if strings.EqualFold(k, "PATH") {
+				curVal := kv[idx+1:]
+				var toAppend []string
+				for _, d := range extraDirs {
+					if !strings.Contains(strings.ToLower(curVal), strings.ToLower(d)) {
+						toAppend = append(toAppend, d)
+					}
+				}
+				if len(toAppend) > 0 {
+					env[i] = k + "=" + curVal + sep + strings.Join(toAppend, sep)
+				}
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			env = append(env, "PATH="+strings.Join(extraDirs, sep))
+		}
+	}
+
+	setEnv("PYTHONUNBUFFERED", "1")
+	setEnv("PYTHONIOENCODING", "utf-8")
+
+	for k, v := range extra {
+		if v == nil {
+			continue
+		}
+		setEnv(strings.TrimSpace(k), fmt.Sprintf("%v", v))
+	}
+
+	setEnv("LAB_JOB_ID", jobID)
+	if jobName != "" {
+		setEnv("LAB_JOB_NAME", jobName)
+	}
+	setEnv("LAB_NODE_ID", agentCfg.NodeID)
+	setEnv("LAB_WORK_DIR", workDir)
+	setEnv("LAB_IN_DIR", inDir)
+	setEnv("LAB_INPUT_DIR", inDir)
+	setEnv("LAB_OUT_DIR", outDir)
+	setEnv("LAB_OUTPUT_DIR", outDir)
+	setEnv("LAB_CACHE_DIR", cacheDir)
+	return env
+}
+
+func runShellWithStream(
+	ctx context.Context,
+	jobID string,
+	command string,
+	cwd string,
+	env []string,
+	linePrefix string,
+	streamer *jobLogStreamer,
+	parseProgress bool,
+) (exitCode int, timedOut bool, err error) {
+	if ctx.Err() != nil {
+		return -1, ctx.Err() == context.DeadlineExceeded, ctx.Err()
+	}
+
+	cmd := newShellCmd(command)
+	cmd.Dir = cwd
+	cmd.Env = env
+
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+
+	if startErr := cmd.Start(); startErr != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		return -1, false, startErr
+	}
+
+	var procMu sync.Mutex
+	procDone := false
+
+	waitErrCh := make(chan error, 1)
+	go func() {
+		wErr := cmd.Wait()
+		procMu.Lock()
+		procDone = true
+		procMu.Unlock()
+		_ = pw.Close()
+		waitErrCh <- wErr
+	}()
+
+	stopWatch := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			procMu.Lock()
+			alreadyDone := procDone
+			procMu.Unlock()
+			if !alreadyDone {
+				killProcessTree(cmd)
+			}
+		case <-stopWatch:
+		}
+	}()
+
+	scanner := bufio.NewScanner(pr)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	scanner.Split(splitBlenderLines)
+
+	for scanner.Scan() {
+		rawLine := strings.TrimRight(scanner.Text(), "\r\n")
+		if strings.TrimSpace(rawLine) == "" {
+			continue
+		}
+		if streamer != nil {
+			if linePrefix != "" {
+				streamer.AddLine(linePrefix + rawLine)
+			} else {
+				streamer.AddLine(rawLine)
+			}
+		}
+		if parseProgress {
+			if m := reBlenderLabProgress.FindStringSubmatch(rawLine); len(m) >= 2 {
+				if v, pErr := strconv.ParseFloat(m[1], 64); pErr == nil {
+					if v < 0 {
+						v = 0
+					}
+					if v > 100 {
+						v = 100
+					}
+					v = math.Round(v*10) / 10
+					msg := ""
+					if len(m) >= 3 {
+						msg = strings.TrimSpace(m[2])
+					}
+					if streamer != nil {
+						streamer.SetProgress(v)
+					}
+					reportJobProgress(jobID, "running", v, msg)
+				}
+			}
+		}
+	}
+	_, _ = io.Copy(io.Discard, pr)
+	_ = pr.Close()
+
+	wErr := <-waitErrCh
+	close(stopWatch)
+
+	if ctx.Err() == context.DeadlineExceeded {
+		timedOut = true
+	}
+
+	if wErr != nil {
+		if exitErr, ok := wErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = -1
+		}
+		return exitCode, timedOut, wErr
+	}
+	return 0, timedOut, nil
+}
+
+func runJobSetup(
+	ctx context.Context,
+	jobID string,
+	setupCmd string,
+	cacheKey string,
+	cacheDir string,
+	env []string,
+	streamer *jobLogStreamer,
+) (int, bool, error) {
+	lockKey := cacheKey
+	if lockKey == "" {
+		lockKey = cacheDir
+	}
+	mu := getJobSetupMutex(lockKey)
+	mu.Lock()
+	defer mu.Unlock()
+
+	if ctx.Err() != nil {
+		return -1, ctx.Err() == context.DeadlineExceeded, ctx.Err()
+	}
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return -1, false, err
+	}
+
+	sum := sha1.Sum([]byte(setupCmd))
+	setupHash := hex.EncodeToString(sum[:])[:12]
+	markerPath := filepath.Join(cacheDir, ".setup_"+setupHash+".done")
+
+	if _, err := os.Stat(markerPath); err == nil {
+		if streamer != nil {
+			streamer.AddLine(fmt.Sprintf("[setup] cache hit (%s), skipping setup", setupHash))
+		}
+		return 0, false, nil
+	}
+
+	reportJobProgress(jobID, "installing", 10, fmt.Sprintf("กำลังรัน setup (%s)...", setupHash))
+	if streamer != nil {
+		streamer.AddLine(fmt.Sprintf("[setup] running setup (%s) in %s", setupHash, cacheDir))
+	}
+
+	setupCtx, setupCancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer setupCancel()
+
+	exitCode, timedOut, err := runShellWithStream(setupCtx, jobID, setupCmd, cacheDir, env, "[setup] ", streamer, false)
+	if err != nil {
+		return exitCode, timedOut, err
+	}
+
+	if wErr := os.WriteFile(markerPath, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0644); wErr != nil {
+		return -1, false, fmt.Errorf("failed to write setup marker: %w", wErr)
+	}
+	return 0, false, nil
+}
+
+func isPathWithinDir(baseDir string, targetPath string) bool {
+	rel, err := filepath.Rel(baseDir, targetPath)
+	if err != nil {
+		return false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return false
+	}
+	return true
+}
+
+func collectJobResult(workDir, outDir, logPath string, collectGlobs []string, destTarGz string) (int, int64, error) {
+	absWork, err := filepath.Abs(workDir)
+	if err != nil {
+		return 0, 0, err
+	}
+	realWork, err := filepath.EvalSymlinks(absWork)
+	if err != nil {
+		realWork = absWork
+	}
+	absOut, err := filepath.Abs(outDir)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destTarGz), 0755); err != nil {
+		return 0, 0, err
+	}
+
+	outFile, err := os.Create(destTarGz)
+	if err != nil {
+		return 0, 0, err
+	}
+	success := false
+	defer func() {
+		if !success {
+			_ = outFile.Close()
+			_ = os.Remove(destTarGz)
+		}
+	}()
+
+	lw := &limitedWriter{w: outFile, limit: maxJobResultBytes}
+	gzw := gzip.NewWriter(lw)
+	tw := tar.NewWriter(gzw)
+
+	seen := map[string]bool{}
+	fileCount := 0
+
+	addFile := func(srcPath string, archiveName string) error {
+		cleanName := filepath.ToSlash(filepath.Clean(archiveName))
+		cleanName = strings.TrimPrefix(cleanName, "./")
+		if cleanName == "" || cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "/") || strings.HasPrefix(cleanName, "../") {
+			return nil
+		}
+		if seen[cleanName] {
+			return nil
+		}
+
+		linfo, lerr := os.Lstat(srcPath)
+		if lerr != nil {
+			return nil
+		}
+		actualPath := srcPath
+		info := linfo
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			resolved, rerr := filepath.EvalSymlinks(srcPath)
+			if rerr != nil || !isPathWithinDir(realWork, resolved) {
+				return nil
+			}
+			sinfo, serr := os.Stat(resolved)
+			if serr != nil {
+				return nil
+			}
+			actualPath = resolved
+			info = sinfo
+		} else {
+			absSrc, aerr := filepath.Abs(srcPath)
+			if aerr != nil || !isPathWithinDir(absWork, absSrc) {
+				return nil
+			}
+		}
+
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
+		hdr := &tar.Header{
+			Name:     cleanName,
+			Size:     info.Size(),
+			Mode:     int64(info.Mode().Perm()),
+			ModTime:  info.ModTime(),
+			Typeflag: tar.TypeReg,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		f, err := os.Open(actualPath)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(tw, f)
+		_ = f.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		seen[cleanName] = true
+		fileCount++
+		return nil
+	}
+
+	// 1. Always collect out/** (archived relative to outDir so out/a.txt -> a.txt)
+	if st, err := os.Stat(absOut); err == nil && st.IsDir() {
+		if walkErr := filepath.WalkDir(absOut, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			rel, rerr := filepath.Rel(absOut, path)
+			if rerr != nil {
+				return nil
+			}
+			return addFile(path, rel)
+		}); walkErr != nil {
+			return 0, 0, walkErr
+		}
+	}
+
+	// 2. Collect user-specified relative globs (no absolute paths or '..')
+	for _, rawPat := range collectGlobs {
+		pat := strings.TrimSpace(rawPat)
+		if pat == "" {
+			continue
+		}
+		normPat := strings.ReplaceAll(pat, "\\", "/")
+		if filepath.IsAbs(pat) || strings.HasPrefix(normPat, "/") || (len(normPat) >= 2 && normPat[1] == ':') {
+			return 0, 0, fmt.Errorf("unsafe collect pattern (absolute path): %s", pat)
+		}
+		for _, seg := range strings.Split(normPat, "/") {
+			if seg == ".." {
+				return 0, 0, fmt.Errorf("unsafe collect pattern (path traversal): %s", pat)
+			}
+		}
+
+		matches, gerr := filepath.Glob(filepath.Join(absWork, filepath.FromSlash(normPat)))
+		if gerr != nil {
+			return 0, 0, fmt.Errorf("invalid collect glob %q: %w", pat, gerr)
+		}
+		for _, m := range matches {
+			absM, aerr := filepath.Abs(m)
+			if aerr != nil || !isPathWithinDir(absWork, absM) {
+				continue
+			}
+			info, serr := os.Stat(absM)
+			if serr != nil {
+				continue
+			}
+			archiveRel := func(p string) string {
+				if isPathWithinDir(absOut, p) && p != absOut {
+					if rel, rerr := filepath.Rel(absOut, p); rerr == nil {
+						return rel
+					}
+				}
+				rel, _ := filepath.Rel(absWork, p)
+				return rel
+			}
+			if info.IsDir() {
+				if walkErr := filepath.WalkDir(absM, func(p string, d fs.DirEntry, err error) error {
+					if err != nil || d.IsDir() {
+						return nil
+					}
+					return addFile(p, archiveRel(p))
+				}); walkErr != nil {
+					return 0, 0, walkErr
+				}
+			} else {
+				if err := addFile(absM, archiveRel(absM)); err != nil {
+					return 0, 0, err
+				}
+			}
+		}
+	}
+
+	// 3. Always include _job.log
+	if _, serr := os.Stat(logPath); serr != nil {
+		_ = os.WriteFile(logPath, []byte{}, 0644)
+	}
+	if err := addFile(logPath, "_job.log"); err != nil {
+		return 0, 0, err
+	}
+
+	if err := tw.Close(); err != nil {
+		return 0, 0, err
+	}
+	if err := gzw.Close(); err != nil {
+		return 0, 0, err
+	}
+	if err := outFile.Close(); err != nil {
+		return 0, 0, err
+	}
+	success = true
+	return fileCount, lw.written, nil
+}
+
+func uploadJobResult(jobID string, tarPath string, exitCode int, durationMs int64) (map[string]interface{}, error) {
+	st, err := os.Stat(tarPath)
+	if err != nil {
+		return nil, err
+	}
+	upPath := fmt.Sprintf("/api/agent-hub/agent/job-upload?jobId=%s&nodeId=%s&filename=%s",
+		url.QueryEscape(jobID), url.QueryEscape(agentCfg.NodeID), url.QueryEscape("result.tar.gz"))
+
+	// For archives <= 64 MB use in-memory multipart with automatic doHubRequest failover (same pattern as handleRenderRemotion)
+	if st.Size() <= 64*1024*1024 {
+		rawBytes, rerr := os.ReadFile(tarPath)
+		if rerr != nil {
+			return nil, rerr
+		}
+		var mpBuf bytes.Buffer
+		mw := multipart.NewWriter(&mpBuf)
+		_ = mw.WriteField("jobId", jobID)
+		_ = mw.WriteField("nodeId", agentCfg.NodeID)
+		_ = mw.WriteField("exitCode", fmt.Sprintf("%d", exitCode))
+		_ = mw.WriteField("durationMs", fmt.Sprintf("%d", durationMs))
+		fw, cerr := mw.CreateFormFile("file", "result.tar.gz")
+		if cerr != nil {
+			return nil, cerr
+		}
+		if _, werr := fw.Write(rawBytes); werr != nil {
+			return nil, werr
+		}
+		mw.Close()
+
+		upResp, _, upErr := doHubRequest(transferClient, "POST", upPath, mpBuf.Bytes(), mw.FormDataContentType())
+		if upErr != nil {
+			return nil, upErr
+		}
+		defer upResp.Body.Close()
+		var upData map[string]interface{}
+		_ = json.NewDecoder(upResp.Body).Decode(&upData)
+		if upResp.StatusCode >= 400 {
+			return upData, fmt.Errorf("upload returned HTTP %d", upResp.StatusCode)
+		}
+		return upData, nil
+	}
+
+	// For larger archives (64..480 MB) stream multipart via io.Pipe to avoid large RAM spikes
+	endpointMutex.RLock()
+	activeEP := currentEndpoint
+	endpointMutex.RUnlock()
+
+	candidates := make([]string, 0, len(agentCfg.HubURLs)+1)
+	if activeEP != "" {
+		candidates = append(candidates, activeEP)
+	}
+	for _, u := range agentCfg.HubURLs {
+		if u != activeEP {
+			candidates = append(candidates, u)
+		}
+	}
+
+	var lastErr error
+	for _, base := range candidates {
+		pr, pw := io.Pipe()
+		mw := multipart.NewWriter(pw)
+		ct := mw.FormDataContentType()
+
+		go func() {
+			defer pw.Close()
+			_ = mw.WriteField("jobId", jobID)
+			_ = mw.WriteField("nodeId", agentCfg.NodeID)
+			_ = mw.WriteField("exitCode", fmt.Sprintf("%d", exitCode))
+			_ = mw.WriteField("durationMs", fmt.Sprintf("%d", durationMs))
+			fw, cerr := mw.CreateFormFile("file", "result.tar.gz")
+			if cerr != nil {
+				_ = pw.CloseWithError(cerr)
+				return
+			}
+			f, oerr := os.Open(tarPath)
+			if oerr != nil {
+				_ = pw.CloseWithError(oerr)
+				return
+			}
+			_, copyErr := io.Copy(fw, f)
+			_ = f.Close()
+			if copyErr != nil {
+				_ = pw.CloseWithError(copyErr)
+				return
+			}
+			if closeErr := mw.Close(); closeErr != nil {
+				_ = pw.CloseWithError(closeErr)
+			}
+		}()
+
+		req, reqErr := http.NewRequest("POST", base+upPath, pr)
+		if reqErr != nil {
+			_ = pr.Close()
+			lastErr = reqErr
+			continue
+		}
+		req.Header.Set("X-Agent-Token", agentCfg.Token)
+		req.Header.Set("X-Agent-Node", agentCfg.NodeID)
+		req.Header.Set("X-Agent-Version", AgentVersion)
+		req.Header.Set("Content-Type", ct)
+
+		resp, doErr := transferClient.Do(req)
+		if doErr != nil {
+			_ = pr.Close()
+			lastErr = doErr
+			continue
+		}
+		if resp.StatusCode >= 502 && resp.StatusCode <= 504 {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			lastErr = fmt.Errorf("gateway status %d from %s", resp.StatusCode, base)
+			continue
+		}
+		endpointMutex.Lock()
+		currentEndpoint = base
+		endpointMutex.Unlock()
+
+		var upData map[string]interface{}
+		_ = json.NewDecoder(resp.Body).Decode(&upData)
+		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			return upData, fmt.Errorf("upload returned HTTP %d", resp.StatusCode)
+		}
+		return upData, nil
+	}
+	return nil, lastErr
+}
+
+func handleJobCancel(p map[string]interface{}) (map[string]interface{}, error) {
+	jobID := strings.TrimSpace(getString(p, "jobId", ""))
+	if jobID == "" {
+		return nil, fmt.Errorf("missing jobId")
+	}
+	v, ok := runningJobs.Load(jobID)
+	if !ok {
+		return nil, fmt.Errorf("not running")
+	}
+	entry := v.(*runningJobEntry)
+	entry.cancelled.Store(true)
+	entry.cancel()
+	return map[string]interface{}{
+		"jobId":     jobID,
+		"cancelled": true,
+	}, nil
+}
+
+func handleJobRun(p map[string]interface{}) (map[string]interface{}, error) {
+	atomic.AddInt32(&activeJobsCount, 1)
+	defer atomic.AddInt32(&activeJobsCount, -1)
+
+	started := time.Now()
+	specs := getSpecs()
+
+	jobID := strings.TrimSpace(getString(p, "jobId", ""))
+	if jobID == "" {
+		jobID = fmt.Sprintf("job-%d", time.Now().Unix())
+	}
+	jobName := strings.TrimSpace(getString(p, "name", ""))
+	inputURL := strings.TrimSpace(getString(p, "inputUrl", ""))
+	cacheKey := sanitizeCacheKey(getString(p, "cacheKey", ""))
+	timeoutSec := getInt(p, "timeoutSec", 1800)
+	if timeoutSec <= 0 {
+		timeoutSec = 1800
+	}
+	if timeoutSec > 86400 {
+		timeoutSec = 86400
+	}
+
+	var collectGlobs []string
+	if rawCollect, ok := p["collect"]; ok && rawCollect != nil {
+		switch cv := rawCollect.(type) {
+		case []interface{}:
+			for _, item := range cv {
+				if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+					collectGlobs = append(collectGlobs, strings.TrimSpace(s))
+				}
+			}
+		case string:
+			if strings.TrimSpace(cv) != "" {
+				collectGlobs = append(collectGlobs, strings.TrimSpace(cv))
+			}
+		}
+	}
+
+	extraEnv, _ := p["env"].(map[string]interface{})
+
+	finishEarly := func(status string, exitCode int, errMsg string) (map[string]interface{}, error) {
+		durMs := time.Since(started).Milliseconds()
+		reportJobFinal(jobID, status, exitCode, errMsg, durMs)
+		data := map[string]interface{}{
+			"jobId":      jobID,
+			"exitCode":   exitCode,
+			"status":     status,
+			"durationMs": durMs,
+		}
+		if status == "completed" {
+			return data, nil
+		}
+		return data, fmt.Errorf("%s", errMsg)
+	}
+
+	rawCmd := p["command"]
+	if rawCmd == nil {
+		rawCmd = p["cmd"]
+	}
+	mainCmd, cmdErr := resolveOSCommand(rawCmd, true)
+	if cmdErr != nil {
+		return finishEarly("failed", -1, cmdErr.Error())
+	}
+
+	setupCmd, setupResolveErr := resolveOSCommand(p["setup"], false)
+	if setupResolveErr != nil {
+		return finishEarly("failed", -1, "setup: "+setupResolveErr.Error())
+	}
+
+	workDir := filepath.Join(specs.InstallDir, "jobs", jobID)
+	inDir := filepath.Join(workDir, "in")
+	outDir := filepath.Join(workDir, "out")
+	cacheDir := filepath.Join(workDir, "cache")
+	if cacheKey != "" {
+		cacheDir = filepath.Join(specs.InstallDir, "job-cache", cacheKey)
+	}
+
+	for _, d := range []string{workDir, inDir, outDir, cacheDir} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			return finishEarly("failed", -1, "สร้างโฟลเดอร์งานไม่สำเร็จ: "+err.Error())
+		}
+	}
+	defer os.RemoveAll(workDir)
+
+	cancelCtx, jobCancel := context.WithCancel(context.Background())
+	defer jobCancel()
+	entry := &runningJobEntry{cancel: jobCancel}
+	runningJobs.Store(jobID, entry)
+	defer runningJobs.Delete(jobID)
+
+	logPath := filepath.Join(workDir, "_job.log")
+	streamer, sErr := newJobLogStreamer(jobID, logPath)
+	if sErr != nil {
+		return finishEarly("failed", -1, "สร้างไฟล์ log ไม่สำเร็จ: "+sErr.Error())
+	}
+	defer streamer.Close()
+
+	env := buildJobEnv(workDir, inDir, outDir, cacheDir, jobID, jobName, extraEnv, specs)
+
+	// 1. Download & extract input bundle if provided
+	if inputURL != "" {
+		if entry.cancelled.Load() {
+			streamer.Close()
+			return finishEarly("cancelled", -1, "Job cancelled")
+		}
+		reportJobProgress(jobID, "downloading", 5, "กำลังดาวน์โหลดไฟล์อินพุตจาก Homelab...")
+		inputTgz := filepath.Join(specs.InstallDir, "jobs", jobID+".input.tar.gz")
+		defer os.Remove(inputTgz)
+		if err := downloadHubToFile(inputURL, inputTgz); err != nil {
+			if entry.cancelled.Load() {
+				streamer.Close()
+				return finishEarly("cancelled", -1, "Job cancelled")
+			}
+			streamer.AddLine("[error] input download failed: " + err.Error())
+			streamer.Close()
+			return finishEarly("failed", -1, "ดาวน์โหลดไฟล์อินพุตไม่สำเร็จ: "+err.Error())
+		}
+		if err := extractTarGzSafe(inputTgz, inDir); err != nil {
+			streamer.AddLine("[error] input extract failed: " + err.Error())
+			streamer.Close()
+			return finishEarly("failed", -1, "แตกไฟล์อินพุตไม่สำเร็จ: "+err.Error())
+		}
+		_ = os.Remove(inputTgz)
+	}
+
+	// 2. Run optional setup command in cacheDir (cached via sha1 marker)
+	exitCode := 0
+	timedOut := false
+	var runErr error
+	setupFailed := false
+
+	if setupCmd != "" {
+		if entry.cancelled.Load() {
+			streamer.Close()
+			return finishEarly("cancelled", -1, "Job cancelled")
+		}
+		exitCode, timedOut, runErr = runJobSetup(cancelCtx, jobID, setupCmd, cacheKey, cacheDir, env, streamer)
+		if entry.cancelled.Load() {
+			streamer.Close()
+			return finishEarly("cancelled", exitCode, "Job cancelled during setup")
+		}
+		if timedOut {
+			streamer.Close()
+			return finishEarly("timeout", exitCode, "Setup timed out after 30 minutes")
+		}
+		if runErr != nil {
+			setupFailed = true
+		}
+	}
+
+	// 3. Run main command if setup succeeded
+	if !setupFailed {
+		if entry.cancelled.Load() {
+			streamer.Close()
+			return finishEarly("cancelled", -1, "Job cancelled")
+		}
+		reportJobProgress(jobID, "running", 20, fmt.Sprintf("กำลังรันงานบน %s...", specs.NodeID))
+
+		runCtx, runCancel := context.WithTimeout(cancelCtx, time.Duration(timeoutSec)*time.Second)
+		exitCode, timedOut, runErr = runShellWithStream(runCtx, jobID, mainCmd, workDir, env, "", streamer, true)
+		runCancel()
+	}
+
+	// Flush all buffered log lines and close _job.log before archiving or reporting final status
+	streamer.Close()
+
+	if entry.cancelled.Load() {
+		return finishEarly("cancelled", exitCode, "Job cancelled")
+	}
+	if timedOut {
+		return finishEarly("timeout", exitCode, fmt.Sprintf("Job timed out after %ds", timeoutSec))
+	}
+
+	// 4. Collect out/** + collect globs + _job.log and upload result.tar.gz (both on exit 0 and non-zero)
+	reportJobProgress(jobID, "uploading", 95, "กำลังรวบรวมและอัปโหลดไฟล์ผลลัพธ์...")
+
+	tarPath := filepath.Join(specs.InstallDir, "jobs", jobID+".result.tar.gz")
+	defer os.Remove(tarPath)
+
+	if _, _, collectErr := collectJobResult(workDir, outDir, logPath, collectGlobs, tarPath); collectErr != nil {
+		return finishEarly("failed", exitCode, "รวบรวมไฟล์ผลลัพธ์ไม่สำเร็จ: "+collectErr.Error())
+	}
+
+	if _, upErr := uploadJobResult(jobID, tarPath, exitCode, time.Since(started).Milliseconds()); upErr != nil {
+		return finishEarly("failed", exitCode, "อัปโหลดไฟล์ผลลัพธ์ไม่สำเร็จ: "+upErr.Error())
+	}
+
+	durMs := time.Since(started).Milliseconds()
+	if setupFailed || exitCode != 0 || runErr != nil {
+		var errMsg string
+		if setupFailed {
+			errMsg = fmt.Sprintf("Setup failed (exitCode=%d)", exitCode)
+		} else {
+			errMsg = fmt.Sprintf("Command exited with code %d", exitCode)
+		}
+		if tail := streamer.Tail(1500); tail != "" {
+			errMsg += ": " + tail
+		}
+		reportJobFinal(jobID, "failed", exitCode, errMsg, durMs)
+		return map[string]interface{}{
+			"jobId":      jobID,
+			"exitCode":   exitCode,
+			"status":     "failed",
+			"durationMs": durMs,
+		}, fmt.Errorf("%s", errMsg)
+	}
+
+	reportJobFinal(jobID, "completed", 0, "", durMs)
+	return map[string]interface{}{
+		"jobId":      jobID,
+		"exitCode":   0,
+		"status":     "completed",
+		"durationMs": durMs,
 	}, nil
 }
 

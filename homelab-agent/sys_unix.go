@@ -25,6 +25,26 @@ func hideWindowAttr() *syscall.SysProcAttr {
 	return nil
 }
 
+func newShellCmd(command string) *exec.Cmd {
+	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+	return cmd
+}
+
+func killProcessTree(c *exec.Cmd) {
+	if c == nil || c.Process == nil {
+		return
+	}
+	pid := c.Process.Pid
+	if pid <= 0 {
+		return
+	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = c.Process.Kill()
+}
+
 func sampleLinuxCPU() float64 {
 	f, err := os.Open("/proc/stat")
 	if err != nil {

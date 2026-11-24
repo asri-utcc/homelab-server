@@ -284,6 +284,24 @@
   // ── 4. Planets, Space Stations, Meteors & Dynamic Service Satellites ─────
   const planetStates = [];
 
+  let vaultStatsCache = null;
+  async function refreshVaultStats() {
+    try {
+      const r = await fetch('/api/3d-vault/stats', { credentials: 'same-origin' });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.ok) {
+          vaultStatsCache = j;
+          planetStates.forEach((st) => {
+            if (st.tagEl && st.def.getTag) st.tagEl.textContent = st.def.getTag();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+  refreshVaultStats();
+  setInterval(refreshVaultStats, 60000);
+
   const CORE_PLANET_DEFS = [
     // Tier 1 (r=115): Core Linux Compute
     {
@@ -542,6 +560,38 @@
       })
     },
     {
+      id: '3d-vault', label: '3D VAULT', keywords: '3d vault wow model glb gltf obj stl fbx blender asset library คลัง โมเดล สามมิติ บ้านนก swiftlet', icon: '🧊', kind: 'star', ring: 278, speed: 0.0020, angle: 4.48, size: 34, color: '#22d3ee',
+      getTag: () => (vaultStatsCache && vaultStatsCache.totalAssets != null) ? `🧊 3D ${vaultStatsCache.totalAssets} ชิ้น` : '🧊 3D VAULT',
+      getInfo: () => {
+        const v = vaultStatsCache;
+        const assetsVal = (v && v.totalAssets != null) ? v.totalAssets : '—';
+        const versionsVal = (v && v.totalVersions != null) ? v.totalVersions : '—';
+        const sizeVal = (v && v.totalSizeBytes != null && Number.isFinite(Number(v.totalSizeBytes))) ? fmtB(Number(v.totalSizeBytes)) : '—';
+        const favVal = (v && v.favoritesCount != null) ? v.favoritesCount : '—';
+        const countFacets = (x) => (Array.isArray(x) ? x.length : (x && typeof x === 'object' ? Object.keys(x).length : 0));
+        const facetLine = v ? ` · หมวด ${countFacets(v.categories)} · แท็ก ${countFacets(v.tags)}` : '';
+        const blenderMark = v == null ? '—' : (v.blenderAvailable ? '✓' : '✗');
+        return {
+          title: 'ดาวคลังโมเดล 3D (3D Asset Vault)',
+          status: (v && v.totalAssets != null) ? `${v.totalAssets} MODELS` : 'SYNC',
+          body: `
+            <div class="ov-spark-grid">
+              <div class="ov-spark-card"><span>🧊 โมเดลทั้งหมด</span><strong style="color:#22d3ee">${assetsVal}</strong></div>
+              <div class="ov-spark-card"><span>🗂️ เวอร์ชัน</span><strong style="color:#a855f7">${versionsVal}</strong></div>
+              <div class="ov-spark-card"><span>💾 ขนาด</span><strong style="color:#00e5a3">${sizeVal}</strong></div>
+              <div class="ov-spark-card"><span>⭐ รายการโปรด</span><strong style="color:#fbbf24">${favVal}</strong></div>
+            </div>
+            <div style="margin-top:8px;">เก็บ/พรีวิว/นำเข้า-ส่งออก GLB · ZIP · เวอร์ชัน · ต่อยอดใน Blender</div>
+            <div style="color:#94a3b8; font-size:11.5px; margin-top:2px;">Blender ${blenderMark}${facetLine}</div>
+          `,
+          actions: [
+            { label: '🧊 เปิดคลังโมเดล 3D', href: '/3d-vault', sameTab: true },
+            { label: '↗ เปิดในแท็บใหม่', href: '/3d-vault' }
+          ]
+        };
+      }
+    },
+    {
       id: 'hostdb', label: 'HOST/DB', keywords: 'host db disk sensor core os รายละเอียด', icon: '🪨', kind: 'asteroid', ring: 278, speed: 0.0020, angle: 5.26, size: 30, color: '#94a3b8',
       getTag: () => '🪨 HOST/DB',
       getInfo: () => {
@@ -628,6 +678,9 @@
       } else if (def.id === 'agent-hub') {
         e.stopPropagation();
         window.location.href = '/agent-hub';
+      } else if (def.id === '3d-vault') {
+        e.stopPropagation();
+        window.location.href = '/3d-vault';
       }
     });
     el.addEventListener('pointerup', onDrop);
@@ -650,7 +703,7 @@
       { kind: 'meteor', icon: '☄️', color: '#f5d061' }
     ];
     links.forEach((l, idx) => {
-      if (l.id === 'bg-remove' || l.id === 'agent-hub') return; // Dedicated cosmic nodes already orbit in Tier 4
+      if (l.id === 'bg-remove' || l.id === 'agent-hub' || l.id === '3d-vault') return; // Dedicated cosmic nodes already orbit in Tier 4
       const label = String(l.label || l.name || 'Service').replace('เวอร์ชันเดิม', 'Legacy');
       const shortTag = label.length > 14 ? label.slice(0, 13) + '…' : label;
       const k = kinds[idx % kinds.length];

@@ -23,6 +23,7 @@
         { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
         { id: 'terminal', label: 'Web Terminal (Cockpit)', icon: 'terminal', url: '/terminal' },
         { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
+        { id: '3d-vault', label: '3D Vault (คลังโมเดล 3D)', icon: 'box', url: '/3d-vault' },
         { id: 'ports', label: 'Port & Firewall Manager', icon: 'shield', url: '#sec-ports' },
     ];
 
@@ -42,6 +43,7 @@
         'energy': '⚡',
         'terminal': '💻',
         'bg-remove': '✂️',
+        '3d-vault': '🧊',
         'homeassistant': '🏠',
         'ports': '🛡️',
         'cron': '⏰',

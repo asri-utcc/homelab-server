@@ -3330,10 +3330,102 @@ body::before {
   outline: none;
   overflow: hidden;
   user-select: none;
+  touch-action: none;
   cursor: default;
 }
 .bv-stage:focus {
   box-shadow: inset 0 0 0 1.5px rgba(0, 229, 255, 0.45);
+}
+
+/* Mobile / Touch Keyboard Bridge Bar */
+.bv-icon-btn.is-active {
+  border-color: var(--cyan);
+  background: rgba(0, 229, 255, 0.2);
+  color: #e8fcff;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+}
+.bv-kb-bar {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(5, 24, 36, 0.96);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.34);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  z-index: 15;
+}
+.bv-kb-bar.is-visible {
+  display: flex;
+}
+.bv-kb-bar__tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.12);
+  border: 1px solid rgba(0, 229, 255, 0.32);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.bv-kb-bar__input {
+  flex: 1 1 140px;
+  min-width: 110px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 229, 255, 0.42);
+  background: rgba(2, 12, 20, 0.94);
+  color: var(--ink-1);
+  font-size: 16px;
+  line-height: 1.2;
+  outline: none;
+}
+.bv-kb-bar__input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.22);
+}
+.bv-kb-bar__input::placeholder {
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+.bv-kb-bar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.bv-kb-bar__btn {
+  height: 34px;
+  min-width: 34px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 229, 255, 0.28);
+  background: rgba(6, 28, 40, 0.9);
+  color: var(--ink-1);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.bv-kb-bar__btn:hover,
+.bv-kb-bar__btn:active {
+  border-color: var(--cyan);
+  background: rgba(0, 229, 255, 0.2);
+}
+.bv-kb-bar__btn--enter {
+  border-color: rgba(0, 229, 163, 0.5);
+  background: rgba(0, 229, 163, 0.16);
+  color: #bfffe9;
+}
+.bv-kb-bar__btn--close:hover {
+  border-color: var(--critical);
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff948d;
 }
 .bv-frame-img {
   width: 100%;
@@ -4150,6 +4242,7 @@ body::before {
               </div>
             </div>
 
+            <button type="button" class="bv-icon-btn" id="bv-kb-btn" title="เปิดแป้นพิมพ์สำหรับพิมพ์บนหน้าเว็บ (มือถือ / แท็บเล็ต)">⌨️</button>
             <button type="button" class="bv-icon-btn bv-icon-btn--pause" id="bv-pause-btn" title="หยุดรอให้ผู้ใช้ควบคุมหน้าเว็บเอง">⏸️ หยุดรอ</button>
 
             <div class="bv-popover-anchor">
@@ -4174,6 +4267,17 @@ body::before {
         <div class="bv-pause-banner__actions">
           <input type="text" class="bv-resume-note" id="bv-resume-note" placeholder="โน้ตสั้นๆ ถึง AI (ไม่บังคับ) เช่น ล็อกอินแล้ว...">
           <button type="button" class="bv-resume-done-btn" id="bv-resume-done-btn">✅ ทำเสร็จแล้ว · ให้ AI ทำต่อ</button>
+        </div>
+      </div>
+
+      <div class="bv-kb-bar" id="bv-kb-bar" role="region" aria-label="แป้นพิมพ์สำหรับหน้าเว็บ">
+        <span class="bv-kb-bar__tag" id="bv-kb-tag">⌨️ พร้อมพิมพ์</span>
+        <input type="text" class="bv-kb-bar__input" id="bv-kb-proxy" placeholder="แตะที่นี่เพื่อเปิดแป้นพิมพ์..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="ช่องพิมพ์ส่งเข้าเบราว์เซอร์">
+        <div class="bv-kb-bar__actions">
+          <button type="button" class="bv-kb-bar__btn" id="bv-kb-tab" title="ย้ายไปช่องถัดไป (Tab)">Tab</button>
+          <button type="button" class="bv-kb-bar__btn bv-kb-bar__btn--enter" id="bv-kb-enter" title="กด Enter">↵</button>
+          <button type="button" class="bv-kb-bar__btn" id="bv-kb-backspace" title="ลบ 1 ตัว (Backspace)">⌫</button>
+          <button type="button" class="bv-kb-bar__btn bv-kb-bar__btn--close" id="bv-kb-close" title="ปิดแถบแป้นพิมพ์">✕</button>
         </div>
       </div>
 
@@ -10343,13 +10447,18 @@ body::before {
   const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000];
   const SENSITIVE_LABELS = {
     password: '🔐 หน้าล็อกอิน (รหัสผ่าน)',
+    sensitive_password: '🔐 หน้าล็อกอิน (รหัสผ่าน)',
     login: '🔐 หน้าล็อกอิน',
     otp: '🔢 รหัส OTP / 2FA',
+    sensitive_otp: '🔢 รหัส OTP / 2FA',
     '2fa': '🔢 รหัส OTP / 2FA',
     captcha: '🛡️ CAPTCHA / ยืนยันตัวตน',
+    sensitive_captcha: '🛡️ CAPTCHA / ยืนยันตัวตน',
     payment: '💳 หน้าชำระเงิน / Checkout',
+    sensitive_payment: '💳 หน้าชำระเงิน / Checkout',
     checkout: '💳 หน้าชำระเงิน / Checkout',
-    user: '✋ ผู้ใช้สั่งหยุดรอ'
+    user: '✋ ผู้ใช้สั่งหยุดรอ',
+    user_intervening: '✋ ผู้ใช้ควบคุมหน้าเว็บ'
   };
 
   // DOM references
@@ -10398,6 +10507,16 @@ body::before {
   const resumeNoteInput = document.getElementById('bv-resume-note');
   const resumeDoneBtn = document.getElementById('bv-resume-done-btn');
 
+  // Mobile / Touch Keyboard Bridge
+  const kbBtn = document.getElementById('bv-kb-btn');
+  const kbBar = document.getElementById('bv-kb-bar');
+  const kbTag = document.getElementById('bv-kb-tag');
+  const kbProxy = document.getElementById('bv-kb-proxy');
+  const kbTabBtn = document.getElementById('bv-kb-tab');
+  const kbEnterBtn = document.getElementById('bv-kb-enter');
+  const kbBackspaceBtn = document.getElementById('bv-kb-backspace');
+  const kbCloseBtn = document.getElementById('bv-kb-close');
+
   // Stage & overlay
   const stageEl = document.getElementById('bv-stage');
   const frameImg = document.getElementById('bv-frame-img');
@@ -10436,6 +10555,11 @@ body::before {
   let autoBaseline = null;
   let autoPollInFlight = false;
   let autoWatchSeq = 0;
+  let kbManualOpen = false;
+  let kbFieldInfo = null;
+  let kbComposing = false;
+  let kbDismissedByUser = false;
+  let lastKbBackspaceAt = 0;
 
   const messageListeners = new Map(); // type -> Set<cb>
   const annotationToggleListeners = new Set();
@@ -10580,6 +10704,8 @@ body::before {
         }
       }
     }
+
+    if (typeof updateKbBarUI === 'function') updateKbBarUI();
 
     // Mobile tab badges
     if (mobBrowserBadge) {
@@ -10860,6 +10986,123 @@ body::before {
     }
   }
 
+  // ── Mobile / Touch Keyboard Bridge ─────────────────────────────────────────
+  function isTouchOrMobileView() {
+    try {
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+    } catch (_) {}
+    return Boolean(('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 960);
+  }
+
+  function applyKbInputAttributes(info) {
+    if (!kbProxy) return;
+    const rawType = info && info.inputType ? String(info.inputType).toLowerCase() : 'text';
+    const ac = info && info.autocomplete ? String(info.autocomplete).toLowerCase() : '';
+    const rawMode = info && info.inputMode ? String(info.inputMode).toLowerCase() : '';
+    const isOtp = ac.includes('one-time-code');
+
+    if (rawType === 'password') {
+      kbProxy.type = 'password';
+      kbProxy.inputMode = '';
+    } else if (rawType === 'email') {
+      kbProxy.type = 'email';
+      kbProxy.inputMode = 'email';
+    } else if (rawType === 'tel') {
+      kbProxy.type = 'tel';
+      kbProxy.inputMode = 'tel';
+    } else if (rawType === 'url') {
+      kbProxy.type = 'url';
+      kbProxy.inputMode = 'url';
+    } else if (rawType === 'search') {
+      kbProxy.type = 'search';
+      kbProxy.inputMode = 'search';
+    } else if (rawType === 'number' || isOtp) {
+      kbProxy.type = 'text';
+      kbProxy.inputMode = rawMode || 'numeric';
+    } else {
+      kbProxy.type = 'text';
+      kbProxy.inputMode = ['numeric', 'decimal', 'tel', 'email', 'url', 'search'].includes(rawMode) ? rawMode : '';
+    }
+
+    if (kbTag) {
+      if (rawType === 'password') kbTag.textContent = '🔐 รหัสผ่าน';
+      else if (isOtp) kbTag.textContent = '🔢 รหัส OTP';
+      else if (rawType === 'email') kbTag.textContent = '📧 อีเมล';
+      else if (rawType === 'number' || rawType === 'tel') kbTag.textContent = '🔢 ตัวเลข';
+      else if (rawType === 'search') kbTag.textContent = '🔍 ค้นหา';
+      else if (info && info.isEditable) kbTag.textContent = '⌨️ ช่องพิมพ์';
+      else kbTag.textContent = '⌨️ แป้นพิมพ์';
+    }
+
+    const fieldLabel = info && info.label ? info.label : '';
+    if (rawType === 'password') {
+      kbProxy.placeholder = 'แตะพิมพ์รหัสผ่านที่นี่...';
+    } else if (fieldLabel) {
+      kbProxy.placeholder = `พิมพ์ (${fieldLabel})...`;
+    } else {
+      kbProxy.placeholder = 'แตะพิมพ์ข้อความส่งเข้าหน้าเว็บ...';
+    }
+  }
+
+  function updateKbBarUI() {
+    if (!kbBar) return;
+    const isAuthPause = paused && /password|otp|login/i.test(String(pauseReason || ''));
+    if (isAuthPause && (!kbFieldInfo || !kbFieldInfo.isEditable)) {
+      applyKbInputAttributes({
+        isEditable: true,
+        inputType: /otp/i.test(String(pauseReason || '')) ? 'text' : 'password',
+        autocomplete: /otp/i.test(String(pauseReason || '')) ? 'one-time-code' : ''
+      });
+    }
+    const autoShow = isTouchOrMobileView() && !kbDismissedByUser && (
+      (kbFieldInfo && kbFieldInfo.isEditable) || isAuthPause
+    );
+    const shouldShow = Boolean(isOpen && (kbManualOpen || autoShow));
+    kbBar.classList.toggle('is-visible', shouldShow);
+    if (kbBtn) {
+      kbBtn.classList.toggle('is-active', shouldShow || (kbProxy && document.activeElement === kbProxy));
+    }
+  }
+
+  function flushKbProxy() {
+    if (!kbProxy) return;
+    const val = kbProxy.value;
+    if (!val) return;
+    kbProxy.value = '';
+    if (wsConnected) {
+      send({ type: 'input', kind: 'text', text: val });
+    }
+  }
+
+  function sendKbKey(key) {
+    if (!wsConnected || !key) return;
+    send({ type: 'input', kind: 'key', action: 'press', key });
+  }
+
+  function openMobileKeyboard() {
+    if (!kbBar || !kbProxy) return;
+    kbManualOpen = true;
+    kbDismissedByUser = false;
+    if (!kbFieldInfo || !kbFieldInfo.isEditable) {
+      applyKbInputAttributes(kbFieldInfo);
+    }
+    updateKbBarUI();
+    void kbBar.offsetHeight;
+    kbProxy.focus({ preventScroll: true });
+    updateKbBarUI();
+  }
+
+  function closeMobileKeyboard() {
+    kbComposing = false;
+    flushKbProxy();
+    kbManualOpen = false;
+    kbDismissedByUser = true;
+    if (kbProxy && document.activeElement === kbProxy) {
+      kbProxy.blur();
+    }
+    updateKbBarUI();
+  }
+
   function handleServerMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
     const t = msg.type;
@@ -10888,7 +11131,19 @@ body::before {
     } else if (t === 'pause-state' || t === 'paused') {
       paused = Boolean(msg.paused !== undefined ? msg.paused : true);
       pauseReason = paused ? String(msg.reason || msg.pauseReason || (msg.handoff && msg.handoff.kind) || '') : '';
+      if (paused && /password|otp|login/i.test(pauseReason)) {
+        kbDismissedByUser = false;
+      }
       updateStatusUI();
+    } else if (t === 'focus-state') {
+      kbFieldInfo = msg.isEditable ? msg : null;
+      if (msg.isEditable) {
+        kbDismissedByUser = false;
+        applyKbInputAttributes(msg);
+      } else if (!kbManualOpen) {
+        applyKbInputAttributes(null);
+      }
+      updateKbBarUI();
     } else if (t === 'ai-action' || t === 'cursor') {
       if (typeof msg.aiBusy === 'boolean') aiBusy = msg.aiBusy;
       const x = typeof msg.x === 'number' ? msg.x : (msg.point && msg.point.x);
@@ -11057,6 +11312,11 @@ body::before {
 
   function closeView(persist = true) {
     isOpen = false;
+    kbComposing = false;
+    kbManualOpen = false;
+    kbFieldInfo = null;
+    kbDismissedByUser = false;
+    if (kbProxy) kbProxy.value = '';
     if (persist && activeChatId) {
       writeOpenRoom(activeChatId, false);
     }
@@ -11207,6 +11467,12 @@ body::before {
       stopAutoWatch();
       closeSocketOnly();
       resetFrameState();
+      kbComposing = false;
+      kbManualOpen = false;
+      kbFieldInfo = null;
+      kbDismissedByUser = false;
+      if (kbProxy) kbProxy.value = '';
+      updateKbBarUI();
       sessionChangeListeners.forEach((cb) => {
         try { cb(nextId, meta); } catch (_) {}
       });
@@ -11404,6 +11670,10 @@ body::before {
 
   stageEl.addEventListener('mousedown', (e) => {
     if (annotationActive) return;
+    if (kbProxy && document.activeElement === kbProxy) {
+      kbComposing = false;
+      flushKbProxy();
+    }
     stageEl.focus({ preventScroll: true });
     if (!wsConnected) return;
     const pt = mapPoint(e.clientX, e.clientY);
@@ -11419,6 +11689,75 @@ body::before {
       clickCount: Math.max(1, e.detail || 1)
     });
   });
+
+  // Touch forwarding for mobile/tablet: tap -> click, drag -> remote wheel scroll
+  let touchState = null;
+  stageEl.addEventListener('touchstart', (e) => {
+    if (annotationActive || !wsConnected) return;
+    if (e.touches.length !== 1) {
+      touchState = null;
+      return;
+    }
+    const t = e.touches[0];
+    touchState = {
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastY: t.clientY,
+      moved: false
+    };
+  }, { passive: true });
+
+  stageEl.addEventListener('touchmove', (e) => {
+    if (annotationActive || !wsConnected || !touchState || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dist = Math.hypot(t.clientX - touchState.startX, t.clientY - touchState.startY);
+    if (!touchState.moved && dist > 8) {
+      touchState.moved = true;
+    }
+    if (!touchState.moved) return;
+    const dx = t.clientX - touchState.lastX;
+    const dy = t.clientY - touchState.lastY;
+    touchState.lastX = t.clientX;
+    touchState.lastY = t.clientY;
+    const pt = mapPoint(t.clientX, t.clientY);
+    if (!pt.inside) return;
+    e.preventDefault();
+    send({
+      type: 'input',
+      kind: 'wheel',
+      x: pt.x,
+      y: pt.y,
+      deltaX: Math.round(-dx * 1.4),
+      deltaY: Math.round(-dy * 1.4)
+    });
+  }, { passive: false });
+
+  stageEl.addEventListener('touchend', (e) => {
+    const st = touchState;
+    touchState = null;
+    if (!st || st.moved || annotationActive || !wsConnected) return;
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    const pt = mapPoint(t.clientX, t.clientY);
+    if (!pt.inside) return;
+    e.preventDefault();
+    const keepKbFocused = Boolean(kbProxy && (kbManualOpen || document.activeElement === kbProxy));
+    if (keepKbFocused) {
+      kbComposing = false;
+      flushKbProxy();
+    }
+    send({ type: 'input', kind: 'mouse', action: 'mouseMoved', x: pt.x, y: pt.y });
+    send({ type: 'input', kind: 'mouse', action: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+    send({ type: 'input', kind: 'mouse', action: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+    if (keepKbFocused && kbProxy) {
+      kbProxy.focus({ preventScroll: true });
+    }
+  }, { passive: false });
+
+  stageEl.addEventListener('touchcancel', () => {
+    touchState = null;
+  }, { passive: true });
 
   stageEl.addEventListener('mouseup', (e) => {
     if (annotationActive || !wsConnected) return;
@@ -11540,6 +11879,115 @@ body::before {
 
   if (btnNewTab) {
     btnNewTab.addEventListener('click', () => send({ type: 'new-tab', url: 'about:blank' }));
+  }
+
+  if (kbBtn) {
+    kbBtn.addEventListener('click', () => {
+      if (kbBar && kbBar.classList.contains('is-visible') && kbProxy && document.activeElement === kbProxy) {
+        closeMobileKeyboard();
+      } else {
+        openMobileKeyboard();
+      }
+    });
+  }
+
+  if (kbProxy) {
+    kbProxy.addEventListener('compositionstart', () => {
+      kbComposing = true;
+    });
+    kbProxy.addEventListener('compositionend', () => {
+      kbComposing = false;
+      flushKbProxy();
+    });
+    kbProxy.addEventListener('input', (e) => {
+      if (kbComposing || (e && e.isComposing)) return;
+      flushKbProxy();
+    });
+    kbProxy.addEventListener('beforeinput', (e) => {
+      if (e && e.inputType === 'deleteContentBackward' && kbProxy.value.length === 0) {
+        const now = Date.now();
+        if (now - lastKbBackspaceAt < 30) return;
+        lastKbBackspaceAt = now;
+        e.preventDefault();
+        sendKbKey('Backspace');
+      }
+    });
+    kbProxy.addEventListener('keydown', (e) => {
+      if (!wsConnected) return;
+      if (e.key === 'Backspace') {
+        if (kbProxy.value.length === 0) {
+          lastKbBackspaceAt = Date.now();
+          e.preventDefault();
+          sendKbKey('Backspace');
+        }
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        kbComposing = false;
+        flushKbProxy();
+        sendKbKey('Enter');
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        kbComposing = false;
+        flushKbProxy();
+        sendKbKey('Tab');
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMobileKeyboard();
+      }
+    });
+    kbProxy.addEventListener('paste', (e) => {
+      if (!wsConnected) return;
+      const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+      if (!text) return;
+      e.preventDefault();
+      kbComposing = false;
+      flushKbProxy();
+      send({ type: 'input', kind: 'text', text });
+    });
+    kbProxy.addEventListener('focus', () => {
+      kbManualOpen = true;
+      updateKbBarUI();
+    });
+    kbProxy.addEventListener('blur', () => {
+      kbComposing = false;
+      flushKbProxy();
+      updateKbBarUI();
+    });
+  }
+
+  if (kbTabBtn) {
+    kbTabBtn.addEventListener('click', () => {
+      kbComposing = false;
+      flushKbProxy();
+      sendKbKey('Tab');
+      if (kbProxy) kbProxy.focus({ preventScroll: true });
+    });
+  }
+  if (kbEnterBtn) {
+    kbEnterBtn.addEventListener('click', () => {
+      kbComposing = false;
+      flushKbProxy();
+      sendKbKey('Enter');
+    });
+  }
+  if (kbBackspaceBtn) {
+    kbBackspaceBtn.addEventListener('click', () => {
+      if (kbProxy && kbProxy.value.length > 0) {
+        kbProxy.value = kbProxy.value.slice(0, -1);
+      } else {
+        sendKbKey('Backspace');
+      }
+      if (kbProxy) kbProxy.focus({ preventScroll: true });
+    });
+  }
+  if (kbCloseBtn) {
+    kbCloseBtn.addEventListener('click', closeMobileKeyboard);
   }
 
   if (pauseBtn) {

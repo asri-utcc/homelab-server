@@ -165,6 +165,79 @@ async function detectSensitive(page) {
   return withTimeout(check(), SENSITIVE_CHECK_TIMEOUT_MS, null);
 }
 
+async function inspectFocusedEditable(page) {
+  if (!page || page.isClosed()) return { isEditable: false };
+  const check = async () => {
+    const res = await page.evaluate(() => {
+      const NON_TEXT_TYPES = new Set([
+        'button', 'checkbox', 'color', 'file', 'hidden',
+        'image', 'radio', 'range', 'reset', 'submit',
+      ]);
+      let doc = document;
+      let el = doc.activeElement;
+      for (let depth = 0; depth < 6 && el; depth++) {
+        if (el.shadowRoot && el.shadowRoot.activeElement) {
+          el = el.shadowRoot.activeElement;
+          continue;
+        }
+        if (el.tagName === 'IFRAME') {
+          try {
+            if (el.contentDocument && el.contentDocument.activeElement) {
+              doc = el.contentDocument;
+              el = doc.activeElement;
+              continue;
+            }
+          } catch (_) {
+            // cross-origin iframe
+          }
+        }
+        break;
+      }
+      if (!el || el === doc.body || el === doc.documentElement) {
+        return { isEditable: false };
+      }
+      const tag = String(el.tagName || '').toLowerCase();
+      if (tag === 'input') {
+        if (el.disabled || el.readOnly) return { isEditable: false };
+        const inputType = String(el.getAttribute('type') || 'text').trim().toLowerCase() || 'text';
+        if (NON_TEXT_TYPES.has(inputType)) return { isEditable: false };
+        return {
+          isEditable: true,
+          tag,
+          inputType,
+          inputMode: String(el.getAttribute('inputmode') || '').trim().toLowerCase(),
+          autocomplete: String(el.getAttribute('autocomplete') || '').trim().toLowerCase(),
+          label: String(el.getAttribute('placeholder') || el.getAttribute('aria-label') || '').trim().slice(0, 80),
+        };
+      }
+      if (tag === 'textarea') {
+        if (el.disabled || el.readOnly) return { isEditable: false };
+        return {
+          isEditable: true,
+          tag,
+          inputType: 'textarea',
+          inputMode: String(el.getAttribute('inputmode') || '').trim().toLowerCase(),
+          autocomplete: String(el.getAttribute('autocomplete') || '').trim().toLowerCase(),
+          label: String(el.getAttribute('placeholder') || el.getAttribute('aria-label') || '').trim().slice(0, 80),
+        };
+      }
+      if (el.isContentEditable) {
+        return {
+          isEditable: true,
+          tag,
+          inputType: 'contenteditable',
+          inputMode: String(el.getAttribute('inputmode') || '').trim().toLowerCase(),
+          autocomplete: '',
+          label: String(el.getAttribute('aria-label') || '').trim().slice(0, 80),
+        };
+      }
+      return { isEditable: false };
+    });
+    return res && typeof res === 'object' ? res : { isEditable: false };
+  };
+  return withTimeout(check(), 250, { isEditable: false });
+}
+
 async function inspectPoint(page, x, y) {
   if (!page || page.isClosed()) return null;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
@@ -1046,6 +1119,10 @@ async function main() {
     if (authProfile && action !== 'mouseMoved') {
       scheduleAuthSync();
     }
+    if (action === 'mouseReleased' || action === 'click' || action === 'dblclick') {
+      const focusState = await inspectFocusedEditable(page).catch(() => ({ isEditable: false }));
+      broadcast({ type: 'focus-state', ...(focusState || { isEditable: false }) });
+    }
   }
 
   async function handleWheelInput(page, msg) {
@@ -1099,6 +1176,10 @@ async function main() {
 
     if (authProfile && (key === 'Enter' || key === 'Return')) {
       scheduleAuthSync();
+    }
+    if (key === 'Tab' || key === 'Enter' || key === 'Return') {
+      const focusState = await inspectFocusedEditable(page).catch(() => ({ isEditable: false }));
+      broadcast({ type: 'focus-state', ...(focusState || { isEditable: false }) });
     }
   }
 

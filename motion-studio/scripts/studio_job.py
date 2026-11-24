@@ -6,6 +6,8 @@ Handles:
   - draft      : research -> script -> draft_ready
   - build      : lock -> tts (cached) -> props -> render -> mix -> preview -> copy -> telegram
   - edit-scene : lock -> tts (cached) -> props -> render -> mix -> final_v{N}.mp4
+  - rebuild    : lock -> tts (cached) -> props -> render -> mix -> final_v{N}.mp4 (all scenes)
+  - remix      : lock -> mix latest render_v{N}/render.mp4 + work/timeline.json -> final_v{N}.mp4
   - trim       : ffmpeg trim [start, end] -> final_v{N}.mp4
   - cut        : ffmpeg cut out [from, to] -> final_v{N}.mp4
 """
@@ -2024,6 +2026,8 @@ def run_mix_stage(
     timeline_path: Path,
     final_mp4: Path,
     bgm: str,
+    bgm_vol: float | None = None,
+    duck_db: float | None = None,
 ) -> None:
     write_status(job_dir, status="mixing", stage="mixing", progress=87, message="กำลังผสมเสียงพากย์ ดนตรี และเอฟเฟกต์...")
     if bgm not in VALID_BGMS and not Path(bgm).exists():
@@ -2038,7 +2042,16 @@ def run_mix_stage(
         "--bgm",
         bgm,
     ]
-    append_log(job_dir, f"Running mix: bgm={bgm}")
+    if bgm_vol is not None:
+        cmd.extend(["--bgm-vol", f"{bgm_vol:.3f}"])
+    if duck_db is not None:
+        cmd.extend(["--duck-db", f"{duck_db:.1f}"])
+    append_log(
+        job_dir,
+        f"Running mix: bgm={bgm}"
+        + (f", bgm_vol={bgm_vol:.3f}" if bgm_vol is not None else "")
+        + (f", duck_db={duck_db:.1f}" if duck_db is not None else ""),
+    )
     rc, stdout, stderr = _run_subprocess(cmd, cwd=BASE_DIR, timeout=300)
     if rc != 0 or not final_mp4.exists():
         err = (stderr or stdout or f"mix exited {rc}").strip()
@@ -2178,6 +2191,24 @@ def _latest_video_path(job_dir: Path) -> Path:
     if cand.exists():
         return cand
     raise FileNotFoundError("ไม่พบไฟล์วิดีโอต้นฉบับ (final.mp4) กรุณาสร้างวิดีโอก่อนตัดต่อ")
+
+
+def _latest_render_path(job_dir: Path) -> Path:
+    best_v = -1
+    best_path: Path | None = None
+    for p in job_dir.glob("render_v*.mp4"):
+        m = re.fullmatch(r"render_v(\d+)\.mp4", p.name)
+        if m:
+            v = int(m.group(1))
+            if v > best_v:
+                best_v = v
+                best_path = p
+    if best_path is not None and best_path.exists():
+        return best_path
+    cand = job_dir / "render.mp4"
+    if cand.exists():
+        return cand
+    raise RuntimeError("ไม่พบไฟล์วิดีโอที่เรนเดอร์ไว้ (render.mp4) กรุณาสร้างวิดีโอก่อนผสมเสียงใหม่")
 
 
 def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: str | None = None) -> dict[str, Any]:
@@ -2450,6 +2481,45 @@ def stage_cut(job_dir: Path, cut_from: float, cut_to: float) -> dict[str, Any]:
     return _finalize_edit_version(job_dir, out_mp4, ver, f"cut:{cut_from:.2f}-{cut_to:.2f}", f"{slug}_v{ver}.mp4")
 
 
+def stage_remix(job_dir: Path, bgm: str, bgm_vol: float, duck_db: float) -> dict[str, Any]:
+    """Re-mix latest rendered silent video with new BGM/volume/ducking settings into final_v{N}.mp4."""
+    if bgm not in VALID_BGMS and not Path(bgm).exists():
+        bgm = "warm_tech"
+    src_mp4 = _latest_render_path(job_dir)
+    timeline_path = job_dir / "work" / "timeline.json"
+    if not timeline_path.exists():
+        raise RuntimeError("ไม่พบไฟล์ work/timeline.json กรุณาสร้างวิดีโอก่อนผสมเสียงใหม่")
+
+    ver = _next_version_number(job_dir)
+    out_mp4 = job_dir / f"final_v{ver}.mp4"
+    slug = safe_slug(job_dir.name)
+
+    with acquire_render_lock(job_dir):
+        write_status(
+            job_dir,
+            status="mixing",
+            stage="remix",
+            progress=30,
+            bgm=bgm,
+            message=f"กำลังผสมเสียงใหม่ (BGM {bgm})...",
+        )
+        append_log(
+            job_dir,
+            f"Remixing {src_mp4.name} + {timeline_path.name} -> {out_mp4.name} "
+            f"(bgm={bgm}, bgm_vol={bgm_vol:.3f}, duck_db={duck_db:.1f})",
+        )
+        run_mix_stage(job_dir, src_mp4, timeline_path, out_mp4, bgm, bgm_vol=bgm_vol, duck_db=duck_db)
+
+        req_path = job_dir / "request.json"
+        req = read_json(req_path, {})
+        if not isinstance(req, dict):
+            req = {}
+        req["bgm"] = bgm
+        atomic_write_json(req_path, req)
+
+        return _finalize_edit_version(job_dir, out_mp4, ver, "remix", f"{slug}_v{ver}.mp4")
+
+
 def _finalize_edit_version(
     job_dir: Path,
     out_mp4: Path,
@@ -2510,13 +2580,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Video Studio Job Runner")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    for name in ("oneshot", "draft", "build"):
+    for name in ("oneshot", "draft", "build", "rebuild"):
         p = sub.add_parser(name)
         p.add_argument("--job", required=True, help="Job directory path")
 
     p_es = sub.add_parser("edit-scene")
     p_es.add_argument("--job", required=True, help="Job directory path")
     p_es.add_argument("--scene", "--scene-id", dest="scene", default="", help="Edited scene ID")
+
+    p_rm = sub.add_parser("remix")
+    p_rm.add_argument("--job", required=True, help="Job directory path")
+    p_rm.add_argument("--bgm", default="warm_tech", help="BGM preset name or path")
+    p_rm.add_argument("--bgm-vol", type=float, default=0.14, dest="bgm_vol", help="BGM volume multiplier (0..1)")
+    p_rm.add_argument("--duck-db", type=float, default=12.0, dest="duck_db", help="Sidechain ducking depth in dB (0..30)")
 
     p_tr = sub.add_parser("trim")
     p_tr.add_argument("--job", required=True, help="Job directory path")
@@ -2550,6 +2626,10 @@ def main(argv: list[str] | None = None) -> int:
             stage_build(job_dir, as_new_version=False)
         elif args.cmd == "edit-scene":
             stage_build(job_dir, as_new_version=True, edit_scene_id=args.scene or None)
+        elif args.cmd == "rebuild":
+            stage_build(job_dir, as_new_version=True, edit_scene_id=None)
+        elif args.cmd == "remix":
+            stage_remix(job_dir, args.bgm, args.bgm_vol, args.duck_db)
         elif args.cmd == "trim":
             stage_trim(job_dir, args.start, args.end)
         elif args.cmd == "cut":

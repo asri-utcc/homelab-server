@@ -966,6 +966,261 @@
       background: #05070b;
     }
 
+    /* Timeline & Editor (Phase 2) */
+    #timeline-panel.tl-dirty {
+      border-color: var(--star);
+    }
+    .tl-dirty-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      background: var(--star-soft);
+      color: var(--star);
+      border: 1px solid var(--star);
+    }
+    .tl-notice {
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--star-soft);
+      border: 1px solid var(--border-strong);
+      color: var(--ink);
+      font-size: 12.5px;
+      margin-bottom: 12px;
+    }
+    .tl-notice.is-info {
+      background: var(--cyan-soft);
+      border-color: var(--cyan);
+    }
+    .tl-track-scroll {
+      width: 100%;
+      padding-bottom: 4px;
+    }
+    .tl-track-inner {
+      position: relative;
+      min-width: 100%;
+    }
+    .tl-track {
+      position: relative;
+      display: flex;
+      align-items: stretch;
+      gap: 4px;
+      width: 100%;
+      min-height: 62px;
+      padding: 6px;
+      border-radius: var(--radius-sm);
+      background: var(--canvas);
+      border: 1px solid var(--border-strong);
+      user-select: none;
+    }
+    .tl-block {
+      position: relative;
+      flex-basis: 0;
+      min-width: 36px;
+      padding: 6px 7px;
+      border-radius: 8px;
+      background: var(--well);
+      border: 1px solid var(--border-strong);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 2px;
+      cursor: pointer;
+      overflow: hidden;
+      transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease, opacity 0.14s ease;
+    }
+    .tl-block:hover {
+      background: var(--well-hover);
+      border-color: var(--cyan);
+    }
+    .tl-block.selected {
+      border-color: var(--star);
+      box-shadow: inset 0 0 0 1px var(--star);
+    }
+    .tl-block.active {
+      background: var(--cyan-soft);
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 1px var(--cyan);
+    }
+    .tl-block.active.selected {
+      border-color: var(--star);
+      box-shadow: 0 0 0 1px var(--cyan), inset 0 0 0 1px var(--star);
+    }
+    .tl-block.dragging {
+      opacity: 0.42;
+      transform: scale(0.97);
+    }
+    .tl-block.drag-over {
+      border-color: var(--star);
+      background: var(--star-soft);
+    }
+    .tl-block.new {
+      border-style: dashed;
+      border-color: var(--violet);
+    }
+    .tl-block-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      font-size: 10.5px;
+      color: var(--muted);
+    }
+    .tl-block.active .tl-block-top {
+      color: var(--cyan);
+    }
+    .tl-block-num {
+      font-weight: 700;
+      color: var(--star);
+    }
+    .tl-block-title {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tl-playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0%;
+      width: 2px;
+      background: var(--coral);
+      pointer-events: none;
+      z-index: 6;
+      box-shadow: 0 0 8px var(--coral);
+    }
+    .tl-playhead::before {
+      content: "";
+      position: absolute;
+      top: -4px;
+      left: -4px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--coral);
+    }
+    .tl-ruler {
+      position: relative;
+      height: 22px;
+      margin-top: 4px;
+      border-top: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--muted);
+    }
+    .tl-ruler-tick {
+      position: absolute;
+      top: 0;
+      transform: translateX(-50%);
+      padding-top: 4px;
+      white-space: nowrap;
+    }
+    .tl-ruler-tick:first-child {
+      transform: translateX(0);
+    }
+    .tl-ruler-tick::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 1px;
+      height: 4px;
+      background: var(--border-strong);
+    }
+    .tl-ruler-tick:first-child::before {
+      left: 0;
+    }
+    .tl-meta-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 6px 0 14px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .tl-editor-grid {
+      display: grid;
+      grid-template-columns: 1.55fr 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .tl-inspector {
+      background: var(--canvas);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .tl-inspector-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .tl-sub-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .tl-sub-row {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr auto;
+      gap: 6px;
+      align-items: center;
+    }
+    .tl-range-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .tl-range-row input[type="range"] {
+      flex: 1;
+      accent-color: var(--cyan);
+    }
+    .tl-audio-box {
+      background: var(--canvas);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    @media (max-width: 900px) {
+      .tl-editor-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 720px) {
+      .tl-track-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .tl-track {
+        overflow-x: auto;
+        min-width: max-content;
+      }
+      .tl-block {
+        min-width: 64px;
+      }
+      .tl-sub-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
     /* Library Grid (Video Cards) */
     .jobs-grid {
       display: grid;
@@ -1528,6 +1783,73 @@
           </div>
         </div>
       </div>
+
+      <!-- TIMELINE & EDITOR (PHASE 2) -->
+      <div class="glass-card hidden" id="timeline-panel">
+        <div class="section-title">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span>🎞️ Timeline &amp; Editor (เฟส 2)</span>
+            <span class="tl-dirty-badge hidden" id="tl-dirty-badge">มีการแก้ไขที่ยังไม่สร้างวิดีโอ</span>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button type="button" class="btn btn-sm" id="btn-tl-save">💾 บันทึกบท</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-tl-rebuild">🎬 สร้างเวอร์ชันใหม่</button>
+          </div>
+        </div>
+
+        <div class="tl-notice hidden" id="tl-notice"></div>
+
+        <div class="tl-track-scroll">
+          <div class="tl-track-inner" id="tl-track-inner">
+            <div class="tl-track" id="tl-track">
+              <div class="tl-playhead" id="tl-playhead"></div>
+            </div>
+            <div class="tl-ruler" id="tl-ruler"></div>
+          </div>
+        </div>
+
+        <div class="tl-meta-bar">
+          <span class="mono" id="tl-time-readout">0.0s / 0.0s</span>
+          <span>คลิกบล็อกเพื่อข้ามเวลา · ลากบล็อกหรือกด ◀ ▶ เพื่อสลับลำดับซีน</span>
+        </div>
+
+        <div class="tl-editor-grid">
+          <div class="tl-inspector" id="tl-inspector"></div>
+
+          <div class="tl-audio-box">
+            <div class="section-title" style="margin-bottom:2px;">
+              <span>🎚️ เสียง (Remix ไม่ต้องเรนเดอร์ใหม่)</span>
+            </div>
+            <div>
+              <label class="field-label" for="tl-bgm" style="margin-bottom:5px;">เพลงประกอบ (BGM)</label>
+              <select id="tl-bgm" class="select">
+                <option value="warm_tech">Warm Tech (เทคโนโลยีอบอุ่น)</option>
+                <option value="story_cinematic">Story Cinematic (เล่าเรื่องชวนติดตาม)</option>
+                <option value="dawn_ambient">Dawn Ambient (บรรยากาศนุ่มลึก)</option>
+                <option value="none">ไม่มีเพลงประกอบ (None)</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="tl-bgm-vol" style="margin-bottom:5px;">ระดับเสียงเพลง (BGM Volume)</label>
+              <div class="tl-range-row">
+                <input type="range" id="tl-bgm-vol" min="0" max="0.5" step="0.01" value="0.14" />
+                <span class="mono" id="tl-bgm-vol-val" style="min-width:44px;text-align:right;">0.14</span>
+              </div>
+            </div>
+            <div>
+              <label class="field-label" for="tl-duck" style="margin-bottom:5px;">ลดเสียงเพลงตอนพูด (Ducking)</label>
+              <div class="tl-range-row">
+                <input type="range" id="tl-duck" min="0" max="24" step="1" value="12" />
+                <span class="mono" id="tl-duck-val" style="min-width:44px;text-align:right;">12 dB</span>
+              </div>
+            </div>
+            <div class="muted hidden" id="tl-remix-hint" style="font-size:12px;"></div>
+            <div>
+              <button type="button" class="btn btn-cyan btn-sm" id="btn-tl-remix">🎚️ มิกซ์เสียงใหม่ (Remix)</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- TAB 2: LIBRARY -->
@@ -1612,12 +1934,14 @@
         rendering: 3,
         render: 3,
         build: 3,
+        rebuild: 3,
         'edit-scene': 3,
         trim: 3,
         cut: 3,
         editing: 3,
         mixing: 4,
         mix: 4,
+        remix: 4,
         preview: 4,
         previewing: 4,
         delivering: 4,
@@ -1635,7 +1959,19 @@
         geminiCredit: null,
         lowCreditToastShown: false,
         pollTimer: null,
-        learnTimer: null
+        learnTimer: null,
+        tl: {
+          jobId: null,
+          timeline: null,
+          script: null,
+          selected: 0,
+          dirty: false,
+          apiUnavailable: false,
+          loadedVersionKey: null,
+          dragIdx: null,
+          displayEntries: [],
+          totalDisplaySec: 0
+        }
       };
 
       const $ = (id) => document.getElementById(id);
@@ -2169,6 +2505,17 @@
       $('btn-draft').addEventListener('click', () => startJob('draft'));
 
       function openJob(id, scrollTarget = null) {
+        if (state.tl.jobId !== id) {
+          state.tl.jobId = null;
+          state.tl.timeline = null;
+          state.tl.script = null;
+          state.tl.selected = 0;
+          state.tl.dirty = false;
+          state.tl.apiUnavailable = false;
+          state.tl.displayEntries = [];
+          state.tl.totalDisplaySec = 0;
+        }
+        state.tl.loadedVersionKey = null;
         state.activeJobId = id;
         $('job-panel').classList.remove('hidden');
         $('job-id-label').textContent = id;
@@ -2199,6 +2546,7 @@
             renderResultPanel(job);
           } else {
             $('result-panel').classList.add('hidden');
+            $('timeline-panel').classList.add('hidden');
           }
           if (scrollTarget === 'result' && !$('result-panel').classList.contains('hidden')) {
             $('result-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2263,7 +2611,7 @@
       });
 
       // Draft Editor
-      const ILLUSTRATED_SHOT_OPTIONS = [
+      const SHOT_OPTIONS = [
         ['', 'อัตโนมัติ (ให้ระบบ/AI เลือก)'],
         ['pov-desk', 'นั่งโต๊ะหันหน้าเข้ากล้อง + โน้ตบนผนัง'],
         ['interview', 'สองคนคุยกัน + บอลลูนคำพูด'],
@@ -2276,25 +2624,9 @@
         ['door', 'เปิดประตูเข้าห้อง'],
         ['phone', 'มือเราถือมือถืออ่านแชท'],
       ];
-      const STYLE_DIRECTOR_SHOTS_MAP = {"look-1": [["glow-portal", "ประตูวงแหวนแสงที่ข้อความลอยออกมา"], ["orb-core", "ลูกแก้วพลังงานกลางจอพร้อมวงโคจรคีย์เวิร์ด"], ["light-path", "เส้นทางแสงคดเคี้ยวจากล่างขึ้นบนพร้อมจุดเช็กพอยต์"]], "look-3": [["holo-table", "โต๊ะฉายโฮโลแกรม 3 มิติหมุนได้พร้อมโนดประเด็นลอยรอบแกน"], ["mission-route", "เส้นทางภารกิจโฮโลแกรมที่จุดเช็กพอยต์สว่างขึ้นทีละด่าน"], ["radar-scan", "จอเรดาร์โฮโลแกรมกวาดคลื่นตรวจจับเป้าหมายและตัวเลขสำคัญ"], ["hud-briefing", "เงาร่างโฮโลแกรมบรรยายสรุปข้างแผงข้อมูล HUD ลอยกลางอากาศ"]], "look-4": [["relief-map", "แผนที่นูนสีแดงพร้อมหมุดปักตำแหน่งและลูกศรกวาดข้ามอาณาเขต"], ["battle-arrows", "ลูกศรสองฝ่ายปะทะกันบนแผนที่นูนสำหรับเปรียบเทียบ"], ["era-scroll", "ม้วนคัมภีร์และแผ่นศิลาจารึกปีคลี่ออกตามลำดับเหตุการณ์"]], "look-6": [["cosmic-zoom", "ซูมจักรวาลจากกาแล็กซีสู่ดาวเคราะห์และจุดข้อมูลสำคัญ"], ["strata-layers", "ชั้นหินธรณีวิทยาที่แต่ละประเด็นคือหนึ่งยุคสมัย"], ["clock-spiral", "เกลียวเวลาขนาดมหึมาสำหรับตัวเลขใหญ่และสเกลนับล้านปี"], ["planet-orbit", "ระบบดาวเคราะห์โคจรรอบดวงอาทิตย์โดยแต่ละดวงติดป้ายประเด็นสำคัญ"]], "look-9": [["gear-mechanism", "เฟืองกลไกหลายตัวหมุนประสานกันพร้อมป้ายชื่อแต่ละประเด็น"], ["flow-schematic", "ผังวงจรและท่อส่งสัญญาณไหลทีละขั้นพร้อมจุดวาล์ว"], ["spec-sheet", "ตารางสเปกเทคนิคพร้อมเส้นบอกขนาดและตัวเลขหลักใหญ่"]], "look-10": [["turntable-spin", "แท่นหมุนโชว์สินค้า 360 องศาในสตูดิโอพร้อมแสงริมไลต์และเงาตกกระทบ"], ["hotspot-callouts", "จุดฮอตสปอตบนตัวสินค้าพร้อมเส้นชี้จุดเด่นรอบชิ้นงาน"], ["exploded-features", "แยกชิ้นส่วนสินค้าเป็นชั้นลอยแนวตั้งพร้อมคำอธิบายแต่ละชั้น"], ["price-reveal", "สปอตไลต์ส่องตัวสินค้าพร้อมป้ายราคาหรือตัวเลขหลักขนาดใหญ่"]], "look-11": [["cash-tower", "กองธนบัตรซ้อนสูง"], ["coin-rain", "เหรียญทองโปรยลงโถ"], ["piggy-bank", "กระปุกออมสิน"], ["debt-pit", "หลุมหนี้กับบันไดกองเงิน"]], "look-12": [["card-flip", "บัตรพรีเมียมพลิกจากด้านหน้าไปด้านหลังเผยข้อความและข้อเสนอหลัก"], ["card-fan", "บัตรสิทธิพิเศษหลายใบกางออกเป็นพัด แต่ละใบแสดงหนึ่งประเด็นสำคัญ"], ["scratch-reveal", "บัตรขูดฟอยล์สีเงินค่อยๆ ขูดเผยตัวเลขหรือรางวัลใหญ่ด้านใน"], ["compare-cards", "บัตรสองใบวางเทียบกันซ้าย-ขวาพร้อมป้าย VS และไฮไลต์ใบที่คุ้มกว่า"]], "look-13": [["receipt-print", "เครื่องพิมพ์ใบเสร็จ"], ["itemized-zoom", "ซูมรายการวงปากกาแดง"], ["total-stamp", "ยอดรวมพร้อมตราประทับ"]], "look-14": [["iceberg-reveal", "ผิวน้ำแบ่งจอเผยฐานใต้น้ำ"], ["dive-down", "ดำดิ่งเปิดชั้นความลึก"], ["hidden-labels", "ชี้ป้ายส่วนที่ซ่อนอยู่"], ["tip-only", "ยอดน้ำแข็งเหนือผิวน้ำ"]], "look-15": [["chat-burst", "บับเบิลแชทเด้งรัวสลับซ้ายขวา"], ["typing-reveal", "จุดกำลังพิมพ์ (...) แล้วเฉลยคำตอบ"], ["screenshot-zoom", "ซูมหน้าจอโทรศัพท์ + ไฮไลต์ข้อความ"], ["group-chat", "แชทกลุ่มหลายคนพร้อมอวาตาร์"], ["voice-note", "ข้อความเสียงพร้อมคลื่นเสียงวิ่ง"]], "look-16": [["size-lineup", "เรียงวัตถุ 3 มิติจากเล็กไปใหญ่บนเส้นไม้บรรทัดพร้อมเงาคนเทียบสเกล"], ["zoom-ladder", "ซูมไล่ระดับจากวัตถุเล็กไปใหญ่ทีละขั้นพร้อมวงเล็งขยายสเกล"], ["stack-tower", "ซ้อนวัตถุ 3 มิติเป็นหอคอยเทียบความสูงกับตัวเลขสถิติยักษ์"], ["side-by-side-giant", "เทียบวัตถุเล็กกับวัตถุยักษ์ข้างกันให้เห็นความต่างชัดเจน"]], "look-17": [["trophy-podium", "ถ้วยรางวัลทองคำ 3 มิติบนแท่นโพเดียมพร้อมพลุกระดาษและตัวเลขเป้าหมาย"], ["progress-mountain", "ปีนยอดเขา 3 มิติผ่านธงเช็กพอยต์ทีละขั้นสู่ยอดเป้าหมาย"], ["medal-wall", "กำแพงเหรียญรางวัล 3 มิติแสดงทีละเหรียญตามประเด็นสำคัญ"], ["celebration-burst", "พลุและสายรุ้งทองระเบิดฉลองพร้อมข้อความสรุปความสำเร็จ"]], "look-18": [["donut-build", "กราฟโดนัท 3 มิติค่อยๆ วาดทีละชิ้นพร้อมป้ายเปอร์เซ็นต์"], ["exploded-donut", "ดึงชิ้นส่วนโดนัท 3 มิติชิ้นหลักออกมาซูมขยายพร้อมคำอธิบาย"], ["coin-jars", "โหลเหรียญ 3 มิติแยกสัดส่วนงบประมาณตามหมวดหมู่"], ["budget-stack-bar", "แท่งสัดส่วน 100% แบบ 3 มิติเปรียบเทียบสองกลุ่ม"]], "look-19": [["globe-arcs", "ลูกโลก 3 มิติหมุนช้าๆ พร้อมเส้นโค้งเรืองแสงเชื่อมศูนย์กลางโลกและการ์ดสรุป"], ["corridor-telemetry", "แผนที่เส้นทางเชื่อมต่อสองฝั่งพร้อมโค้งเปรียบเทียบระยะทางและความเร็ว"], ["hub-constellation", "เครือข่ายฮับโลกกระจายเส้นโค้งสู่ภูมิภาคพร้อมตัวเลขสถิติเด่นกลางฮับ"], ["flight-board", "บอร์ดเส้นทางระดับโลกและมินิโกลบสำหรับฉากหลายขั้นตอนหรือรายการสำคัญ"]], "look-20": [["lid-open-hero", "แล็ปท็อปอะลูมิเนียมเปิดฝาสาดแสงโชว์หน้า Hero และป้ายฟีเจอร์ลอย"], ["browser-showcase", "หน้าต่างเบราว์เซอร์ macOS พร้อม URL bar แอนิเมชัน เคอร์เซอร์คลิกและการ์ดฟีเจอร์"], ["split-dashboard", "จอแล็ปท็อปแสดงแดชบอร์ด 2 คอลัมน์ กราฟสถิติเด่นและข้อมูลเปรียบเทียบ"], ["window-cascade", "หน้าต่างแอปแบบ Glass ซ้อนกัน 2–3 ชั้นเลื่อนเปิดตัวตามลำดับขั้น"]], "look-21": [["conveyor-pipeline", "สายพานไอโซเมตริก 3–4 สถานีพร้อมแพ็กเก็ตพลังงานวิ่งผ่านและป้ายคำอธิบาย"], ["layered-stack", "บล็อกสถาปัตยกรรมไอโซเมตริก 3–4 ชั้นลอยแยกแนวตั้งพร้อมเส้นโยงการ์ดอธิบาย"], ["hub-router", "แท่นไอโซเมตริกศูนย์กลางกระจายโฟลว์สู่บล็อกปลายทางพร้อมตัวเลขไฮไลต์"], ["kpi-towers", "เสาแท่งไอโซเมตริก 3 มิติสูงไล่ระดับเรืองแสงสำหรับตัวเลขสำคัญและสรุปผล"]], "look-22": [["lockscreen-flood", "หน้าจอล็อกสมาร์ตโฟนที่มีแจ้งเตือนเด้งซ้อนเข้ามาทีละใบพร้อมตัวนับยอด"], ["cash-register", "แจ้งเตือนยอดขายและเงินเข้าเด้งรัวพร้อมเครื่องคิดเงินที่ตัวเลขยอดรวมวิ่งขึ้น"], ["wrist-buzz", "สมาร์ตวอตช์สั่นแจ้งเตือนข้อความสั้นและด่วนบนข้อมือ"], ["dashboard-ping", "แดชบอร์ดยอดขายบนจอเดสก์ท็อปที่มีป๊อปอัปแจ้งเตือนเด้งเข้ามุมจอ"]], "look-23": [["split-slider", "เส้นแบ่งสไลเดอร์เลื่อนกวาดซ้าย-ขวาเทียบก่อนหน้ากับหลังเปลี่ยน"], ["room-makeover", "ห้องทำงานภาพประกอบ SVG ที่เปลี่ยนจากรกวุ่นวายเป็นระเบียบเรียบร้อย"], ["graph-flip", "กราฟแท่งและเส้นแนวโน้มที่พลิกจากขาลงก่อนหน้าเป็นขาขึ้นหลังเปลี่ยน"], ["mirror-portrait", "ซิลลูเอตตัวละครในกระจกเทียบก่อนและหลังพร้อมลูกศรชี้จุดเปลี่ยน"]], "look-24": [["race-bars", "แท่งแนวนอนวิ่งแข่งตามตัวเลข"], ["top-list-scroll", "ลิสต์อันดับ #5→#1 ระเบิดแสงที่ #1"], ["versus-gap", "2 แท่งเทียบส่วนต่างพร้อมลูกศรวัด"]], "look-25": [["post-card", "การ์ดโพสต์โซเชียลพร้อมอวาตาร์ ชื่อผู้โพสต์ และยอดไลก์/แชร์ที่วิ่งขึ้น"], ["screenshot-evidence", "ภาพแคปโพสต์ปักหมุดบนบอร์ดหลักฐานพร้อมปากกาไฮไลต์ขีดทับประโยคสำคัญ"], ["comment-storm", "คอมเมนต์จากผู้ใช้หลั่งไหลเข้ามาต่อเนื่องใต้โพสต์ต้นทาง"], ["viral-meter", "แผนผังเครือข่ายการแชร์ต่อของโพสต์พร้อมตัวเลขการเข้าถึง (Reach)"]], "look-26": [["flip-calendar", "ปฏิทินพลิกกลไก split-flap ขนาดใหญ่พลิกตัวเลขวัน/ตัวเลขสำคัญพร้อมป้ายไฟ streak และการ์ดสรุป"], ["streak-grid", "ตารางชาเลนจ์ 30 วันแบบ Habit Contribution Grid ที่แต่ละช่องค่อยๆ สว่างไล่สีพร้อมการ์ดประเด็น"], ["milestone-track", "แทร็กความคืบหน้าทีละวันและสัปดาห์พร้อมหมุดเช็กถูกเด้งขึ้นทีละขั้น"], ["challenge-ring", "วงแหวนความสำเร็จของชาเลนจ์แสดงเปอร์เซ็นต์พร้อมเทียบก่อน-หลังหรือคำคมปิดท้าย"]], "look-27": [["split-duel", "แบ่งจอเฉียงปะทะกัน + สัญลักษณ์ VS"], ["tug-of-war", "ชักเย่อดึงเชือกชี้ฝั่งที่ชนะ"]], "look-28": [["tilted-city-route", "แผนที่เมือง 3D เอียงพร้อมตึกไอโซเมตริกสีหินอ่อน เส้นทางเรืองแสง และจุดนำทางเคลื่อนที่"], ["waypoint-stops", "เส้นทางบนแผนที่ 3D พร้อมหมุดปัก 3 จุด (Pin 01/02/03) เด้งขึ้นตามลำดับและการ์ดอธิบาย"], ["elevation-profile", "ภาพตัดขวางเส้นทางและกราฟระดับความสูง 3D พร้อมตัวเลขสถิติและข้อมูลเปรียบเทียบ"], ["aerial-zone-pin", "มุมมองดาวเทียมซูมเป้าหมายพร้อมวงคลื่นเรดาร์และแผง telemetry สรุปประเด็นสำคัญ"]], "look-29": [["vertical-explode", "ไดอะแกรมแยกชิ้นส่วน 3–4 เลเยอร์ลอยแยกตามแกนแนวตั้งด้วยเส้นประพร้อมเส้นโยงและการ์ดระบุหน้าที่"], ["assembly-callouts", "ภาพโครงสร้างแกนกลางพร้อมหมุดหมายเลข 01–03 ชี้ออกไปยังการ์ดคำอธิบายบนกระดาษร่างเทคนิค"], ["cutaway-spec", "ภาพผ่าครึ่งโชว์ชั้นนอก-ชั้นกลาง-แกนในพร้อมแถบสเปกและตัวเลขสำคัญ"], ["knolling-bom", "การจัดเรียงชิ้นส่วนแบบ Knolling ในตารางสเปก (Bill of Materials) พร้อมกรอบหมายเลขชิ้นส่วนและบทสรุป"]], "look-30": [["ink-landscape-title", "ทิวเขาหมึกจีน 3 ชั้นวาดตัวเองบนกระดาษสา พร้อมดวงอาทิตย์แดง หน้าผาต้นสน เรือลอยน้ำ หัวข้อแนวตั้ง 2 คอลัมน์ และตราประทับแดง"], ["scroll-unroll-steps", "ม้วนภาพพู่กันคลี่ลงบนกระดาษสาพร้อมเส้นหมึกเชื่อมลำดับขั้นตอนและหมุดวงกลมพู่กันทีละขั้น"], ["enso-stat", "วงเอนโซ (Ensō) ตวัดพู่กันหมึกดำรอบตัวเลขสถิติขนาดใหญ่ พร้อมตราประทับแดงและคำอธิบายด้านล่าง"], ["seal-quote", "คำคมบนกระดาษสาประดับกิ่งไผ่หมึกจางและตราประทับสีแดงกดลงท้ายประโยคอย่างสงบ"]], "look-31": [["desk-overhead", "มุมมองโต๊ะจากด้านบนพร้อมเอกสาร ปากกา แก้วกาแฟ และมือวางกระดาษ"], ["sticky-wall", "บอร์ดโพสต์อิทหลายสีแปะทีละใบจากประเด็นสำคัญ"], ["folder-open", "แฟ้มเอกสารเปิดกางเผยหน้าเอกสารและหัวเรื่องด้านใน"], ["highlight-doc", "หน้าเอกสารซูมใกล้พร้อมปากกาไฮไลต์ลากผ่านคำสำคัญ"]], "look-32": [["tilted-article-flyin", "หน้าบทความข่าวบินเข้าแบบเอียง 3D บนกำแพงบทความเบลอที่ลอยช้าๆ พร้อมไฮไลต์เขียวมะนาวและการ์ดโพสต์ยืนยันมุมล่างขวา"], ["highlight-sweep", "ดอลลี่ซูมเข้าหาย่อหน้าสำคัญของบทความแล้วปาดไฮไลต์เขียวมะนาวทีละบรรทัดจากซ้ายไปขวาด้วยโหมด multiply"], ["evidence-post-pop", "การ์ดโพสต์อ้างอิงสีขาวพร้อมเครื่องหมายยืนยันสีฟ้าเด้งขึ้นหน้าบทความด้วยสปริงเพื่อโชว์หลักฐานคำพูด"], ["clipping-compare", "ข่าวตัด 2 ชิ้นวางเอียงเปรียบเทียบกัน หรือการ์ดตัวเลขสถิติพร้อม delta ที่ถูกปาดไฮไลต์เขียวมะนาว"]], "look-33": [["counter-line", "ตัวเลขสถิติขนาดใหญ่นับขึ้นแบบ tabular พร้อมเส้นกราฟที่วาดซ้ายไปขวาและเปลี่ยนเป็นสีส้มตรงจุดเปลี่ยน"], ["event-marker", "เส้นแนวตั้งบอกจุดเหตุการณ์สำคัญพร้อมการ์ดป้ายอธิบาย และเส้นกราฟเปลี่ยนจากขาวเป็นส้มหลังจุดนั้น"], ["bar-compare", "กราฟแท่งเปรียบเทียบซ้ายสีขาวนวลกับขวาสีส้มพร้อมตัวเลขส่วนต่างและรายการสรุปสองฝั่ง"], ["ticker-rows", "รายการประเด็นแบบแถวหน้าจอเทอร์มินัลพร้อมกราฟสปาร์กไลน์ขนาดเล็กและป้ายเดลต้าแต่ละแถว"]], "look-34": [["phone-hero-rotate", "มือถือ 3D หมุนสปริงเข้ามุมบนฉากสตูดิโอฟ้าเทาพร้อมหน้าจอแอป UI จริงและตัวเลขนับขึ้น"], ["floating-ui-cards", "การ์ด UI สีขาว 3–4 ใบเด้งออกมารอบมือถือ 3D พร้อมกราฟแท่งจิ๋ว วงแหวนความคืบหน้า และพารัลแลกซ์"], ["kpi-screen", "หน้าจอ KPI แสดงตัวเลขสถิติใหญ่ ชิปส่วนต่างสีเขียว และกราฟเส้นขนาดเล็กบนมือถือสตูดิโอ"], ["onboarding-steps", "หน้าจอ Onboarding แสดงขั้นตอนทีละข้อพร้อมจุดบอกความคืบหน้าและปุ่มเริ่มใช้งานบนมือถือ 3D"]], "look-35": [["window-zoom-click", "หน้าต่างแอปโหมดมืดเต็มบานบนฉากหลังมิ้นต์ กล้องร่อนซูมเข้าปุ่มน้ำเงินพร้อมเคอร์เซอร์คลิกและวงกระเพื่อม"], ["step-click-path", "รายการองค์ประกอบ UI ที่มีหมายเลขขั้นตอน โดยเคอร์เซอร์ไล่คลิกเปิดทีละขั้นพร้อมแถบความคืบหน้า"], ["toggle-before-after", "แผงตั้งค่าเปรียบเทียบก่อน-หลังพร้อมสวิตช์ที่เคอร์เซอร์คลิกเลื่อนจากปิดเป็นเปิด"], ["success-toast", "หน้าต่างแจ้งเตือนสำเร็จ (Success Toast) พร้อมไอคอนเครื่องหมายถูกแอนิเมชันและตัวเลขหรือข้อความสรุป"]], "look-36": [["horizontal-track", "เส้นเวลาแนวนอนที่กล้องเลื่อนผ่านจุดปีและเหตุการณ์"], ["vertical-scroll", "ไทม์ไลน์แนวตั้งเลื่อนขึ้นพร้อมไอคอนแต่ละขั้น"], ["milestone-zoom", "ซูมโฟกัสหมุดเหตุการณ์สำคัญพร้อมตัวเลข/วันที่ใหญ่"], ["then-vs-now", "เทียบซ้ายตอนนั้นโทนซีเปียกับขวาตอนนี้โทนสีสด"]], "look-37": [["breathing-orb-line", "ลูกแก้วเรืองแสงหายใจช้าๆ บนพื้นมืดพร้อมวงกลมเส้นบางและข้อความบรรทัดเดียวอย่างมินิมอล"], ["orbit-rings-points", "ลูกแก้วกลางเฟรมรายล้อมด้วยวงโคจรเส้นบางและป้ายประเด็นสำคัญบนจุดโคจร"], ["orb-stat", "ตัวเลขสถิติหลักลอยอยู่ในแสงลูกแก้วพร้อมวงแหวนความคืบหน้าและป้ายคำอธิบายด้านล่าง"], ["twin-orb-compare", "ลูกแก้วเรืองแสงคู่สำหรับเปรียบเทียบสองมุมมองหรือแสดงคำคมสำคัญอย่างสงบ"]], "look-38": [["glass-search-type", "ช่องค้นหากระจกฝ้ากว้างบนฉากพลบค่ำหลุดโฟกัส เด้งเข้าพร้อมพิมพ์ข้อความทีละตัวอักษรและเคอร์เซอร์กะพริบ"], ["glass-results-select", "ช่องค้นหาร่อนขึ้นพร้อมแผงผลลัพธ์กระจกฝ้าคลี่ลงมา แถวรายการตกลงทีละขั้นและแถบไฮไลต์ยืดเลือกพร้อมปุ่ม return"], ["glass-stat-card", "การ์ดกระจกฝ้าแสดงตัวเลขสถิติหลักนับขึ้นพร้อมแถบความคืบหน้าเรืองแสงและคำอธิบาย"], ["glass-compare-panes", "แผงกระจกฝ้าคู่สำหรับเปรียบเทียบสองมุมมองหรือแสดงคำคมสำคัญอย่างนุ่มนวล"]], "look-39": [["one-take-hero-morph", "จุดแดงขยายเป็นแคปซูลแล้วเปลี่ยนรูปเป็นการ์ดคีย์โน้ตต่อเนื่องช็อตเดียว พร้อมหัวข้อเผยขึ้นผ่านมาสก์"], ["one-take-feature-list", "การ์ดพาหะยืดเป็นแผงรายการจุดเด่นพร้อมจุดแดงหนึ่งจุดเคลื่อนไล่ลงตามแต่ละแถวอย่างนุ่มนวล"], ["one-take-stat-reveal", "การ์ดหดรูปต่อเนื่องเป็นพิลล์ใหญ่แสดงตัวเลขสถิตินับขึ้นแบบตารางพร้อมจุดแดงโฟกัส"], ["one-take-split-compare", "การ์ดพาหะใบเดียวแยกออกเป็นสองใบอย่างต่อเนื่องสำหรับเปรียบเทียบสองฝั่งหรือแสดงคำคม"]], "look-40": [["crt-power-on", "จอทีวีหลอดเรโทรเปิดจากเส้นแนวนอนสว่างแล้วคลี่เต็มจอ พร้อมหัวข้อฟอสฟอร์เรืองแสงและบรรทัดสถานะระบบพิมพ์ทีละตัว"], ["crt-channel-list", "รายการประเด็นสำคัญในรูปแบบเมนูช่องทีวีและเทเลเท็กซ์ พร้อมเคอร์เซอร์บล็อกฟอสฟอร์เลื่อนสแกนลงตามแถว"], ["crt-stat-broadcast", "หน้าจอประกาศตัวเลขสถิติขนาดใหญ่สไตล์สกอร์บอร์ดออกอากาศ พร้อมแถบวัดสัญญาณและแถบข่าวล่าง (Lower-Third)"], ["crt-split-signal", "จอทีวีแบ่งสัญญาณสองฝั่งสำหรับเปรียบเทียบหรือหน้าต่างคำคมออกอากาศ พร้อมจังหวะสัญญาณซ่าและภาพกลิ้งช่วงสลับช่อง"]], "look-41": [["scope-trace-title", "เส้นสัญญาณออสซิลโลสโคปสีเขียวฟอสฟอร์วาดผ่านกริด 10×8 พร้อมหางแสงค้างภาพและหัวข้อลอยขึ้นเหนือเส้นคลื่น"], ["scope-multi-channel", "หน้าจอสโคปหลายช่องสัญญาณ CH1–CH4 แสดงคลื่นไซน์ สี่เหลี่ยม ฟันเลื่อย และพัลส์ ควบคู่ประเด็นสำคัญแต่ละข้อ"], ["scope-measure-stat", "โหมดวัดค่าสัญญาณพร้อมเคอร์เซอร์เส้นประคู่แกน X/Y แสดงตัวเลขสถิติหลักและแผงค่าอ่านจากเครื่องมือวัด"], ["scope-xy-compare", "โหมด XY แสดงรูปลิสซาจูส 2:3 หมุนช้าๆ พร้อมหางฟอสฟอร์ สำหรับเปรียบเทียบสองช่องสัญญาณหรือนำเสนอคำคมสำคัญ"]], "look-42": [["mag-spread-headline", "เลย์เอาต์หน้านิตยสารแบบ spread หัวข้อเซริฟขึ้นทีละบรรทัด พร้อมภาพดูโอโทนและปากกาแดงวงคำสำคัญ"], ["mag-column-notes", "คอลัมน์บทความเรียงประเด็นสำคัญพร้อมเลขข้อใหญ่ เครื่องหมายถูกและขีดเส้นใต้ปากกาแดงไล่ทีละข้อ"], ["mag-pull-stat", "ตัวเลขสถิติแบบ pull-quote ขนาดใหญ่กลางหน้านิตยสาร พร้อมวงกลมปากกาแดงและลูกศรโน้ตลายมือชี้ประกอบ"], ["mag-quote-margin", "หน้าคู่สำหรับคำคมหรือเปรียบเทียบสองมุมมอง พร้อมแถบและหมายเหตุลายมือปากกาแดงที่ขอบกระดาษ"]], "look-43": [["blue-sliced-title", "ปกนิตยสารสีน้ำเงินอัลตรามารีนพร้อมหัวข้อขาวหนาที่ถูกหั่นเป็นแถบแนวนอนเลื่อนสวนกันแล้วประกบสนิท"], ["blue-cover-lines", "ปกนิตยสารพร้อมหัว masthead และ cover-lines แบบอสมมาตรจากรายการประเด็นสำคัญคั่นด้วยเส้นขาวบาง"], ["blue-big-number", "ตัวเลขสถิติสีขาวขนาดยักษ์หั่นเป็นแถบแนวนอนแล้วประกบเข้าล็อก พร้อมคำอธิบายสไตล์เอดิทอเรียล"], ["blue-manifesto-quote", "ประโยคแถลงการณ์หรือข้อเปรียบเทียบบนพื้นน้ำเงินเรียบที่เผยทีละคำอย่างคมชัดและมั่นใจ"]], "look-44": [["riso-poster-title", "โปสเตอร์ริโซสองหมึก (ชมพูสะท้อนแสงและน้ำเงิน) หัวข้อเต็มกว้าง วงกลมสองวงซ้อนเป็นม่วง แถบลายทแยงคืบช้า ๆ และแถวจุดฮาล์ฟโทนไล่ขนาดแบบ on-twos"], ["riso-lineup-list", "ป้ายรายการสองหมึกปั๊มและสไลด์ลงทีละแถวแบบสต็อปโมชัน on-twos พร้อมวงกลมเลขข้อเจาะทะลุกระดาษและเพลตเหลื่อม"], ["riso-big-stat", "ตัวเลขสถิติยักษ์พิมพ์ซ้อนสองหมึกนับขึ้นแบบ on-twos บนวงกลมฮาล์ฟโทนซ้อนกัน พร้อมแถบจุดฮาล์ฟโทนและกรอบคำอธิบายลายทแยง"], ["riso-split-compare", "โปสเตอร์แบ่งสองฝั่งชมพูกับน้ำเงินที่ซ้อนกันตรงกลางเป็นสีม่วงเข้ม หรือหน้าคำคมสองหมึกพร้อมแถบลายทแยงและเพลตดีดแยกกลางช็อต"]], "look-45": [["swiss-manifesto-title", "โปสเตอร์แถลงการณ์กริดสวิส 4 คอลัมน์ พื้นแดงงอกตามเส้นกริด วงกลมดำก้าวแบบเรือพร้อมโมชันเบลอ และหัวข้อชิดซ้าย 2–3 แถวพิมพ์ทับพื้นแดง"], ["swiss-numbered-list", "รายการลำดับหมายเลข 01/02/03 หล่นจากเส้นกริดโมดูล พร้อมข้อความชิดซ้ายดันออกจากเส้นคอลัมน์และวงกลมดำล็อกบนกริด"], ["swiss-kpi-field", "ตัวเลขสถิติขนาดยักษ์ชิดซ้ายบนพื้นแดงสัญญาณ พร้อมวงกลมสองโมดูลบนจุดตัดกริดและคำอธิบายแบบตัวเลขหมึกเต็ม"], ["swiss-two-column-compare", "ตารางเปรียบเทียบสองคอลัมน์แบ่งด้วยเส้นกริดกลางพร้อมพื้นแดงเน้นฝั่งเด่น หรือจัดวางคำคมแถลงการณ์บนกริดสวิส"]], "look-46": [["blueprint-object-title", "สเก็ตช์ดินสอวัตถุด้านข้างบนกระดาษกราฟแล้วหมึกพิมพ์เขียวท่วมเปลี่ยนเป็นเส้นขาวตรงคมพร้อมระยะวัดและป้ายหัวข้อบนซ้าย"], ["blueprint-process-steps", "วัตถุดินสอสู่พิมพ์เขียวพร้อมเส้นชี้และป้ายคำอธิบายแบบมีหมายเลขชี้ตรงไปยังส่วนประกอบต่าง ๆ ของวัตถุสูงสุด 4 จุด"], ["blueprint-dimension-stat", "แบบพิมพ์เขียวที่แสดงตัวเลขสถิติหลักเป็นค่าระยะวัดขนาดใหญ่พร้อมหน่วยและลูกศรวัดระยะแบบวิศวกรรม"], ["blueprint-sketch-vs-spec", "ภาพวาดเดียวแบ่งด้วยแนวขอบหมึกเปียก ฝั่งซ้ายเป็นสเก็ตช์ดินสอ ฝั่งขวาเป็นแบบพิมพ์เขียว สำหรับเปรียบเทียบหรือคำคม"]]};
-      function getShotOptionsForStyle(styleId) {
-        const sid = String(styleId || '').trim().toLowerCase();
-        if (sid === 'look-5' || sid === 'look-7' || sid === 'look-8') {
-          return { label: 'ฉาก/มุมกล้อง (Shot · สไตล์วาดมือ)', options: ILLUSTRATED_SHOT_OPTIONS };
-        }
-        if (STYLE_DIRECTOR_SHOTS_MAP[sid]) {
-          return {
-            label: `ฉาก/ช็อตประจำสไตล์ (${sid})`,
-            options: [['', 'อัตโนมัติ (ให้ระบบ/AI เลือกตามเนื้อหา)'], ...STYLE_DIRECTOR_SHOTS_MAP[sid]],
-          };
-        }
-        return null;
-      }
       function renderDraftEditor(script) {
         $('draft-panel').classList.remove('hidden');
         const scenes = Array.isArray(script.scenes) ? script.scenes : [];
-        const activeStyleId = state.activeJob?.styleId || state.selectedStyleId || '';
-        const shotCfg = getShotOptionsForStyle(activeStyleId);
         $('scene-list').innerHTML = scenes.map((sc, i) => `
           <div class="scene-card" data-idx="${i}">
             <div class="scene-head">
@@ -2311,7 +2643,7 @@
               <div><label class="field-label">ไอคอน (Icon)</label><input class="input" data-f="icon" value="${escapeHtml(sc.icon || '')}" /></div>
               <div><label class="field-label">ภาพประกอบ (Visual)</label><input class="input" data-f="visual" value="${escapeHtml(sc.visual || '')}" /></div>
             </div>
-            ${shotCfg ? `<div><label class="field-label">${escapeHtml(shotCfg.label)}</label><select class="input" data-shot>${shotCfg.options.map(([v, l]) => `<option value="${escapeHtml(v)}" ${((sc.direction && sc.direction.shot) || '') === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></div>` : ''}
+            <div><label class="field-label">ฉาก/มุมกล้อง (Shot · สไตล์ลายเส้น)</label><select class="input" data-shot>${SHOT_OPTIONS.map(([v, l]) => `<option value="${v}" ${((sc.direction && sc.direction.shot) || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
             <div><label class="field-label">บทพากย์ (Narration)</label><textarea class="input" rows="2" data-f="narration">${escapeHtml(sc.narration || '')}</textarea></div>
             <div><label class="field-label">Bullets (คั่นด้วย ,)</label><input class="input" data-f="bullets" value="${escapeHtml(Array.isArray(sc.bullets) ? sc.bullets.join(', ') : (sc.bullets || ''))}" /></div>
           </div>
@@ -2455,6 +2787,16 @@
         }
         const scenes = state.activeScript?.scenes || [];
         $('edit-scene-select').innerHTML = scenes.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title || s.id)}</option>`).join('');
+
+        if (scenes.length && job.status === 'done') {
+          const verKey = `${job.id}:${job.status}:${versions.length}:${job.updatedAt || ''}`;
+          if (state.tl.loadedVersionKey !== verKey) {
+            state.tl.loadedVersionKey = verKey;
+            loadTimeline(job.id);
+          }
+        } else if (!scenes.length) {
+          $('timeline-panel').classList.add('hidden');
+        }
       }
 
       function setVideoVersion(filename) {
@@ -2520,6 +2862,506 @@
           toast(`เริ่มเรนเดอร์ซีน ${sceneId} ใหม่แล้ว`, 'ok');
           openJob(state.activeJobId);
         } catch (e) { toast(`แก้ซีนไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      // Timeline & Editor (Phase 2)
+      function cloneScript(script) {
+        try { return JSON.parse(JSON.stringify(script)); } catch (_) { return null; }
+      }
+
+      function markTlDirty(isDirty = true) {
+        state.tl.dirty = Boolean(isDirty);
+        const panel = $('timeline-panel');
+        const badge = $('tl-dirty-badge');
+        if (panel) panel.classList.toggle('tl-dirty', state.tl.dirty);
+        if (badge) badge.classList.toggle('hidden', !state.tl.dirty);
+      }
+
+      async function loadTimeline(jobId) {
+        const panel = $('timeline-panel');
+        if (!panel) return;
+        const srcScript = state.activeScript;
+        if (!jobId || !srcScript || !Array.isArray(srcScript.scenes) || !srcScript.scenes.length) {
+          panel.classList.add('hidden');
+          return;
+        }
+        if (state.tl.jobId !== jobId || !state.tl.script || !state.tl.dirty) {
+          state.tl.jobId = jobId;
+          state.tl.script = cloneScript(srcScript);
+          state.tl.dirty = false;
+          if (!state.tl.script || !Array.isArray(state.tl.script.scenes) || !state.tl.script.scenes.length) {
+            panel.classList.add('hidden');
+            return;
+          }
+          if (state.tl.selected >= state.tl.script.scenes.length) state.tl.selected = 0;
+        }
+
+        try {
+          const res = await fetch(`/api/video-studio/jobs/${encodeURIComponent(jobId)}/timeline`, {
+            credentials: 'same-origin',
+            cache: 'no-store'
+          });
+          if (res.status === 404) {
+            state.tl.apiUnavailable = true;
+            state.tl.timeline = null;
+          } else if (res.ok) {
+            const tl = await res.json();
+            state.tl.apiUnavailable = false;
+            state.tl.timeline = tl;
+            if (tl && tl.bgm && $('tl-bgm')) {
+              const validBgm = Array.from($('tl-bgm').options).some((o) => o.value === tl.bgm);
+              if (validBgm) $('tl-bgm').value = tl.bgm;
+            }
+            const remixHint = $('tl-remix-hint');
+            if (remixHint) {
+              if (tl && tl.hasRender === false) {
+                remixHint.textContent = '⚠️ ไม่พบไฟล์ render.mp4 สำหรับ Remix (กรุณากด "สร้างเวอร์ชันใหม่" ก่อน)';
+                remixHint.classList.remove('hidden');
+              } else {
+                remixHint.classList.add('hidden');
+              }
+            }
+          } else {
+            state.tl.apiUnavailable = false;
+            state.tl.timeline = null;
+          }
+        } catch (_) {
+          state.tl.apiUnavailable = true;
+          state.tl.timeline = null;
+        }
+
+        renderTimeline();
+      }
+
+      function renderTimeline() {
+        const panel = $('timeline-panel');
+        if (!panel) return;
+        const scenes = state.tl.script?.scenes;
+        if (!Array.isArray(scenes) || !scenes.length) {
+          panel.classList.add('hidden');
+          return;
+        }
+        panel.classList.remove('hidden');
+        markTlDirty(state.tl.dirty);
+
+        const tlScenes = Array.isArray(state.tl.timeline?.scenes) ? state.tl.timeline.scenes : [];
+        const tlById = new Map();
+        tlScenes.forEach((ts) => { if (ts && ts.id) tlById.set(ts.id, ts); });
+
+        const orderMismatch = tlScenes.length > 0 && (
+          tlScenes.length !== scenes.length ||
+          scenes.some((sc, i) => !tlScenes[i] || tlScenes[i].id !== sc.id)
+        );
+
+        const notice = $('tl-notice');
+        if (notice) {
+          if (state.tl.apiUnavailable) {
+            notice.className = 'tl-notice';
+            notice.textContent = '⚠️ ต้องรีสตาร์ทเซิร์ฟเวอร์ (lab-dashboard) เพื่อเปิดใช้ Timeline API เต็มรูปแบบ — แสดงซีนจากบทชั่วคราว';
+            notice.classList.remove('hidden');
+          } else if (orderMismatch) {
+            notice.className = 'tl-notice is-info';
+            notice.textContent = 'ℹ️ ลำดับซีนในบทแตกต่างจากวิดีโอปัจจุบัน — เวลาบนแถบอ้างอิงตามซีนเดิม กด "สร้างเวอร์ชันใหม่" เพื่อเรนเดอร์ตามลำดับใหม่';
+            notice.classList.remove('hidden');
+          } else {
+            notice.classList.add('hidden');
+          }
+        }
+
+        const entries = scenes.map((sc, idx) => {
+          const ts = tlById.get(sc.id);
+          if (ts) {
+            const dur = Number(ts.durationSec) > 0
+              ? Number(ts.durationSec)
+              : Math.max(0.5, (Number(ts.endSec) - Number(ts.startSec)) || 3);
+            const startSec = Number.isFinite(Number(ts.startSec)) ? Number(ts.startSec) : 0;
+            const endSec = Number.isFinite(Number(ts.endSec)) ? Number(ts.endSec) : (startSec + dur);
+            return { idx, sc, ts, dur, startSec, endSec, isNew: false };
+          }
+          return { idx, sc, ts: null, dur: 3, startSec: null, endSec: null, isNew: true };
+        });
+
+        const totalDisplaySec = entries.reduce((sum, e) => sum + e.dur, 0) || 1;
+        state.tl.displayEntries = entries;
+        state.tl.totalDisplaySec = totalDisplaySec;
+
+        if (state.tl.selected < 0 || state.tl.selected >= scenes.length) {
+          state.tl.selected = 0;
+        }
+
+        const track = $('tl-track');
+        track.innerHTML = entries.map((e) => {
+          const isSel = e.idx === state.tl.selected;
+          const titleTxt = e.sc.title || e.sc.id || `ซีน ${e.idx + 1}`;
+          const tip = `#${e.idx + 1} ${titleTxt} (${e.dur.toFixed(1)}s${e.isNew ? ' · ซีนใหม่/ยังไม่มีเวลา' : ''})`;
+          return `
+            <div class="tl-block${e.isNew ? ' new' : ''}${isSel ? ' selected' : ''}" draggable="true" data-tl-idx="${e.idx}" style="flex-grow:${e.dur.toFixed(3)};" title="${escapeHtml(tip)}">
+              <div class="tl-block-top mono">
+                <span class="tl-block-num">#${e.idx + 1}</span>
+                <span>${e.dur.toFixed(1)}s</span>
+              </div>
+              <div class="tl-block-title">${escapeHtml(titleTxt)}</div>
+            </div>
+          `;
+        }).join('') + '<div class="tl-playhead" id="tl-playhead" style="left:0%;"></div>';
+
+        // Time ruler every 5s
+        const ruler = $('tl-ruler');
+        const rulerTotal = Number(state.tl.timeline?.totalSec) > 0 && !orderMismatch
+          ? Number(state.tl.timeline.totalSec)
+          : totalDisplaySec;
+        const ticks = [];
+        for (let t = 0; t <= rulerTotal + 0.01; t += 5) {
+          const leftPct = Math.min(100, (t / rulerTotal) * 100);
+          ticks.push(`<span class="tl-ruler-tick" style="left:${leftPct.toFixed(2)}%;">${t}s</span>`);
+        }
+        ruler.innerHTML = ticks.join('');
+
+        // Bind click & drag-and-drop on blocks
+        track.querySelectorAll('.tl-block').forEach((block) => {
+          const idx = Number(block.dataset.tlIdx);
+          block.addEventListener('click', () => {
+            state.tl.selected = idx;
+            track.querySelectorAll('.tl-block').forEach((b) => {
+              b.classList.toggle('selected', Number(b.dataset.tlIdx) === idx);
+            });
+            const entry = state.tl.displayEntries[idx];
+            const vid = $('result-video');
+            if (vid && entry && entry.startSec !== null && Number.isFinite(entry.startSec)) {
+              try { vid.currentTime = entry.startSec; } catch (_) {}
+            }
+            renderTlInspector();
+            updateTlPlayhead();
+          });
+
+          block.addEventListener('dragstart', (ev) => {
+            state.tl.dragIdx = idx;
+            block.classList.add('dragging');
+            if (ev.dataTransfer) {
+              ev.dataTransfer.effectAllowed = 'move';
+              ev.dataTransfer.setData('text/plain', String(idx));
+            }
+          });
+          block.addEventListener('dragover', (ev) => {
+            ev.preventDefault();
+            if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+            block.classList.add('drag-over');
+          });
+          block.addEventListener('dragleave', () => {
+            block.classList.remove('drag-over');
+          });
+          block.addEventListener('dragend', () => {
+            state.tl.dragIdx = null;
+            track.querySelectorAll('.tl-block').forEach((b) => b.classList.remove('dragging', 'drag-over'));
+          });
+          block.addEventListener('drop', (ev) => {
+            ev.preventDefault();
+            block.classList.remove('drag-over');
+            const fromRaw = state.tl.dragIdx !== null ? state.tl.dragIdx : Number(ev.dataTransfer?.getData('text/plain'));
+            const fromIdx = Number(fromRaw);
+            if (!Number.isInteger(fromIdx) || fromIdx === idx || fromIdx < 0 || fromIdx >= scenes.length) return;
+            const [moved] = scenes.splice(fromIdx, 1);
+            scenes.splice(idx, 0, moved);
+            state.tl.selected = idx;
+            state.tl.dragIdx = null;
+            markTlDirty(true);
+            renderTimeline();
+          });
+        });
+
+        renderTlInspector();
+        updateTlPlayhead();
+      }
+
+      function renderTlInspector() {
+        const box = $('tl-inspector');
+        if (!box) return;
+        const scenes = state.tl.script?.scenes || [];
+        if (!scenes.length) {
+          box.innerHTML = '<div class="muted">ไม่มีซีนให้แก้ไข</div>';
+          return;
+        }
+        const idx = Math.max(0, Math.min(scenes.length - 1, state.tl.selected));
+        state.tl.selected = idx;
+        const sc = scenes[idx];
+        const entry = state.tl.displayEntries[idx];
+        const subs = Array.isArray(sc.subtitles) ? sc.subtitles : [];
+        const padVal = Number.isFinite(Number(sc.padAfterSec))
+          ? Number(sc.padAfterSec)
+          : (Number.isFinite(Number(entry?.ts?.padAfterSec)) ? Number(entry.ts.padAfterSec) : 0.25);
+        const curShot = (sc.direction && sc.direction.shot) || '';
+
+        box.innerHTML = `
+          <div class="tl-inspector-head">
+            <div>
+              <strong>ซีน <span class="mono">#${idx + 1}</span></strong>
+              <span class="muted mono" style="font-size:11.5px;margin-left:6px;">(${escapeHtml(sc.id || 's' + (idx + 1))}${entry ? ` · ${entry.dur.toFixed(1)}s` : ''})</span>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-sm" data-tl-move="-1" ${idx === 0 ? 'disabled' : ''} title="เลื่อนซีนไปข้างหน้า">◀</button>
+              <button type="button" class="btn btn-sm" data-tl-move="1" ${idx === scenes.length - 1 ? 'disabled' : ''} title="เลื่อนซีนไปข้างหลัง">▶</button>
+              <button type="button" class="btn btn-danger btn-sm" id="btn-tl-del-scene" ${scenes.length <= 1 ? 'disabled' : ''}>🗑 ลบซีน</button>
+            </div>
+          </div>
+
+          <div>
+            <label class="field-label" for="tl-f-title" style="margin-bottom:4px;">หัวข้อซีน (Title)</label>
+            <input type="text" id="tl-f-title" class="input" value="${escapeHtml(sc.title || '')}" />
+          </div>
+
+          <div>
+            <label class="field-label" for="tl-f-narration" style="margin-bottom:4px;">บทพากย์ (Narration)</label>
+            <textarea id="tl-f-narration" class="input" rows="3">${escapeHtml(sc.narration || '')}</textarea>
+          </div>
+
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <label class="field-label" style="margin:0;">ซับไตเติล (Subtitles)</label>
+              <button type="button" class="btn btn-sm" id="btn-tl-add-sub">+ บรรทัด</button>
+            </div>
+            <div class="tl-sub-list" id="tl-sub-list">
+              ${subs.length ? subs.map((sub, si) => `
+                <div class="tl-sub-row">
+                  <input type="text" class="input" data-sub-text="${si}" value="${escapeHtml(sub?.text || '')}" placeholder="ข้อความซับไตเติล" />
+                  <input type="text" class="input" data-sub-hl="${si}" value="${escapeHtml(sub?.highlight || '')}" placeholder="คำเน้น (highlight)" />
+                  <button type="button" class="btn btn-danger btn-sm" data-sub-del="${si}" title="ลบบรรทัด">✕</button>
+                </div>
+              `).join('') : '<div class="muted" style="font-size:12px;">ยังไม่มีซับไตเติล กด "+ บรรทัด" เพื่อเพิ่ม</div>'}
+            </div>
+          </div>
+
+          <div class="scene-grid">
+            <div>
+              <label class="field-label" for="tl-f-pad" style="margin-bottom:4px;">เว้นจังหวะท้ายซีน (padAfterSec)</label>
+              <div class="tl-range-row">
+                <input type="range" id="tl-f-pad" min="0" max="2" step="0.05" value="${padVal.toFixed(2)}" />
+                <span class="mono" id="tl-f-pad-val" style="min-width:46px;text-align:right;">${padVal.toFixed(2)}s</span>
+              </div>
+            </div>
+            <div>
+              <label class="field-label" for="tl-f-shot" style="margin-bottom:4px;">ฉาก/มุมกล้อง (Shot)</label>
+              <select id="tl-f-shot" class="select">
+                ${SHOT_OPTIONS.map(([v, l]) => `<option value="${escapeHtml(v)}" ${curShot === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        `;
+
+        box.querySelectorAll('[data-tl-move]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const dir = Number(btn.dataset.tlMove);
+            const j = idx + dir;
+            if (j < 0 || j >= scenes.length) return;
+            [scenes[idx], scenes[j]] = [scenes[j], scenes[idx]];
+            state.tl.selected = j;
+            markTlDirty(true);
+            renderTimeline();
+          });
+        });
+
+        const delBtn = $('btn-tl-del-scene');
+        if (delBtn) {
+          delBtn.addEventListener('click', () => {
+            if (scenes.length <= 1) {
+              toast('ต้องเหลืออย่างน้อย 1 ซีน', 'error');
+              return;
+            }
+            scenes.splice(idx, 1);
+            state.tl.selected = Math.min(idx, scenes.length - 1);
+            markTlDirty(true);
+            renderTimeline();
+          });
+        }
+
+        const titleInp = $('tl-f-title');
+        if (titleInp) {
+          titleInp.addEventListener('input', () => {
+            sc.title = titleInp.value;
+            markTlDirty(true);
+            const blkTitle = $('tl-track')?.querySelector(`.tl-block[data-tl-idx="${idx}"] .tl-block-title`);
+            if (blkTitle) blkTitle.textContent = sc.title || sc.id || `ซีน ${idx + 1}`;
+          });
+        }
+
+        const narInp = $('tl-f-narration');
+        if (narInp) {
+          narInp.addEventListener('input', () => {
+            sc.narration = narInp.value;
+            markTlDirty(true);
+          });
+        }
+
+        const addSubBtn = $('btn-tl-add-sub');
+        if (addSubBtn) {
+          addSubBtn.addEventListener('click', () => {
+            if (!Array.isArray(sc.subtitles)) sc.subtitles = [];
+            sc.subtitles.push({ text: '', highlight: '' });
+            markTlDirty(true);
+            renderTlInspector();
+          });
+        }
+
+        box.querySelectorAll('[data-sub-text]').forEach((inp) => {
+          inp.addEventListener('input', () => {
+            const si = Number(inp.dataset.subText);
+            if (!Array.isArray(sc.subtitles)) sc.subtitles = [];
+            if (!sc.subtitles[si]) sc.subtitles[si] = { text: '', highlight: '' };
+            sc.subtitles[si].text = inp.value;
+            markTlDirty(true);
+          });
+        });
+
+        box.querySelectorAll('[data-sub-hl]').forEach((inp) => {
+          inp.addEventListener('input', () => {
+            const si = Number(inp.dataset.subHl);
+            if (!Array.isArray(sc.subtitles)) sc.subtitles = [];
+            if (!sc.subtitles[si]) sc.subtitles[si] = { text: '', highlight: '' };
+            sc.subtitles[si].highlight = inp.value;
+            markTlDirty(true);
+          });
+        });
+
+        box.querySelectorAll('[data-sub-del]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const si = Number(btn.dataset.subDel);
+            if (!Array.isArray(sc.subtitles)) return;
+            sc.subtitles.splice(si, 1);
+            markTlDirty(true);
+            renderTlInspector();
+          });
+        });
+
+        const padInp = $('tl-f-pad');
+        const padValEl = $('tl-f-pad-val');
+        if (padInp) {
+          padInp.addEventListener('input', () => {
+            const v = Number(padInp.value);
+            sc.padAfterSec = v;
+            if (padValEl) padValEl.textContent = `${v.toFixed(2)}s`;
+            markTlDirty(true);
+          });
+        }
+
+        const shotSel = $('tl-f-shot');
+        if (shotSel) {
+          shotSel.addEventListener('change', () => {
+            const dir = (sc.direction && typeof sc.direction === 'object') ? sc.direction : {};
+            if (shotSel.value) dir.shot = shotSel.value;
+            else delete dir.shot;
+            sc.direction = dir;
+            markTlDirty(true);
+          });
+        }
+      }
+
+      function updateTlPlayhead() {
+        const vid = $('result-video');
+        const playhead = $('tl-playhead');
+        const track = $('tl-track');
+        if (!vid || !playhead || !track) return;
+        const cur = Number(vid.currentTime || 0);
+        const tlTotal = Number(state.tl.timeline?.totalSec || 0);
+        const vidDur = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : 0;
+        const total = tlTotal > 0 ? tlTotal : (vidDur > 0 ? vidDur : (state.tl.totalDisplaySec || 1));
+        const pct = Math.max(0, Math.min(100, (cur / total) * 100));
+        playhead.style.left = `${pct.toFixed(3)}%`;
+
+        const readout = $('tl-time-readout');
+        if (readout) {
+          const fpsTxt = state.tl.timeline?.fps ? ` · ${state.tl.timeline.fps} fps` : '';
+          readout.textContent = `${cur.toFixed(1)}s / ${total.toFixed(1)}s${fpsTxt}`;
+        }
+
+        const entries = state.tl.displayEntries || [];
+        let activeIdx = -1;
+        for (let i = 0; i < entries.length; i++) {
+          const e = entries[i];
+          if (e.startSec !== null && e.endSec !== null && cur >= e.startSec && cur < e.endSec) {
+            activeIdx = i;
+            break;
+          }
+        }
+        if (activeIdx === -1 && entries.length && cur > 0) {
+          for (let i = entries.length - 1; i >= 0; i--) {
+            if (entries[i].startSec !== null && cur >= entries[i].startSec) {
+              activeIdx = i;
+              break;
+            }
+          }
+        }
+        track.querySelectorAll('.tl-block').forEach((b) => {
+          b.classList.toggle('active', Number(b.dataset.tlIdx) === activeIdx);
+        });
+      }
+
+      let tlRafPending = false;
+      function scheduleTlPlayhead() {
+        if (tlRafPending) return;
+        tlRafPending = true;
+        requestAnimationFrame(() => {
+          tlRafPending = false;
+          updateTlPlayhead();
+        });
+      }
+      $('result-video').addEventListener('timeupdate', scheduleTlPlayhead);
+      $('result-video').addEventListener('seeked', scheduleTlPlayhead);
+      $('result-video').addEventListener('loadedmetadata', scheduleTlPlayhead);
+
+      $('tl-bgm-vol').addEventListener('input', (e) => {
+        $('tl-bgm-vol-val').textContent = Number(e.target.value).toFixed(2);
+      });
+      $('tl-duck').addEventListener('input', (e) => {
+        $('tl-duck-val').textContent = `${Number(e.target.value).toFixed(0)} dB`;
+      });
+
+      $('btn-tl-save').addEventListener('click', async () => {
+        if (!state.activeJobId || !state.tl.script) return;
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/script`, {
+            method: 'PUT',
+            body: JSON.stringify({ script: state.tl.script })
+          });
+          state.activeScript = cloneScript(state.tl.script);
+          toast('บันทึกบทเรียบร้อยแล้ว (กด "สร้างเวอร์ชันใหม่" เพื่อเรนเดอร์วิดีโอ)', 'ok');
+        } catch (e) {
+          toast(`บันทึกบทไม่สำเร็จ: ${e.message}`, 'error');
+        }
+      });
+
+      $('btn-tl-rebuild').addEventListener('click', async () => {
+        if (!state.activeJobId || !state.tl.script) return;
+        if (!confirm('สร้างเวอร์ชันใหม่จาก Timeline? (เฉพาะซีนที่แก้จะสร้างเสียงใหม่)')) return;
+        try {
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/rebuild`, {
+            method: 'POST',
+            body: JSON.stringify({ script: state.tl.script })
+          });
+          state.activeScript = cloneScript(state.tl.script);
+          markTlDirty(false);
+          state.tl.loadedVersionKey = null;
+          toast('เริ่มสร้างเวอร์ชันใหม่จาก Timeline แล้วค่ะ', 'ok');
+          openJob(state.activeJobId);
+        } catch (e) {
+          toast(`สั่งสร้างเวอร์ชันใหม่ไม่สำเร็จ: ${e.message}`, 'error');
+        }
+      });
+
+      $('btn-tl-remix').addEventListener('click', async () => {
+        if (!state.activeJobId) return;
+        try {
+          const bgm = $('tl-bgm').value;
+          const bgmVol = Number($('tl-bgm-vol').value);
+          const duckDb = Number($('tl-duck').value);
+          await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/remix`, {
+            method: 'POST',
+            body: JSON.stringify({ bgm, bgmVol, duckDb })
+          });
+          state.tl.loadedVersionKey = null;
+          toast('เริ่มมิกซ์เสียงใหม่แล้วค่ะ', 'ok');
+          openJob(state.activeJobId);
+        } catch (e) {
+          toast(`มิกซ์เสียงใหม่ไม่สำเร็จ: ${e.message}`, 'error');
+        }
       });
 
       // Library

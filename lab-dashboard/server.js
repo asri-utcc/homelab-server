@@ -1976,6 +1976,17 @@ const server = http.createServer(async (req, res) => {
                 if (parts.length === 2 && action === 'abort' && req.method === 'POST') {
                     return sendJson(res, 200, await videoStudioManager.abortJob(jobId));
                 }
+                if (parts.length === 2 && action === 'timeline' && req.method === 'GET') {
+                    return sendJson(res, 200, await videoStudioManager.getTimeline(jobId));
+                }
+                if (parts.length === 2 && action === 'rebuild' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 256 * 1024);
+                    return sendJson(res, 200, await videoStudioManager.rebuildJob(jobId, body && body.script));
+                }
+                if (parts.length === 2 && action === 'remix' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 16 * 1024);
+                    return sendJson(res, 200, await videoStudioManager.remixJob(jobId, body || {}));
+                }
                 return sendJson(res, 404, { ok: false, error: 'Video Studio route not found' });
             } catch (err) {
                 return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });

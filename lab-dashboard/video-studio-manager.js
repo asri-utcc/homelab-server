@@ -715,6 +715,101 @@ async function cutJob(id, from, to) {
     return { ok: true, id: cleanId, from: f, to: t, status: 'queued' };
 }
 
+async function getTimeline(id) {
+    const cleanId = validateId(id, 'Job ID');
+    const jobDir = path.join(JOBS_DIR, cleanId);
+    const job = await readJsonSafe(path.join(jobDir, 'job.json'), null);
+    if (!job) throw httpError('ไม่พบงานที่ระบุ', 404);
+
+    const props = await readJsonSafe(path.join(jobDir, 'props.json'), null);
+    const script = await readJsonSafe(path.join(jobDir, 'script.json'), null);
+    const request = await readJsonSafe(path.join(jobDir, 'request.json'), {});
+
+    const padById = new Map();
+    if (script && Array.isArray(script.scenes)) {
+        for (const s of script.scenes) {
+            if (s && s.id) padById.set(s.id, s.padAfterSec);
+        }
+    }
+
+    const scenes = props && Array.isArray(props.scenes)
+        ? props.scenes.map((s) => {
+            const startSec = Number(s.startSec || 0);
+            const endSec = Number(s.endSec || 0);
+            return {
+                id: s.id,
+                index: s.index,
+                title: s.title,
+                startSec,
+                endSec,
+                durationSec: +(endSec - startSec).toFixed(3),
+                speechDurSec: s.speechDurSec,
+                padAfterSec: padById.has(s.id) ? padById.get(s.id) : s.padAfterSec,
+            };
+        })
+        : [];
+
+    let hasRender = false;
+    try {
+        const files = await fsp.readdir(jobDir);
+        hasRender = files.some((f) => f === 'render.mp4' || /^render_v\d+\.mp4$/.test(f));
+    } catch (_) {
+        hasRender = false;
+    }
+
+    return {
+        ok: true,
+        id: cleanId,
+        totalSec: props ? (props.totalSec || 0) : 0,
+        fps: props ? (props.fps || 30) : 30,
+        bgm: request.bgm || job.bgm || 'warm_tech',
+        hasRender,
+        scenes,
+    };
+}
+
+async function rebuildJob(id, script) {
+    if (script && typeof script === 'object' && !Array.isArray(script)) {
+        await saveScript(id, script);
+    }
+    const { cleanId, jobPath, job } = await ensureJobReadyForAction(id, { requireScript: true });
+    job.status = 'queued';
+    job.stage = 'rebuild';
+    job.error = null;
+    job.message = 'เข้าคิวสร้างวิดีโอเวอร์ชันใหม่จาก Timeline...';
+    job.updatedAt = new Date().toISOString();
+    await atomicWriteJson(jobPath, job);
+
+    await spawnRunner(cleanId, 'rebuild');
+    return { ok: true, id: cleanId, status: 'queued' };
+}
+
+async function remixJob(id, { bgm, bgmVol, duckDb } = {}) {
+    const bgmVal = String(bgm || 'warm_tech');
+    if (!ALLOWED_BGM.has(bgmVal)) {
+        throw httpError('BGM ไม่ถูกต้อง', 400);
+    }
+    const v = bgmVol === undefined ? 0.14 : Number(bgmVol);
+    if (!Number.isFinite(v) || v < 0 || v > 1) {
+        throw httpError('ระดับเสียง BGM (bgmVol) ไม่ถูกต้อง (ต้องอยู่ระหว่าง 0 ถึง 1)', 400);
+    }
+    const d = duckDb === undefined ? 12 : Number(duckDb);
+    if (!Number.isFinite(d) || d < 0 || d > 30) {
+        throw httpError('ค่า duckDb ไม่ถูกต้อง (ต้องอยู่ระหว่าง 0 ถึง 30)', 400);
+    }
+
+    const { cleanId, jobPath, job } = await ensureJobReadyForAction(id);
+    job.status = 'queued';
+    job.stage = 'remix';
+    job.error = null;
+    job.message = `เข้าคิวผสมเสียงใหม่ (${bgmVal} · vol ${v} · duck ${d}dB)...`;
+    job.updatedAt = new Date().toISOString();
+    await atomicWriteJson(jobPath, job);
+
+    await spawnRunner(cleanId, 'remix', ['--bgm', bgmVal, '--bgm-vol', String(v), '--duck-db', String(d)]);
+    return { ok: true, id: cleanId, status: 'queued', bgm: bgmVal, bgmVol: v, duckDb: d };
+}
+
 async function abortJob(id) {
     const cleanId = validateId(id, 'Job ID');
     const jobDir = path.join(JOBS_DIR, cleanId);
@@ -1022,6 +1117,9 @@ module.exports = {
     editScene,
     trimJob,
     cutJob,
+    getTimeline,
+    rebuildJob,
+    remixJob,
     trim: trimJob,
     cut: cutJob,
     abortJob,

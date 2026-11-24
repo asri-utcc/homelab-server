@@ -29,3 +29,4 @@ core.*
 out/
 *.mp4
 *.wav
+*.pre-g2ui

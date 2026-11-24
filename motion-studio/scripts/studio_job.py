@@ -1561,6 +1561,27 @@ def maybe_shorten_after_tts(
     return updated_script, new_timeline
 
 
+def run_scene_art_step(job_dir: Path, script: dict[str, Any], request: dict[str, Any]) -> None:
+    """Render a distinct 3D hero object per scene on the Blender nodes (non-fatal; skipped when disabled)."""
+    if request.get("sceneArt") is False or os.environ.get("MS_SCENE_ART") == "0":
+        return
+    try:
+        write_status(job_dir, status="rendering", stage="scene-art", progress=36, message="กำลังสร้างวัตถุ 3D ประจำซีน (Blender)...")
+        import scene_art  # local module in scripts/
+
+        scene_art.run_scene_art_stage(job_dir, script, {**request, "id": request.get("id") or job_dir.name})
+    except Exception as exc:  # never block the video on optional art
+        append_log(job_dir, f"[scene-art] skipped: {exc}")
+
+
+def scene_art_for(job_dir: Path, scene_id: str) -> dict[str, Any] | None:
+    doc = read_json(job_dir / "scene_art.json", None)
+    entry = ((doc or {}).get("scenes") or {}).get(scene_id) if isinstance(doc, dict) else None
+    if not isinstance(entry, dict) or not entry.get("src"):
+        return None
+    return {k: entry[k] for k in ("src", "composition", "motionHint", "hero") if entry.get(k)}
+
+
 def build_props(
     job_dir: Path,
     script: dict[str, Any],
@@ -1616,6 +1637,11 @@ def build_props(
                 else it
                 for i, it in enumerate(merged["steps"], 1)
             ]
+        art = scene_art_for(job_dir, str(merged.get("id") or ""))
+        if art:
+            merged["art"] = art
+        else:
+            merged.pop("art", None)
         merged_scenes.append(merged)
 
     fps = int(timeline.get("fps") or script.get("fps") or 30)
@@ -1914,6 +1940,7 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
         if not as_new_version:
             script, timeline = maybe_shorten_after_tts(job_dir, script, timeline, request)
         timeline_path = job_dir / "work" / "timeline.json"
+        run_scene_art_step(job_dir, script, request)
         props_path = build_props(job_dir, script, timeline, request)
 
         delta = credit_ledger.summarize_ledger_slice(ledger_start)

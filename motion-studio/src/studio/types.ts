@@ -201,6 +201,12 @@ export interface StudioScene {
   imageCaption?: string;
   imageCredit?: string;
   icon?: string;
+  art?: {
+    src: string;
+    composition?: string;
+    motionHint?: 'float' | 'spin' | 'rise' | string;
+    hero?: string;
+  };
 }
 
 export type StudioProps = {

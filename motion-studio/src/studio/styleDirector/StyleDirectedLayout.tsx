@@ -5,6 +5,7 @@ import type { StudioScene } from '../types';
 import { STAGE_H, STAGE_W } from './kit';
 import { planStyleShots } from './plan';
 import { getStyleDirector } from './registry';
+import { SceneArtLayer, pickArtSlot } from './SceneArtLayer';
 
 export interface StyleDirectedLayoutProps extends FamilySceneRendererProps {
   allScenes?: StudioScene[];
@@ -47,6 +48,22 @@ export const StyleDirectedLayout: React.FC<StyleDirectedLayoutProps> = ({
     ? ODD_VARIANT_ORIGINS[Math.floor(variant / 2) % ODD_VARIANT_ORIGINS.length]
     : '50% 50%';
 
+  const art = scene.art;
+  const isDataShot = activeShot.startsWith('data-');
+  const artSlot = art?.src ? pickArtSlot(sceneIndex, variant, isDataShot) : null;
+  const artNode =
+    art?.src && artSlot ? (
+      <SceneArtLayer
+        art={art}
+        sceneIndex={sceneIndex}
+        variant={variant}
+        isDataShot={isDataShot}
+        localFrame={localFrame}
+        durationFrames={durationFrames}
+        fps={fps}
+      />
+    ) : null;
+
   return (
     <div style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H, overflow: 'hidden' }}>
       <div
@@ -69,6 +86,7 @@ export const StyleDirectedLayout: React.FC<StyleDirectedLayoutProps> = ({
           variant={variant}
         />
       </div>
+      {artNode}
     </div>
   );
 };

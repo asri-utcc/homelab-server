@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const pareto = require('./public/model-pareto');
 let researcher = null;
 try {
     researcher = require('./model-researcher');
@@ -1279,6 +1280,26 @@ function toggle(modelId, enabled) {
     return { ok: true, model: entry };
 }
 
+// ── Pareto / Standby: โมเดลที่แพงกว่าแต่ฉลาดน้อยกว่าในถังเดียวกัน → สำรองเท่านั้น ─────────
+// คำนวณใหม่เฉพาะเมื่อ registry เปลี่ยน (loadRegistry คืน object เดิมถ้าไฟล์ไม่เปลี่ยน)
+let paretoCache = { data: null, result: null };
+function getPareto() {
+    const reg = loadRegistry();
+    if (paretoCache.data !== reg || !paretoCache.result) {
+        paretoCache = { data: reg, result: pareto.computePareto(Object.values(reg.models || {})) };
+    }
+    return paretoCache.result;
+}
+
+/** model id ที่ router ควรเลื่อนไปท้ายคิว (ใช้เฉพาะตอน fallback) สำหรับงานประเภท qType */
+function getStandbyIds(qType) {
+    try {
+        return pareto.standbyIdsFor(getPareto(), qType);
+    } catch (_) {
+        return new Set();
+    }
+}
+
 function getSnapshot() {
     const reg = loadRegistry();
     const models = Object.values(reg.models || {});
@@ -1291,7 +1312,8 @@ function getSnapshot() {
         lastResearchSummary: reg.lastResearchSummary || null,
         models,
         customFamilies: Array.isArray(reg.customFamilies) ? reg.customFamilies : [],
-        pendingCount
+        pendingCount,
+        pareto: getPareto()
     };
 }
 
@@ -1515,5 +1537,7 @@ module.exports = {
     researchModel,
     researchAll,
     getResearchRanking,
+    getPareto,
+    getStandbyIds,
     startWatchdog
 };

@@ -262,3 +262,14 @@ effort ปรับคุณภาพ (low −6, high +4, xhigh +7) และต
 
 ### Fallback ใน `cron-ai-runner.py`
 - หาก Dashboard AI Router API ติดต่อไม่ได้ `build_local_fallback_candidates(min_level)` ใช้ **Gemini 4 Neon** (`gemini-4-neon-medium` สำหรับงานปกติ, `gemini-4-neon-high` สำหรับ hard alert `min_level >= 2`) เป็นตัวสำรองหลักแทน Hydrogen แล้วเช่นกัน
+
+## Pareto / Standby (2026-11-24)
+
+โมเดลที่ "ถูกกลบ" (แพงกว่าแต่ฉลาดน้อยกว่า) จะถูกย้ายไปท้ายคิวผู้สมัคร: ใช้เฉพาะตอน fallback แต่ยังมาก่อน DeepSeek
+
+- สูตรอยู่ใน `public/model-pareto.js` (UMD ใช้ร่วมกันทั้ง router, registry และหน้าเว็บ)
+- A ถูกกลบในงานประเภท t เมื่อมี B ที่ active, อยู่ถังโควตาเดียวกัน, cost(B) ≤ cost(A), q_t(B) ≥ q_t(A) และดีกว่าอย่างน้อยหนึ่งข้อ
+- ตัวกลบต้องมีความมั่นใจ ≥ 76 (ผ่านเกณฑ์ 3 แหล่ง) · Orchestrator เทียบกันเอง · DeepSeek อยู่นอกการคำนวณ
+- ค่า q/cost ใช้ `research.effectiveQ` / `research.pricing.effectiveCost` ก่อน แล้วค่อย `suggested` (ค่าเดียวกับตาราง Dashboard)
+- แพ้เฉพาะถังอื่น → `separate-pool` (ไม่ลดขั้น เก็บไว้ระบายโควตา)
+- จุดเชื่อม: `registry.getStandbyIds(qType)` → `standbyIds()` ใน `buildCandidates` · ผู้สมัครที่ถูกลดมี `standby: true`

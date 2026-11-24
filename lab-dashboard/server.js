@@ -2266,7 +2266,8 @@ const server = http.createServer(async (req, res) => {
                     lastResearchSummary: (reg && reg.lastResearchSummary) || null,
                     models,
                     customFamilies: (reg && reg.customFamilies) || [],
-                    pendingCount
+                    pendingCount,
+                    pareto: modelRegistry.getPareto()
                 });
             } catch (err) {
                 return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });

@@ -135,6 +135,16 @@ function modelUsable(id) {
     }
 }
 
+/** โมเดลที่ถูกกลบ (Pareto) สำหรับงานประเภทนี้ → ใช้เฉพาะตอน fallback */
+function standbyIds(qType) {
+    try {
+        ensureRegistryInit();
+        return registry && typeof registry.getStandbyIds === 'function' ? registry.getStandbyIds(qType) : new Set();
+    } catch (_) {
+        return new Set();
+    }
+}
+
 function getRoutes() {
     const fams = activeFamilies();
     return {
@@ -612,7 +622,11 @@ async function buildCandidates(cls, { hasImages = false, sessionAccount = null, 
         }
     }
     subs.sort((a, b) => b.score - a.score);
-    const out = [...subs];
+    // Pareto: ตัวที่มีโมเดลถูกกว่า+ฉลาดกว่าในถังเดียวกัน → ย้ายไปท้ายคิว (ยังเป็น fallback ก่อน DeepSeek)
+    const standby = standbyIds(qType);
+    const primary = subs.filter((c) => !standby.has(c.model));
+    const reserve = subs.filter((c) => standby.has(c.model)).map((c) => ({ ...c, standby: true }));
+    const out = primary.length ? [...primary, ...reserve] : [...subs];
 
     if (deepseekUsable(deepseekInfo)) {
         const order = hasImages

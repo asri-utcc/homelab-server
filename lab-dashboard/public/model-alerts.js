@@ -2,8 +2,18 @@
   'use strict';
 
   // index.html ฝัง gemini.html ไว้ใน iframe และทั้งสองหน้าโหลดสคริปต์นี้ → ให้เฉพาะหน้า top-level สร้าง UI
-  // ไม่งั้นปุ่ม "โมเดล" จะซ้ำสองชุด (guard ด้านล่างแยกตาม window จึงกันไม่ได้)
-  try { if (window.top !== window.self) return; } catch (_) { return; }
+  // หน้าใน iframe แค่ส่งต่อการกดปุ่ม [data-mra-open] (อยู่ในหน้าตั้งค่า) ไปเปิดหน้าต่างจัดการที่หน้าหลัก
+  let inFrame = true;
+  try { inFrame = window.top !== window.self; } catch (_) { inFrame = true; }
+  if (inFrame) {
+    document.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest && e.target.closest('[data-mra-open]');
+      if (!btn) return;
+      e.preventDefault();
+      try { window.top.ModelRegistryUI.open(); } catch (_) {}
+    });
+    return;
+  }
   if (window.__mraInitialized) return;
   window.__mraInitialized = true;
 
@@ -31,57 +41,34 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      .mra-fab {
-        position: fixed;
-        right: 20px;
-        bottom: calc(132px + env(safe-area-inset-bottom, 0px)); /* พ้นแถบพิมพ์/ปุ่มส่งของหน้าแชท */
-        z-index: 9990;
+      [data-mra-open] .mra-inline-badge {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 10px 14px;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        margin-left: 6px;
+        padding: 0 5px;
         border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.28);
-        background: rgba(15, 23, 42, 0.88);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        color: #f1f5f9;
-        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-        font-size: 13px;
+        background: #f59e0b;
+        color: #0f172a;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      [data-mra-open] .mra-inline-badge[data-count="0"] { display: none; }
+      .mra-pareto {
+        display: inline-block;
+        margin-top: 4px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        font-size: 10.5px;
         font-weight: 600;
-        cursor: pointer;
-        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
-        transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+        white-space: nowrap;
       }
-      .mra-fab:hover {
-        transform: translateY(-2px);
-        border-color: rgba(56, 189, 248, 0.55);
-        background: rgba(15, 23, 42, 0.96);
-      }
-      @media (max-width: 768px) {
-        /* มือถือ: เหลือแค่ไอคอนวงกลมเล็ก ลอยเหนือแถบพิมพ์ ไม่ทับปุ่มส่ง/ช่องพิมพ์ */
-        .mra-fab {
-          right: 8px;
-          bottom: calc(172px + env(safe-area-inset-bottom, 0px));
-          width: 38px;
-          height: 38px;
-          padding: 0;
-          justify-content: center;
-          font-size: 17px;
-          opacity: 0.88;
-        }
-        .mra-fab .mra-fab-label { display: none; }
-        .mra-fab .mra-badge {
-          position: absolute;
-          top: -5px;
-          right: -5px;
-          min-width: 17px;
-          height: 17px;
-          font-size: 10px;
-          padding: 0 4px;
-        }
-        .mra-fab .mra-badge[data-count="0"] { display: none; }
-      }
+      .mra-pareto-frontier { background: rgba(250, 204, 21, 0.16); color: #fde047; }
+      .mra-pareto-standby { background: rgba(148, 163, 184, 0.18); color: #cbd5e1; }
+      .mra-pareto-partial { background: rgba(251, 146, 60, 0.16); color: #fdba74; }
+      .mra-pareto-separate-pool { background: rgba(52, 211, 153, 0.14); color: #6ee7b7; }
       .mra-badge {
         display: inline-flex;
         align-items: center;
@@ -485,27 +472,37 @@
     }
   }
 
-  function ensureFab() {
-    let fab = document.getElementById('mra-fab');
-    if (fab) return fab;
-    fab = document.createElement('button');
-    fab.id = 'mra-fab';
-    fab.type = 'button';
-    fab.title = 'จัดการโมเดล AI';
-    fab.setAttribute('aria-label', 'จัดการโมเดล AI');
-    fab.className = 'mra-fab';
-    fab.innerHTML = '<span aria-hidden="true">🧠</span><span class="mra-fab-label">โมเดล</span><span class="mra-badge" id="mra-fab-badge" data-count="0">0</span>';
-    fab.addEventListener('click', () => openModal());
-    document.body.appendChild(fab);
-    return fab;
+  // ปุ่มเปิดหน้าต่างจัดการอยู่ในหน้าตั้งค่า ([data-mra-open]) — อัปเดตป้ายจำนวนรออนุมัติ
+  // ทั้งในหน้านี้และใน iframe ที่ origin เดียวกัน (เช่น gemini.html ใน index.html)
+  function updateFabBadge(count) {
+    const n = String(Number(count) || 0);
+    const docs = [document];
+    for (const f of document.querySelectorAll('iframe')) {
+      try { if (f.contentDocument) docs.push(f.contentDocument); } catch (_) {}
+    }
+    for (const doc of docs) {
+      for (const btn of doc.querySelectorAll('[data-mra-open]')) {
+        let badge = btn.querySelector('.mra-inline-badge');
+        if (!badge) {
+          badge = doc.createElement('span');
+          badge.className = 'mra-inline-badge';
+          btn.appendChild(badge);
+        }
+        badge.dataset.count = n;
+        badge.textContent = n;
+      }
+    }
   }
 
-  function updateFabBadge(count) {
-    const badge = document.getElementById('mra-fab-badge');
-    if (!badge) return;
-    const n = Number(count) || 0;
-    badge.dataset.count = String(n);
-    badge.textContent = String(n);
+  function ensureParetoLib() {
+    if (window.ModelPareto) return Promise.resolve(window.ModelPareto);
+    return new Promise((resolve) => {
+      const el = document.createElement('script');
+      el.src = '/model-pareto.js';
+      el.onload = () => resolve(window.ModelPareto || null);
+      el.onerror = () => resolve(null);
+      document.head.appendChild(el);
+    });
   }
 
   function ensureToastStack() {
@@ -713,6 +710,27 @@
       return (b.metrics.compositeScore - a.metrics.compositeScore) || (b.metrics.conf - a.metrics.conf);
     });
 
+    const paretoMap = (window.ModelPareto && window.ModelPareto.computePareto(rawModels)) || registryState.pareto || {};
+    const byId = new Map(rawModels.map((x) => [x.id, x]));
+    const TYPE_TH = { code: 'โค้ด', analysis: 'วิเคราะห์', chat: 'แชท' };
+    // q ของโมเดลที่ค้นพบใหม่มาจากการเฉลี่ยตระกูลพี่น้อง (ยังไม่ใช่ค่าที่วัดจริง) → บอกให้รู้
+    const estNote = (id) => (byId.get(id) && byId.get(id).source === 'discovered' ? ' (q ประมาณ)' : '');
+    const paretoBadge = (id) => {
+      const p = paretoMap[id];
+      if (!p || p.tier === 'outside') return '';
+      if (p.tier === 'frontier') {
+        return '<div><span class="mra-pareto mra-pareto-frontier" title="ไม่มีโมเดลที่ถูกกว่าและฉลาดกว่าในถังโควตาเดียวกัน">⭐ คุ้มสุดในถัง</span></div>';
+      }
+      if (p.tier === 'separate-pool') {
+        const x = Object.values(p.crossPoolBy || {})[0];
+        return `<div><span class="mra-pareto mra-pareto-separate-pool" title="${escapeHtml(`ชนะในถัง ${p.pool} แต่แพ้ ${x || '-'} จากถังอื่น · เก็บไว้ระบายโควตา`)}">🔋 ถังโควตาแยก</span></div>`;
+      }
+      const lines = p.standbyTypes.map((t) => `${TYPE_TH[t] || t}: แพ้ ${p.dominatedBy[t]}${estNote(p.dominatedBy[t])}`);
+      const label = p.tier === 'standby' ? '📦 สำรอง (ถูกกลบ)' : `📦 สำรองเฉพาะ ${p.standbyTypes.map((t) => TYPE_TH[t] || t).join('/')}`;
+      return `<div><span class="mra-pareto mra-pareto-${p.tier}" title="${escapeHtml('Router ใช้เฉพาะตอน fallback · ' + lines.join(' · '))}">${label}</span></div>`
+        + `<div class="mra-sub">${escapeHtml(lines.join(' · '))}</div>`;
+    };
+
     let rankNo = 0;
     let lastGroup = null;
     for (let idx = 0; idx < models.length; idx += 1) {
@@ -759,7 +777,7 @@
         <td><strong>${payPerUse ? '—' : '#' + rankNo} ${escapeHtml(m.id)}</strong></td>
         <td>${escapeHtml(m.name || '-')}</td>
         <td>${escapeHtml(m.engine || '-')}</td>
-        <td><span class="mra-st ${st.cls}">${st.label}</span></td>
+        <td><span class="mra-st ${st.cls}">${st.label}</span>${paretoBadge(m.id)}</td>
         <td>
           <span class="mra-conf-pill ${confCls}">${confVal != null ? confVal + '%' : '-'}</span>
           ${srcMetaHtml}
@@ -969,9 +987,17 @@
     renderModalContent();
   }
 
+  window.ModelRegistryUI = { open: () => openModal() };
+
   function init() {
     injectStyles();
-    ensureFab();
+    ensureParetoLib().then(() => { if (modalOpen) renderModalContent(); });
+    document.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest && e.target.closest('[data-mra-open]');
+      if (!btn) return;
+      e.preventDefault();
+      openModal();
+    });
     setupFirstClickNotificationPermission();
     refreshRegistry();
     pollAlerts();

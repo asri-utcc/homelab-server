@@ -3,8 +3,8 @@ import { continueRender, delayRender, staticFile } from 'remotion';
 
 let fontsLoaded = false;
 
-export const THAI_FONT_FAMILY = "'Noto Sans Thai', 'Noto Looped Thai', sans-serif";
-export const THAI_LOOPED_FAMILY = "'Noto Looped Thai', 'Noto Sans Thai', sans-serif";
+export const THAI_FONT_FAMILY = "'Noto Sans Thai', 'Noto Naskh Arabic', sans-serif";
+export const THAI_LOOPED_FAMILY = "'Noto Sans Thai', 'Noto Naskh Arabic', sans-serif";
 export const ARABIC_FONT_FAMILY = "'Noto Naskh Arabic', serif";
 /** Hand-lettered Thai (OFL, Cadson Demak) used by the illustrated doodle styles */
 export const THAI_HAND_FAMILY = "'Mali', 'Itim', 'Noto Sans Thai', sans-serif";

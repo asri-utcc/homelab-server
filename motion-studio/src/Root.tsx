@@ -30,6 +30,14 @@ import {
   StudioEngine,
   StudioProps,
 } from './studio/StudioEngine';
+import {
+  SacredStoryProps,
+  SacredStoryReel,
+} from './templates/SacredStoryReel';
+import {
+  DEFAULT_LAST_THIRD_PROPS,
+  LastThirdNight,
+} from './projects/last-third-night/LastThirdNight';
 
 type SolarCompProps = SolarTimelineProps & Record<string, unknown>;
 type StoryCompProps = StorytellingProps & Record<string, unknown>;
@@ -125,6 +133,42 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={DEFAULT_STUDIO_PROPS}
         calculateMetadata={({ props }: { props: StudioProps }) => ({
           durationInFrames: Math.max(90, props.totalFrames || DEFAULT_STUDIO_PROPS.totalFrames),
+          fps: props.fps || 30,
+          width: 1080,
+          height: 1920,
+        })}
+      />
+      <Composition
+        id="LastThirdNight"
+        component={LastThirdNight}
+        durationInFrames={DEFAULT_LAST_THIRD_PROPS.totalFrames}
+        fps={DEFAULT_LAST_THIRD_PROPS.fps || 30}
+        width={1080}
+        height={1920}
+        defaultProps={DEFAULT_LAST_THIRD_PROPS}
+        calculateMetadata={({ props }: { props: SacredStoryProps }) => ({
+          durationInFrames: Math.max(
+            90,
+            props.totalFrames || DEFAULT_LAST_THIRD_PROPS.totalFrames,
+          ),
+          fps: props.fps || 30,
+          width: 1080,
+          height: 1920,
+        })}
+      />
+      <Composition
+        id="SacredStoryReel"
+        component={SacredStoryReel}
+        durationInFrames={DEFAULT_LAST_THIRD_PROPS.totalFrames}
+        fps={DEFAULT_LAST_THIRD_PROPS.fps || 30}
+        width={1080}
+        height={1920}
+        defaultProps={DEFAULT_LAST_THIRD_PROPS}
+        calculateMetadata={({ props }: { props: SacredStoryProps }) => ({
+          durationInFrames: Math.max(
+            90,
+            props.totalFrames || DEFAULT_LAST_THIRD_PROPS.totalFrames,
+          ),
           fps: props.fps || 30,
           width: 1080,
           height: 1920,

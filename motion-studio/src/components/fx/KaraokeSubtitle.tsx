@@ -300,12 +300,16 @@ export const KaraokeSubtitle: React.FC<KaraokeSubtitleProps> = ({
           const isCurrent = idx === activeTokenIndex;
           const isSpoken = idx < activeTokenIndex;
           const isKeyConcept = kwStart >= 0 && tokStart < kwEnd && tokEnd > kwStart;
+          const isHonorific = /[ﷺﷻ]/.test(tok);
 
           return (
             <span
               key={idx}
+              dir={isHonorific ? 'rtl' : undefined}
               style={{
-                display: 'inline',
+                display: isHonorific ? 'inline-block' : 'inline',
+                unicodeBidi: isHonorific ? 'isolate' : undefined,
+                margin: isHonorific ? '0 5px' : undefined,
                 color: isCurrent ? accentColor : isSpoken ? fgColor : dimColor,
                 backgroundColor: isCurrent ? withAlpha(accentColor, '26') : 'transparent',
                 borderRadius: isCurrent ? 8 : 0,

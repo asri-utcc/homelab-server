@@ -403,6 +403,13 @@ _WHISPER_WORDS_RE = re.compile(
     r"\b(?:whisper(?:ing|ed|s)?|breathy|asmr|intimate(?:ly)?|hushed|sensual(?:ly)?)\b|กระซิบ|แผ่วเบา",
     re.I,
 )
+_NEGATION_PREFIX_RE = re.compile(
+    r"^(?:(?:and|or|but|yet|nor|และ|หรือ|แต่)\s+)?"
+    r"(?:never\b|no\b|not\b|don['’]t\b|do\s+not\b|avoid\b|without\b|ห้าม|ไม่)",
+    re.I,
+)
+_SENTENCE_SPLIT_RE = re.compile(r"((?<!\d)\.(?!\d)|[!?]|\n+)")
+_CLAUSE_SPLIT_RE = re.compile(r"([,;—])")
 
 
 def is_religious_topic(topic: str, notes: str = "") -> bool:
@@ -417,14 +424,48 @@ def _is_female_voice(voice: str) -> bool:
 
 
 def _strip_whisper_words(text: str) -> str:
-    """Remove whisper/ASMR/breathy/intimate/hushed/sensual words from a TTS prompt."""
+    """Drop positive whisper/ASMR/breathy/intimate/hushed/sensual clauses while keeping negated clauses intact."""
     if not text:
         return ""
-    cleaned = _WHISPER_WORDS_RE.sub("", str(text))
-    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
-    cleaned = re.sub(r",\s*,+", ",", cleaned)
-    cleaned = re.sub(r"\s{2,}", " ", cleaned)
-    return cleaned.strip(" ,;")
+    sent_parts = _SENTENCE_SPLIT_RE.split(str(text))
+    rebuilt_sentences: list[str] = []
+
+    for i in range(0, len(sent_parts), 2):
+        sent = sent_parts[i]
+        sent_delim = sent_parts[i + 1] if i + 1 < len(sent_parts) else ""
+        if not sent.strip():
+            continue
+
+        clause_parts = _CLAUSE_SPLIT_RE.split(sent)
+        kept: list[tuple[str, str]] = []
+        for j in range(0, len(clause_parts), 2):
+            clause = clause_parts[j]
+            lead_delim = clause_parts[j - 1] if j > 0 else ""
+            stripped = clause.strip()
+            if not stripped:
+                continue
+            if _WHISPER_WORDS_RE.search(stripped) and not _NEGATION_PREFIX_RE.match(stripped):
+                continue
+            kept.append((lead_delim, stripped))
+
+        if not kept:
+            continue
+
+        out_sent = kept[0][1]
+        for delim, cl in kept[1:]:
+            if delim == "—":
+                out_sent += f"—{cl}"
+            elif delim in (",", ";"):
+                out_sent += f"{delim} {cl}"
+            else:
+                out_sent += f", {cl}"
+
+        if sent_delim in (".", "!", "?"):
+            out_sent += sent_delim
+        rebuilt_sentences.append(out_sent)
+
+    result = " ".join(rebuilt_sentences)
+    return re.sub(r"[ \t]{2,}", " ", result).strip()
 
 CRASH_RE = re.compile(
     r"unexpected fault address|fatal error: (fault|unexpected signal)|SIGSEGV|SIGBUS|SIGILL|"
@@ -896,7 +937,8 @@ def normalize_script(
     religious = is_religious_topic(topic, notes)
     raw_script_style = str(script.get("ttsStyle") or "").strip()
     tts_style = raw_script_style or str(preset.get("defaultTtsStyle") or "storytelling")
-    tts_prompt = str(script.get("ttsPrompt") or preset.get("defaultTtsPrompt") or DEFAULT_TTS_PROMPT)
+    raw_tts_prompt = str(script.get("ttsPrompt") or preset.get("defaultTtsPrompt") or "").strip()
+    tts_prompt = raw_tts_prompt or DEFAULT_TTS_PROMPT
 
     if religious and not explicit_voice:
         if _is_female_voice(voice):
@@ -905,7 +947,8 @@ def normalize_script(
             tts_style = "religious"
         tts_prompt = RELIGIOUS_TTS_PROMPT
 
-    tts_prompt = _strip_whisper_words(tts_prompt) or (RELIGIOUS_TTS_PROMPT if religious else DEFAULT_TTS_PROMPT)
+    if tts_prompt not in (RELIGIOUS_TTS_PROMPT, DEFAULT_TTS_PROMPT):
+        tts_prompt = _strip_whisper_words(tts_prompt) or (RELIGIOUS_TTS_PROMPT if religious else DEFAULT_TTS_PROMPT)
 
     speed_raw = request.get("speed") if request.get("speed") is not None else script.get("speed", 1.12)
     try:
@@ -1012,7 +1055,11 @@ def normalize_script(
         if scene_obj.get("highlightWord") and not scene_obj.get("highlight"):
             scene_obj["highlight"] = scene_obj["highlightWord"]
         if sc.get("ttsPrompt"):
-            cleaned_scene_prompt = _strip_whisper_words(str(sc.get("ttsPrompt") or ""))
+            raw_scene_prompt = str(sc.get("ttsPrompt") or "").strip()
+            if raw_scene_prompt in (RELIGIOUS_TTS_PROMPT, DEFAULT_TTS_PROMPT):
+                cleaned_scene_prompt = raw_scene_prompt
+            else:
+                cleaned_scene_prompt = _strip_whisper_words(raw_scene_prompt)
             if cleaned_scene_prompt:
                 scene_obj["ttsPrompt"] = cleaned_scene_prompt
         style_id = str(preset.get("id") or request.get("styleId") or "").strip().lower()

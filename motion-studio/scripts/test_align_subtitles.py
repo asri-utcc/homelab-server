@@ -122,6 +122,94 @@ def main() -> None:
         # Verify detect_pauses never crashes on missing file
         assert tp.detect_pauses(os.path.join(tmpdir, "does_not_exist.wav")) == []
 
+        # Verify short pause (<=0.4s) places boundaries directly at pause midpoint
+        short_cues = tp.align_subtitles(subtitles, dur, 0.0, fps, [(1.2, 1.5), (3.2, 3.45)])
+        assert abs(short_cues[0]["endSec"] - 1.35) < 0.002, f"Expected short pause mid 1.35, got {short_cues[0]['endSec']}"
+        assert abs(short_cues[1]["startSec"] - 1.35) < 0.002, f"Expected short pause mid 1.35, got {short_cues[1]['startSec']}"
+        assert abs(short_cues[1]["endSec"] - 3.325) < 0.002, f"Expected short pause mid 3.325, got {short_cues[1]['endSec']}"
+        assert abs(short_cues[2]["startSec"] - 3.325) < 0.002, f"Expected short pause mid 3.325, got {short_cues[2]['startSec']}"
+
+        # Verify long pause (>0.4s) stays within <=0.15s of midpoint even for 1.0s silence
+        long_cues = tp.align_subtitles(
+            [{"text": "ท่อนแรกยาวหน่อยนะ"}, {"text": "ท่อนสองยาวหน่อยนะ"}],
+            4.0,
+            0.0,
+            fps,
+            [(1.5, 2.5)],
+        )
+        assert abs(long_cues[0]["endSec"] - 2.0) <= 0.151, f"Long pause endSec drifted: {long_cues[0]['endSec']}"
+        assert abs(long_cues[1]["startSec"] - 2.0) <= 0.151, f"Long pause startSec drifted: {long_cues[1]['startSec']}"
+
+        # Verify adaptive finer retry finds short 0.08s dip when min_internal_pauses=2
+        short_dip_wav = os.path.join(tmpdir, "short_dip.wav")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "error",
+                "-filter_complex",
+                (
+                    "aevalsrc=0.5*sin(2*PI*440*t):d=1.5:s=44100[a];"
+                    "anullsrc=r=44100:cl=mono,atrim=duration=0.25[p1];"
+                    "aevalsrc=0.5*sin(2*PI*523*t):d=1.2:s=44100[b];"
+                    "anullsrc=r=44100:cl=mono,atrim=duration=0.08[p2];"
+                    "aevalsrc=0.5*sin(2*PI*659*t):d=1.2:s=44100[c];"
+                    "[a][p1][b][p2][c]concat=n=5:v=0:a=1[out]"
+                ),
+                "-map",
+                "[out]",
+                "-ar",
+                "44100",
+                "-ac",
+                "1",
+                short_dip_wav,
+            ],
+            check=True,
+        )
+        coarse = tp.detect_pauses(short_dip_wav)
+        adaptive = tp.detect_pauses(short_dip_wav, min_internal_pauses=2)
+        assert len(coarse) == 1, f"Expected 1 coarse pause, got {coarse}"
+        assert len(adaptive) >= 2, f"Expected >=2 adaptive pauses, got {adaptive}"
+
+        # Verify energy-minimum fallback when no silence exists (amplitude dip only)
+        dip_wav = os.path.join(tmpdir, "energy_dip.wav")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "error",
+                "-filter_complex",
+                (
+                    "aevalsrc=0.5*sin(2*PI*440*t):d=1.8:s=44100[a];"
+                    "aevalsrc=0.08*sin(2*PI*440*t):d=0.16:s=44100[dip];"
+                    "aevalsrc=0.5*sin(2*PI*523*t):d=1.8:s=44100[b];"
+                    "[a][dip][b]concat=n=3:v=0:a=1[out]"
+                ),
+                "-map",
+                "[out]",
+                "-ar",
+                "44100",
+                "-ac",
+                "1",
+                dip_wav,
+            ],
+            check=True,
+        )
+        dip_dur = tp.ffprobe_duration(dip_wav)
+        energy_cues = tp.align_subtitles(
+            [{"text": "ท่อนแรกยาวหน่อยนะ"}, {"text": "ท่อนสองยาวหน่อยนะ"}],
+            dip_dur,
+            0.0,
+            fps,
+            [],
+            boundaries=None,
+            wav_path=dip_wav,
+        )
+        assert all(c["aligned"] == "energy" for c in energy_cues), f"Expected energy alignment: {energy_cues}"
+        assert abs(energy_cues[0]["endSec"] - 1.88) <= 0.15, f"Energy dip miss: {energy_cues[0]['endSec']}"
+
         print("\nALL ASSERTIONS PASSED!")
 
 

@@ -8,10 +8,13 @@ and frame-accurate timeline.json + subtitles.srt output.
 """
 
 import argparse
+import array
 import asyncio
 import base64
 import hashlib
 import json
+import math
+import operator
 import os
 import re
 import subprocess
@@ -103,18 +106,70 @@ STYLE_PROMPTS = {
 }
 
 _TTS_BANNED_WORDS_RE = re.compile(
-    r"\b(?:whisper(?:ing|ed)?|breathy|ASMR|intimate|hushed|sensual)\b|กระซิบ|แผ่วเบา",
+    r"\b(?:whisper(?:ing|ed|s)?|breathy|ASMR|intimate(?:ly)?|hushed|sensual(?:ly)?)\b|กระซิบ|แผ่วเบา",
     re.IGNORECASE,
 )
+_NEGATION_PREFIX_RE = re.compile(
+    r"^(?:(?:and|or|but|yet|nor|และ|หรือ|แต่)\s+)?"
+    r"(?:never\b|no\b|not\b|don['’]t\b|do\s+not\b|avoid\b|without\b|ห้าม|ไม่)",
+    re.IGNORECASE,
+)
+_SENTENCE_SPLIT_RE = re.compile(r"((?<!\d)\.(?!\d)|[!?]|\n+)")
+_CLAUSE_SPLIT_RE = re.compile(r"([,;—])")
+_SYSTEM_STYLE_PROMPTS = frozenset(STYLE_PROMPTS.values())
 _NORMAL_VOLUME_CLAUSE = (
     "Speak at a normal, clearly audible volume from the very first word; never whisper."
 )
 
 
+def _strip_positive_banned_clauses(text: str) -> str:
+    """Drop clauses containing banned whisper/ASMR terms unless the clause starts with a negation."""
+    if not text:
+        return ""
+    sent_parts = _SENTENCE_SPLIT_RE.split(str(text))
+    rebuilt_sentences: list[str] = []
+
+    for i in range(0, len(sent_parts), 2):
+        sent = sent_parts[i]
+        sent_delim = sent_parts[i + 1] if i + 1 < len(sent_parts) else ""
+        if not sent.strip():
+            continue
+
+        clause_parts = _CLAUSE_SPLIT_RE.split(sent)
+        kept: list[tuple[str, str]] = []
+        for j in range(0, len(clause_parts), 2):
+            clause = clause_parts[j]
+            lead_delim = clause_parts[j - 1] if j > 0 else ""
+            stripped = clause.strip()
+            if not stripped:
+                continue
+            if _TTS_BANNED_WORDS_RE.search(stripped) and not _NEGATION_PREFIX_RE.match(stripped):
+                continue
+            kept.append((lead_delim, stripped))
+
+        if not kept:
+            continue
+
+        out_sent = kept[0][1]
+        for delim, cl in kept[1:]:
+            if delim == "—":
+                out_sent += f"—{cl}"
+            elif delim in (",", ";"):
+                out_sent += f"{delim} {cl}"
+            else:
+                out_sent += f", {cl}"
+
+        if sent_delim in (".", "!", "?"):
+            out_sent += sent_delim
+        rebuilt_sentences.append(out_sent)
+
+    result = " ".join(rebuilt_sentences)
+    return re.sub(r"[ \t]{2,}", " ", result).strip()
+
+
 def _sanitize_tts_prompt(text: str) -> str:
-    """Strip whisper/ASMR/breathy instructions and enforce normal-volume delivery."""
-    cleaned = _TTS_BANNED_WORDS_RE.sub("", text or "")
-    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+    """Strip positive whisper/ASMR/breathy clauses (preserving negations) and enforce normal-volume delivery."""
+    cleaned = _strip_positive_banned_clauses(text or "")
     if "clearly audible volume from the very first word" not in cleaned.lower():
         cleaned = f"{cleaned} {_NORMAL_VOLUME_CLAUSE}".strip()
     return cleaned
@@ -231,9 +286,13 @@ def _synth_gemini_sync(
     api_key: str,
     out_raw_wav: str,
     timeout_sec: int = 45,
+    is_system_style: bool = False,
 ) -> dict[str, Any]:
     """Call Google Gemini 2.5 TTS REST API and write raw 24kHz mono WAV. Returns usage dict."""
-    clean_style = _sanitize_tts_prompt(style_prompt)
+    if is_system_style or style_prompt in _SYSTEM_STYLE_PROMPTS:
+        clean_style = style_prompt
+    else:
+        clean_style = _sanitize_tts_prompt(style_prompt)
     director_prompt = (
         f"{clean_style}\n"
         "Read ONLY the exact script below aloud in Thai without adding commentary, "
@@ -376,7 +435,12 @@ async def synth_scene(
     allow_fallback: bool,
 ) -> tuple[list[dict], str, dict[str, Any]]:
     """Synthesize a single scene to raw_audio_path (.wav or .mp3). Returns (word_boundaries, engine_used, usage_cost)."""
-    style_prompt = custom_prompt.strip() or STYLE_PROMPTS.get(style, STYLE_PROMPTS["documentary"])
+    has_custom_prompt = bool(custom_prompt.strip())
+    style_prompt = (
+        _sanitize_tts_prompt(custom_prompt.strip())
+        if has_custom_prompt
+        else STYLE_PROMPTS.get(style, STYLE_PROMPTS["documentary"])
+    )
     sig_src = f"{voice}|{model}|{rate}|{pitch}|{style_prompt}|{spoken_text}"
     sig = hashlib.sha256(sig_src.encode("utf-8")).hexdigest()[:16]
     sig_file = raw_audio_path + ".sig"
@@ -418,6 +482,8 @@ async def synth_scene(
             style_prompt,
             api_key,
             raw_audio_path,
+            45,
+            not has_custom_prompt,
         )
         cost_info = credit_ledger.calc_usage_cost(
             model,
@@ -557,14 +623,10 @@ def postprocess_scene_audio(
     return ffprobe_duration(wav_path)
 
 
-def detect_pauses(
+def _detect_pauses_single(
     wav_path: str, noise_db: float = -35.0, min_dur: float = 0.15
 ) -> list[tuple[float, float]]:
-    """Detect real silence/pause intervals in a scene WAV via ffmpeg silencedetect.
-
-    Returns a list of (silence_start, silence_end) tuples in seconds relative to wav_path.
-    Never raises; returns [] on any error.
-    """
+    """Run a single ffmpeg silencedetect pass on wav_path. Never raises."""
     try:
         proc = subprocess.run(
             [
@@ -605,6 +667,131 @@ def detect_pauses(
         return []
 
 
+def _count_internal_pauses(pauses: list[tuple[float, float]], dur: float) -> int:
+    return sum(1 for ps, pe in pauses if ps > 0.05 and (dur <= 0 or pe < dur - 0.05))
+
+
+def _merge_non_overlapping_pauses(
+    base: list[tuple[float, float]], extra: list[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    merged = list(base)
+    for ps, pe in extra:
+        if pe <= ps:
+            continue
+        if not any(not (pe <= bps or ps >= bpe) for bps, bpe in merged):
+            merged.append((ps, pe))
+    merged.sort(key=lambda p: p[0])
+    return merged
+
+
+def detect_pauses(
+    wav_path: str,
+    noise_db: float = -35.0,
+    min_dur: float = 0.15,
+    min_internal_pauses: int = 0,
+) -> list[tuple[float, float]]:
+    """Detect real silence/pause intervals in a scene WAV via ffmpeg silencedetect.
+
+    When min_internal_pauses > 0 and the primary pass finds fewer internal pauses than
+    needed, retries with finer thresholds (-30dB/0.06s, then -28dB/0.04s) and merges
+    newly discovered non-overlapping pauses.
+    Returns a sorted list of (silence_start, silence_end) tuples in seconds relative to wav_path.
+    Never raises; returns [] on any error.
+    """
+    pauses = _detect_pauses_single(wav_path, noise_db=noise_db, min_dur=min_dur)
+    if min_internal_pauses <= 0 or not os.path.exists(wav_path):
+        return pauses
+
+    try:
+        dur = ffprobe_duration(wav_path)
+    except Exception:
+        dur = 0.0
+
+    if _count_internal_pauses(pauses, dur) >= min_internal_pauses:
+        return pauses
+
+    for retry_db, retry_dur in ((-30.0, 0.06), (-28.0, 0.04)):
+        if retry_db <= noise_db and retry_dur >= min_dur:
+            continue
+        finer = _detect_pauses_single(wav_path, noise_db=retry_db, min_dur=retry_dur)
+        pauses = _merge_non_overlapping_pauses(pauses, finer)
+        if _count_internal_pauses(pauses, dur) >= min_internal_pauses:
+            break
+
+    return pauses
+
+
+def _compute_rms_envelope(wav_path: str, frame_ms: int = 20) -> list[tuple[float, float]]:
+    """Compute (center_sec, rms) energy envelope in `frame_ms` windows from a 16-bit PCM WAV."""
+    try:
+        with wave.open(wav_path, "rb") as wf:
+            nch = wf.getnchannels()
+            sw = wf.getsampwidth()
+            sr = wf.getframerate()
+            nframes = wf.getnframes()
+            if sr <= 0 or nch <= 0 or sw != 2 or nframes <= 0:
+                return []
+            raw = wf.readframes(nframes)
+        samples = array.array("h")
+        samples.frombytes(raw)
+        if sys.byteorder != "little":
+            samples.byteswap()
+
+        win_frames = max(1, int(round(sr * (frame_ms / 1000.0))))
+        step_samples = win_frames * nch
+        envelope: list[tuple[float, float]] = []
+        total_samples = len(samples)
+        for idx_s in range(0, total_samples, step_samples):
+            chunk = samples[idx_s : idx_s + step_samples]
+            if not chunk:
+                break
+            sq_sum = sum(map(operator.mul, chunk, chunk))
+            rms = math.sqrt(sq_sum / len(chunk)) / 32768.0
+            center_frame = (idx_s / nch) + (len(chunk) / nch) * 0.5
+            envelope.append((center_frame / sr, rms))
+        return envelope
+    except Exception:
+        return []
+
+
+def _find_lowest_energy_time(
+    envelope: list[tuple[float, float]],
+    target_sec: float,
+    lo_sec: float,
+    hi_sec: float,
+    radius: float = 0.8,
+) -> float | None:
+    """Find the lowest-RMS timestamp within target_sec ± radius, clamped to [lo_sec, hi_sec]."""
+    if not envelope or lo_sec > hi_sec:
+        return None
+    win_lo = max(lo_sec, target_sec - radius)
+    win_hi = min(hi_sec, target_sec + radius)
+    if win_lo > win_hi:
+        return None
+    candidates = [(t, rms) for t, rms in envelope if win_lo <= t <= win_hi]
+    if not candidates:
+        return None
+    best_t, _ = min(candidates, key=lambda pair: (pair[1], abs(pair[0] - target_sec)))
+    return best_t
+
+
+def _pause_boundary_times(ps: float, pe: float) -> tuple[float, float]:
+    """Compute (cue_end, next_cue_start) inside a detected pause [ps, pe].
+
+    Places the split at the pause midpoint so both boundaries stay within <=0.3s of mid.
+    For pauses longer than 0.4s: endSec = max(ps, mid - 0.15) and
+    next_start = min(pe, mid + 0.15) - 0.05.
+    """
+    mid = (ps + pe) * 0.5
+    if (pe - ps) > 0.4:
+        c_end = max(ps, mid - 0.15)
+        c_next = min(pe, mid + 0.15) - 0.05
+    else:
+        c_end = mid
+        c_next = mid
+    return c_end, max(0.0, c_next)
+
+
 def distribute_subtitles(subtitles: list[dict], speech_dur: float, start_sec: float, fps: int) -> list[dict]:
     """Distribute scene subtitle cues proportionally by Thai character length across actual spoken duration."""
     if not subtitles:
@@ -637,10 +824,13 @@ def align_subtitles(
     fps: int,
     pauses: list[tuple[float, float]],
     boundaries: list[dict] | None = None,
+    wav_path: str | None = None,
 ) -> list[dict]:
-    """Align scene subtitle cues to real Edge WordBoundary offsets or detected audio pauses.
+    """Align scene subtitle cues to real Edge WordBoundary offsets, detected audio pauses,
+    or 20ms RMS energy minima (when wav_path is provided).
 
-    Falls back to proportional character-weight distribution when no timing anchors match.
+    Falls back to proportional character-weight distribution only when no audio or timing
+    anchors are available.
     Pause/boundary times are relative to the scene WAV; start_sec is added for timeline output.
     """
     if not subtitles:
@@ -713,11 +903,23 @@ def align_subtitles(
             )
         return cues
 
-    # 2) Pause-aligned path (silencedetect)
+    # 2) Pause-aligned + RMS energy-minimum path
     sorted_pauses = sorted(
         [(max(0.0, float(ps)), min(speech_dur, float(pe))) for ps, pe in (pauses or []) if pe > ps],
         key=lambda p: p[0],
     )
+    needed_internal = max(0, n - 1)
+    if wav_path and os.path.exists(wav_path) and _count_internal_pauses(sorted_pauses, speech_dur) < needed_internal:
+        for retry_db, retry_dur in ((-30.0, 0.06), (-28.0, 0.04)):
+            finer = [
+                (max(0.0, float(ps)), min(speech_dur, float(pe)))
+                for ps, pe in _detect_pauses_single(wav_path, noise_db=retry_db, min_dur=retry_dur)
+                if pe > ps
+            ]
+            sorted_pauses = _merge_non_overlapping_pauses(sorted_pauses, finer)
+            if _count_internal_pauses(sorted_pauses, speech_dur) >= needed_internal:
+                break
+
     used_indices: set[int] = set()
 
     # Leading silence: pause starting at <= 0.05s shifts first cue start to its end
@@ -732,15 +934,18 @@ def align_subtitles(
 
     eff_min_cue = min(0.6, max(0.05, (speech_dur - first_start) / max(1, n)))
 
-    # Snap each internal boundary i (1..n-1) to nearest unused pause midpoint within +-1.2s
-    snapped: list[tuple[float, float] | None] = [None] * (n - 1)
+    # Snap each internal boundary i (1..n-1) to nearest unused pause midpoint within +-1.2s,
+    # else to lowest 20ms RMS energy point within +-0.8s of proportional estimate.
+    snapped: list[tuple[str, float, float] | None] = [None] * (n - 1)
     prev_cue_start = first_start
     prev_anchor = first_start
+    rms_envelope: list[tuple[float, float]] | None = None
 
     for i in range(n - 1):
         est = prop_bounds[i + 1]
         best_idx: int | None = None
         best_dist = float("inf")
+        best_times: tuple[float, float] = (est, est)
         remaining = n - 1 - i
 
         for idx_p, (ps, pe) in enumerate(sorted_pauses):
@@ -752,39 +957,50 @@ def align_subtitles(
                 continue
             if mid <= prev_anchor:
                 continue
-            next_start = max(0.0, pe - 0.08)
-            if ps - prev_cue_start < eff_min_cue:
+            cand_end, cand_next = _pause_boundary_times(ps, pe)
+            if cand_end - prev_cue_start < eff_min_cue:
                 continue
-            if speech_dur - next_start < remaining * eff_min_cue:
+            if speech_dur - cand_next < remaining * eff_min_cue:
                 continue
             if dist < best_dist:
                 best_dist = dist
                 best_idx = idx_p
+                best_times = (cand_end, cand_next)
 
         if best_idx is not None:
             ps, pe = sorted_pauses[best_idx]
             used_indices.add(best_idx)
-            snapped[i] = (ps, pe)
-            prev_cue_start = max(0.0, pe - 0.08)
+            c_end, c_next = best_times
+            snapped[i] = ("pause", c_end, c_next)
+            prev_cue_start = c_next
             prev_anchor = (ps + pe) * 0.5
         else:
             lo = prev_cue_start + eff_min_cue
             hi = speech_dur - remaining * eff_min_cue
-            fallback_t = max(lo, min(hi, est)) if lo <= hi else est
-            prev_cue_start = fallback_t
-            prev_anchor = fallback_t
+            energy_t: float | None = None
+            if wav_path and os.path.exists(wav_path):
+                if rms_envelope is None:
+                    rms_envelope = _compute_rms_envelope(wav_path, frame_ms=20)
+                energy_t = _find_lowest_energy_time(rms_envelope, est, lo, hi, radius=0.8)
+            if energy_t is not None:
+                snapped[i] = ("energy", energy_t, energy_t)
+                prev_cue_start = energy_t
+                prev_anchor = energy_t
+            else:
+                fallback_t = max(lo, min(hi, est)) if lo <= hi else est
+                prev_cue_start = fallback_t
+                prev_anchor = fallback_t
 
-    # Build cues from snapped pauses + proportional fallbacks
+    # Build cues from snapped pauses / RMS energy minima + proportional fallbacks
     cues = []
     cur_start = first_start
-    prev_was_pause = leading_aligned
+    prev_mode: str | None = "pause" if leading_aligned else None
     for i, item in enumerate(subtitles):
         if i < n - 1:
             if snapped[i] is not None:
-                ps, pe = snapped[i]  # type: ignore[misc]
-                cur_end = max(cur_start + 0.05, ps)
-                next_start = max(0.0, pe - 0.08)
-                end_was_pause = True
+                end_mode, c_end, c_next = snapped[i]  # type: ignore[misc]
+                cur_end = max(cur_start + 0.05, c_end)
+                next_start = max(cur_end if end_mode == "energy" else 0.0, c_next)
             else:
                 remaining = n - 1 - i
                 lo = cur_start + eff_min_cue
@@ -792,11 +1008,20 @@ def align_subtitles(
                 est = prop_bounds[i + 1]
                 cur_end = max(lo, min(hi, est)) if lo <= hi else max(cur_start + 0.05, est)
                 next_start = cur_end
-                end_was_pause = False
+                end_mode = None
         else:
             cur_end = max(cur_start + 0.05, speech_dur)
             next_start = cur_end
-            end_was_pause = False
+            end_mode = None
+
+        if prev_mode == "pause" or end_mode == "pause":
+            aligned_label = "pause"
+        elif prev_mode == "energy" or end_mode == "energy":
+            aligned_label = "energy"
+        elif n == 1 and wav_path and os.path.exists(wav_path):
+            aligned_label = "energy"
+        else:
+            aligned_label = "proportional"
 
         abs_s = start_sec + cur_start
         abs_e = start_sec + cur_end
@@ -808,11 +1033,11 @@ def align_subtitles(
                 "endSec": round(abs_e, 3),
                 "startFrame": int(round(abs_s * fps)),
                 "endFrame": int(round(abs_e * fps)),
-                "aligned": "pause" if (prev_was_pause or end_was_pause) else "proportional",
+                "aligned": aligned_label,
             }
         )
         cur_start = next_start
-        prev_was_pause = end_was_pause
+        prev_mode = end_mode
 
     return cues
 
@@ -901,8 +1126,8 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         scene_end = speech_start + speech_dur + pad_after
 
         raw_subs = sc.get("subtitles") or [{"text": sc["narration"], "highlight": ""}]
-        pauses = detect_pauses(wav_path)
-        cues = align_subtitles(raw_subs, speech_dur, speech_start, fps, pauses, boundaries)
+        pauses = detect_pauses(wav_path, min_internal_pauses=max(0, len(raw_subs) - 1))
+        cues = align_subtitles(raw_subs, speech_dur, speech_start, fps, pauses, boundaries, wav_path=wav_path)
         all_cues.extend(cues)
 
         for ev in sc.get("sfx", []):

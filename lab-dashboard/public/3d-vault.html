@@ -1,0 +1,4559 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3D Asset Vault — คลังโมเดล 3D | Homelab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-slate: #11161D;
+    --surface-1: #161E28;
+    --surface-2: #1E2836;
+    --surface-3: #263345;
+    --panel-bg: rgba(24, 32, 42, 0.92);
+    --panel-border: rgba(143, 161, 184, 0.18);
+    --panel-border-strong: rgba(143, 161, 184, 0.34);
+    --ink-primary: #E6EEF8;
+    --ink-secondary: #94A6BC;
+    --ink-muted: #6C7F96;
+    --cad-cyan: #38BDF8;
+    --cad-cyan-soft: rgba(56, 189, 248, 0.14);
+    --timber-amber: #F59E0B;
+    --timber-amber-soft: rgba(245, 158, 11, 0.15);
+    --emerald-ok: #10B981;
+    --emerald-soft: rgba(16, 185, 129, 0.14);
+    --danger-rose: #F43F5E;
+    --danger-soft: rgba(244, 63, 94, 0.14);
+    --font-sans: 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    min-height: 100%;
+    background-color: var(--bg-slate);
+    color: var(--ink-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body.viewer-open {
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  button, input, select, textarea {
+    font-family: inherit;
+    color: inherit;
+  }
+
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+    outline: 2px solid var(--cad-cyan);
+    outline-offset: 2px;
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Subtle architectural blueprint grid backdrop */
+  .vault-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-image:
+      linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    background-position: top center;
+  }
+
+  /* Top Drafting Bar */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 20px;
+    background: rgba(17, 22, 29, 0.92);
+    border-bottom: 1px solid var(--panel-border);
+    backdrop-filter: blur(12px);
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 11px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--panel-border);
+    background: var(--surface-1);
+    color: var(--ink-secondary);
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+
+  .back-link:hover {
+    color: var(--ink-primary);
+    border-color: rgba(56, 189, 248, 0.45);
+    background: var(--surface-2);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, rgba(56, 189, 248, 0.2), rgba(245, 158, 11, 0.12));
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    display: grid;
+    place-items: center;
+    flex: none;
+    color: var(--cad-cyan);
+  }
+
+  .brand-title {
+    font-size: 1.02rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.76rem;
+    color: var(--ink-secondary);
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--panel-border-strong);
+    background: var(--surface-2);
+    color: var(--ink-primary);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .btn:hover:not(:disabled) {
+    background: var(--surface-3);
+    border-color: rgba(56, 189, 248, 0.5);
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #0284C7, #0369A1);
+    border-color: var(--cad-cyan);
+    color: #FFFFFF;
+    font-weight: 600;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0EA5E9, #0284C7);
+    border-color: #7DD3FC;
+  }
+
+  .btn-amber {
+    background: var(--timber-amber-soft);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #FDE68A;
+  }
+
+  .btn-amber:hover:not(:disabled) {
+    background: rgba(245, 158, 11, 0.25);
+    border-color: var(--timber-amber);
+  }
+
+  .btn-emerald {
+    background: var(--emerald-soft);
+    border-color: rgba(16, 185, 129, 0.45);
+    color: #A7F3D0;
+  }
+
+  .btn-emerald:hover:not(:disabled) {
+    background: rgba(16, 185, 129, 0.24);
+    border-color: var(--emerald-ok);
+  }
+
+  .btn-danger {
+    background: var(--danger-soft);
+    border-color: rgba(244, 63, 94, 0.4);
+    color: #FECDD3;
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(244, 63, 94, 0.24);
+    border-color: var(--danger-rose);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--ink-secondary);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--panel-border);
+    color: var(--ink-primary);
+  }
+
+  .btn-sm {
+    padding: 5px 9px;
+    font-size: 0.77rem;
+  }
+
+  .btn-icon {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  .btn.active {
+    background: var(--cad-cyan-soft);
+    border-color: var(--cad-cyan);
+    color: #FFFFFF;
+  }
+
+  .btn.active.amber {
+    background: var(--timber-amber-soft);
+    border-color: var(--timber-amber);
+    color: #FEF3C7;
+  }
+
+  .btn.active.emerald {
+    background: var(--emerald-soft);
+    border-color: var(--emerald-ok);
+    color: #D1FAE5;
+  }
+
+  /* Filter & Command Rail */
+  .vault-main {
+    width: 100%;
+    max-width: 1520px;
+    margin: 0 auto;
+    padding: 16px 20px 36px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .filter-bar {
+    background: var(--surface-1);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--cad-cyan);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .filter-row-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 210px;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ink-muted);
+    pointer-events: none;
+  }
+
+  .input, .select, .textarea {
+    width: 100%;
+    background: var(--bg-slate);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 11px;
+    font-size: 0.84rem;
+    color: var(--ink-primary);
+    transition: border-color 0.15s;
+  }
+
+  .input:focus, .select:focus, .textarea:focus {
+    outline: none;
+    border-color: var(--cad-cyan);
+  }
+
+  .search-input {
+    padding-left: 34px;
+    padding-right: 30px;
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--ink-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    display: none;
+    place-items: center;
+  }
+
+  .search-clear.show { display: grid; }
+  .search-clear:hover { color: var(--ink-primary); background: rgba(255, 255, 255, 0.08); }
+
+  .filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .sort-select {
+    width: auto;
+    min-width: 150px;
+    padding: 7px 10px;
+  }
+
+  .chip-rail {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .chip-rail-label {
+    font-size: 0.75rem;
+    color: var(--ink-muted);
+    flex: none;
+    margin-right: 2px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--panel-border);
+    background: rgba(17, 22, 29, 0.7);
+    color: var(--ink-secondary);
+    font-size: 0.78rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex: none;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+
+  .chip:hover {
+    border-color: rgba(56, 189, 248, 0.45);
+    color: var(--ink-primary);
+  }
+
+  .chip.active {
+    background: var(--cad-cyan-soft);
+    border-color: var(--cad-cyan);
+    color: #E0F2FE;
+    font-weight: 600;
+  }
+
+  .chip.tag-chip.active {
+    background: var(--timber-amber-soft);
+    border-color: var(--timber-amber);
+    color: #FEF3C7;
+  }
+
+  .chip-count {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    opacity: 0.75;
+  }
+
+  /* Auto-thumb queue indicator */
+  .thumb-queue-banner {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 13px;
+    border-radius: var(--radius-sm);
+    background: rgba(56, 189, 248, 0.09);
+    border: 1px solid rgba(56, 189, 248, 0.28);
+    font-size: 0.8rem;
+    color: #BAE6FD;
+  }
+
+  .thumb-queue-banner.show { display: flex; }
+
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(56, 189, 248, 0.25);
+    border-top-color: var(--cad-cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex: none;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Asset Specimen Grid */
+  .asset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(286px, 1fr));
+    gap: 14px;
+  }
+
+  .asset-card {
+    background: var(--surface-1);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease;
+  }
+
+  .asset-card:hover {
+    border-color: rgba(56, 189, 248, 0.55);
+    background: #1A232F;
+  }
+
+  .card-preview {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    background:
+      radial-gradient(circle at 50% 45%, #1D2836 0%, #0E1319 85%);
+    border-bottom: 1px solid var(--panel-border);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+
+  /* Blueprint crosshairs behind missing/loading thumbnails */
+  .card-preview::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(56, 189, 248, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56, 189, 248, 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+    pointer-events: none;
+  }
+
+  .card-preview img {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .card-placeholder {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    color: var(--ink-secondary);
+    font-size: 0.78rem;
+  }
+
+  .card-overlay-top {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 3;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+    pointer-events: none;
+  }
+
+  .card-overlay-top > * { pointer-events: auto; }
+
+  .card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.71rem;
+    font-weight: 600;
+    background: rgba(14, 19, 25, 0.84);
+    border: 1px solid rgba(143, 161, 184, 0.28);
+    color: var(--ink-primary);
+    backdrop-filter: blur(6px);
+  }
+
+  .badge-ver {
+    font-family: var(--font-mono);
+    border-color: rgba(56, 189, 248, 0.45);
+    color: var(--cad-cyan);
+  }
+
+  .badge-cat {
+    color: var(--ink-secondary);
+  }
+
+  .fav-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid rgba(143, 161, 184, 0.25);
+    background: rgba(14, 19, 25, 0.82);
+    color: var(--ink-muted);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    font-size: 0.92rem;
+    line-height: 1;
+    backdrop-filter: blur(6px);
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+
+  .fav-btn:hover {
+    color: #FCD34D;
+    border-color: rgba(245, 158, 11, 0.5);
+  }
+
+  .fav-btn.active {
+    color: var(--timber-amber);
+    border-color: rgba(245, 158, 11, 0.65);
+    background: rgba(245, 158, 11, 0.16);
+  }
+
+  .card-overlay-bottom {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    z-index: 3;
+    display: flex;
+    gap: 5px;
+    opacity: 0;
+    transition: opacity 0.16s ease;
+  }
+
+  .asset-card:hover .card-overlay-bottom,
+  .asset-card:focus-within .card-overlay-bottom {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .card-overlay-bottom { opacity: 1; }
+  }
+
+  .card-body {
+    padding: 12px 13px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    flex: 1;
+  }
+
+  .card-title {
+    font-size: 0.96rem;
+    font-weight: 600;
+    color: var(--ink-primary);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 20px;
+  }
+
+  .mini-tag {
+    font-family: var(--font-mono);
+    font-size: 0.69rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    color: #93C5FD;
+  }
+
+  .card-ruler {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid rgba(143, 161, 184, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.74rem;
+    color: var(--ink-secondary);
+  }
+
+  /* Empty / Loading states */
+  .empty-state {
+    grid-column: 1 / -1;
+    background: var(--surface-1);
+    border: 1px dashed var(--panel-border-strong);
+    border-radius: var(--radius-lg);
+    padding: 46px 20px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .empty-state h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--ink-primary);
+  }
+
+  .empty-state p {
+    font-size: 0.85rem;
+    color: var(--ink-secondary);
+    max-width: 460px;
+  }
+
+  /* =========================================================
+     FULLSCREEN 3D CAD VIEWER OVERLAY
+     ========================================================= */
+  .viewer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: var(--bg-slate);
+    display: none;
+    flex-direction: column;
+  }
+
+  .viewer-overlay.open {
+    display: flex;
+  }
+
+  .viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 14px;
+    background: #131922;
+    border-bottom: 1px solid var(--panel-border);
+    min-height: 52px;
+    flex-wrap: wrap;
+  }
+
+  .viewer-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .viewer-title-group {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .viewer-title {
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: var(--ink-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 340px;
+  }
+
+  .ver-pills {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .ver-pill {
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--panel-border);
+    background: var(--surface-1);
+    color: var(--ink-secondary);
+    cursor: pointer;
+  }
+
+  .ver-pill:hover { border-color: var(--cad-cyan); color: var(--ink-primary); }
+
+  .ver-pill.active {
+    background: var(--cad-cyan-soft);
+    border-color: var(--cad-cyan);
+    color: #E0F2FE;
+    font-weight: 600;
+  }
+
+  .viewer-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .mode-switch {
+    display: inline-flex;
+    background: var(--bg-slate);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .mode-switch button {
+    border: none;
+    background: transparent;
+    color: var(--ink-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .mode-switch button.active {
+    background: var(--surface-3);
+    color: var(--ink-primary);
+  }
+
+  .viewer-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 364px;
+  }
+
+  .viewer-body.inspector-collapsed {
+    grid-template-columns: minmax(0, 1fr) 0px;
+  }
+
+  .viewer-body.inspector-collapsed .inspector-panel {
+    display: none;
+  }
+
+  /* 3D Stage */
+  .stage-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: radial-gradient(circle at 50% 42%, #1d2836 0%, #0e1319 85%);
+    overflow: hidden;
+  }
+
+  .stage-wrap.bg-studio {
+    background: radial-gradient(circle at 50% 35%, #2d3847 0%, #18202b 85%);
+  }
+
+  .stage-wrap.bg-light {
+    background: radial-gradient(circle at 50% 40%, #dbe4ee 0%, #aebccb 90%);
+  }
+
+  #viewer-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+
+  #viewer-canvas:active { cursor: grabbing; }
+  #viewer-canvas.measure-cursor { cursor: crosshair; }
+
+  /* HUD Elements inside Stage */
+  .stage-hud-top {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+    max-width: calc(100% - 24px);
+  }
+
+  .hud-strip {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--cad-cyan);
+    border-radius: 6px;
+    padding: 6px 10px;
+    backdrop-filter: blur(10px);
+    font-size: 0.76rem;
+    pointer-events: auto;
+  }
+
+  .hud-pill {
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.28);
+    color: var(--cad-cyan);
+  }
+
+  .hud-pill.amber {
+    background: var(--timber-amber-soft);
+    border-color: rgba(245, 158, 11, 0.38);
+    color: #FCD34D;
+  }
+
+  .hud-pill.emerald {
+    background: var(--emerald-soft);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #6EE7B7;
+  }
+
+  .measure-banner {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid rgba(16, 185, 129, 0.5);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    color: #D1FAE5;
+    backdrop-filter: blur(10px);
+    pointer-events: auto;
+  }
+
+  .measure-banner.show { display: inline-flex; }
+
+  /* Floating Measure Labels Layer */
+  #measure-labels-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 9;
+  }
+
+  .measure-tag {
+    position: absolute;
+    transform: translate(-50%, -120%);
+    background: rgba(13, 18, 25, 0.92);
+    border: 1px solid var(--emerald-ok);
+    color: #ECFDF5;
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+    padding: 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  .measure-tag small {
+    color: #94A6BC;
+    margin-left: 6px;
+    font-size: 0.67rem;
+  }
+
+  /* Docked Y-Axis Clipping Slider inside Stage */
+  .clip-dock {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 12;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    border-radius: 8px;
+    padding: 10px 8px;
+    backdrop-filter: blur(10px);
+    width: 68px;
+  }
+
+  .clip-dock.show { display: flex; }
+
+  .clip-dock-title {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #FCD34D;
+    text-align: center;
+    line-height: 1.25;
+  }
+
+  .clip-dock-val {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink-primary);
+    text-align: center;
+  }
+
+  .clip-slider-wrap {
+    height: 165px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #clip-slider {
+    width: 155px;
+    transform: rotate(-90deg);
+    accent-color: var(--timber-amber);
+    cursor: pointer;
+  }
+
+  /* Floating Bottom CAD Toolbar */
+  .stage-toolbar {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 7px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border-strong);
+    border-radius: 8px;
+    backdrop-filter: blur(12px);
+    max-width: calc(100% - 20px);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .stage-toolbar::-webkit-scrollbar { display: none; }
+
+  .tool-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--panel-border);
+    margin: 0 2px;
+    flex: none;
+  }
+
+  .tool-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ink-secondary);
+    padding: 5px 8px;
+    border-radius: 5px;
+    font-size: 0.76rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: background 0.14s, color 0.14s, border-color 0.14s;
+  }
+
+  .tool-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--ink-primary);
+  }
+
+  .tool-btn.active {
+    background: var(--cad-cyan-soft);
+    border-color: rgba(56, 189, 248, 0.55);
+    color: #E0F2FE;
+  }
+
+  .tool-btn.active-amber {
+    background: var(--timber-amber-soft);
+    border-color: rgba(245, 158, 11, 0.6);
+    color: #FEF3C7;
+  }
+
+  .tool-btn.active-emerald {
+    background: var(--emerald-soft);
+    border-color: rgba(16, 185, 129, 0.6);
+    color: #D1FAE5;
+  }
+
+  .stage-loader {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(14, 19, 25, 0.74);
+    backdrop-filter: blur(4px);
+    color: var(--ink-primary);
+    font-size: 0.86rem;
+  }
+
+  .stage-loader.show { display: flex; }
+
+  /* =========================================================
+     COMPARE MODE (DUAL SYNCED CANVASES)
+     ========================================================= */
+  .compare-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    background: var(--bg-slate);
+  }
+
+  .compare-stage.show { display: flex; }
+
+  .compare-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    background: #151C25;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 0.8rem;
+  }
+
+  .compare-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .compare-picker select {
+    width: auto;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+  }
+
+  .compare-canvases {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    background: var(--panel-border);
+  }
+
+  .compare-pane {
+    position: relative;
+    min-height: 0;
+    background: radial-gradient(circle at 50% 42%, #1d2836 0%, #0e1319 85%);
+    overflow: hidden;
+  }
+
+  .compare-pane canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+
+  .compare-pane canvas:active { cursor: grabbing; }
+
+  .compare-label {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 5;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--cad-cyan);
+    padding: 5px 9px;
+    border-radius: 5px;
+    font-size: 0.76rem;
+    pointer-events: none;
+  }
+
+  .compare-label.right {
+    border-left-color: var(--timber-amber);
+  }
+
+  .compare-diff-bar {
+    padding: 7px 12px;
+    background: #131922;
+    border-top: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 0.77rem;
+    color: var(--ink-secondary);
+  }
+
+  /* =========================================================
+     RIGHT INSPECTOR PANEL
+     ========================================================= */
+  .inspector-panel {
+    background: #151C25;
+    border-left: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .inspector-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--panel-border);
+    background: #121821;
+    flex: none;
+  }
+
+  .itab {
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--ink-secondary);
+    padding: 10px 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+
+  .itab:hover { color: var(--ink-primary); background: rgba(255, 255, 255, 0.03); }
+
+  .itab.active {
+    color: var(--cad-cyan);
+    border-bottom-color: var(--cad-cyan);
+    background: rgba(56, 189, 248, 0.06);
+    font-weight: 600;
+  }
+
+  .inspector-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tab-pane.active { display: flex; }
+
+  .section-box {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink-primary);
+  }
+
+  .spec-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+  }
+
+  .spec-table td {
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(143, 161, 184, 0.1);
+  }
+
+  .spec-table tr:last-child td { border-bottom: none; }
+  .spec-table td:first-child { color: var(--ink-secondary); }
+  .spec-table td:last-child {
+    text-align: right;
+    font-family: var(--font-mono);
+    color: var(--ink-primary);
+    word-break: break-all;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .field label {
+    font-size: 0.76rem;
+    color: var(--ink-secondary);
+    font-weight: 500;
+  }
+
+  .version-item {
+    border: 1px solid var(--panel-border);
+    border-radius: 7px;
+    padding: 9px 10px;
+    background: rgba(17, 22, 29, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .version-item:hover {
+    border-color: rgba(56, 189, 248, 0.45);
+    background: rgba(30, 40, 54, 0.6);
+  }
+
+  .version-item.active {
+    border-color: var(--cad-cyan);
+    background: rgba(56, 189, 248, 0.1);
+  }
+
+  .version-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .version-note {
+    font-size: 0.8rem;
+    color: var(--ink-primary);
+  }
+
+  .version-meta {
+    font-size: 0.72rem;
+    color: var(--ink-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* Mesh/Layer List */
+  .mesh-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
+  .mesh-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid rgba(143, 161, 184, 0.12);
+    background: rgba(17, 22, 29, 0.5);
+    font-size: 0.76rem;
+  }
+
+  .mesh-row.hidden-mesh { opacity: 0.45; }
+
+  .mesh-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    flex: 1;
+  }
+
+  /* Source Code Viewer */
+  .code-viewer {
+    background: #0D1218;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: #CBD5E1;
+    overflow: auto;
+    max-height: 290px;
+    white-space: pre;
+    tab-size: 4;
+  }
+
+  .export-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .action-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* =========================================================
+     MODALS (UPLOAD / IMPORT / CONFIRM DELETE)
+     ========================================================= */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(8, 11, 16, 0.78);
+    backdrop-filter: blur(5px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .modal-backdrop.open { display: flex; }
+
+  .modal-card {
+    width: 100%;
+    max-width: 560px;
+    max-height: 92vh;
+    overflow-y: auto;
+    background: var(--surface-1);
+    border: 1px solid var(--panel-border-strong);
+    border-top: 3px solid var(--cad-cyan);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  }
+
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .modal-head h2 {
+    font-size: 1.02rem;
+    font-weight: 700;
+  }
+
+  .dropzone {
+    border: 1.5px dashed rgba(56, 189, 248, 0.45);
+    border-radius: var(--radius-md);
+    padding: 20px 16px;
+    text-align: center;
+    background: rgba(17, 22, 29, 0.7);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--cad-cyan);
+    background: rgba(56, 189, 248, 0.08);
+  }
+
+  .dropzone-preview-img {
+    max-width: 220px;
+    max-height: 140px;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+    display: none;
+  }
+
+  .dropzone-preview-img.show { display: block; }
+
+  .form-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .radio-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .radio-opt {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-slate);
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .radio-opt input { accent-color: var(--cad-cyan); }
+
+  .upload-progress {
+    display: none;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 11px;
+    border-radius: var(--radius-sm);
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    font-size: 0.8rem;
+    color: #BAE6FD;
+  }
+
+  .upload-progress.show { display: flex; }
+
+  /* Toast Stack */
+  .toast-stack {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 120;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: min(380px, calc(100vw - 32px));
+    pointer-events: none;
+  }
+
+  .toast {
+    pointer-events: auto;
+    padding: 10px 13px;
+    border-radius: 8px;
+    background: rgba(22, 30, 40, 0.96);
+    border: 1px solid var(--panel-border-strong);
+    border-left: 3px solid var(--cad-cyan);
+    color: var(--ink-primary);
+    font-size: 0.82rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .toast.ok { border-left-color: var(--emerald-ok); }
+  .toast.warn { border-left-color: var(--timber-amber); }
+  .toast.err { border-left-color: var(--danger-rose); }
+
+  .toast-close {
+    border: none;
+    background: transparent;
+    color: var(--ink-muted);
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  /* =========================================================
+     RESPONSIVE (DOWN TO 390px MOBILE)
+     ========================================================= */
+  @media (max-width: 960px) {
+    .viewer-body {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(260px, 50vh) minmax(0, 1fr);
+    }
+
+    .viewer-body.inspector-collapsed {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 0px;
+    }
+
+    .inspector-panel {
+      border-left: none;
+      border-top: 1px solid var(--panel-border);
+    }
+
+    .compare-canvases {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .topbar {
+      padding: 9px 12px;
+      gap: 8px;
+    }
+
+    .brand-meta { display: none; }
+    .back-link span.txt { display: none; }
+
+    .vault-main {
+      padding: 12px 12px 28px;
+    }
+
+    .asset-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .filter-controls {
+      width: 100%;
+    }
+
+    .sort-select {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .viewer-header {
+      padding: 7px 10px;
+      gap: 6px;
+    }
+
+    .viewer-title {
+      max-width: 180px;
+      font-size: 0.88rem;
+    }
+
+    .stage-toolbar {
+      bottom: 8px;
+      padding: 4px 5px;
+    }
+
+    .tool-btn {
+      padding: 5px 7px;
+      font-size: 0.72rem;
+    }
+
+    .clip-dock {
+      width: 56px;
+      padding: 8px 5px;
+      right: 6px;
+    }
+
+    .form-grid-2, .radio-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation: none; }
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="vault-shell">
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="/" class="back-link" title="กลับไปหน้าหลัก Homelab Dashboard">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+        <span class="txt">แดชบอร์ด</span>
+      </a>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <div>
+          <h1 class="brand-title">คลังโมเดล 3D</h1>
+          <div class="brand-meta">
+            <span id="vault-summary-count" class="mono">กำลังโหลดคลัง...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button type="button" class="btn btn-sm" id="btn-refresh" title="โหลดรายการล่าสุด">รีเฟรช</button>
+      <button type="button" class="btn btn-primary" id="btn-open-upload">+ นำเข้าโมเดล / ZIP</button>
+    </div>
+  </header>
+
+  <!-- GALLERY MAIN -->
+  <main class="vault-main">
+    <section class="filter-bar" aria-label="ค้นหาและกรองโมเดล 3D">
+      <div class="filter-row-top">
+        <div class="search-wrap">
+          <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" id="search-input" class="input search-input" placeholder="ค้นหาชื่อโมเดล แท็ก หรือหมวดหมู่..." autocomplete="off" />
+          <button type="button" id="search-clear" class="search-clear" title="ล้างคำค้น">✕</button>
+        </div>
+        <div class="filter-controls">
+          <button type="button" class="btn btn-sm" id="btn-fav-filter" aria-pressed="false">★ รายการโปรด</button>
+          <select id="sort-select" class="select sort-select" aria-label="เรียงลำดับ">
+            <option value="updated">เรียงตามอัปเดตล่าสุด</option>
+            <option value="name">เรียงตามชื่อ ก-ฮ / A-Z</option>
+            <option value="size">เรียงตามขนาดไฟล์</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="chip-rail" id="category-rail" aria-label="หมวดหมู่"></div>
+      <div class="chip-rail" id="tag-rail" aria-label="แท็ก" style="display:none;"></div>
+    </section>
+
+    <div class="thumb-queue-banner" id="thumb-queue-banner" role="status" aria-live="polite">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="spinner"></span>
+        <span id="thumb-queue-text">กำลังสร้างภาพพรีวิวอัตโนมัติ...</span>
+      </div>
+      <span id="thumb-queue-count" class="mono"></span>
+    </div>
+
+    <section class="asset-grid" id="asset-grid" aria-label="รายการโมเดล 3D"></section>
+  </main>
+</div>
+
+<!-- =========================================================
+     FULLSCREEN 3D VIEWER OVERLAY
+     ========================================================= -->
+<div class="viewer-overlay" id="viewer-overlay" role="dialog" aria-modal="true" aria-labelledby="viewer-title">
+  <div class="viewer-header">
+    <div class="viewer-header-left">
+      <button type="button" class="btn btn-sm" id="btn-close-viewer">← คลังโมเดล</button>
+      <div class="viewer-title-group">
+        <span class="viewer-title" id="viewer-title">โมเดล 3D</span>
+        <div class="ver-pills" id="viewer-ver-pills"></div>
+      </div>
+    </div>
+    <div class="viewer-header-right">
+      <div class="mode-switch" role="tablist" aria-label="โหมดการแสดงผล">
+        <button type="button" id="mode-single-btn" class="active" role="tab" aria-selected="true">ดูโมเดล 3D</button>
+        <button type="button" id="mode-compare-btn" role="tab" aria-selected="false">เทียบเวอร์ชัน</button>
+      </div>
+      <button type="button" class="btn btn-sm" id="btn-viewer-fav" title="สลับรายการโปรด">☆</button>
+      <button type="button" class="btn btn-sm" id="btn-copy-link" title="คัดลอกลิงก์ตรงถึงเวอร์ชันนี้">คัดลอกลิงก์</button>
+      <button type="button" class="btn btn-sm btn-primary" id="btn-viewer-add-ver">+ เวอร์ชันใหม่</button>
+      <button type="button" class="btn btn-sm" id="btn-toggle-inspector" title="ซ่อน/แสดงแผงด้านข้าง">แผงข้อมูล</button>
+    </div>
+  </div>
+
+  <div class="viewer-body" id="viewer-body">
+    <!-- 3D STAGE -->
+    <div class="stage-wrap" id="stage-wrap">
+      <canvas id="viewer-canvas"></canvas>
+      <div id="measure-labels-layer"></div>
+
+      <!-- Top Left CAD Readout -->
+      <div class="stage-hud-top">
+        <div class="hud-strip">
+          <span class="hud-pill" id="hud-dims">ขนาด: —</span>
+          <span class="hud-pill" id="hud-mesh-stat">เมช: —</span>
+          <span class="hud-pill amber" id="hud-ver-note" style="display:none;"></span>
+        </div>
+        <div class="measure-banner" id="measure-banner">
+          <span id="measure-hint">โหมดวัดระยะ: คลิกจุดแรกบนโมเดล</span>
+          <button type="button" class="btn btn-sm" id="btn-clear-measure" style="padding:2px 7px;font-size:0.72rem;">ล้างเส้นวัด</button>
+        </div>
+      </div>
+
+      <!-- Y-Axis Clipping Slider Dock -->
+      <div class="clip-dock" id="clip-dock">
+        <span class="clip-dock-title">ตัดแกน Y</span>
+        <span class="clip-dock-val" id="clip-pct-label">100%</span>
+        <div class="clip-slider-wrap">
+          <input type="range" id="clip-slider" min="0" max="100" step="0.5" value="100" aria-label="ระดับการตัดตามแกน Y" />
+        </div>
+        <span class="clip-dock-val" id="clip-meter-label">0.00 m</span>
+        <button type="button" class="btn btn-sm" id="btn-clip-flip" style="padding:3px 6px;font-size:0.69rem;width:100%;" title="กลับด้านการตัด">กลับด้าน</button>
+      </div>
+
+      <!-- Bottom CAD Toolbar -->
+      <div class="stage-toolbar" role="toolbar" aria-label="เครื่องมือควบคุมมุมมอง 3D">
+        <button type="button" class="tool-btn" data-cam="iso" title="มุม Isometric">Iso</button>
+        <button type="button" class="tool-btn" data-cam="front" title="ด้านหน้า">หน้า</button>
+        <button type="button" class="tool-btn" data-cam="side" title="ด้านข้าง">ข้าง</button>
+        <button type="button" class="tool-btn" data-cam="top" title="ด้านบน (แปลน)">บน</button>
+        <button type="button" class="tool-btn" data-cam="fit" title="จัดเต็มจอ">พอดีจอ</button>
+        <span class="tool-sep"></span>
+        <button type="button" class="tool-btn" id="tool-autorotate" title="หมุนอัตโนมัติ">หมุนอัตโนมัติ</button>
+        <button type="button" class="tool-btn" id="tool-wireframe" title="โครงลวด Wireframe">โครงลวด</button>
+        <button type="button" class="tool-btn active" id="tool-grid" title="ตารางพื้น 1 เมตร">ตารางพื้น</button>
+        <button type="button" class="tool-btn" id="tool-bbox" title="กล่องขอบเขตและแกน XYZ">ขอบเขต</button>
+        <span class="tool-sep"></span>
+        <button type="button" class="tool-btn" id="tool-clip" title="ผ่าตัดดูด้านในตามแกน Y">ตัดแกน Y</button>
+        <button type="button" class="tool-btn" id="tool-measure" title="วัดระยะระหว่าง 2 จุดบนโมเดล">วัดระยะ</button>
+        <span class="tool-sep"></span>
+        <button type="button" class="tool-btn" id="tool-bg" title="สลับโทนแสงพื้นหลัง">แสง: เข้ม</button>
+        <button type="button" class="tool-btn" id="tool-set-thumb" title="ตั้งมุมมองปัจจุบันเป็นภาพปกของโมเดลนี้">ตั้งภาพปก</button>
+        <button type="button" class="tool-btn" id="tool-shot" title="บันทึกภาพหน้าจอ PNG">จับภาพ</button>
+      </div>
+
+      <!-- Loading Spinner -->
+      <div class="stage-loader" id="stage-loader">
+        <span class="spinner" style="width:26px;height:26px;border-width:3px;"></span>
+        <span id="stage-loader-text">กำลังโหลดโมเดล 3D...</span>
+      </div>
+
+      <!-- COMPARE MODE (2 SYNCED CANVASES) -->
+      <div class="compare-stage" id="compare-stage">
+        <div class="compare-bar">
+          <div class="compare-picker">
+            <span style="color:var(--cad-cyan);font-weight:600;">ฝั่งซ้าย:</span>
+            <select id="compare-left-select" class="select"></select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="mono" style="font-size:0.74rem;color:var(--ink-secondary);">กล้องซิงค์อัตโนมัติ</span>
+            <button type="button" class="btn btn-sm" id="btn-compare-reset">รีเซ็ตมุมกล้อง</button>
+            <button type="button" class="btn btn-sm" id="btn-compare-wire">โครงลวด</button>
+          </div>
+          <div class="compare-picker">
+            <span style="color:var(--timber-amber);font-weight:600;">ฝั่งขวา:</span>
+            <select id="compare-right-select" class="select"></select>
+          </div>
+        </div>
+        <div class="compare-canvases">
+          <div class="compare-pane" id="compare-pane-left">
+            <canvas id="compare-canvas-left"></canvas>
+            <div class="compare-label" id="compare-label-left">v1</div>
+          </div>
+          <div class="compare-pane" id="compare-pane-right">
+            <canvas id="compare-canvas-right"></canvas>
+            <div class="compare-label right" id="compare-label-right">v2</div>
+          </div>
+        </div>
+        <div class="compare-diff-bar" id="compare-diff-bar">
+          <span>เลือก 2 เวอร์ชันเพื่อเทียบความเปลี่ยนแปลง</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSPECTOR SIDEBAR -->
+    <aside class="inspector-panel" id="inspector-panel" aria-label="แผงข้อมูลและจัดการโมเดล">
+      <div class="inspector-tabs" role="tablist">
+        <button type="button" class="itab active" data-tab="info" role="tab" aria-selected="true">ข้อมูล</button>
+        <button type="button" class="itab" data-tab="versions" role="tab" aria-selected="false">เวอร์ชัน</button>
+        <button type="button" class="itab" data-tab="layers" role="tab" aria-selected="false">เลเยอร์</button>
+        <button type="button" class="itab" data-tab="export" role="tab" aria-selected="false">โค้ด/ส่งออก</button>
+      </div>
+
+      <div class="inspector-content">
+        <!-- TAB: INFO & EDIT -->
+        <div class="tab-pane active" id="tab-info">
+          <div class="section-box">
+            <div class="section-head">
+              <span>ข้อมูลเรขาคณิต</span>
+              <span class="mono" id="info-ver-badge" style="color:var(--cad-cyan);font-size:0.74rem;">v1</span>
+            </div>
+            <table class="spec-table">
+              <tr><td>ขนาด (กว้าง × สูง × ลึก)</td><td id="spec-dims">—</td></tr>
+              <tr><td>สามเหลี่ยม / เมช</td><td id="spec-tris">—</td></tr>
+              <tr><td>ขนาดไฟล์</td><td id="spec-size">—</td></tr>
+              <tr><td>อัปเดตล่าสุด</td><td id="spec-updated">—</td></tr>
+              <tr><td>แหล่งที่มา</td><td id="spec-source">—</td></tr>
+              <tr><td>SHA-256</td><td id="spec-sha">—</td></tr>
+            </table>
+          </div>
+
+          <div class="section-box">
+            <div class="section-head"><span>แก้ไขรายละเอียด</span></div>
+            <form id="meta-edit-form" style="display:flex;flex-direction:column;gap:8px;">
+              <div class="field">
+                <label for="edit-name">ชื่อโมเดล</label>
+                <input type="text" id="edit-name" class="input" required maxlength="120" />
+              </div>
+              <div class="field">
+                <label for="edit-category">หมวดหมู่</label>
+                <select id="edit-category" class="select">
+                  <option value="building">อาคาร / สถาปัตยกรรม</option>
+                  <option value="furniture">เฟอร์นิเจอร์</option>
+                  <option value="device">อุปกรณ์ / ฮาร์ดแวร์</option>
+                  <option value="part">ชิ้นส่วน / อะไหล่</option>
+                  <option value="scene">ฉาก / สภาพแวดล้อม</option>
+                  <option value="other">อื่นๆ</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="edit-tags">แท็ก (คั่นด้วยจุลภาค)</label>
+                <input type="text" id="edit-tags" class="input" placeholder="เช่น swiftlet, house, blender" />
+              </div>
+              <div class="field">
+                <label for="edit-desc">คำอธิบาย</label>
+                <textarea id="edit-desc" class="textarea" rows="3" placeholder="บันทึกสเปก ขนาด หรือรายละเอียดเพิ่มเติม..."></textarea>
+              </div>
+              <div class="action-row" style="justify-content:flex-end;margin-top:2px;">
+                <button type="submit" class="btn btn-primary btn-sm" id="btn-save-meta">บันทึกการแก้ไข</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="section-box">
+            <div class="section-head"><span>จัดการรายการ</span></div>
+            <div class="action-row">
+              <button type="button" class="btn btn-sm" id="btn-duplicate-asset" style="flex:1;">ทำสำเนาโมเดล</button>
+              <button type="button" class="btn btn-danger btn-sm" id="btn-delete-asset" style="flex:1;">ลบเข้าถังขยะ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: VERSIONS -->
+        <div class="tab-pane" id="tab-versions">
+          <div class="section-box">
+            <div class="section-head">
+              <span>ประวัติเวอร์ชัน</span>
+              <button type="button" class="btn btn-primary btn-sm" id="btn-tab-add-ver">+ เพิ่มเวอร์ชัน</button>
+            </div>
+            <div id="version-list" style="display:flex;flex-direction:column;gap:7px;"></div>
+          </div>
+        </div>
+
+        <!-- TAB: LAYERS / MESHES -->
+        <div class="tab-pane" id="tab-layers">
+          <div class="section-box">
+            <div class="section-head">
+              <span>ชิ้นส่วนเมชในโมเดล</span>
+              <span class="mono" id="mesh-count-badge" style="color:var(--cad-cyan);font-size:0.74rem;">0</span>
+            </div>
+            <input type="search" id="mesh-search" class="input" placeholder="กรองชื่อชิ้นส่วน..." style="padding:6px 9px;font-size:0.78rem;" />
+            <div class="action-row">
+              <button type="button" class="btn btn-sm" id="btn-mesh-show-all" style="flex:1;">แสดงทั้งหมด</button>
+              <button type="button" class="btn btn-sm" id="btn-mesh-hide-all" style="flex:1;">ซ่อนทั้งหมด</button>
+            </div>
+            <div class="mesh-list" id="mesh-list"></div>
+          </div>
+        </div>
+
+        <!-- TAB: SOURCE CODE & EXPORT -->
+        <div class="tab-pane" id="tab-export">
+          <div class="section-box">
+            <div class="section-head">
+              <span>ส่งออกโมเดล (Export)</span>
+              <span class="mono" id="export-ver-label" style="color:var(--timber-amber);font-size:0.74rem;">v1</span>
+            </div>
+            <p style="font-size:0.75rem;color:var(--ink-secondary);">
+              แปลงไฟล์บนเซิร์ฟเวอร์ด้วย Blender อัตโนมัติ หรือดาวน์โหลดแพ็กเกจ ZIP พร้อมสคริปต์และเมตาดาต้า
+            </p>
+            <div class="export-grid">
+              <button type="button" class="btn btn-sm" data-export="glb">ดาวน์โหลด GLB</button>
+              <button type="button" class="btn btn-sm" data-export="stl">แปลงเป็น STL</button>
+              <button type="button" class="btn btn-sm" data-export="obj">แปลงเป็น OBJ</button>
+              <button type="button" class="btn btn-sm" data-export="fbx">แปลงเป็น FBX</button>
+            </div>
+            <div class="export-grid">
+              <button type="button" class="btn btn-amber btn-sm" data-export="zip">ส่งออก ZIP (เวอร์ชันนี้)</button>
+              <button type="button" class="btn btn-emerald btn-sm" data-export="zip-all">ส่งออก ZIP (ทุกเวอร์ชัน)</button>
+            </div>
+            <div id="original-file-row" style="display:none;margin-top:2px;">
+              <a id="btn-download-original" class="btn btn-sm" style="width:100%;" download>ดาวน์โหลดไฟล์ต้นฉบับ</a>
+            </div>
+          </div>
+
+          <div class="section-box">
+            <div class="section-head">
+              <span>สคริปต์ Blender (source.py)</span>
+              <div style="display:flex;gap:4px;">
+                <button type="button" class="btn btn-sm" id="btn-copy-source" style="display:none;">คัดลอก</button>
+                <a id="btn-download-source" class="btn btn-sm" style="display:none;" download>ดาวน์โหลด .py</a>
+              </div>
+            </div>
+            <div id="source-empty" style="font-size:0.78rem;color:var(--ink-secondary);">เวอร์ชันนี้ไม่มีไฟล์สคริปต์ source.py แนบไว้</div>
+            <pre class="code-viewer" id="source-code-viewer" style="display:none;"></pre>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- =========================================================
+     UPLOAD / IMPORT MODAL
+     ========================================================= -->
+<div class="modal-backdrop" id="upload-modal" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 id="upload-modal-title">นำเข้าโมเดล 3D หรือไฟล์ ZIP</h2>
+      <button type="button" class="btn btn-ghost btn-icon" id="btn-close-upload" aria-label="ปิดหน้าต่าง">✕</button>
+    </div>
+
+    <form id="upload-form" style="display:flex;flex-direction:column;gap:12px;">
+      <div class="dropzone" id="upload-dropzone" tabindex="0" role="button" aria-label="คลิกหรือลากไฟล์มาวางเพื่ออัปโหลด">
+        <img id="upload-preview-img" class="dropzone-preview-img" alt="ตัวอย่างโมเดลที่จะอัปโหลด" />
+        <div id="upload-drop-label" style="font-weight:600;font-size:0.88rem;">ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์</div>
+        <div id="upload-drop-sub" style="font-size:0.76rem;color:var(--ink-secondary);">
+          รองรับ .glb .gltf .obj .stl .fbx .ply .blend หรือ .zip (สูงสุด 80 MB)
+        </div>
+        <input type="file" id="upload-file-input" class="sr-only" accept=".glb,.gltf,.obj,.stl,.fbx,.ply,.blend,.zip" />
+      </div>
+
+      <!-- Zip Mode Banner -->
+      <div id="zip-mode-info" style="display:none;padding:10px 12px;border-radius:7px;background:var(--timber-amber-soft);border:1px solid rgba(245,158,11,0.4);font-size:0.8rem;color:#FEF3C7;">
+        ตรวจพบไฟล์แพ็กเกจ <strong>.zip</strong> — ระบบจะนำเข้าผ่าน <code>import-zip</code> พร้อมข้อมูลเวอร์ชันและเมตาดาต้าโดยอัตโนมัติ
+      </div>
+
+      <!-- Standard 3D Model Fields -->
+      <div id="model-upload-fields" style="display:flex;flex-direction:column;gap:10px;">
+        <div class="radio-row">
+          <label class="radio-opt">
+            <input type="radio" name="uploadMode" value="new" checked />
+            <span>สร้างโมเดลใหม่</span>
+          </label>
+          <label class="radio-opt">
+            <input type="radio" name="uploadMode" value="version" />
+            <span>เพิ่มเวอร์ชันให้โมเดลเดิม</span>
+          </label>
+        </div>
+
+        <div class="field" id="target-asset-field" style="display:none;">
+          <label for="upload-target-asset">เลือกโมเดลเดิม</label>
+          <select id="upload-target-asset" class="select"></select>
+        </div>
+
+        <div id="new-asset-fields" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="field">
+            <label for="upload-name">ชื่อโมเดล *</label>
+            <input type="text" id="upload-name" class="input" placeholder="เช่น บ้านนกแอ่น 18x8 ม. หรือ แร็คเซิร์ฟเวอร์" maxlength="120" />
+          </div>
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="upload-category">หมวดหมู่</label>
+              <select id="upload-category" class="select">
+                <option value="building">อาคาร / สถาปัตยกรรม</option>
+                <option value="furniture">เฟอร์นิเจอร์</option>
+                <option value="device">อุปกรณ์ / ฮาร์ดแวร์</option>
+                <option value="part">ชิ้นส่วน / อะไหล่</option>
+                <option value="scene">ฉาก / สภาพแวดล้อม</option>
+                <option value="other">อื่นๆ</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="upload-tags">แท็ก (คั่นด้วยจุลภาค)</label>
+              <input type="text" id="upload-tags" class="input" placeholder="blender, house, v1" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="upload-desc">คำอธิบาย</label>
+            <textarea id="upload-desc" class="textarea" rows="2" placeholder="รายละเอียดเพิ่มเติม (ไม่บังคับ)"></textarea>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="upload-note">บันทึกเวอร์ชัน (Note)</label>
+          <input type="text" id="upload-note" class="input" placeholder="เช่น ต้นแบบแรก, แก้ประตูหน้าบ้าน..." />
+        </div>
+
+        <div class="field">
+          <label for="upload-source-input">แนบสคริปต์ Blender (.py) — ไม่บังคับ</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="file" id="upload-source-input" accept=".py" class="input" style="padding:6px 8px;" />
+            <button type="button" class="btn btn-sm" id="btn-clear-source" style="display:none;">เอาออก</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="upload-progress" id="upload-progress">
+        <span class="spinner"></span>
+        <span id="upload-progress-text">กำลังอัปโหลดและประมวลผล...</span>
+      </div>
+
+      <div class="action-row" style="justify-content:flex-end;">
+        <button type="button" class="btn" id="btn-cancel-upload">ยกเลิก</button>
+        <button type="submit" class="btn btn-primary" id="btn-submit-upload">อัปโหลดเข้าคลัง</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE MODAL -->
+<div class="modal-backdrop" id="delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+  <div class="modal-card" style="max-width:420px;border-top-color:var(--danger-rose);">
+    <div class="modal-head">
+      <h2 id="delete-modal-title">ยืนยันการลบโมเดล</h2>
+      <button type="button" class="btn btn-ghost btn-icon" id="btn-close-delete" aria-label="ปิด">✕</button>
+    </div>
+    <p id="delete-modal-msg" style="font-size:0.86rem;color:var(--ink-secondary);"></p>
+    <div class="action-row" style="justify-content:flex-end;">
+      <button type="button" class="btn" id="btn-cancel-delete">ยกเลิก</button>
+      <button type="button" class="btn btn-danger" id="btn-confirm-delete">ย้ายไปถังขยะ</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+/* ============================================================================
+   CONSTANTS & HELPERS
+   ============================================================================ */
+const MAX_UPLOAD_BYTES = 80 * 1024 * 1024;
+const ALLOWED_MODEL_EXTS = new Set(['glb', 'gltf', 'obj', 'stl', 'fbx', 'ply', 'blend', 'zip']);
+
+const CATEGORY_LABELS = {
+  all: 'ทั้งหมด',
+  building: 'อาคาร',
+  furniture: 'เฟอร์นิเจอร์',
+  device: 'อุปกรณ์',
+  part: 'ชิ้นส่วน',
+  scene: 'ฉาก',
+  other: 'อื่นๆ',
+};
+
+const BG_THEMES = [
+  { key: 'dark', label: 'แสง: เข้ม', cls: '', hemiSky: 0xdbeafe, hemiGround: 0x1e293b, hemiInt: 1.45, dirInt: 2.35, exp: 1.18 },
+  { key: 'studio', label: 'แสง: สตูดิโอ', cls: 'bg-studio', hemiSky: 0xf8fafc, hemiGround: 0x334155, hemiInt: 1.75, dirInt: 2.55, exp: 1.24 },
+  { key: 'light', label: 'แสง: สว่าง', cls: 'bg-light', hemiSky: 0xffffff, hemiGround: 0x64748b, hemiInt: 1.9, dirInt: 2.2, exp: 1.12 },
+];
+
+const $ = (id) => document.getElementById(id);
+
+function esc(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n < 0) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString('th-TH', {
+      day: '2-digit', month: 'short', year: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return String(iso);
+  }
+}
+
+function formatNum(n) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v.toLocaleString('th-TH') : '—';
+}
+
+function getExt(filename) {
+  const idx = String(filename || '').lastIndexOf('.');
+  return idx >= 0 ? filename.slice(idx + 1).toLowerCase() : '';
+}
+
+function parseTagsInput(str) {
+  return Array.from(new Set(
+    String(str || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  ));
+}
+
+function showToast(msg, type = 'info', durationMs = 4200) {
+  const stack = $('toast-stack');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${esc(msg)}</span><button type="button" class="toast-close" aria-label="ปิด">✕</button>`;
+  const remove = () => el.remove();
+  el.querySelector('.toast-close').addEventListener('click', remove);
+  stack.appendChild(el);
+  if (durationMs > 0) setTimeout(remove, durationMs);
+}
+
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    credentials: 'same-origin',
+    ...opts,
+    headers: {
+      ...(opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  let data = null;
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    data = await res.json().catch(() => null);
+  }
+  if (!res.ok || (data && data.ok === false)) {
+    const msg = (data && (data.error || data.message)) || `คำขอล้มเหลว (${res.status})`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data ?? { ok: true };
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ============================================================================
+   VAULT FILE URL RESOLUTION (AUTO-DETECTS v<N> VS <N> PATH SEGMENT)
+   ============================================================================ */
+let versionSegmentUsesPrefixV = true;
+
+function detectVersionConventionFromAssets(assets) {
+  for (const a of assets || []) {
+    if (typeof a.thumb === 'string') {
+      const m = a.thumb.match(/\/api\/3d-vault\/file\/[^/]+\/(v)?(\d+)\//i);
+      if (m) {
+        versionSegmentUsesPrefixV = Boolean(m[1]);
+        return;
+      }
+    }
+  }
+}
+
+function formatVerSeg(v, useV = versionSegmentUsesPrefixV) {
+  const num = String(v ?? 1).replace(/^v/i, '');
+  return useV ? `v${num}` : num;
+}
+
+function buildFileUrl(assetId, v, filename, useV = versionSegmentUsesPrefixV) {
+  return `/api/3d-vault/file/${encodeURIComponent(assetId)}/${encodeURIComponent(formatVerSeg(v, useV))}/${encodeURIComponent(filename)}`;
+}
+
+function normalizeThumbUrl(asset) {
+  const t = asset && asset.thumb;
+  if (!t) return null;
+  if (t.startsWith('/') || t.startsWith('http://') || t.startsWith('https://') || t.startsWith('data:')) {
+    return t;
+  }
+  if (t.startsWith('assets/')) {
+    return `/api/3d-vault/file/${t.slice('assets/'.length)}`;
+  }
+  if (t.includes('/')) {
+    return `/api/3d-vault/file/${encodeURIComponent(asset.id)}/${t}`;
+  }
+  return buildFileUrl(asset.id, asset.latestVersion || 1, t);
+}
+
+/* ============================================================================
+   APPLICATION STATE
+   ============================================================================ */
+const state = {
+  assets: [],
+  allAssetsCache: [],
+  tags: [],
+  categories: [],
+  filters: {
+    q: '',
+    category: 'all',
+    tag: '',
+    fav: false,
+    sort: 'updated',
+  },
+  // Active viewer state
+  viewerOpen: false,
+  currentAsset: null,
+  currentVersion: 1,
+  compareMode: false,
+  bgThemeIdx: 0,
+  wireframe: false,
+  showGrid: true,
+  showBBox: false,
+  autoRotate: false,
+  clipEnabled: false,
+  clipPct: 100,
+  clipFlip: false,
+  measureMode: false,
+  // Auto-thumbnail queue
+  thumbQueue: [],
+  thumbRunning: false,
+  thumbAttempted: new Set(),
+  // Upload modal state
+  selectedFile: null,
+  selectedSourceFile: null,
+  clientPreviewDataUrl: null,
+};
+
+/* ============================================================================
+   THREE.JS RESOURCE DISPOSAL & SHARED UTILITIES
+   ============================================================================ */
+const gltfLoader = new GLTFLoader();
+const stlLoader = new STLLoader();
+const objLoader = new OBJLoader();
+
+function disposeMaterial(mat) {
+  if (!mat) return;
+  for (const key of Object.keys(mat)) {
+    const val = mat[key];
+    if (val && typeof val === 'object' && val.isTexture) {
+      val.dispose();
+    }
+  }
+  if (typeof mat.dispose === 'function') mat.dispose();
+}
+
+function disposeObject3D(root) {
+  if (!root) return;
+  root.traverse((obj) => {
+    if (obj.geometry && typeof obj.geometry.dispose === 'function') {
+      obj.geometry.dispose();
+    }
+    if (obj.material) {
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach(disposeMaterial);
+      } else {
+        disposeMaterial(obj.material);
+      }
+    }
+  });
+}
+
+function loadGltfFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    gltfLoader.load(url, (gltf) => resolve(gltf), undefined, (err) => reject(err));
+  });
+}
+
+async function loadVaultModelWithFallback(assetId, v, filename = 'model.glb') {
+  const primaryUrl = buildFileUrl(assetId, v, filename, versionSegmentUsesPrefixV);
+  const ext = getExt(filename);
+  const loadByExt = (url) => {
+    if (ext === 'stl') {
+      return new Promise((resolve, reject) => {
+        stlLoader.load(url, (geo) => {
+          geo.computeVertexNormals();
+          const mat = new THREE.MeshStandardMaterial({ color: 0x94a6bc, roughness: 0.45, metalness: 0.2 });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.name = filename;
+          const group = new THREE.Group();
+          group.add(mesh);
+          resolve({ scene: group });
+        }, undefined, reject);
+      });
+    }
+    if (ext === 'obj') {
+      return new Promise((resolve, reject) => {
+        objLoader.load(url, (obj) => resolve({ scene: obj }), undefined, reject);
+      });
+    }
+    return loadGltfFromUrl(url);
+  };
+
+  try {
+    return await loadByExt(primaryUrl);
+  } catch (firstErr) {
+    const altUseV = !versionSegmentUsesPrefixV;
+    const altUrl = buildFileUrl(assetId, v, filename, altUseV);
+    const gltf = await loadByExt(altUrl);
+    versionSegmentUsesPrefixV = altUseV;
+    return gltf;
+  }
+}
+
+function computeModelMetrics(root) {
+  const box = new THREE.Box3().setFromObject(root);
+  const isEmpty = box.isEmpty();
+  const size = isEmpty ? new THREE.Vector3(1, 1, 1) : box.getSize(new THREE.Vector3());
+  const center = isEmpty ? new THREE.Vector3(0, 0, 0) : box.getCenter(new THREE.Vector3());
+  let meshes = 0;
+  let triangles = 0;
+  const meshList = [];
+
+  root.traverse((child) => {
+    if (child.isMesh) {
+      meshes += 1;
+      child.castShadow = true;
+      child.receiveShadow = true;
+      const geo = child.geometry;
+      let tri = 0;
+      if (geo) {
+        if (geo.index) tri = Math.round(geo.index.count / 3);
+        else if (geo.attributes && geo.attributes.position) tri = Math.round(geo.attributes.position.count / 3);
+      }
+      triangles += tri;
+      meshList.push({
+        mesh: child,
+        name: child.name || `Mesh_${meshes}`,
+        triangles: tri,
+      });
+    }
+  });
+
+  return { box, size, center, meshes, triangles, meshList };
+}
+
+function fitCameraToBox(camera, controls, box, view = 'iso') {
+  const isEmpty = !box || box.isEmpty();
+  const size = isEmpty ? new THREE.Vector3(2, 2, 2) : box.getSize(new THREE.Vector3());
+  const center = isEmpty ? new THREE.Vector3(0, 0, 0) : box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z, 0.1);
+  const fovRad = THREE.MathUtils.degToRad(camera.fov);
+  const fitHeightDist = maxDim / (2 * Math.tan(fovRad / 2));
+  const dist = Math.max(fitHeightDist * 1.48, maxDim * 1.25);
+
+  camera.near = Math.max(0.01, dist / 500);
+  camera.far = Math.max(500, dist * 50);
+  camera.updateProjectionMatrix();
+
+  const offset = new THREE.Vector3();
+  if (view === 'front') {
+    offset.set(0, size.y * 0.12, dist);
+  } else if (view === 'side') {
+    offset.set(dist, size.y * 0.12, 0);
+  } else if (view === 'top') {
+    offset.set(0, dist * 1.15, 0.001);
+  } else {
+    // Classic architectural Isometric angle
+    offset.set(dist * 0.72, dist * 0.56, dist * 0.82);
+  }
+
+  camera.position.copy(center).add(offset);
+  if (controls) {
+    controls.target.copy(center);
+    controls.minDistance = Math.max(0.05, maxDim * 0.12);
+    controls.maxDistance = Math.max(40, maxDim * 14);
+    controls.update();
+  } else {
+    camera.lookAt(center);
+  }
+
+  return { size, center, maxDim, dist };
+}
+
+/* ============================================================================
+   GALLERY FETCHING & RENDERING
+   ============================================================================ */
+let fetchSeq = 0;
+
+async function loadAssets(silent = false) {
+  const seq = ++fetchSeq;
+  const params = new URLSearchParams();
+  if (state.filters.q.trim()) params.set('q', state.filters.q.trim());
+  if (state.filters.tag) params.set('tag', state.filters.tag);
+  if (state.filters.category && state.filters.category !== 'all') params.set('category', state.filters.category);
+  if (state.filters.fav) params.set('fav', '1');
+  if (state.filters.sort) params.set('sort', state.filters.sort);
+
+  const qs = params.toString();
+  const url = qs ? `/api/3d-vault/assets?${qs}` : '/api/3d-vault/assets';
+
+  if (!silent && state.assets.length === 0) {
+    $('asset-grid').innerHTML = `
+      <div class="empty-state">
+        <span class="spinner" style="width:24px;height:24px;border-width:2.5px;"></span>
+        <p>กำลังโหลดรายการโมเดล 3D...</p>
+      </div>`;
+  }
+
+  try {
+    const data = await apiFetch(url);
+    if (seq !== fetchSeq) return;
+
+    state.assets = Array.isArray(data.assets) ? data.assets : [];
+    state.tags = Array.isArray(data.tags) ? data.tags : [];
+    state.categories = Array.isArray(data.categories) ? data.categories : [];
+
+    // Keep unfiltered list cache for "add version to existing asset" selector
+    if (!state.filters.q && !state.filters.tag && state.filters.category === 'all' && !state.filters.fav) {
+      state.allAssetsCache = state.assets.slice();
+    }
+
+    detectVersionConventionFromAssets(state.assets);
+    renderSummaryCount();
+    renderCategoryRail();
+    renderTagRail();
+    renderAssetGrid();
+    enqueueMissingThumbnails(state.assets);
+  } catch (err) {
+    if (seq !== fetchSeq) return;
+    showToast(`โหลดรายการโมเดลไม่สำเร็จ: ${err.message}`, 'err');
+    $('asset-grid').innerHTML = `
+      <div class="empty-state">
+        <h2>ไม่สามารถเชื่อมต่อคลังโมเดล 3D ได้</h2>
+        <p>${esc(err.message)}</p>
+        <button type="button" class="btn btn-primary" id="btn-retry-load">ลองใหม่อีกครั้ง</button>
+      </div>`;
+    const retry = $('btn-retry-load');
+    if (retry) retry.addEventListener('click', () => loadAssets());
+  }
+}
+
+function renderSummaryCount() {
+  const totalVersions = state.assets.reduce((acc, a) => acc + (Number(a.versionCount) || 1), 0);
+  $('vault-summary-count').textContent = `${state.assets.length} โมเดล / ${totalVersions} เวอร์ชัน`;
+}
+
+function renderCategoryRail() {
+  const rail = $('category-rail');
+  const countMap = new Map();
+  for (const item of state.categories) {
+    if (typeof item === 'string') {
+      countMap.set(item, (countMap.get(item) || 0) + 1);
+    } else if (item && typeof item === 'object') {
+      const key = item.category || item.id || item.name;
+      if (key) countMap.set(key, Number(item.count) || 0);
+    }
+  }
+
+  const orderedCats = ['all', 'building', 'furniture', 'device', 'part', 'scene', 'other'];
+  const html = ['<span class="chip-rail-label">หมวด:</span>'];
+  for (const cat of orderedCats) {
+    const label = CATEGORY_LABELS[cat] || cat;
+    const isActive = state.filters.category === cat;
+    const count = cat === 'all' ? null : countMap.get(cat);
+    html.push(`
+      <button type="button" class="chip ${isActive ? 'active' : ''}" data-cat="${esc(cat)}">
+        <span>${esc(label)}</span>
+        ${count != null && count > 0 ? `<span class="chip-count">${count}</span>` : ''}
+      </button>`);
+  }
+  rail.innerHTML = html.join('');
+}
+
+function renderTagRail() {
+  const rail = $('tag-rail');
+  if (!state.tags || state.tags.length === 0) {
+    rail.style.display = 'none';
+    rail.innerHTML = '';
+    return;
+  }
+  rail.style.display = 'flex';
+  const html = ['<span class="chip-rail-label">แท็ก:</span>'];
+  if (state.filters.tag) {
+    html.push(`<button type="button" class="chip tag-chip active" data-tag="">ทั้งหมด ✕</button>`);
+  }
+  for (const t of state.tags.slice(0, 30)) {
+    const tagName = typeof t === 'string' ? t : (t.tag || t.name || '');
+    if (!tagName) continue;
+    const count = typeof t === 'object' ? t.count : null;
+    const active = state.filters.tag === tagName;
+    html.push(`
+      <button type="button" class="chip tag-chip ${active ? 'active' : ''}" data-tag="${esc(tagName)}">
+        <span>#${esc(tagName)}</span>
+        ${count != null ? `<span class="chip-count">${count}</span>` : ''}
+      </button>`);
+  }
+  rail.innerHTML = html.join('');
+}
+
+function renderAssetGrid() {
+  const grid = $('asset-grid');
+  if (!state.assets.length) {
+    const hasFilter = Boolean(state.filters.q || state.filters.tag || state.filters.category !== 'all' || state.filters.fav);
+    grid.innerHTML = `
+      <div class="empty-state">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--cad-cyan)" stroke-width="1.6" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        <h2>${hasFilter ? 'ไม่พบโมเดลที่ตรงกับตัวกรอง' : 'คลังโมเดล 3D ยังว่างอยู่'}</h2>
+        <p>${hasFilter ? 'ลองล้างคำค้นหาหรือเปลี่ยนหมวดหมู่และแท็กที่เลือกไว้' : 'เริ่มต้นด้วยการอัปโหลดไฟล์ .glb, .obj, .stl, .fbx หรือนำเข้าแพ็กเกจ .zip'}</p>
+        <div class="action-row" style="margin-top:4px;">
+          ${hasFilter ? '<button type="button" class="btn" id="btn-reset-filters">ล้างตัวกรองทั้งหมด</button>' : ''}
+          <button type="button" class="btn btn-primary" id="btn-empty-upload">+ นำเข้าโมเดลแรก</button>
+        </div>
+      </div>`;
+    const resetBtn = $('btn-reset-filters');
+    if (resetBtn) resetBtn.addEventListener('click', resetAllFilters);
+    const upBtn = $('btn-empty-upload');
+    if (upBtn) upBtn.addEventListener('click', () => openUploadModal());
+    return;
+  }
+
+  grid.innerHTML = state.assets.map((asset) => {
+    const thumbUrl = normalizeThumbUrl(asset);
+    const catLabel = CATEGORY_LABELS[asset.category] || asset.category || 'อื่นๆ';
+    const verCount = Number(asset.versionCount) || 1;
+    const latestV = Number(asset.latestVersion) || verCount || 1;
+    const tags = Array.isArray(asset.tags) ? asset.tags : [];
+    const dimText = (asset.dimensions && Number.isFinite(asset.dimensions.x))
+      ? `${Number(asset.dimensions.x).toFixed(1)}×${Number(asset.dimensions.y).toFixed(1)}×${Number(asset.dimensions.z).toFixed(1)} m`
+      : null;
+    const sizeText = asset.sizeBytes != null ? formatBytes(asset.sizeBytes) : `${verCount} เวอร์ชัน`;
+    const rulerLeft = dimText ? `${dimText} · ${sizeText}` : sizeText;
+
+    return `
+      <article class="asset-card" data-id="${esc(asset.id)}" tabindex="0" role="button" aria-label="เปิดดูโมเดล ${esc(asset.name)}">
+        <div class="card-preview" data-thumb-box="${esc(asset.id)}">
+          ${thumbUrl
+            ? `<img src="${esc(thumbUrl)}" alt="ภาพพรีวิว ${esc(asset.name)}" loading="lazy" />`
+            : `<div class="card-placeholder">
+                 <span class="spinner"></span>
+                 <span>รอสร้างภาพพรีวิว...</span>
+               </div>`}
+          <div class="card-overlay-top">
+            <div class="card-badges">
+              <span class="badge badge-ver">v${latestV}${verCount > 1 ? ` (${verCount})` : ''}</span>
+              <span class="badge badge-cat">${esc(catLabel)}</span>
+            </div>
+            <button type="button" class="fav-btn ${asset.favorite ? 'active' : ''}" data-action="fav" data-id="${esc(asset.id)}" title="${asset.favorite ? 'นำออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}" aria-label="สลับรายการโปรด">
+              ${asset.favorite ? '★' : '☆'}
+            </button>
+          </div>
+          <div class="card-overlay-bottom">
+            ${verCount > 1 ? `<button type="button" class="btn btn-sm btn-amber" data-action="compare" data-id="${esc(asset.id)}">เทียบเวอร์ชัน</button>` : ''}
+            <button type="button" class="btn btn-sm btn-primary" data-action="open" data-id="${esc(asset.id)}">เปิดดู 3D</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <h3 class="card-title" title="${esc(asset.name)}">${esc(asset.name)}</h3>
+          <div class="card-tags">
+            ${tags.length
+              ? tags.slice(0, 5).map((t) => `<span class="mini-tag">#${esc(t)}</span>`).join('')
+              : '<span style="font-size:0.72rem;color:var(--ink-muted);">ไม่มีแท็ก</span>'}
+          </div>
+          <div class="card-ruler">
+            <span class="mono">${esc(rulerLeft)}</span>
+            <span>${esc(formatDate(asset.updatedAt))}</span>
+          </div>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+function resetAllFilters() {
+  state.filters.q = '';
+  state.filters.category = 'all';
+  state.filters.tag = '';
+  state.filters.fav = false;
+  state.filters.sort = 'updated';
+  $('search-input').value = '';
+  $('search-clear').classList.remove('show');
+  $('sort-select').value = 'updated';
+  $('btn-fav-filter').classList.remove('active', 'amber');
+  $('btn-fav-filter').setAttribute('aria-pressed', 'false');
+  loadAssets();
+}
+
+async function toggleAssetFavorite(assetId) {
+  const found = state.assets.find((a) => a.id === assetId);
+  const nextFav = found ? !found.favorite : (state.currentAsset && state.currentAsset.id === assetId ? !state.currentAsset.favorite : true);
+  try {
+    const res = await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(assetId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ favorite: nextFav }),
+    });
+    const updated = res.asset || { favorite: nextFav };
+    if (found) found.favorite = Boolean(updated.favorite);
+    if (state.currentAsset && state.currentAsset.id === assetId) {
+      state.currentAsset.favorite = Boolean(updated.favorite);
+      updateViewerFavButton();
+    }
+    if (state.filters.fav && !updated.favorite) {
+      await loadAssets(true);
+    } else {
+      renderAssetGrid();
+    }
+    showToast(updated.favorite ? 'เพิ่มในรายการโปรดแล้ว' : 'นำออกจากรายการโปรดแล้ว', 'ok', 2200);
+  } catch (err) {
+    showToast(`อัปเดตรายการโปรดไม่สำเร็จ: ${err.message}`, 'err');
+  }
+}
+
+/* ============================================================================
+   AUTO-THUMBNAIL GENERATOR (OFFSCREEN 512x384 SERIAL QUEUE)
+   ============================================================================ */
+let offscreenThumbRenderer = null;
+
+function getOffscreenThumbRenderer() {
+  if (!offscreenThumbRenderer) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 384;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+      preserveDrawingBuffer: true,
+    });
+    renderer.setPixelRatio(1);
+    renderer.setSize(512, 384, false);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.18;
+    renderer.setClearColor(0x141c26, 1);
+    offscreenThumbRenderer = renderer;
+  }
+  return offscreenThumbRenderer;
+}
+
+function releaseOffscreenThumbRenderer() {
+  if (offscreenThumbRenderer) {
+    try {
+      offscreenThumbRenderer.dispose();
+      const gl = offscreenThumbRenderer.getContext();
+      if (gl && gl.getExtension) {
+        const ext = gl.getExtension('WEBGL_lose_context');
+        if (ext) ext.loseContext();
+      }
+    } catch { /* ignore */ }
+    offscreenThumbRenderer = null;
+  }
+}
+
+function enqueueMissingThumbnails(assets) {
+  for (const a of assets || []) {
+    if (!a.thumb && !state.thumbAttempted.has(a.id) && !state.thumbQueue.some((q) => q.id === a.id)) {
+      state.thumbQueue.push({
+        id: a.id,
+        name: a.name,
+        v: Number(a.latestVersion) || 1,
+      });
+    }
+  }
+  if (!state.thumbRunning && state.thumbQueue.length > 0) {
+    processThumbnailQueue();
+  }
+}
+
+async function renderModelToDataUrl(root) {
+  const renderer = getOffscreenThumbRenderer();
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x141c26);
+
+  const hemi = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 1.5);
+  scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xfffbeb, 2.35);
+  key.position.set(16, 24, 18);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0x93c5fd, 0.95);
+  fill.position.set(-18, 14, -14);
+  scene.add(fill);
+
+  scene.add(root);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.isEmpty() ? new THREE.Vector3(1, 1, 1) : box.getSize(new THREE.Vector3());
+  const center = box.isEmpty() ? new THREE.Vector3(0, 0, 0) : box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z, 0.1);
+
+  const gridSize = Math.max(2, Math.ceil(maxDim * 2));
+  const grid = new THREE.GridHelper(gridSize, Math.min(24, Math.max(8, gridSize)), 0x38bdf8, 0x243042);
+  grid.position.set(center.x, box.min.y - 0.004, center.z);
+  scene.add(grid);
+
+  const camera = new THREE.PerspectiveCamera(40, 512 / 384, 0.01, Math.max(500, maxDim * 40));
+  fitCameraToBox(camera, null, box, 'iso');
+
+  renderer.render(scene, camera);
+  const dataUrl = renderer.domElement.toDataURL('image/png');
+
+  scene.remove(root);
+  disposeObject3D(grid);
+  return dataUrl;
+}
+
+async function processThumbnailQueue() {
+  if (state.thumbRunning) return;
+  state.thumbRunning = true;
+  const banner = $('thumb-queue-banner');
+  const txt = $('thumb-queue-text');
+  const cnt = $('thumb-queue-count');
+
+  try {
+    while (state.thumbQueue.length > 0) {
+      const item = state.thumbQueue.shift();
+      state.thumbAttempted.add(item.id);
+      banner.classList.add('show');
+      txt.textContent = `กำลังสร้างภาพพรีวิวอัตโนมัติ: ${item.name}`;
+      cnt.textContent = `เหลือ ${state.thumbQueue.length + 1} รายการ`;
+
+      let root = null;
+      try {
+        const gltf = await loadVaultModelWithFallback(item.id, item.v, 'model.glb');
+        root = gltf.scene;
+        const dataUrl = await renderModelToDataUrl(root);
+        disposeObject3D(root);
+        root = null;
+
+        const res = await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(item.id)}/thumbnail`, {
+          method: 'POST',
+          body: JSON.stringify({ dataUrl, v: item.v }),
+        });
+
+        const assetRow = state.assets.find((a) => a.id === item.id);
+        const newThumb = (res && res.thumb) || dataUrl;
+        if (assetRow) assetRow.thumb = newThumb;
+
+        const boxEl = document.querySelector(`[data-thumb-box="${CSS.escape(item.id)}"]`);
+        if (boxEl) {
+          const existingImg = boxEl.querySelector('img');
+          if (existingImg) {
+            existingImg.src = dataUrl;
+          } else {
+            const ph = boxEl.querySelector('.card-placeholder');
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.alt = `ภาพพรีวิว ${item.name}`;
+            if (ph) ph.replaceWith(img);
+            else boxEl.prepend(img);
+          }
+        }
+      } catch (err) {
+        if (root) disposeObject3D(root);
+        const boxEl = document.querySelector(`[data-thumb-box="${CSS.escape(item.id)}"] .card-placeholder`);
+        if (boxEl) {
+          boxEl.innerHTML = `<span style="color:var(--ink-muted);">ยังไม่มีภาพพรีวิว</span>`;
+        }
+      }
+      // Yield to browser UI between queue items
+      await new Promise((r) => setTimeout(r, 40));
+    }
+  } finally {
+    banner.classList.remove('show');
+    state.thumbRunning = false;
+    releaseOffscreenThumbRenderer();
+  }
+}
+
+/* ============================================================================
+   MAIN 3D VIEWER ENGINE
+   ============================================================================ */
+const viewer = {
+  initialized: false,
+  renderer: null,
+  scene: null,
+  camera: null,
+  controls: null,
+  hemiLight: null,
+  dirLight: null,
+  fillLight: null,
+  grid: null,
+  bboxHelper: null,
+  axesHelper: null,
+  clipPlane: new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6),
+  clipRing: null,
+  currentModel: null,
+  currentMetrics: null,
+  meshEntries: [],
+  rafId: null,
+  resizeObserver: null,
+  // Measure tool state
+  raycaster: new THREE.Raycaster(),
+  pointerDownPos: null,
+  pendingPointA: null,
+  pendingMarkerA: null,
+  measurements: [], // { a, b, dist, group, labelEl }
+  measureRoot: null,
+};
+
+function initMainViewer() {
+  if (viewer.initialized) return;
+  const canvas = $('viewer-canvas');
+  const wrap = $('stage-wrap');
+
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(Math.max(1, wrap.clientWidth), Math.max(1, wrap.clientHeight));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.18;
+  renderer.localClippingEnabled = true;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, Math.max(1, wrap.clientWidth) / Math.max(1, wrap.clientHeight), 0.1, 600);
+  camera.position.set(16, 12, 20);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.autoRotate = false;
+  controls.autoRotateSpeed = 1.0;
+
+  const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 1.45);
+  scene.add(hemiLight);
+
+  const dirLight = new THREE.DirectionalLight(0xfffbeb, 2.35);
+  dirLight.position.set(24, 34, 24);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048;
+  dirLight.shadow.mapSize.height = 2048;
+  scene.add(dirLight);
+
+  const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.9);
+  fillLight.position.set(-22, 18, -18);
+  scene.add(fillLight);
+
+  const grid = new THREE.GridHelper(32, 32, 0x38bdf8, 0x263244);
+  scene.add(grid);
+
+  const measureRoot = new THREE.Group();
+  scene.add(measureRoot);
+
+  Object.assign(viewer, {
+    initialized: true,
+    renderer,
+    scene,
+    camera,
+    controls,
+    hemiLight,
+    dirLight,
+    fillLight,
+    grid,
+    measureRoot,
+  });
+
+  viewer.resizeObserver = new ResizeObserver(() => resizeMainViewer());
+  viewer.resizeObserver.observe(wrap);
+
+  // Measure pointer interaction (click vs orbit drag)
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    viewer.pointerDownPos = { x: e.clientX, y: e.clientY };
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (!state.measureMode || !viewer.pointerDownPos || e.button !== 0) return;
+    const dx = e.clientX - viewer.pointerDownPos.x;
+    const dy = e.clientY - viewer.pointerDownPos.y;
+    viewer.pointerDownPos = null;
+    if (Math.hypot(dx, dy) > 5) return; // was an orbit drag
+    handleMeasureClick(e);
+  });
+
+  startMainRenderLoop();
+}
+
+function resizeMainViewer() {
+  if (!viewer.initialized) return;
+  const wrap = $('stage-wrap');
+  const w = Math.max(1, wrap.clientWidth);
+  const h = Math.max(1, wrap.clientHeight);
+  viewer.camera.aspect = w / h;
+  viewer.camera.updateProjectionMatrix();
+  viewer.renderer.setSize(w, h);
+}
+
+function startMainRenderLoop() {
+  if (viewer.rafId != null) return;
+  const tick = () => {
+    viewer.rafId = requestAnimationFrame(tick);
+    if (!state.viewerOpen || state.compareMode) return;
+    viewer.controls.autoRotate = state.autoRotate;
+    viewer.controls.update();
+    viewer.renderer.render(viewer.scene, viewer.camera);
+    updateMeasureLabelPositions();
+  };
+  tick();
+}
+
+function clearMainModel() {
+  clearAllMeasurements();
+  if (viewer.currentModel) {
+    viewer.scene.remove(viewer.currentModel);
+    disposeObject3D(viewer.currentModel);
+    viewer.currentModel = null;
+  }
+  if (viewer.bboxHelper) {
+    viewer.scene.remove(viewer.bboxHelper);
+    disposeObject3D(viewer.bboxHelper);
+    viewer.bboxHelper = null;
+  }
+  if (viewer.axesHelper) {
+    viewer.scene.remove(viewer.axesHelper);
+    disposeObject3D(viewer.axesHelper);
+    viewer.axesHelper = null;
+  }
+  if (viewer.clipRing) {
+    viewer.scene.remove(viewer.clipRing);
+    disposeObject3D(viewer.clipRing);
+    viewer.clipRing = null;
+  }
+  viewer.currentMetrics = null;
+  viewer.meshEntries = [];
+}
+
+function rebuildStageGuides(box, size, center) {
+  const maxHoriz = Math.max(size.x, size.z, 1);
+  const gridDim = Math.max(4, Math.ceil((maxHoriz * 1.9) / 2) * 2);
+  const divs = Math.min(60, Math.max(8, gridDim));
+  if (viewer.grid) {
+    viewer.scene.remove(viewer.grid);
+    disposeObject3D(viewer.grid);
+  }
+  viewer.grid = new THREE.GridHelper(gridDim, divs, 0x38bdf8, 0x263244);
+  viewer.grid.position.set(center.x, box.min.y - 0.005, center.z);
+  viewer.grid.visible = state.showGrid;
+  viewer.scene.add(viewer.grid);
+
+  const maxDim = Math.max(size.x, size.y, size.z, 1);
+  const d = maxDim * 1.15;
+  viewer.dirLight.position.set(center.x + maxDim * 1.4, center.y + maxDim * 2.0, center.z + maxDim * 1.4);
+  viewer.dirLight.target.position.copy(center);
+  viewer.dirLight.target.updateMatrixWorld();
+  viewer.dirLight.shadow.camera.left = -d;
+  viewer.dirLight.shadow.camera.right = d;
+  viewer.dirLight.shadow.camera.top = d;
+  viewer.dirLight.shadow.camera.bottom = -d;
+  viewer.dirLight.shadow.camera.near = Math.max(0.1, maxDim * 0.05);
+  viewer.dirLight.shadow.camera.far = maxDim * 10;
+  viewer.dirLight.shadow.camera.updateProjectionMatrix();
+
+  viewer.bboxHelper = new THREE.Box3Helper(box, 0x38bdf8);
+  viewer.bboxHelper.visible = state.showBBox;
+  viewer.scene.add(viewer.bboxHelper);
+
+  viewer.axesHelper = new THREE.AxesHelper(maxDim * 0.65);
+  viewer.axesHelper.position.set(box.min.x, box.min.y, box.min.z);
+  viewer.axesHelper.visible = state.showBBox;
+  viewer.scene.add(viewer.axesHelper);
+
+  // Clipping plane visual indicator ring
+  const ringGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(size.x * 1.08 + 0.2, size.z * 1.08 + 0.2));
+  const ringMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.85 });
+  viewer.clipRing = new THREE.LineSegments(ringGeo, ringMat);
+  viewer.clipRing.rotation.x = -Math.PI / 2;
+  viewer.clipRing.position.set(center.x, box.max.y, center.z);
+  viewer.clipRing.visible = false;
+  viewer.scene.add(viewer.clipRing);
+}
+
+function applyMaterialDisplayModes() {
+  if (!viewer.currentModel) return;
+  const planes = state.clipEnabled ? [viewer.clipPlane] : [];
+  viewer.currentModel.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    for (const mat of mats) {
+      if (mat.userData.origSide === undefined) mat.userData.origSide = mat.side;
+      mat.wireframe = state.wireframe;
+      mat.clippingPlanes = planes;
+      mat.clipShadows = state.clipEnabled;
+      mat.side = state.clipEnabled ? THREE.DoubleSide : mat.userData.origSide;
+      mat.needsUpdate = true;
+    }
+  });
+}
+
+function updateClippingPlane() {
+  if (!viewer.currentMetrics) return;
+  const { box } = viewer.currentMetrics;
+  const minY = box.min.y;
+  const maxY = box.max.y;
+  const height = Math.max(0.001, maxY - minY);
+  const y = minY + (state.clipPct / 100) * height;
+  const pad = state.clipPct >= 100 ? 0.05 : (state.clipPct <= 0 ? -0.05 : 0);
+
+  if (state.clipFlip) {
+    viewer.clipPlane.normal.set(0, 1, 0);
+    viewer.clipPlane.constant = -(y + pad);
+  } else {
+    viewer.clipPlane.normal.set(0, -1, 0);
+    viewer.clipPlane.constant = y + pad;
+  }
+
+  if (viewer.clipRing) {
+    viewer.clipRing.visible = state.clipEnabled;
+    viewer.clipRing.position.y = y;
+  }
+
+  $('clip-pct-label').textContent = `${Math.round(state.clipPct)}%`;
+  $('clip-meter-label').textContent = `${(y - minY).toFixed(2)} m`;
+  applyMaterialDisplayModes();
+}
+
+function applyBgTheme() {
+  const theme = BG_THEMES[state.bgThemeIdx % BG_THEMES.length];
+  const wrap = $('stage-wrap');
+  wrap.classList.remove('bg-studio', 'bg-light');
+  if (theme.cls) wrap.classList.add(theme.cls);
+  $('tool-bg').textContent = theme.label;
+  if (viewer.initialized) {
+    viewer.hemiLight.color.setHex(theme.hemiSky);
+    viewer.hemiLight.groundColor.setHex(theme.hemiGround);
+    viewer.hemiLight.intensity = theme.hemiInt;
+    viewer.dirLight.intensity = theme.dirInt;
+    viewer.renderer.toneMappingExposure = theme.exp;
+  }
+}
+
+/* ============================================================================
+   3D MEASURE TOOL
+   ============================================================================ */
+function makeMeasureMarker(point, colorHex) {
+  const maxDim = viewer.currentMetrics ? Math.max(viewer.currentMetrics.size.x, viewer.currentMetrics.size.y, viewer.currentMetrics.size.z, 1) : 5;
+  const r = Math.max(0.025, maxDim * 0.0085);
+  const geo = new THREE.SphereGeometry(r, 14, 14);
+  const mat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(point);
+  mesh.renderOrder = 999;
+  return mesh;
+}
+
+function handleMeasureClick(event) {
+  if (!viewer.currentModel) return;
+  const rect = viewer.renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  viewer.raycaster.setFromCamera(ndc, viewer.camera);
+  const visibleMeshes = viewer.meshEntries.filter((m) => m.mesh.visible).map((m) => m.mesh);
+  const hits = viewer.raycaster.intersectObjects(visibleMeshes, false);
+
+  // Respect active clipping plane so raycast doesn't snap to hidden cut-away geometry
+  const hit = hits.find((h) => !state.clipEnabled || viewer.clipPlane.distanceToPoint(h.point) >= -0.001);
+  if (!hit) {
+    showToast('คลิกให้ตรงพื้นผิวของโมเดลเพื่อวางจุดวัด', 'warn', 2200);
+    return;
+  }
+
+  const pt = hit.point.clone();
+  if (!viewer.pendingPointA) {
+    viewer.pendingPointA = pt;
+    viewer.pendingMarkerA = makeMeasureMarker(pt, 0x38bdf8);
+    viewer.measureRoot.add(viewer.pendingMarkerA);
+    $('measure-hint').textContent = 'คลิกจุดที่ 2 บนโมเดลเพื่อวัดระยะทาง';
+  } else {
+    const a = viewer.pendingPointA;
+    const b = pt;
+    if (viewer.pendingMarkerA) {
+      viewer.measureRoot.remove(viewer.pendingMarkerA);
+      disposeObject3D(viewer.pendingMarkerA);
+      viewer.pendingMarkerA = null;
+    }
+    viewer.pendingPointA = null;
+
+    const group = new THREE.Group();
+    group.add(makeMeasureMarker(a, 0x38bdf8));
+    group.add(makeMeasureMarker(b, 0xf59e0b));
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x10b981, depthTest: false });
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.renderOrder = 998;
+    group.add(line);
+    viewer.measureRoot.add(group);
+
+    const dist = a.distanceTo(b);
+    const dx = Math.abs(b.x - a.x);
+    const dy = Math.abs(b.y - a.y);
+    const dz = Math.abs(b.z - a.z);
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'measure-tag';
+    labelEl.innerHTML = `${dist.toFixed(2)} m <small>ΔX ${dx.toFixed(2)} · ΔY ${dy.toFixed(2)} · ΔZ ${dz.toFixed(2)}</small>`;
+    $('measure-labels-layer').appendChild(labelEl);
+
+    viewer.measurements.push({ a, b, dist, group, labelEl });
+    $('measure-hint').textContent = `ระยะล่าสุด: ${dist.toFixed(3)} m — คลิกจุดใหม่เพื่อวัดต่อ`;
+  }
+}
+
+function updateMeasureLabelPositions() {
+  if (!viewer.measurements.length) return;
+  const wrap = $('stage-wrap');
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  const mid = new THREE.Vector3();
+
+  for (const m of viewer.measurements) {
+    mid.addVectors(m.a, m.b).multiplyScalar(0.5);
+    mid.project(viewer.camera);
+    if (mid.z > 1) {
+      m.labelEl.style.display = 'none';
+    } else {
+      m.labelEl.style.display = 'block';
+      m.labelEl.style.left = `${(mid.x * 0.5 + 0.5) * w}px`;
+      m.labelEl.style.top = `${(-mid.y * 0.5 + 0.5) * h}px`;
+    }
+  }
+}
+
+function clearAllMeasurements() {
+  if (viewer.pendingMarkerA) {
+    viewer.measureRoot.remove(viewer.pendingMarkerA);
+    disposeObject3D(viewer.pendingMarkerA);
+    viewer.pendingMarkerA = null;
+  }
+  viewer.pendingPointA = null;
+  for (const m of viewer.measurements) {
+    viewer.measureRoot.remove(m.group);
+    disposeObject3D(m.group);
+    m.labelEl.remove();
+  }
+  viewer.measurements = [];
+  $('measure-hint').textContent = 'โหมดวัดระยะ: คลิกจุดแรกบนโมเดล';
+}
+
+/* ============================================================================
+   OPEN VIEWER, LOAD VERSION & INSPECTOR SYNC
+   ============================================================================ */
+let viewerLoadSeq = 0;
+
+function updateDeepLinkHash(assetId, v) {
+  if (!assetId) {
+    if (window.location.hash) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    return;
+  }
+  const nextHash = `#asset=${encodeURIComponent(assetId)}&v=${encodeURIComponent(v)}`;
+  if (window.location.hash !== nextHash) {
+    history.replaceState(null, '', window.location.pathname + window.location.search + nextHash);
+  }
+}
+
+async function openViewer(assetId, preferredVersion = null, startCompare = false) {
+  initMainViewer();
+  state.viewerOpen = true;
+  document.body.classList.add('viewer-open');
+  $('viewer-overlay').classList.add('open');
+  resizeMainViewer();
+
+  $('stage-loader').classList.add('show');
+  $('stage-loader-text').textContent = 'กำลังดึงข้อมูลโมเดล...';
+
+  try {
+    const res = await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(assetId)}`);
+    const asset = res.asset || res;
+    if (!asset || !asset.id) throw new Error('ไม่พบข้อมูลโมเดล');
+    state.currentAsset = asset;
+
+    const versions = Array.isArray(asset.versions) ? asset.versions : [];
+    const latestV = versions.length ? Math.max(...versions.map((x) => Number(x.v) || 1)) : 1;
+    const targetV = (preferredVersion && versions.some((x) => Number(x.v) === Number(preferredVersion)))
+      ? Number(preferredVersion)
+      : latestV;
+
+    state.currentVersion = targetV;
+    updateDeepLinkHash(asset.id, targetV);
+
+    renderViewerHeader();
+    populateMetaEditForm();
+    renderVersionList();
+
+    if (startCompare && versions.length >= 2) {
+      await enterCompareMode();
+    } else {
+      exitCompareMode();
+      await loadViewerVersion(targetV);
+    }
+  } catch (err) {
+    $('stage-loader').classList.remove('show');
+    showToast(`เปิดโมเดลไม่สำเร็จ: ${err.message}`, 'err');
+  }
+}
+
+function closeViewer() {
+  exitCompareMode();
+  clearMainModel();
+  state.viewerOpen = false;
+  state.currentAsset = null;
+  document.body.classList.remove('viewer-open');
+  $('viewer-overlay').classList.remove('open');
+  updateDeepLinkHash(null, null);
+}
+
+function getVersionObj(asset, v) {
+  const list = (asset && Array.isArray(asset.versions)) ? asset.versions : [];
+  return list.find((item) => Number(item.v) === Number(v)) || list[list.length - 1] || null;
+}
+
+function renderViewerHeader() {
+  const asset = state.currentAsset;
+  if (!asset) return;
+  $('viewer-title').textContent = asset.name;
+  updateViewerFavButton();
+
+  const versions = (asset.versions || []).slice().sort((a, b) => Number(a.v) - Number(b.v));
+  $('viewer-ver-pills').innerHTML = versions.map((item) => `
+    <button type="button" class="ver-pill ${Number(item.v) === Number(state.currentVersion) ? 'active' : ''}" data-ver="${item.v}">
+      v${item.v}
+    </button>`).join('');
+
+  $('mode-compare-btn').disabled = versions.length < 2;
+  $('mode-compare-btn').title = versions.length < 2 ? 'ต้องมีอย่างน้อย 2 เวอร์ชันเพื่อเปรียบเทียบ' : 'เปรียบเทียบ 2 เวอร์ชันแบบซิงค์กล้อง';
+}
+
+function updateViewerFavButton() {
+  const btn = $('btn-viewer-fav');
+  const isFav = Boolean(state.currentAsset && state.currentAsset.favorite);
+  btn.textContent = isFav ? '★ โปรด' : '☆ โปรด';
+  btn.classList.toggle('btn-amber', isFav);
+}
+
+function populateMetaEditForm() {
+  const a = state.currentAsset;
+  if (!a) return;
+  $('edit-name').value = a.name || '';
+  $('edit-category').value = a.category || 'other';
+  $('edit-tags').value = Array.isArray(a.tags) ? a.tags.join(', ') : '';
+  $('edit-desc').value = a.description || '';
+}
+
+function renderVersionList() {
+  const a = state.currentAsset;
+  if (!a) return;
+  const versions = (a.versions || []).slice().sort((x, y) => Number(y.v) - Number(x.v));
+  $('version-list').innerHTML = versions.map((item) => {
+    const active = Number(item.v) === Number(state.currentVersion);
+    const hasSrc = Boolean(item.files && item.files.source);
+    return `
+      <div class="version-item ${active ? 'active' : ''}" data-ver="${item.v}">
+        <div class="version-item-top">
+          <span class="mono" style="font-weight:700;color:${active ? 'var(--cad-cyan)' : 'var(--ink-primary)'};">v${item.v}${active ? ' · กำลังดู' : ''}</span>
+          <span class="mono" style="font-size:0.72rem;color:var(--ink-secondary);">${formatBytes(item.sizeBytes)}</span>
+        </div>
+        <div class="version-note">${esc(item.note || 'ไม่มีบันทึกการแก้ไข')}</div>
+        <div class="version-meta">
+          <span>${esc(formatDate(item.createdAt))}</span>
+          <span>${hasSrc ? 'มี source.py' : ''}${item.stats && item.stats.triangles ? ` · ${formatNum(item.stats.triangles)} tris` : ''}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function loadViewerVersion(v) {
+  const asset = state.currentAsset;
+  if (!asset) return;
+  const seq = ++viewerLoadSeq;
+  state.currentVersion = Number(v);
+  updateDeepLinkHash(asset.id, state.currentVersion);
+  renderViewerHeader();
+  renderVersionList();
+
+  const verObj = getVersionObj(asset, state.currentVersion);
+  const modelFilename = (verObj && verObj.files && verObj.files.model) || 'model.glb';
+
+  $('stage-loader').classList.add('show');
+  $('stage-loader-text').textContent = `กำลังโหลด ${asset.name} (v${state.currentVersion})...`;
+
+  // Update metadata readouts immediately
+  $('info-ver-badge').textContent = `v${state.currentVersion}`;
+  $('export-ver-label').textContent = `v${state.currentVersion}`;
+  $('spec-size').textContent = formatBytes(verObj && verObj.sizeBytes);
+  $('spec-updated').textContent = formatDate((verObj && verObj.createdAt) || asset.updatedAt);
+  $('spec-source').textContent = asset.source ? `${asset.source.type || 'upload'}${asset.source.origin ? ` (${asset.source.origin})` : ''}` : '—';
+  $('spec-sha').textContent = (verObj && verObj.sha256) ? `${verObj.sha256.slice(0, 12)}…` : '—';
+
+  const notePill = $('hud-ver-note');
+  if (verObj && verObj.note) {
+    notePill.textContent = `v${state.currentVersion}: ${verObj.note}`;
+    notePill.style.display = 'inline-block';
+  } else {
+    notePill.style.display = 'none';
+  }
+
+  // Original file link
+  const origFile = verObj && verObj.files && verObj.files.original;
+  if (origFile) {
+    $('original-file-row').style.display = 'block';
+    const origLink = $('btn-download-original');
+    origLink.href = buildFileUrl(asset.id, state.currentVersion, origFile) + '?download=1';
+    origLink.textContent = `ดาวน์โหลดไฟล์ต้นฉบับ (${origFile})`;
+  } else {
+    $('original-file-row').style.display = 'none';
+  }
+
+  // Load source.py in parallel
+  loadSourceCodeTab(asset.id, state.currentVersion, verObj);
+
+  try {
+    const gltf = await loadVaultModelWithFallback(asset.id, state.currentVersion, modelFilename);
+    if (seq !== viewerLoadSeq) {
+      disposeObject3D(gltf.scene);
+      return;
+    }
+
+    clearMainModel();
+    const model = gltf.scene;
+    viewer.currentModel = model;
+    viewer.scene.add(model);
+
+    const metrics = computeModelMetrics(model);
+    viewer.currentMetrics = metrics;
+    viewer.meshEntries = metrics.meshList;
+
+    rebuildStageGuides(metrics.box, metrics.size, metrics.center);
+    fitCameraToBox(viewer.camera, viewer.controls, metrics.box, 'iso');
+
+    // Reset clipping slider cleanly to full height on new load
+    state.clipPct = 100;
+    $('clip-slider').value = '100';
+    updateClippingPlane();
+    applyMaterialDisplayModes();
+
+    const dimStr = `${metrics.size.x.toFixed(2)} × ${metrics.size.y.toFixed(2)} × ${metrics.size.z.toFixed(2)} m`;
+    $('hud-dims').textContent = `ขนาด: ${dimStr}`;
+    $('hud-mesh-stat').textContent = `${formatNum(metrics.triangles)} tris · ${metrics.meshes} เมช`;
+    $('spec-dims').textContent = dimStr;
+    $('spec-tris').textContent = `${formatNum(metrics.triangles)} / ${metrics.meshes}`;
+
+    renderMeshLayerList();
+    window.__VAULT_MODEL_LOADED = true;
+  } catch (err) {
+    if (seq !== viewerLoadSeq) return;
+    showToast(`โหลดไฟล์ 3D ไม่สำเร็จ: ${err.message || err}`, 'err');
+  } finally {
+    if (seq === viewerLoadSeq) {
+      $('stage-loader').classList.remove('show');
+    }
+  }
+}
+
+async function loadSourceCodeTab(assetId, v, verObj) {
+  const pre = $('source-code-viewer');
+  const empty = $('source-empty');
+  const copyBtn = $('btn-copy-source');
+  const dlBtn = $('btn-download-source');
+  const srcFile = verObj && verObj.files && verObj.files.source;
+
+  if (!srcFile) {
+    pre.style.display = 'none';
+    pre.textContent = '';
+    copyBtn.style.display = 'none';
+    dlBtn.style.display = 'none';
+    empty.style.display = 'block';
+    empty.textContent = 'เวอร์ชันนี้ไม่มีไฟล์สคริปต์ source.py แนบไว้';
+    return;
+  }
+
+  empty.style.display = 'block';
+  empty.textContent = 'กำลังโหลดสคริปต์...';
+  pre.style.display = 'none';
+
+  try {
+    let url = buildFileUrl(assetId, v, srcFile);
+    let res = await fetch(url, { credentials: 'same-origin' });
+    if (res.status === 404) {
+      url = buildFileUrl(assetId, v, srcFile, !versionSegmentUsesPrefixV);
+      res = await fetch(url, { credentials: 'same-origin' });
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const code = await res.text();
+    empty.style.display = 'none';
+    pre.textContent = code;
+    pre.style.display = 'block';
+    copyBtn.style.display = 'inline-flex';
+    dlBtn.style.display = 'inline-flex';
+    dlBtn.href = url + '?download=1';
+    dlBtn.download = `${assetId}-v${v}-${srcFile}`;
+  } catch (err) {
+    empty.style.display = 'block';
+    empty.textContent = `โหลดสคริปต์ไม่สำเร็จ: ${err.message}`;
+    pre.style.display = 'none';
+    copyBtn.style.display = 'none';
+    dlBtn.style.display = 'none';
+  }
+}
+
+function renderMeshLayerList(filterText = '') {
+  const q = filterText.trim().toLowerCase();
+  const listEl = $('mesh-list');
+  const entries = viewer.meshEntries;
+  $('mesh-count-badge').textContent = String(entries.length);
+
+  if (!entries.length) {
+    listEl.innerHTML = `<div style="font-size:0.78rem;color:var(--ink-muted);">ไม่พบรายการเมช</div>`;
+    return;
+  }
+
+  const filtered = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries;
+  if (!filtered.length) {
+    listEl.innerHTML = `<div style="font-size:0.78rem;color:var(--ink-muted);">ไม่มีชิ้นส่วนที่ตรงกับ "${esc(filterText)}"</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map((e) => {
+    const idx = entries.indexOf(e);
+    return `
+      <div class="mesh-row ${e.mesh.visible ? '' : 'hidden-mesh'}" data-mesh-idx="${idx}">
+        <span class="mesh-name" title="${esc(e.name)}">${esc(e.name)}</span>
+        <div style="display:flex;gap:4px;flex:none;">
+          <button type="button" class="btn btn-sm" data-mesh-act="solo" data-idx="${idx}" style="padding:2px 6px;font-size:0.69rem;" title="ดูเฉพาะชิ้นนี้">เดี่ยว</button>
+          <button type="button" class="btn btn-sm ${e.mesh.visible ? 'active' : ''}" data-mesh-act="toggle" data-idx="${idx}" style="padding:2px 7px;font-size:0.69rem;">${e.mesh.visible ? 'แสดง' : 'ซ่อน'}</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ============================================================================
+   COMPARE MODE (DUAL SYNCED CANVASES)
+   ============================================================================ */
+const compare = {
+  active: false,
+  left: null,
+  right: null,
+  activeSide: 'left',
+  wireframe: false,
+  rafId: null,
+  resizeObserver: null,
+  verLeft: null,
+  verRight: null,
+  metricsLeft: null,
+  metricsRight: null,
+};
+
+function createCompareSide(canvasEl, paneEl, sideName) {
+  const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(Math.max(1, paneEl.clientWidth), Math.max(1, paneEl.clientHeight));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.18;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, Math.max(1, paneEl.clientWidth) / Math.max(1, paneEl.clientHeight), 0.1, 600);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+
+  scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 1.5));
+  const dir = new THREE.DirectionalLight(0xfffbeb, 2.3);
+  dir.position.set(22, 32, 22);
+  scene.add(dir);
+  const fill = new THREE.DirectionalLight(0x93c5fd, 0.9);
+  fill.position.set(-20, 16, -16);
+  scene.add(fill);
+
+  const grid = new THREE.GridHelper(32, 32, 0x38bdf8, 0x263244);
+  scene.add(grid);
+
+  const markActive = () => { compare.activeSide = sideName; };
+  canvasEl.addEventListener('pointerdown', markActive);
+  canvasEl.addEventListener('wheel', markActive, { passive: true });
+  canvasEl.addEventListener('touchstart', markActive, { passive: true });
+
+  return { renderer, scene, camera, controls, grid, model: null, markActive, canvasEl, paneEl };
+}
+
+function disposeCompareSide(side) {
+  if (!side) return;
+  side.canvasEl.removeEventListener('pointerdown', side.markActive);
+  side.canvasEl.removeEventListener('wheel', side.markActive);
+  side.canvasEl.removeEventListener('touchstart', side.markActive);
+  if (side.model) {
+    side.scene.remove(side.model);
+    disposeObject3D(side.model);
+  }
+  if (side.grid) {
+    side.scene.remove(side.grid);
+    disposeObject3D(side.grid);
+  }
+  side.controls.dispose();
+  side.renderer.dispose();
+  try {
+    const gl = side.renderer.getContext();
+    if (gl && gl.getExtension) {
+      const ext = gl.getExtension('WEBGL_lose_context');
+      if (ext) ext.loseContext();
+    }
+  } catch { /* ignore */ }
+}
+
+function resizeCompareSides() {
+  if (!compare.active) return;
+  for (const side of [compare.left, compare.right]) {
+    if (!side) continue;
+    const w = Math.max(1, side.paneEl.clientWidth);
+    const h = Math.max(1, side.paneEl.clientHeight);
+    side.camera.aspect = w / h;
+    side.camera.updateProjectionMatrix();
+    side.renderer.setSize(w, h);
+  }
+}
+
+function startCompareLoop() {
+  if (compare.rafId != null) return;
+  const tick = () => {
+    if (!compare.active) {
+      compare.rafId = null;
+      return;
+    }
+    compare.rafId = requestAnimationFrame(tick);
+    const src = compare.activeSide === 'right' ? compare.right : compare.left;
+    const dst = compare.activeSide === 'right' ? compare.left : compare.right;
+    if (src && dst) {
+      src.controls.update();
+      // Copy camera & OrbitControls state every frame for exact camera sync
+      dst.camera.position.copy(src.camera.position);
+      dst.camera.quaternion.copy(src.camera.quaternion);
+      dst.camera.zoom = src.camera.zoom;
+      dst.camera.updateProjectionMatrix();
+      dst.controls.target.copy(src.controls.target);
+
+      compare.left.renderer.render(compare.left.scene, compare.left.camera);
+      compare.right.renderer.render(compare.right.scene, compare.right.camera);
+    }
+  };
+  tick();
+}
+
+async function enterCompareMode() {
+  const asset = state.currentAsset;
+  if (!asset || !asset.versions || asset.versions.length < 2) {
+    showToast('โมเดลนี้มีเพียง 1 เวอร์ชัน ยังไม่สามารถเปรียบเทียบได้', 'warn');
+    return;
+  }
+
+  state.compareMode = true;
+  $('mode-single-btn').classList.remove('active');
+  $('mode-single-btn').setAttribute('aria-selected', 'false');
+  $('mode-compare-btn').classList.add('active');
+  $('mode-compare-btn').setAttribute('aria-selected', 'true');
+  $('compare-stage').classList.add('show');
+
+  const versions = asset.versions.slice().sort((a, b) => Number(a.v) - Number(b.v));
+  const optsHtml = versions.map((item) => `<option value="${item.v}">v${item.v} — ${esc(item.note || 'ไม่มีโน้ต')}</option>`).join('');
+  $('compare-left-select').innerHTML = optsHtml;
+  $('compare-right-select').innerHTML = optsHtml;
+
+  const vRight = Number(state.currentVersion) || Number(versions[versions.length - 1].v);
+  const prevIdx = Math.max(0, versions.findIndex((x) => Number(x.v) === vRight) - 1);
+  const vLeft = Number(versions[prevIdx].v === vRight ? versions[0].v : versions[prevIdx].v);
+
+  $('compare-left-select').value = String(vLeft);
+  $('compare-right-select').value = String(vRight);
+
+  if (!compare.active) {
+    compare.active = true;
+    compare.left = createCompareSide($('compare-canvas-left'), $('compare-pane-left'), 'left');
+    compare.right = createCompareSide($('compare-canvas-right'), $('compare-pane-right'), 'right');
+    compare.resizeObserver = new ResizeObserver(() => resizeCompareSides());
+    compare.resizeObserver.observe($('compare-stage'));
+    startCompareLoop();
+  }
+  resizeCompareSides();
+  await loadCompareVersions(vLeft, vRight);
+}
+
+function exitCompareMode() {
+  state.compareMode = false;
+  $('mode-single-btn').classList.add('active');
+  $('mode-single-btn').setAttribute('aria-selected', 'true');
+  $('mode-compare-btn').classList.remove('active');
+  $('mode-compare-btn').setAttribute('aria-selected', 'false');
+  $('compare-stage').classList.remove('show');
+
+  if (compare.active) {
+    compare.active = false;
+    if (compare.rafId != null) {
+      cancelAnimationFrame(compare.rafId);
+      compare.rafId = null;
+    }
+    if (compare.resizeObserver) {
+      compare.resizeObserver.disconnect();
+      compare.resizeObserver = null;
+    }
+    disposeCompareSide(compare.left);
+    disposeCompareSide(compare.right);
+    compare.left = null;
+    compare.right = null;
+  }
+}
+
+async function loadCompareVersions(vL, vR) {
+  const asset = state.currentAsset;
+  if (!asset || !compare.active) return;
+  compare.verLeft = Number(vL);
+  compare.verRight = Number(vR);
+
+  const objL = getVersionObj(asset, vL);
+  const objR = getVersionObj(asset, vR);
+  const fileL = (objL && objL.files && objL.files.model) || 'model.glb';
+  const fileR = (objR && objR.files && objR.files.model) || 'model.glb';
+
+  $('compare-label-left').textContent = `v${vL}: กำลังโหลด...`;
+  $('compare-label-right').textContent = `v${vR}: กำลังโหลด...`;
+
+  try {
+    const [gltfL, gltfR] = await Promise.all([
+      loadVaultModelWithFallback(asset.id, vL, fileL),
+      loadVaultModelWithFallback(asset.id, vR, fileR),
+    ]);
+    if (!compare.active) {
+      disposeObject3D(gltfL.scene);
+      disposeObject3D(gltfR.scene);
+      return;
+    }
+
+    if (compare.left.model) {
+      compare.left.scene.remove(compare.left.model);
+      disposeObject3D(compare.left.model);
+    }
+    if (compare.right.model) {
+      compare.right.scene.remove(compare.right.model);
+      disposeObject3D(compare.right.model);
+    }
+
+    compare.left.model = gltfL.scene;
+    compare.right.model = gltfR.scene;
+    compare.left.scene.add(gltfL.scene);
+    compare.right.scene.add(gltfR.scene);
+
+    compare.metricsLeft = computeModelMetrics(gltfL.scene);
+    compare.metricsRight = computeModelMetrics(gltfR.scene);
+    applyCompareWireframe();
+
+    const unionBox = compare.metricsLeft.box.clone().union(compare.metricsRight.box);
+    const unionSize = unionBox.getSize(new THREE.Vector3());
+    const unionCenter = unionBox.getCenter(new THREE.Vector3());
+    const gridDim = Math.max(4, Math.ceil((Math.max(unionSize.x, unionSize.z, 1) * 1.9) / 2) * 2);
+
+    for (const side of [compare.left, compare.right]) {
+      side.scene.remove(side.grid);
+      disposeObject3D(side.grid);
+      side.grid = new THREE.GridHelper(gridDim, Math.min(48, Math.max(8, gridDim)), 0x38bdf8, 0x263244);
+      side.grid.position.set(unionCenter.x, unionBox.min.y - 0.005, unionCenter.z);
+      side.scene.add(side.grid);
+    }
+
+    fitCameraToBox(compare.left.camera, compare.left.controls, unionBox, 'iso');
+    fitCameraToBox(compare.right.camera, compare.right.controls, unionBox, 'iso');
+    compare.activeSide = 'left';
+
+    $('compare-label-left').textContent = `v${vL}${objL && objL.note ? ` — ${objL.note}` : ''}`;
+    $('compare-label-right').textContent = `v${vR}${objR && objR.note ? ` — ${objR.note}` : ''}`;
+
+    const dSize = (Number(objR && objR.sizeBytes) || 0) - (Number(objL && objL.sizeBytes) || 0);
+    const dTris = compare.metricsRight.triangles - compare.metricsLeft.triangles;
+    const dMesh = compare.metricsRight.meshes - compare.metricsLeft.meshes;
+    const sign = (n) => (n > 0 ? '+' : '');
+    $('compare-diff-bar').innerHTML = `
+      <span class="mono">ซ้าย v${vL}: ${formatNum(compare.metricsLeft.triangles)} tris · ${formatBytes(objL && objL.sizeBytes)}</span>
+      <span class="mono" style="color:var(--cad-cyan);">ผลต่าง: ${sign(dTris)}${formatNum(dTris)} tris · ${sign(dMesh)}${dMesh} เมช · ${sign(dSize)}${formatBytes(Math.abs(dSize))}</span>
+      <span class="mono">ขวา v${vR}: ${formatNum(compare.metricsRight.triangles)} tris · ${formatBytes(objR && objR.sizeBytes)}</span>`;
+  } catch (err) {
+    showToast(`โหลดเวอร์ชันเปรียบเทียบไม่สำเร็จ: ${err.message || err}`, 'err');
+  }
+}
+
+function applyCompareWireframe() {
+  for (const side of [compare.left, compare.right]) {
+    if (!side || !side.model) continue;
+    side.model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach((m) => { m.wireframe = compare.wireframe; });
+    });
+  }
+}
+
+/* ============================================================================
+   EXPORT & METADATA MUTATIONS
+   ============================================================================ */
+async function handleExport(kind) {
+  const asset = state.currentAsset;
+  if (!asset) return;
+  const isAllZip = kind === 'zip-all';
+  const format = isAllZip ? 'zip' : kind;
+  const verParam = isAllZip ? 'all' : String(state.currentVersion);
+
+  const label = isAllZip ? 'ZIP (ทุกเวอร์ชัน)' : format.toUpperCase();
+  showToast(`กำลังเตรียมไฟล์ ${label}...`, 'info', 3000);
+
+  const primaryUrl = `/api/3d-vault/assets/${encodeURIComponent(asset.id)}/export?format=${encodeURIComponent(format)}&v=${encodeURIComponent(verParam)}`;
+  const fallbackUrl = `/api/3d-vault/assets/${encodeURIComponent(asset.id)}/export/${encodeURIComponent(format)}?v=${encodeURIComponent(verParam)}`;
+
+  try {
+    let res = await fetch(primaryUrl, { credentials: 'same-origin' });
+    if (res.status === 404) {
+      res = await fetch(fallbackUrl, { credentials: 'same-origin' });
+    }
+    if (!res.ok) {
+      let msg = `ส่งออกไม่สำเร็จ (${res.status})`;
+      try {
+        const j = await res.json();
+        if (j && j.error) msg = j.error;
+      } catch { /* ignore */ }
+      throw new Error(msg);
+    }
+
+    const blob = await res.blob();
+    const disp = res.headers.get('content-disposition') || '';
+    const match = disp.match(/filename\*?=(?:UTF-8''|")?([^";\r\n"]+)/i);
+    const filename = match ? decodeURIComponent(match[1]) : `${asset.id}-${verParam === 'all' ? 'all' : 'v' + verParam}.${format}`;
+
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dlUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(dlUrl), 15000);
+    showToast(`ดาวน์โหลด ${filename} เรียบร้อย`, 'ok');
+  } catch (err) {
+    showToast(`ส่งออกไฟล์ล้มเหลว: ${err.message}`, 'err', 5500);
+  }
+}
+
+async function saveMetaEdits(e) {
+  e.preventDefault();
+  const asset = state.currentAsset;
+  if (!asset) return;
+
+  const btn = $('btn-save-meta');
+  btn.disabled = true;
+  try {
+    const payload = {
+      name: $('edit-name').value.trim(),
+      category: $('edit-category').value,
+      tags: parseTagsInput($('edit-tags').value),
+      description: $('edit-desc').value.trim(),
+    };
+    const res = await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(asset.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    if (res.asset) state.currentAsset = res.asset;
+    else Object.assign(state.currentAsset, payload);
+
+    renderViewerHeader();
+    await loadAssets(true);
+    showToast('บันทึกข้อมูลโมเดลแล้ว', 'ok');
+  } catch (err) {
+    showToast(`บันทึกไม่สำเร็จ: ${err.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function duplicateCurrentAsset() {
+  const asset = state.currentAsset;
+  if (!asset) return;
+  const btn = $('btn-duplicate-asset');
+  btn.disabled = true;
+  try {
+    const res = await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(asset.id)}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify({ name: `${asset.name} (สำเนา)` }),
+    });
+    const copy = res.asset;
+    await loadAssets(true);
+    showToast(`ทำสำเนา "${copy ? copy.name : asset.name}" เรียบร้อย`, 'ok');
+    if (copy && copy.id) {
+      openViewer(copy.id);
+    }
+  } catch (err) {
+    showToast(`ทำสำเนาไม่สำเร็จ: ${err.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function confirmDeleteCurrentAsset() {
+  const asset = state.currentAsset;
+  if (!asset) return;
+  const btn = $('btn-confirm-delete');
+  btn.disabled = true;
+  try {
+    await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(asset.id)}`, { method: 'DELETE' });
+    $('delete-modal').classList.remove('open');
+    const deletedName = asset.name;
+    closeViewer();
+    await loadAssets(true);
+    showToast(`ย้าย "${deletedName}" ไปยังถังขยะแล้ว`, 'ok');
+  } catch (err) {
+    showToast(`ลบไม่สำเร็จ: ${err.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function captureAndSetThumbnail() {
+  const asset = state.currentAsset;
+  if (!asset || !viewer.initialized) return;
+  try {
+    viewer.renderer.render(viewer.scene, viewer.camera);
+    const srcCanvas = viewer.renderer.domElement;
+    // Scale neatly to 512x384 PNG
+    const out = document.createElement('canvas');
+    out.width = 512;
+    out.height = 384;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#141c26';
+    ctx.fillRect(0, 0, 512, 384);
+    const scale = Math.max(512 / srcCanvas.width, 384 / srcCanvas.height);
+    const dw = srcCanvas.width * scale;
+    const dh = srcCanvas.height * scale;
+    ctx.drawImage(srcCanvas, (512 - dw) / 2, (384 - dh) / 2, dw, dh);
+    const dataUrl = out.toDataURL('image/png');
+
+    await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(asset.id)}/thumbnail`, {
+      method: 'POST',
+      body: JSON.stringify({ dataUrl, v: state.currentVersion }),
+    });
+    await loadAssets(true);
+    showToast('อัปเดตภาพปกของโมเดลแล้ว', 'ok');
+  } catch (err) {
+    showToast(`ตั้งภาพปกไม่สำเร็จ: ${err.message}`, 'err');
+  }
+}
+
+function downloadViewerScreenshot() {
+  if (!viewer.initialized || !state.currentAsset) return;
+  viewer.renderer.render(viewer.scene, viewer.camera);
+  const dataUrl = viewer.renderer.domElement.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = `${state.currentAsset.id}-v${state.currentVersion}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('บันทึกภาพหน้าจอแล้ว', 'ok', 2200);
+}
+
+/* ============================================================================
+   UPLOAD & IMPORT MODAL (3D MODELS + SOURCE.PY + ZIP)
+   ============================================================================ */
+function openUploadModal(preselectAssetId = null) {
+  state.selectedFile = null;
+  state.selectedSourceFile = null;
+  state.clientPreviewDataUrl = null;
+
+  $('upload-form').reset();
+  $('upload-preview-img').classList.remove('show');
+  $('upload-preview-img').removeAttribute('src');
+  $('upload-drop-label').textContent = 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์';
+  $('upload-drop-sub').textContent = 'รองรับ .glb .gltf .obj .stl .fbx .ply .blend หรือ .zip (สูงสุด 80 MB)';
+  $('zip-mode-info').style.display = 'none';
+  $('model-upload-fields').style.display = 'flex';
+  $('btn-clear-source').style.display = 'none';
+  $('upload-progress').classList.remove('show');
+
+  // Populate existing assets dropdown
+  const pool = state.allAssetsCache.length ? state.allAssetsCache : state.assets;
+  const sel = $('upload-target-asset');
+  sel.innerHTML = pool.length
+    ? pool.map((a) => `<option value="${esc(a.id)}">${esc(a.name)} (v${a.latestVersion || 1})</option>`).join('')
+    : '<option value="">ยังไม่มีโมเดลในคลัง</option>';
+
+  if (preselectAssetId && pool.some((a) => a.id === preselectAssetId)) {
+    document.querySelector('input[name="uploadMode"][value="version"]').checked = true;
+    sel.value = preselectAssetId;
+    syncUploadModeUI();
+  } else {
+    document.querySelector('input[name="uploadMode"][value="new"]').checked = true;
+    syncUploadModeUI();
+  }
+
+  $('upload-modal').classList.add('open');
+}
+
+function closeUploadModal() {
+  $('upload-modal').classList.remove('open');
+}
+
+function syncUploadModeUI() {
+  const isZip = state.selectedFile && getExt(state.selectedFile.name) === 'zip';
+  if (isZip) {
+    $('zip-mode-info').style.display = 'block';
+    $('model-upload-fields').style.display = 'none';
+    $('btn-submit-upload').textContent = 'นำเข้าแพ็กเกจ ZIP';
+    return;
+  }
+
+  $('zip-mode-info').style.display = 'none';
+  $('model-upload-fields').style.display = 'flex';
+  const mode = document.querySelector('input[name="uploadMode"]:checked')?.value || 'new';
+  $('target-asset-field').style.display = mode === 'version' ? 'flex' : 'none';
+  $('new-asset-fields').style.display = mode === 'new' ? 'flex' : 'none';
+  $('btn-submit-upload').textContent = mode === 'version' ? 'อัปโหลดเวอร์ชันใหม่' : 'อัปโหลดเข้าคลัง';
+}
+
+async function generateLocalUploadPreview(file) {
+  const ext = getExt(file.name);
+  if (!['glb', 'gltf', 'stl', 'obj'].includes(ext)) return null;
+  const objUrl = URL.createObjectURL(file);
+  let root = null;
+  try {
+    if (ext === 'glb' || ext === 'gltf') {
+      const gltf = await loadGltfFromUrl(objUrl);
+      root = gltf.scene;
+    } else if (ext === 'stl') {
+      root = await new Promise((resolve, reject) => {
+        stlLoader.load(objUrl, (geo) => {
+          geo.computeVertexNormals();
+          const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x94a6bc, roughness: 0.45, metalness: 0.2 }));
+          const g = new THREE.Group();
+          g.add(mesh);
+          resolve(g);
+        }, undefined, reject);
+      });
+    } else if (ext === 'obj') {
+      root = await new Promise((resolve, reject) => {
+        objLoader.load(objUrl, resolve, undefined, reject);
+      });
+    }
+    if (!root) return null;
+    const dataUrl = await renderModelToDataUrl(root);
+    disposeObject3D(root);
+    releaseOffscreenThumbRenderer();
+    return dataUrl;
+  } catch {
+    if (root) disposeObject3D(root);
+    releaseOffscreenThumbRenderer();
+    return null;
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
+}
+
+async function handleSelectedUploadFile(file) {
+  if (!file) return;
+  const ext = getExt(file.name);
+  if (!ALLOWED_MODEL_EXTS.has(ext)) {
+    showToast(`ไม่รองรับไฟล์ .${ext || '?'} (รับเฉพาะ glb, gltf, obj, stl, fbx, ply, blend, zip)`, 'err');
+    return;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    showToast(`ไฟล์ใหญ่เกิน 80 MB (${formatBytes(file.size)})`, 'err');
+    return;
+  }
+
+  state.selectedFile = file;
+  state.clientPreviewDataUrl = null;
+  $('upload-drop-label').textContent = file.name;
+  $('upload-drop-sub').textContent = `${formatBytes(file.size)} · .${ext.toUpperCase()}`;
+
+  if (ext !== 'zip' && !$('upload-name').value.trim()) {
+    $('upload-name').value = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+  }
+
+  syncUploadModeUI();
+
+  // Render quick local 3D thumbnail preview when supported
+  const preview = await generateLocalUploadPreview(file);
+  if (preview && state.selectedFile === file) {
+    state.clientPreviewDataUrl = preview;
+    $('upload-preview-img').src = preview;
+    $('upload-preview-img').classList.add('show');
+  } else {
+    $('upload-preview-img').classList.remove('show');
+  }
+}
+
+async function handleUploadSubmit(e) {
+  e.preventDefault();
+  if (!state.selectedFile) {
+    showToast('กรุณาเลือกไฟล์โมเดล 3D หรือไฟล์ ZIP ก่อน', 'warn');
+    return;
+  }
+
+  const file = state.selectedFile;
+  const ext = getExt(file.name);
+  const isZip = ext === 'zip';
+  const mode = document.querySelector('input[name="uploadMode"]:checked')?.value || 'new';
+
+  if (!isZip && mode === 'new' && !$('upload-name').value.trim()) {
+    showToast('กรุณากรอกชื่อโมเดล', 'warn');
+    $('upload-name').focus();
+    return;
+  }
+  if (!isZip && mode === 'version' && !$('upload-target-asset').value) {
+    showToast('กรุณาเลือกโมเดลเดิมที่ต้องการเพิ่มเวอร์ชัน', 'warn');
+    return;
+  }
+
+  const submitBtn = $('btn-submit-upload');
+  const progBox = $('upload-progress');
+  const progTxt = $('upload-progress-text');
+  submitBtn.disabled = true;
+  progBox.classList.add('show');
+
+  try {
+    progTxt.textContent = `กำลังอ่านไฟล์ ${file.name} (${formatBytes(file.size)})...`;
+    const dataUrl = await readFileAsDataUrl(file);
+
+    if (isZip) {
+      progTxt.textContent = 'กำลังนำเข้าแพ็กเกจ ZIP...';
+      const res = await apiFetch('/api/3d-vault/import-zip', {
+        method: 'POST',
+        body: JSON.stringify({ filename: file.name, dataUrl }),
+      });
+      closeUploadModal();
+      await loadAssets(true);
+      showToast('นำเข้าแพ็กเกจ ZIP เรียบร้อย', 'ok');
+      const imported = res.asset || (Array.isArray(res.assets) && res.assets[0]);
+      if (imported && imported.id) openViewer(imported.id);
+      return;
+    }
+
+    let sourceFilename = null;
+    let sourceDataUrl = null;
+    if (state.selectedSourceFile) {
+      progTxt.textContent = `กำลังอ่านสคริปต์ ${state.selectedSourceFile.name}...`;
+      sourceFilename = state.selectedSourceFile.name;
+      sourceDataUrl = await readFileAsDataUrl(state.selectedSourceFile);
+    }
+
+    const note = $('upload-note').value.trim();
+
+    if (mode === 'version') {
+      const targetId = $('upload-target-asset').value;
+      progTxt.textContent = 'กำลังอัปโหลดและแปลงเวอร์ชันใหม่...';
+      const res = await apiFetch(`/api/3d-vault/assets/${encodeURIComponent(targetId)}/versions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          note,
+          filename: file.name,
+          dataUrl,
+          ...(sourceFilename ? { sourceFilename, sourceDataUrl } : {}),
+          ...(state.clientPreviewDataUrl ? { previewDataUrl: state.clientPreviewDataUrl } : {}),
+        }),
+      });
+      closeUploadModal();
+      await loadAssets(true);
+      showToast('เพิ่มเวอร์ชันใหม่เรียบร้อย', 'ok');
+      const updated = res.asset;
+      const newV = (res.version && res.version.v) || (updated && updated.versions && updated.versions[updated.versions.length - 1]?.v);
+      openViewer(targetId, newV);
+    } else {
+      progTxt.textContent = 'กำลังอัปโหลดและจัดเก็บโมเดลใหม่...';
+      const res = await apiFetch('/api/3d-vault/assets', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: $('upload-name').value.trim(),
+          category: $('upload-category').value,
+          tags: parseTagsInput($('upload-tags').value),
+          description: $('upload-desc').value.trim(),
+          note,
+          filename: file.name,
+          dataUrl,
+          ...(sourceFilename ? { sourceFilename, sourceDataUrl } : {}),
+          ...(state.clientPreviewDataUrl ? { previewDataUrl: state.clientPreviewDataUrl } : {}),
+        }),
+      });
+      closeUploadModal();
+      await loadAssets(true);
+      showToast('นำเข้าโมเดล 3D สำเร็จ', 'ok');
+      if (res.asset && res.asset.id) {
+        openViewer(res.asset.id);
+      }
+    }
+  } catch (err) {
+    showToast(`อัปโหลดไม่สำเร็จ: ${err.message}`, 'err', 6000);
+  } finally {
+    submitBtn.disabled = false;
+    progBox.classList.remove('show');
+  }
+}
+
+/* ============================================================================
+   DEEP LINKING (#asset=<id>&v=<n>)
+   ============================================================================ */
+function parseDeepLink() {
+  const rawHash = (window.location.hash || '').replace(/^#/, '');
+  const params = new URLSearchParams(rawHash || window.location.search.replace(/^\?/, ''));
+  const assetId = params.get('asset');
+  const vRaw = params.get('v');
+  const v = vRaw ? Number(String(vRaw).replace(/^v/i, '')) : null;
+  return assetId ? { assetId, v: Number.isFinite(v) && v > 0 ? v : null } : null;
+}
+
+function handleHashChange() {
+  const link = parseDeepLink();
+  if (link) {
+    if (!state.viewerOpen || !state.currentAsset || state.currentAsset.id !== link.assetId || (link.v && link.v !== state.currentVersion)) {
+      openViewer(link.assetId, link.v);
+    }
+  } else if (state.viewerOpen) {
+    closeViewer();
+  }
+}
+
+/* ============================================================================
+   EVENT WIRING
+   ============================================================================ */
+function bindEvents() {
+  // Search debounce
+  let searchTimer = null;
+  $('search-input').addEventListener('input', (e) => {
+    const val = e.target.value;
+    $('search-clear').classList.toggle('show', Boolean(val));
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.filters.q = val;
+      loadAssets();
+    }, 220);
+  });
+
+  $('search-clear').addEventListener('click', () => {
+    $('search-input').value = '';
+    $('search-clear').classList.remove('show');
+    state.filters.q = '';
+    loadAssets();
+  });
+
+  $('sort-select').addEventListener('change', (e) => {
+    state.filters.sort = e.target.value;
+    loadAssets();
+  });
+
+  $('btn-fav-filter').addEventListener('click', (e) => {
+    state.filters.fav = !state.filters.fav;
+    e.currentTarget.classList.toggle('active', state.filters.fav);
+    e.currentTarget.classList.toggle('amber', state.filters.fav);
+    e.currentTarget.setAttribute('aria-pressed', String(state.filters.fav));
+    loadAssets();
+  });
+
+  $('category-rail').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-cat]');
+    if (!btn) return;
+    state.filters.category = btn.dataset.cat;
+    loadAssets();
+  });
+
+  $('tag-rail').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-tag]');
+    if (!btn) return;
+    const tag = btn.dataset.tag;
+    state.filters.tag = state.filters.tag === tag ? '' : tag;
+    loadAssets();
+  });
+
+  $('btn-refresh').addEventListener('click', () => loadAssets());
+  $('btn-open-upload').addEventListener('click', () => openUploadModal());
+
+  // Gallery card clicks
+  $('asset-grid').addEventListener('click', (e) => {
+    const actionBtn = e.target.closest('button[data-action]');
+    if (actionBtn) {
+      e.stopPropagation();
+      const id = actionBtn.dataset.id;
+      const act = actionBtn.dataset.action;
+      if (act === 'fav') toggleAssetFavorite(id);
+      else if (act === 'compare') openViewer(id, null, true);
+      else if (act === 'open') openViewer(id);
+      return;
+    }
+    const card = e.target.closest('.asset-card[data-id]');
+    if (card) openViewer(card.dataset.id);
+  });
+
+  $('asset-grid').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const card = e.target.closest('.asset-card[data-id]');
+      if (card && e.target === card) {
+        e.preventDefault();
+        openViewer(card.dataset.id);
+      }
+    }
+  });
+
+  // Viewer header controls
+  $('btn-close-viewer').addEventListener('click', closeViewer);
+
+  $('viewer-ver-pills').addEventListener('click', (e) => {
+    const pill = e.target.closest('button[data-ver]');
+    if (!pill) return;
+    const v = Number(pill.dataset.ver);
+    if (state.compareMode) exitCompareMode();
+    loadViewerVersion(v);
+  });
+
+  $('mode-single-btn').addEventListener('click', () => {
+    if (state.compareMode) {
+      exitCompareMode();
+      resizeMainViewer();
+      if (!viewer.currentModel && state.currentAsset) loadViewerVersion(state.currentVersion);
+    }
+  });
+
+  $('mode-compare-btn').addEventListener('click', () => {
+    if (!state.compareMode) enterCompareMode();
+  });
+
+  $('btn-viewer-fav').addEventListener('click', () => {
+    if (state.currentAsset) toggleAssetFavorite(state.currentAsset.id);
+  });
+
+  $('btn-copy-link').addEventListener('click', async () => {
+    if (!state.currentAsset) return;
+    const link = `${window.location.origin}${window.location.pathname}#asset=${encodeURIComponent(state.currentAsset.id)}&v=${state.currentVersion}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast('คัดลอกลิงก์ตรงแล้ว', 'ok', 2200);
+    } catch {
+      showToast(link, 'info', 5000);
+    }
+  });
+
+  $('btn-viewer-add-ver').addEventListener('click', () => {
+    openUploadModal(state.currentAsset ? state.currentAsset.id : null);
+  });
+
+  $('btn-tab-add-ver').addEventListener('click', () => {
+    openUploadModal(state.currentAsset ? state.currentAsset.id : null);
+  });
+
+  $('btn-toggle-inspector').addEventListener('click', () => {
+    $('viewer-body').classList.toggle('inspector-collapsed');
+    setTimeout(() => {
+      resizeMainViewer();
+      resizeCompareSides();
+    }, 30);
+  });
+
+  // Stage CAD toolbar
+  document.querySelectorAll('.tool-btn[data-cam]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!viewer.currentMetrics) return;
+      const view = btn.dataset.cam === 'fit' ? 'iso' : btn.dataset.cam;
+      fitCameraToBox(viewer.camera, viewer.controls, viewer.currentMetrics.box, view);
+    });
+  });
+
+  $('tool-autorotate').addEventListener('click', (e) => {
+    state.autoRotate = !state.autoRotate;
+    e.currentTarget.classList.toggle('active', state.autoRotate);
+  });
+
+  $('tool-wireframe').addEventListener('click', (e) => {
+    state.wireframe = !state.wireframe;
+    e.currentTarget.classList.toggle('active', state.wireframe);
+    applyMaterialDisplayModes();
+  });
+
+  $('tool-grid').addEventListener('click', (e) => {
+    state.showGrid = !state.showGrid;
+    e.currentTarget.classList.toggle('active', state.showGrid);
+    if (viewer.grid) viewer.grid.visible = state.showGrid;
+  });
+
+  $('tool-bbox').addEventListener('click', (e) => {
+    state.showBBox = !state.showBBox;
+    e.currentTarget.classList.toggle('active', state.showBBox);
+    if (viewer.bboxHelper) viewer.bboxHelper.visible = state.showBBox;
+    if (viewer.axesHelper) viewer.axesHelper.visible = state.showBBox;
+  });
+
+  $('tool-clip').addEventListener('click', (e) => {
+    state.clipEnabled = !state.clipEnabled;
+    e.currentTarget.classList.toggle('active-amber', state.clipEnabled);
+    $('clip-dock').classList.toggle('show', state.clipEnabled);
+    if (state.clipEnabled && state.clipPct >= 99.5) {
+      state.clipPct = 65;
+      $('clip-slider').value = '65';
+    }
+    updateClippingPlane();
+  });
+
+  $('clip-slider').addEventListener('input', (e) => {
+    state.clipPct = Number(e.target.value);
+    updateClippingPlane();
+  });
+
+  $('btn-clip-flip').addEventListener('click', () => {
+    state.clipFlip = !state.clipFlip;
+    updateClippingPlane();
+  });
+
+  $('tool-measure').addEventListener('click', (e) => {
+    state.measureMode = !state.measureMode;
+    e.currentTarget.classList.toggle('active-emerald', state.measureMode);
+    $('measure-banner').classList.toggle('show', state.measureMode);
+    $('viewer-canvas').classList.toggle('measure-cursor', state.measureMode);
+    if (!state.measureMode && viewer.pendingMarkerA) {
+      viewer.measureRoot.remove(viewer.pendingMarkerA);
+      disposeObject3D(viewer.pendingMarkerA);
+      viewer.pendingMarkerA = null;
+      viewer.pendingPointA = null;
+    }
+  });
+
+  $('btn-clear-measure').addEventListener('click', clearAllMeasurements);
+
+  $('tool-bg').addEventListener('click', () => {
+    state.bgThemeIdx = (state.bgThemeIdx + 1) % BG_THEMES.length;
+    applyBgTheme();
+  });
+
+  $('tool-set-thumb').addEventListener('click', captureAndSetThumbnail);
+  $('tool-shot').addEventListener('click', downloadViewerScreenshot);
+
+  // Compare controls
+  $('compare-left-select').addEventListener('change', (e) => {
+    loadCompareVersions(Number(e.target.value), compare.verRight);
+  });
+  $('compare-right-select').addEventListener('change', (e) => {
+    loadCompareVersions(compare.verLeft, Number(e.target.value));
+  });
+  $('btn-compare-reset').addEventListener('click', () => {
+    if (!compare.metricsLeft || !compare.metricsRight) return;
+    const unionBox = compare.metricsLeft.box.clone().union(compare.metricsRight.box);
+    fitCameraToBox(compare.left.camera, compare.left.controls, unionBox, 'iso');
+    fitCameraToBox(compare.right.camera, compare.right.controls, unionBox, 'iso');
+  });
+  $('btn-compare-wire').addEventListener('click', (e) => {
+    compare.wireframe = !compare.wireframe;
+    e.currentTarget.classList.toggle('active', compare.wireframe);
+    applyCompareWireframe();
+  });
+
+  // Inspector Tabs
+  document.querySelectorAll('.itab[data-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.itab').forEach((t) => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+      $(`tab-${tab.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // Version list clicks
+  $('version-list').addEventListener('click', (e) => {
+    const item = e.target.closest('.version-item[data-ver]');
+    if (!item) return;
+    if (state.compareMode) exitCompareMode();
+    loadViewerVersion(Number(item.dataset.ver));
+  });
+
+  // Mesh / Layer controls
+  $('mesh-search').addEventListener('input', (e) => renderMeshLayerList(e.target.value));
+  $('btn-mesh-show-all').addEventListener('click', () => {
+    viewer.meshEntries.forEach((e) => { e.mesh.visible = true; });
+    renderMeshLayerList($('mesh-search').value);
+  });
+  $('btn-mesh-hide-all').addEventListener('click', () => {
+    viewer.meshEntries.forEach((e) => { e.mesh.visible = false; });
+    renderMeshLayerList($('mesh-search').value);
+  });
+  $('mesh-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mesh-act]');
+    if (!btn) return;
+    const idx = Number(btn.dataset.idx);
+    const entry = viewer.meshEntries[idx];
+    if (!entry) return;
+    if (btn.dataset.meshAct === 'solo') {
+      const onlyThisVisible = viewer.meshEntries.every((m, i) => (i === idx ? m.mesh.visible : !m.mesh.visible));
+      viewer.meshEntries.forEach((m, i) => { m.mesh.visible = onlyThisVisible ? true : i === idx; });
+    } else {
+      entry.mesh.visible = !entry.mesh.visible;
+    }
+    renderMeshLayerList($('mesh-search').value);
+  });
+
+  // Meta Edit / Duplicate / Delete / Export / Copy Source
+  $('meta-edit-form').addEventListener('submit', saveMetaEdits);
+  $('btn-duplicate-asset').addEventListener('click', duplicateCurrentAsset);
+  $('btn-delete-asset').addEventListener('click', () => {
+    if (!state.currentAsset) return;
+    $('delete-modal-msg').textContent = `ต้องการย้ายโมเดล "${state.currentAsset.name}" พร้อมทุกเวอร์ชันไปยังถังขยะ (.trash) ใช่หรือไม่?`;
+    $('delete-modal').classList.add('open');
+  });
+  $('btn-close-delete').addEventListener('click', () => $('delete-modal').classList.remove('open'));
+  $('btn-cancel-delete').addEventListener('click', () => $('delete-modal').classList.remove('open'));
+  $('btn-confirm-delete').addEventListener('click', confirmDeleteCurrentAsset);
+
+  document.querySelectorAll('button[data-export]').forEach((btn) => {
+    btn.addEventListener('click', () => handleExport(btn.dataset.export));
+  });
+
+  $('btn-copy-source').addEventListener('click', async () => {
+    const code = $('source-code-viewer').textContent || '';
+    try {
+      await navigator.clipboard.writeText(code);
+      showToast('คัดลอกโค้ด source.py แล้ว', 'ok', 2200);
+    } catch {
+      showToast('ไม่สามารถคัดลอกลงคลิปบอร์ดได้', 'err');
+    }
+  });
+
+  // Upload Modal events
+  $('btn-close-upload').addEventListener('click', closeUploadModal);
+  $('btn-cancel-upload').addEventListener('click', closeUploadModal);
+  $('upload-modal').addEventListener('click', (e) => {
+    if (e.target === $('upload-modal')) closeUploadModal();
+  });
+  $('delete-modal').addEventListener('click', (e) => {
+    if (e.target === $('delete-modal')) $('delete-modal').classList.remove('open');
+  });
+
+  const dz = $('upload-dropzone');
+  const fileInput = $('upload-file-input');
+  dz.addEventListener('click', () => fileInput.click());
+  dz.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  dz.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dz.classList.add('dragover');
+  });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleSelectedUploadFile(file);
+  });
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) handleSelectedUploadFile(file);
+  });
+
+  $('upload-source-input').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    state.selectedSourceFile = f || null;
+    $('btn-clear-source').style.display = f ? 'inline-flex' : 'none';
+  });
+  $('btn-clear-source').addEventListener('click', () => {
+    state.selectedSourceFile = null;
+    $('upload-source-input').value = '';
+    $('btn-clear-source').style.display = 'none';
+  });
+
+  document.querySelectorAll('input[name="uploadMode"]').forEach((r) => {
+    r.addEventListener('change', syncUploadModeUI);
+  });
+  $('upload-form').addEventListener('submit', handleUploadSubmit);
+
+  // Escape key closes topmost modal or viewer
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if ($('delete-modal').classList.contains('open')) {
+      $('delete-modal').classList.remove('open');
+    } else if ($('upload-modal').classList.contains('open')) {
+      closeUploadModal();
+    } else if (state.viewerOpen) {
+      closeViewer();
+    }
+  });
+
+  window.addEventListener('hashchange', handleHashChange);
+}
+
+/* ============================================================================
+   BOOT
+   ============================================================================ */
+async function boot() {
+  bindEvents();
+  const deep = parseDeepLink();
+  await loadAssets();
+  if (deep) {
+    await openViewer(deep.assetId, deep.v);
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

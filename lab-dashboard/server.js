@@ -34,6 +34,7 @@ const geminiManager = require('./gemini-manager');
 const audit = require('./audit-logger');
 const aiRouter = require('./ai-router');
 const bgRemoveManager = require('./bg-remove-manager');
+const assetVaultManager = require('./asset-vault-manager');
 const videoStudioManager = require('./video-studio-manager');
 const agentHubManager = require('./agent-hub-manager');
 let browserVisionBridge = null;
@@ -1191,6 +1192,7 @@ const LINKS = [
     { id: 'terminal', label: 'Web Terminal (Cockpit)', icon: 'terminal', url: '/terminal' },
     { id: 'agent-hub', label: 'Homelab Agent Hub (ศูนย์ควบคุม PC)', icon: 'server', url: '/agent-hub' },
     { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
+    { id: '3d-vault', label: '3D Vault (คลังโมเดล 3D)', icon: 'box', url: '/3d-vault' },
     { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
     { id: 'chat', label: 'AI Chat (แชท)', icon: 'auto', url: '/gemini' },
     { id: 'energy', label: 'Energy (ค่าไฟ)', icon: 'activity', url: '#energy' },
@@ -1814,6 +1816,9 @@ const server = http.createServer(async (req, res) => {
         }
         if (p === '/settings' || p === '/settings/') {
             return await serveStatic(req, res, '/settings.html');
+        }
+        if (await assetVaultManager.handleRequest(req, res, url, { readJsonBody, sendJson, serveStatic })) {
+            return;
         }
         if (p === '/bg-remove' || p === '/bg-remove/') {
             return await serveStatic(req, res, '/bg-remove.html');
@@ -2502,6 +2507,7 @@ const server = http.createServer(async (req, res) => {
             '.obj': 'text/plain; charset=utf-8',
             '.fbx': 'application/octet-stream',
             '.blend': 'application/octet-stream',
+            '.ply': 'application/octet-stream',
         };
         async function resolveAllowedLocalFile(rawPath, allowedExts, maxBytes, label = 'File') {
             const clean = String(rawPath || '').replace(/^file:\/\//i, '').trim();

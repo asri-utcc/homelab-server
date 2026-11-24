@@ -72,16 +72,22 @@ async function apiJson(path, opts = {}) {
     },
   });
 
-  if (res.status === 404 || res.status === 501) {
+  const ct = res.headers.get('content-type') || '';
+  const isJson = ct.includes('application/json');
+  const data = isJson ? await res.json().catch(() => null) : null;
+
+  // Only treat as "backend not restarted" when the AI route itself is missing.
+  const missingRoute =
+    res.status === 501 ||
+    (res.status === 404 &&
+      (!data || data.error === 'ไม่พบ AI API endpoint ที่ร้องขอ' || path === '/status'));
+  if (missingRoute) {
     state.apiUnavailable = true;
     const err = new Error(RESTART_MSG);
     err.status = res.status;
     err.needsRestart = true;
     throw err;
   }
-
-  const ct = res.headers.get('content-type') || '';
-  const data = ct.includes('application/json') ? await res.json().catch(() => null) : null;
   if (!res.ok) {
     const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
     const err = new Error(msg);
@@ -1172,11 +1178,12 @@ async function handleSend() {
       assetId: state.assetId,
       status: job.status || 'queued',
       progress: job.progress ?? 5,
-      step: job.step || 'ส่งคำสั่งแล้ว กำลังเริ่มต้น...',
-      logs: job.logs || [],
+      step: job.message || job.step || 'ส่งคำสั่งแล้ว กำลังเริ่มต้น...',
+      logs: Array.isArray(job.log) ? job.log : (job.logs || []),
       attempt: job.attempt || 1,
       maxAttempts: job.maxAttempts || 3,
-      target: job.target || state.target,
+      target: job.effectiveTarget || job.target || state.target,
+      runner: job.effectiveTarget || job.target || state.target,
     };
     renderBanner('');
     renderJobCard();
@@ -1217,6 +1224,9 @@ async function pollEditJob(jobId) {
       ...job,
       id: jobId,
       status,
+      step: job.message || job.step || state.activeJob.step,
+      logs: Array.isArray(job.log) ? job.log : (job.logs || []),
+      runner: job.effectiveTarget || job.target || state.activeJob.runner,
     };
     renderJobCard();
 
@@ -1274,6 +1284,14 @@ async function pollEditJob(jobId) {
       renderBanner(RESTART_MSG);
       return;
     }
+    if (err.status === 404) {
+      stopEditPolling();
+      state.activeJob = null;
+      renderJobCard();
+      showToast('ไม่พบงาน (อาจถูกล้างหลัง restart)', 'warn', 5000);
+      if (state.assetId) await loadChat(state.assetId);
+      return;
+    }
     // Transient network error: retry on next tick
     scheduleEditPoll(jobId);
   }
@@ -1299,7 +1317,7 @@ async function handleCancelJob() {
   }
 }
 
-function renderTurntableBody({ loading, progress, step, outputUrl, error, version }) {
+function renderTurntableBody({ loading, progress, step, outputUrl, outputType, error, version }) {
   const modal = ensureTurntableModal();
   const titleEl = modal.querySelector('#vai-tt-title');
   const bodyEl = modal.querySelector('#vai-tt-body');
@@ -1328,7 +1346,15 @@ function renderTurntableBody({ loading, progress, step, outputUrl, error, versio
   }
 
   if (outputUrl) {
-    const isImage = /\.(gif|webp|png|jpe?g)(\?|$)/i.test(outputUrl);
+    const hasExt = /\.[a-z0-9]{2,5}(\?|#|$)/i.test(outputUrl.split('?')[0] + (outputUrl.includes('?') ? '?' : ''));
+    const typeHint = String(outputType || '').toLowerCase();
+    let isImage;
+    if (/\.(gif|webp|png|jpe?g)(\?|$)/i.test(outputUrl)) isImage = true;
+    else if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(outputUrl)) isImage = false;
+    else if (typeHint) isImage = /gif|image|webp|png|jpe?g/.test(typeHint);
+    else isImage = false;
+    // No extension / no hint: start as <video>, fall back to <img> on error.
+    const fallback = !hasExt && !typeHint;
     const mediaHtml = isImage
       ? `<img class="vai-turntable-media" src="${esc(outputUrl)}" alt="พรีวิวหมุนรอบ 360 องศา" />`
       : `<video class="vai-turntable-media" src="${esc(outputUrl)}" autoplay loop muted playsinline controls></video>`;
@@ -1338,6 +1364,16 @@ function renderTurntableBody({ loading, progress, step, outputUrl, error, versio
         <a class="vai-chip-btn primary" href="${esc(outputUrl)}" download>ดาวน์โหลดไฟล์ 360°</a>
       </div>
     `;
+    if (fallback) {
+      const vid = bodyEl.querySelector('video.vai-turntable-media');
+      vid?.addEventListener('error', () => {
+        const img = document.createElement('img');
+        img.className = 'vai-turntable-media';
+        img.alt = 'พรีวิวหมุนรอบ 360 องศา';
+        img.src = outputUrl;
+        vid.replaceWith(img);
+      }, { once: true });
+    }
   }
 }
 
@@ -1363,7 +1399,7 @@ async function startTurntable(version) {
 
     const directUrl = res.outputUrl || res.videoUrl || res.gifUrl || res.result?.outputUrl;
     if (directUrl) {
-      renderTurntableBody({ loading: false, outputUrl: directUrl, version });
+      renderTurntableBody({ loading: false, outputUrl: directUrl, outputType: res.outputType || res.job?.outputType, version });
       return;
     }
 
@@ -1396,7 +1432,7 @@ async function pollTurntableJob(jobId, version) {
     if (status === 'done' || status === 'completed' || status === 'success') {
       state.turntableJob = null;
       if (outputUrl) {
-        renderTurntableBody({ loading: false, outputUrl, version });
+        renderTurntableBody({ loading: false, outputUrl, outputType: job.outputType, version });
       } else {
         renderTurntableBody({ error: 'งานเสร็จสิ้นแต่ไม่พบลิงก์ไฟล์ผลลัพธ์', version });
       }
@@ -1412,7 +1448,7 @@ async function pollTurntableJob(jobId, version) {
     renderTurntableBody({
       loading: true,
       progress: job.progress ?? 25,
-      step: job.step || 'กำลังเรนเดอร์ 360°...',
+      step: job.message || job.step || 'กำลังเรนเดอร์ 360°...',
       version,
     });
 
@@ -1421,6 +1457,11 @@ async function pollTurntableJob(jobId, version) {
     if (err.needsRestart) {
       state.turntableJob = null;
       renderTurntableBody({ error: RESTART_MSG, version });
+      return;
+    }
+    if (err.status === 404) {
+      state.turntableJob = null;
+      renderTurntableBody({ error: 'ไม่พบงาน (อาจถูกล้างหลัง restart)', version });
       return;
     }
     state.turntablePollTimer = setTimeout(() => pollTurntableJob(jobId, version), POLL_INTERVAL_MS);

@@ -182,7 +182,13 @@ function extractPython(text) {
     return raw.trim();
 }
 
-const UNSAFE_PY_REGEX = /\b(subprocess|socket|urllib|requests|shutil\.rmtree|os\.system|os\.remove|__import__)\b|\b(eval|exec)\s*\(/;
+const UNSAFE_PY_REGEX = new RegExp([
+    String.raw`\b(subprocess|socket|urllib3?|requests|shutil|importlib|ctypes|pty|ftplib|telnetlib|__import__|__builtins__)\b`,
+    String.raw`\bhttp\.client\b`,
+    String.raw`\bos\.(system|popen|exec\w*|spawn\w*|fork\w*|kill\w*|unlink|rmdir|removedirs|remove)\b`,
+    String.raw`\bgetattr\s*\(\s*os\b`,
+    String.raw`(?<![\w.])(eval|exec|compile)\s*\(`,
+].join('|'));
 
 function checkScriptSafety(code) {
     const src = String(code || '').trim();
@@ -2021,7 +2027,7 @@ async function defaultWorkerRunner({ job, scriptCode, inGlb, outGlb, outPng, liv
             return { ok: true, stdout: logs, stderr: '' };
         }
 
-        if (st === 'failed' || st === 'cancelled') {
+        if (st === 'failed' || st === 'cancelled' || st === 'lost' || st === 'timeout' || st === 'timed_out') {
             const tailLogs = Array.isArray(hubJob.liveLogs) ? hubJob.liveLogs.slice(-60).join('\n') : '';
             const errMsg = hubJob.error || hubJob.message || 'Worker Blender job failed';
             return {

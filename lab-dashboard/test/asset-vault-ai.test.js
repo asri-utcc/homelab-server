@@ -241,6 +241,33 @@ async function runTests() {
         assert.strictEqual(after.versions.length, 1, 'no new version should be created when unsafe');
     }
 
+    // 6b) extended unsafe-script blocklist
+    {
+        const blocked = [
+            'import os\nos.popen("ls")',
+            'from shutil import rmtree\nrmtree("/x")',
+            'import importlib\nimportlib.import_module("x")',
+            'import ctypes',
+            'import os\nos.unlink("/x")',
+            'import os\ngetattr(os, "sys" + "tem")("x")',
+            'import http.client',
+            'compile("1", "f", "exec")',
+            'x = __builtins__',
+        ];
+        for (const code of blocked) {
+            assert.strictEqual(vaultAi.checkScriptSafety(code).ok, false, 'should block: ' + code);
+        }
+        const allowed = [
+            'import bpy, os\np = os.path.join("a", "b")',
+            'import os\nos.makedirs("d", exist_ok=True)\nprint(os.getcwd(), os.environ.get("X"))',
+            'import bpy\nbpy.ops.mesh.primitive_cube_add()',
+            'import re\nr = re.compile("a")',
+        ];
+        for (const code of allowed) {
+            assert.strictEqual(vaultAi.checkScriptSafety(code).ok, true, 'should allow: ' + code);
+        }
+    }
+
     // 7) HTTP: GET /api/3d-vault/ai/status -> 200, POST edit with empty instruction -> 400
     {
         const readJsonBody = (req) => new Promise((resolve, reject) => {

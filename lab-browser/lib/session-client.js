@@ -262,7 +262,76 @@ async function ensureSessionDaemon(sessionName, opts = {}) {
   throw new Error(`Failed to start browser session "${name}"${tail ? `: ${tail}` : ''}`);
 }
 
+function forceKillProcessTree(rootPid) {
+  if (!Number.isInteger(rootPid) || rootPid <= 1) return false;
+  let killedAny = false;
+  try {
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('ps', ['-eo', 'pid,ppid'], { encoding: 'utf8', timeout: 2000 });
+    const children = new Map();
+    for (const line of out.trim().split('\n').slice(1)) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 2) continue;
+      const p = Number(parts[0]), pp = Number(parts[1]);
+      if (!children.has(pp)) children.set(pp, []);
+      children.get(pp).push(p);
+    }
+    const order = [];
+    const stack = [rootPid];
+    const seen = new Set();
+    while (stack.length) {
+      const cur = stack.pop();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      order.push(cur);
+      for (const c of (children.get(cur) || [])) stack.push(c);
+    }
+    for (const pid of order.reverse()) {
+      try { process.kill(pid, 'SIGKILL'); killedAny = true; } catch (_) {}
+    }
+  } catch (_) {
+    try { process.kill(rootPid, 'SIGKILL'); killedAny = true; } catch (__) {}
+  }
+  return killedAny;
+}
+
+async function forceCloseSessionDaemon(sessionName) {
+  const { name, sockPath, streamSockPath, metaPath } = getSessionPaths(sessionName);
+  let metaPid = 0;
+  try {
+    if (fs.existsSync(metaPath)) {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      metaPid = Number(meta && meta.pid) || 0;
+    }
+  } catch (_) {}
+
+  let politeRes = null;
+  if (fs.existsSync(sockPath)) {
+    try {
+      politeRes = await sendRawSocket(sockPath, { cmd: 'close' }, 3500);
+    } catch (_) {}
+  }
+
+  const exitedCleanly = await waitForDaemonExit(sockPath, metaPid, 1500);
+  let forceKilled = false;
+  if (!exitedCleanly && metaPid && isPidAlive(metaPid)) {
+    forceKilled = forceKillProcessTree(metaPid);
+  }
+
+  try { if (fs.existsSync(sockPath)) fs.unlinkSync(sockPath); } catch (_) {}
+  try { if (fs.existsSync(streamSockPath)) fs.unlinkSync(streamSockPath); } catch (_) {}
+  try { if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath); } catch (_) {}
+
+  if (!politeRes && !metaPid && !forceKilled) {
+    throw new Error(`Browser session "${name}" is not running (start it with: lab-browser session open <url>)`);
+  }
+  return { ok: true, closed: true, forceKilled, ...(politeRes || {}) };
+}
+
 async function sendSessionCommand(sessionName, cmd, args = [], opts = {}, autoStart = true) {
+  if (cmd === 'close') {
+    return forceCloseSessionDaemon(sessionName);
+  }
   const { name, sockPath } = getSessionPaths(sessionName);
   const alive = await isDaemonAlive(sockPath);
   if (!alive) {

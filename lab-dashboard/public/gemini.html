@@ -2826,6 +2826,11 @@ body::before {
   flex-shrink: 0;
 }
 .bv-toggle-btn.is-active .bv-btn-dot { display: inline-block; }
+.bv-toggle-btn.is-bg-alive .bv-btn-dot {
+  display: inline-block;
+  background: #fbbf24;
+  box-shadow: 0 0 8px #fbbf24;
+}
 .bv-toggle-btn.is-paused .bv-btn-dot {
   display: inline-block;
   background: var(--orange);
@@ -2877,6 +2882,35 @@ body::before {
   animation: bv-pulse 0.9s infinite ease-in-out;
 }
 .core-shell.is-browser-open .bv-core-pill {
+  display: inline-flex;
+}
+.bv-kill-pill {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 59, 48, 0.65);
+  background: rgba(255, 59, 48, 0.16);
+  color: #ff8a82;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.bv-kill-pill:hover {
+  border-color: var(--critical);
+  background: rgba(255, 59, 48, 0.32);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(255, 59, 48, 0.35);
+}
+.bv-kill-pill:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.bv-kill-pill.is-visible {
   display: inline-flex;
 }
 
@@ -3071,6 +3105,19 @@ body::before {
   border-color: var(--green);
   background: rgba(0, 229, 163, 0.32);
   color: #fff;
+}
+.bv-icon-btn--kill {
+  border-color: rgba(255, 59, 48, 0.62);
+  background: rgba(255, 59, 48, 0.16);
+  color: #ff8a82;
+  font-weight: 700;
+  padding: 0 9px;
+}
+.bv-icon-btn--kill:hover {
+  border-color: var(--critical);
+  background: rgba(255, 59, 48, 0.32);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(255, 59, 48, 0.3);
 }
 .bv-icon-btn--close:hover {
   border-color: var(--critical);
@@ -4119,6 +4166,7 @@ body::before {
           <button type="button" class="chat-rename-icon-btn" id="btn-rename-topic" title="แก้ไขชื่อหัวข้อแชท">✏️</button>
         </div>
         <div class="chat-header-bar__right">
+          <button type="button" class="bv-kill-pill" id="btn-bv-header-kill" title="ตัดการเชื่อมต่อและบังคับปิดโปรเซสเบราว์เซอร์ห้องนี้ทันที เพื่อประหยัด RAM/CPU">🛑 ปิดเบราว์เซอร์</button>
           <span class="bv-core-pill" id="bv-core-pill" title="สถานะ AI Core">
             <span class="bv-core-pill__dot"></span>
             <span id="bv-core-pill-text">⚡ CORE READY</span>
@@ -4254,7 +4302,8 @@ body::before {
               </div>
             </div>
 
-            <button type="button" class="bv-icon-btn bv-icon-btn--close" id="bv-close-btn" title="ปิดจอแสดงผล (เบราว์เซอร์ยังทำงานต่อในพื้นหลัง)">✕</button>
+            <button type="button" class="bv-icon-btn bv-icon-btn--kill" id="bv-kill-btn" title="ตัดการเชื่อมต่อและบังคับปิดโปรเซสเบราว์เซอร์ของห้องนี้ทันที (คืน RAM)">🛑 ปิดเบราว์เซอร์</button>
+            <button type="button" class="bv-icon-btn bv-icon-btn--close" id="bv-close-btn" title="ซ่อนหน้าต่างเบราว์เซอร์ชั่วคราว (หากต้องการปิดโปรเซสเพื่อคืน RAM ให้กด 🛑 ปิดเบราว์เซอร์)">🗕</button>
           </div>
         </div>
       </div>
@@ -9487,7 +9536,7 @@ body::before {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: activeStreamAbortController.signal,
-        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession, browserVision: (window.BrowserVision?.isOpenFor(currentSessionId) === true) || (window.BrowserVision?.isAutoOpenEnabled?.() === true) })
+        body: JSON.stringify({ sessionId: currentSessionId, jobId: directJobId, prompt, images: attachedImages, mode: currentMode, cwd, model, agyAccount: (window.agyState && window.agyState.chosen) || undefined, resetSession: needNewSession, browserVision: !(window.BrowserVision?.isForceClosedFor?.(currentSessionId) === true) && ((window.BrowserVision?.isOpenFor(currentSessionId) === true) || (window.BrowserVision?.isAutoOpenEnabled?.() === true)) })
       });
       needNewSession = false;
       const sessionTag = document.getElementById('ai-hud-session-tag');
@@ -10445,6 +10494,7 @@ body::before {
   const LS_SPLIT_KEY = 'bv_split';
   const LS_ROOMS_KEY = 'bv_open_rooms';
   const LS_AUTO_KEY = 'bv_auto_open';
+  const LS_FORCE_CLOSED_KEY = 'bv_force_closed_rooms';
   const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000];
   const SENSITIVE_LABELS = {
     password: '🔐 หน้าล็อกอิน (รหัสผ่าน)',
@@ -10500,6 +10550,8 @@ body::before {
   const menuAutoOpen = document.getElementById('bv-menu-auto-open');
   const menuReconnect = document.getElementById('bv-menu-reconnect');
   const menuCloseBrowser = document.getElementById('bv-menu-close-browser');
+  const killBtn = document.getElementById('bv-kill-btn');
+  const headerKillBtn = document.getElementById('btn-bv-header-kill');
   const closeBtn = document.getElementById('bv-close-btn');
 
   // Pause banner
@@ -10561,6 +10613,8 @@ body::before {
   let kbComposing = false;
   let kbDismissedByUser = false;
   let lastKbBackspaceAt = 0;
+  let bgDaemonAlive = false;
+  let closingDaemon = false;
 
   const messageListeners = new Map(); // type -> Set<cb>
   const annotationToggleListeners = new Set();
@@ -10616,6 +10670,32 @@ body::before {
     } catch (_) {}
   }
 
+  function readForceClosedRooms() {
+    try {
+      const raw = localStorage.getItem(LS_FORCE_CLOSED_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function writeForceClosedRoom(chatId, closed) {
+    if (!chatId) return;
+    try {
+      const map = readForceClosedRooms();
+      if (closed) map[chatId] = true;
+      else delete map[chatId];
+      localStorage.setItem(LS_FORCE_CLOSED_KEY, JSON.stringify(map));
+    } catch (_) {}
+  }
+
+  function isForceClosedFor(chatId) {
+    const id = String(chatId || activeChatId || '').trim();
+    if (!id) return false;
+    return Boolean(readForceClosedRooms()[id]);
+  }
+
   function isOpenFor(chatId) {
     const id = String(chatId || activeChatId || '').trim();
     if (!id) return false;
@@ -10655,9 +10735,26 @@ body::before {
     [btnToggleDesktop, btnToggleMobile].forEach((btn) => {
       if (!btn) return;
       btn.classList.toggle('is-active', isOpen);
+      btn.classList.toggle('is-bg-alive', !isOpen && bgDaemonAlive);
       btn.classList.toggle('is-paused', isOpen && paused);
       btn.classList.toggle('is-ai-busy', isOpen && !paused && (aiBusy || coreThinking));
+      if (!isOpen && bgDaemonAlive) {
+        btn.title = 'เบราว์เซอร์ห้องนี้ยังรันอยู่เบื้องหลัง (คลิกเปิดจอ หรือกด 🛑 ปิดเบราว์เซอร์ เพื่อคืน RAM)';
+      } else {
+        btn.title = 'เปิด/ปิดจอแยก Browser Vision สด';
+      }
     });
+
+    const showKillControls = Boolean(isOpen || bgDaemonAlive || closingDaemon);
+    if (headerKillBtn) {
+      headerKillBtn.classList.toggle('is-visible', showKillControls);
+      headerKillBtn.disabled = closingDaemon;
+      headerKillBtn.textContent = closingDaemon ? '⏳ กำลังปิด...' : '🛑 ปิดเบราว์เซอร์';
+    }
+    if (killBtn) {
+      killBtn.disabled = closingDaemon;
+      killBtn.textContent = closingDaemon ? '⏳ กำลังปิด...' : '🛑 ปิดเบราว์เซอร์';
+    }
 
     // Status pill
     if (statusPill) {
@@ -11296,11 +11393,27 @@ body::before {
     updateStatusUI();
   }
 
+  async function refreshBgDaemonAlive(chatId) {
+    const id = String(chatId || getActiveChatId() || '').trim();
+    if (!id) {
+      bgDaemonAlive = false;
+      updateStatusUI();
+      return false;
+    }
+    const data = await fetchAutoSessionStatus(id);
+    if (id !== getActiveChatId()) return false;
+    bgDaemonAlive = Boolean(data && data.alive);
+    updateStatusUI();
+    return bgDaemonAlive;
+  }
+
   function open(chatId) {
     const id = String(chatId || getActiveChatId() || '').trim();
     if (!id) return;
     activeChatId = id;
     isOpen = true;
+    bgDaemonAlive = true;
+    writeForceClosedRoom(id, false);
     stopAutoWatch();
     writeOpenRoom(id, true);
     loadSavedSplit();
@@ -11311,7 +11424,7 @@ body::before {
     connectForChat(id);
   }
 
-  function closeView(persist = true) {
+  function closeView(persist = true, checkBg = true) {
     isOpen = false;
     kbComposing = false;
     kbManualOpen = false;
@@ -11326,11 +11439,23 @@ body::before {
     closeSocketOnly();
     closeAllPopovers();
     updateStatusUI();
+    if (checkBg && activeChatId) {
+      refreshBgDaemonAlive(activeChatId);
+    }
   }
 
   async function closeBrowserSession() {
+    if (closingDaemon) return;
     const id = getActiveChatId();
+    closingDaemon = true;
+    autoDismissedRun = true;
+    stopAutoWatch();
     closeAllPopovers();
+    closeSocketOnly();
+    if (id) {
+      writeForceClosedRoom(id, true);
+    }
+    updateStatusUI();
     if (id) {
       try {
         await fetch('/api/browser-vision/close', {
@@ -11340,8 +11465,20 @@ body::before {
         });
       } catch (_) {}
     }
+    closingDaemon = false;
+    bgDaemonAlive = false;
     resetFrameState();
-    closeView(true);
+    closeView(true, false);
+    const statusTextEl = document.getElementById('chat-status-badge-text');
+    if (statusTextEl && !coreThinking) {
+      const prev = statusTextEl.textContent;
+      statusTextEl.textContent = '🛑 ปิดเบราว์เซอร์แล้ว (คืน RAM)';
+      setTimeout(() => {
+        if (!coreThinking && statusTextEl.textContent === '🛑 ปิดเบราว์เซอร์แล้ว (คืน RAM)') {
+          statusTextEl.textContent = prev || 'พร้อมสนทนา';
+        }
+      }, 3200);
+    }
   }
 
   function toggle() {
@@ -11387,7 +11524,7 @@ body::before {
 
   function autoOpen(id) {
     const targetId = String(id || getActiveChatId() || '').trim();
-    if (!targetId || isOpen || autoDismissedRun || !isAutoOpenEnabled()) return false;
+    if (!targetId || isOpen || autoDismissedRun || !isAutoOpenEnabled() || isForceClosedFor(targetId)) return false;
     open(targetId);
     stopAutoWatch();
     if (statusPill) {
@@ -11397,9 +11534,8 @@ body::before {
   }
 
   function startAutoWatch() {
-    if (!isAutoOpenEnabled() || isOpen || autoDismissedRun) return;
     const chatId = getActiveChatId();
-    if (!chatId) return;
+    if (!chatId || !isAutoOpenEnabled() || isOpen || autoDismissedRun || isForceClosedFor(chatId)) return;
     stopAutoWatch();
     const seq = autoWatchSeq;
     autoPollInFlight = true;
@@ -11448,7 +11584,7 @@ body::before {
     if (!text || typeof text !== 'string') return false;
     if (!isAutoOpenEnabled() || isOpen || autoDismissedRun) return false;
     const targetId = String(chatId || getActiveChatId() || '').trim();
-    if (!targetId) return false;
+    if (!targetId || isForceClosedFor(targetId)) return false;
     const sessName = getClientBrowserSessionName(targetId);
     const matched = /lab-browser\S*\s+session\b/.test(text) || (sessName && text.includes(sessName));
     if (!matched) return false;
@@ -11467,6 +11603,7 @@ body::before {
     if (changed) {
       stopAutoWatch();
       closeSocketOnly();
+      bgDaemonAlive = false;
       resetFrameState();
       kbComposing = false;
       kbManualOpen = false;
@@ -11482,8 +11619,11 @@ body::before {
       if (!isOpen || changed) {
         open(nextId);
       }
-    } else if (isOpen) {
-      closeView(false);
+    } else {
+      if (isOpen) {
+        closeView(false, false);
+      }
+      refreshBgDaemonAlive(nextId);
     }
     if (changed && coreThinking && !isOpen) {
       startAutoWatch();
@@ -12053,6 +12193,12 @@ body::before {
   if (menuCloseBrowser) {
     menuCloseBrowser.addEventListener('click', closeBrowserSession);
   }
+  if (killBtn) {
+    killBtn.addEventListener('click', closeBrowserSession);
+  }
+  if (headerKillBtn) {
+    headerKillBtn.addEventListener('click', closeBrowserSession);
+  }
   if (placeholderRetry) {
     placeholderRetry.addEventListener('click', () => {
       reconnectAttempt = 0;
@@ -12077,6 +12223,8 @@ body::before {
     toggle,
     isOpen: () => isOpen,
     isOpenFor,
+    isForceClosedFor,
+    refreshBgDaemonAlive,
     isAutoOpenEnabled,
     setAutoOpenEnabled,
     noteStreamText,
@@ -12117,6 +12265,8 @@ body::before {
   const initialId = getActiveChatId();
   if (initialId && readOpenRooms()[initialId]) {
     open(initialId);
+  } else if (initialId) {
+    refreshBgDaemonAlive(initialId);
   }
 })();
 

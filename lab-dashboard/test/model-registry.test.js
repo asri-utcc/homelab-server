@@ -218,3 +218,44 @@ printf 'gemini-4-neon-low\\tNeon Low\\n'
     assert.equal(heals, 1);
     assert.ok(d.union.has('gemini-4-neon-low'));
 });
+
+test('researchModel และ researchAll อัปเดต confidence, research metadata และจัดอันดับได้ถูกต้อง (offline mock)', async () => {
+    fresh();
+    const mockCatalogs = {
+        openrouter: [
+            { id: 'google/gemini-4-neon', name: 'Gemini 4 Neon', inputUsdPer1M: 3.0, outputUsdPer1M: 15.0, contextLength: 1000000, description: 'Flagship Gemini 4 Neon' }
+        ],
+        litellm: {
+            'gemini-4-neon': { id: 'gemini-4-neon', provider: 'google', inputUsdPer1M: 3.0, outputUsdPer1M: 15.0, contextLength: 1000000 }
+        },
+        modelsdev: [
+            { id: 'gemini-4-neon', provider: 'google', name: 'Gemini 4 Neon', inputUsdPer1M: 3.0, outputUsdPer1M: 15.0, contextLength: 1000000 }
+        ]
+    };
+
+    const single = await reg.researchModel('gemini-4-neon-high', {
+        disableNetwork: true,
+        skipCache: true,
+        catalogData: mockCatalogs
+    });
+    assert.equal(single.ok, true);
+    assert.equal(single.model.research.meetsMinSources, true);
+    assert.equal(single.model.research.uniqueDomainCount, 3);
+    assert.ok(single.model.confidence >= 85);
+
+    const all = await reg.researchAll({
+        disableNetwork: true,
+        skipCache: true,
+        catalogData: mockCatalogs,
+        sortBy: 'confidence'
+    });
+    assert.equal(all.ok, true);
+    assert.equal(all.researchedCount, BASE_IDS.length);
+    assert.equal(all.meetsMinSourcesCount, 4); // 4 neon variants
+    assert.ok(all.ranked[0].id.startsWith('gemini-4-neon-'));
+
+    const ranking = reg.getResearchRanking({ sortBy: 'confidence' });
+    assert.equal(ranking.ok, true);
+    assert.equal(ranking.ranked.length, BASE_IDS.length);
+    assert.ok(ranking.ranked[0].confidence > ranking.ranked[ranking.ranked.length - 1].confidence);
+});

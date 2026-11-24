@@ -21,6 +21,12 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+let researcher = null;
+try {
+    researcher = require('./model-researcher');
+} catch (_) {
+    researcher = null;
+}
 
 const HOME_DIR = os.homedir();
 const DEFAULT_GEMINI_DIR = path.join(HOME_DIR, '.gemini');
@@ -283,6 +289,8 @@ function saveRegistry(reg) {
             lastScanAt: reg.lastScanAt || null,
             lastScanOk: reg.lastScanOk === undefined ? null : reg.lastScanOk,
             ...(reg.lastScanFailedAlertAt ? { lastScanFailedAlertAt: reg.lastScanFailedAlertAt } : {}),
+            ...(reg.lastResearchAt ? { lastResearchAt: reg.lastResearchAt } : {}),
+            ...(reg.lastResearchSummary ? { lastResearchSummary: reg.lastResearchSummary } : {}),
             models: reg.models || {},
             customFamilies: Array.isArray(reg.customFamilies) ? reg.customFamilies : []
         };
@@ -1279,9 +1287,177 @@ function getSnapshot() {
         ok: true,
         lastScanAt: reg.lastScanAt || null,
         lastScanOk: reg.lastScanOk === undefined ? null : reg.lastScanOk,
+        lastResearchAt: reg.lastResearchAt || null,
+        lastResearchSummary: reg.lastResearchSummary || null,
         models,
         customFamilies: Array.isArray(reg.customFamilies) ? reg.customFamilies : [],
         pendingCount
+    };
+}
+
+// ── External Multi-Source Research & Ranking ───────────────────────────────────
+function applyResearchResultToEntry(entry, res) {
+    if (!entry || !res) return entry;
+    entry.confidence = res.confidence;
+    entry.suggested = {
+        ...(entry.suggested || {}),
+        q: sanitizeQ(res.suggested && res.suggested.q, sanitizeQ(entry.suggested && entry.suggested.q)),
+        cost: sanitizeCost(res.suggested && res.suggested.cost, sanitizeCost(entry.suggested && entry.suggested.cost, 1)),
+        pool: (entry.suggested && entry.suggested.pool) || (res.suggested && res.suggested.pool) || defaultPoolOf(entry.id),
+        basis: (res.suggested && res.suggested.basis) || (entry.suggested && entry.suggested.basis) || ''
+    };
+    entry.research = {
+        confidence: res.confidence,
+        meetsMinSources: Boolean(res.meetsMinSources),
+        uniqueDomainCount: Number(res.uniqueDomainCount) || 0,
+        agreement: res.agreement || 'low',
+        verdict: res.verdict || '',
+        breakdown: res.breakdown || null,
+        conflictReason: res.conflictReason || null,
+        pricing: res.pricing || null,
+        effectiveQ: (res.suggested && res.suggested.effectiveQ) || entry.suggested.q,
+        scores: res.scores || null,
+        sources: Array.isArray(res.sources) ? res.sources : [],
+        researchedAt: res.researchedAt || new Date().toISOString()
+    };
+    return entry;
+}
+
+async function researchModel(modelId, opts = {}) {
+    if (!researcher) {
+        return { ok: false, error: 'model_researcher_unavailable' };
+    }
+    const id = String(modelId || '').trim();
+    const reg = loadRegistry();
+    const entry = reg.models && reg.models[id];
+    if (!entry) {
+        return { ok: false, error: 'model_not_found' };
+    }
+
+    const res = await researcher.researchModel(entry, opts);
+    applyResearchResultToEntry(entry, res);
+    reg.lastResearchAt = new Date().toISOString();
+    saveRegistry(reg);
+
+    return {
+        ok: true,
+        model: entry,
+        research: res
+    };
+}
+
+async function researchAll(opts = {}) {
+    if (!researcher) {
+        return { ok: false, error: 'model_researcher_unavailable' };
+    }
+    const reg = loadRegistry();
+    const entries = Object.values(reg.models || {});
+    if (entries.length === 0) {
+        return { ok: true, researchedCount: 0, meetsMinSourcesCount: 0, ranked: [], synthesis: null };
+    }
+
+    const evaluated = await researcher.researchModels(entries, opts);
+    const byId = new Map(evaluated.map((r) => [r.id, r]));
+    for (const entry of entries) {
+        const r = byId.get(entry.id);
+        if (r) applyResearchResultToEntry(entry, r);
+    }
+
+    const ranked = researcher.rankModels(evaluated, { sortBy: opts.sortBy || 'composite' });
+    let synthesis = null;
+    if (opts.useGemini) {
+        synthesis = await researcher.synthesizeRankingWithGemini(ranked, opts);
+    }
+
+    const meetsMinSourcesCount = ranked.filter((m) => m.meetsMinSources).length;
+    const now = new Date().toISOString();
+    reg.lastResearchAt = now;
+    reg.lastResearchSummary = {
+        totalModels: ranked.length,
+        meetsMinSourcesCount,
+        avgConfidence: ranked.length > 0
+            ? Number((ranked.reduce((s, m) => s + (m.confidence || 0), 0) / ranked.length).toFixed(1))
+            : 0,
+        top3: ranked.slice(0, 3).map((m) => ({
+            rank: m.rank,
+            id: m.id,
+            name: m.name,
+            confidence: m.confidence,
+            avgQ: m.scores && m.scores.avgQ,
+            cost: m.pricing && m.pricing.effectiveCost,
+            sources: m.uniqueDomainCount
+        })),
+        geminiSynthesis: synthesis && synthesis.ok ? synthesis.summary : null
+    };
+    saveRegistry(reg);
+
+    return {
+        ok: true,
+        researchedAt: now,
+        researchedCount: ranked.length,
+        meetsMinSourcesCount,
+        summary: reg.lastResearchSummary,
+        ranked,
+        synthesis
+    };
+}
+
+function getResearchRanking({ sortBy = 'composite' } = {}) {
+    const reg = loadRegistry();
+    const entries = Object.values(reg.models || {});
+    if (!researcher) {
+        return { ok: false, error: 'model_researcher_unavailable', ranked: [] };
+    }
+
+    const prepared = entries.map((e) => {
+        const res = e.research || {};
+        const baseQ = sanitizeQ(e.suggested && e.suggested.q);
+        const effQ = res.effectiveQ ? sanitizeQ(res.effectiveQ, baseQ) : baseQ;
+        const avgQ = (res.scores && Number.isFinite(res.scores.avgQ))
+            ? res.scores.avgQ
+            : Number((effQ.code * 0.4 + effQ.analysis * 0.35 + effQ.chat * 0.25).toFixed(1));
+        const baseCost = sanitizeCost(e.suggested && e.suggested.cost, 1);
+        const effCost = (res.pricing && Number.isFinite(res.pricing.effectiveCost)) ? res.pricing.effectiveCost : baseCost;
+        const valueScore = (res.scores && Number.isFinite(res.scores.valueScore))
+            ? res.scores.valueScore
+            : Number((avgQ / Math.max(0.15, effCost)).toFixed(1));
+        return {
+            id: e.id,
+            name: e.name,
+            engine: e.engine,
+            family: e.family,
+            status: e.status,
+            confidence: Number.isFinite(Number(e.confidence)) ? Number(e.confidence) : 25,
+            meetsMinSources: Boolean(res.meetsMinSources),
+            uniqueDomainCount: Number(res.uniqueDomainCount) || 0,
+            agreement: res.agreement || 'low',
+            verdict: res.verdict || (e.suggested && e.suggested.basis) || '',
+            breakdown: res.breakdown || null,
+            pricing: res.pricing || {
+                inputUsdPer1M: null,
+                outputUsdPer1M: null,
+                costSource: 'baseline',
+                baseCost,
+                effectiveCost: effCost
+            },
+            suggested: {
+                ...(e.suggested || {}),
+                effectiveQ: effQ,
+                effectiveCost: effCost
+            },
+            scores: { avgQ, valueScore },
+            sources: Array.isArray(res.sources) ? res.sources : [],
+            researchedAt: res.researchedAt || null
+        };
+    });
+
+    const ranked = researcher.rankModels(prepared, { sortBy });
+    return {
+        ok: true,
+        sortBy,
+        lastResearchAt: reg.lastResearchAt || null,
+        summary: reg.lastResearchSummary || null,
+        ranked
     };
 }
 
@@ -1336,5 +1512,8 @@ module.exports = {
     listAlerts,
     ackAlerts,
     getSnapshot,
+    researchModel,
+    researchAll,
+    getResearchRanking,
     startWatchdog
 };

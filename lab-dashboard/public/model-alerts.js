@@ -22,6 +22,8 @@
   let registryState = null;
   let modalOpen = false;
   let scanning = false;
+  let researching = false;
+  let sortBy = 'composite';
   let audioUnlocked = false;
 
   function injectStyles() {
@@ -343,6 +345,45 @@
         border-radius: 50%;
         animation: mra-rot 0.7s linear infinite;
       }
+      .mra-select {
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(30, 41, 59, 0.9);
+        color: #e2e8f0;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .mra-conf-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .mra-conf-high { background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); }
+      .mra-conf-mid { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.35); }
+      .mra-conf-low { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); }
+      .mra-src-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .mra-src-link {
+        font-size: 10.5px;
+        padding: 1px 6px;
+        border-radius: 6px;
+        background: rgba(56, 189, 248, 0.12);
+        border: 1px solid rgba(56, 189, 248, 0.28);
+        color: #7dd3fc;
+        text-decoration: none;
+      }
+      .mra-src-link:hover {
+        background: rgba(56, 189, 248, 0.24);
+        text-decoration: underline;
+      }
       @keyframes mra-rot {
         to { transform: rotate(360deg); }
       }
@@ -605,6 +646,25 @@
     } catch {}
   }
 
+  function computeRowMetrics(m) {
+    const sug = m.suggested || {};
+    const res = m.research || {};
+    const qObj = res.effectiveQ || sug.q || {};
+    const avgQ = (res.scores && Number.isFinite(res.scores.avgQ))
+      ? res.scores.avgQ
+      : Number((((Number(qObj.code) || 75) * 0.4) + ((Number(qObj.analysis) || 75) * 0.35) + ((Number(qObj.chat) || 78) * 0.25)).toFixed(1));
+    const effCost = (res.pricing && Number.isFinite(res.pricing.effectiveCost))
+      ? res.pricing.effectiveCost
+      : (Number.isFinite(Number(sug.cost)) ? Number(sug.cost) : 1);
+    const conf = typeof m.confidence === 'number' ? m.confidence : 25;
+    const valueScore = (res.scores && Number.isFinite(res.scores.valueScore))
+      ? res.scores.valueScore
+      : Number((avgQ / Math.max(0.15, effCost)).toFixed(1));
+    const valueNorm = Math.min(100, (avgQ / Math.max(0.2, effCost)) * 0.5);
+    const compositeScore = Number((avgQ * 0.6 + conf * 0.3 + valueNorm * 0.1).toFixed(1));
+    return { avgQ, effCost, conf, valueScore, compositeScore };
+  }
+
   function renderModalContent(scanSummary) {
     const modal = document.getElementById('mra-modal');
     if (!modal || !registryState) return;
@@ -612,7 +672,8 @@
     const metaEl = modal.querySelector('#mra-scan-meta');
     if (metaEl) {
       const okText = registryState.lastScanOk === false ? 'ล้มเหลว' : 'ปกติ';
-      metaEl.textContent = `สแกนล่าสุด: ${formatTime(registryState.lastScanAt)} · สถานะ: ${okText} · รออนุมัติ: ${registryState.pendingCount || 0}`;
+      const resText = registryState.lastResearchAt ? ` · วิจัยภายนอกล่าสุด: ${formatTime(registryState.lastResearchAt)}` : '';
+      metaEl.textContent = `สแกนล่าสุด: ${formatTime(registryState.lastScanAt)} · สถานะ: ${okText} · รออนุมัติ: ${registryState.pendingCount || 0}${resText}`;
     }
 
     const banner = modal.querySelector('#mra-scan-banner');
@@ -629,30 +690,74 @@
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    const models = Array.isArray(registryState.models) ? registryState.models : [];
-    for (const m of models) {
+    const rawModels = Array.isArray(registryState.models) ? [...registryState.models] : [];
+    const models = rawModels.map((m) => ({ m, metrics: computeRowMetrics(m) }));
+    models.sort((a, b) => {
+      if (sortBy === 'confidence') return (b.metrics.conf - a.metrics.conf) || (b.metrics.avgQ - a.metrics.avgQ);
+      if (sortBy === 'intelligence') return (b.metrics.avgQ - a.metrics.avgQ) || (b.metrics.conf - a.metrics.conf);
+      if (sortBy === 'value') return (b.metrics.valueScore - a.metrics.valueScore) || (b.metrics.avgQ - a.metrics.avgQ);
+      if (sortBy === 'cost') return (a.metrics.effCost - b.metrics.effCost) || (b.metrics.avgQ - a.metrics.avgQ);
+      return (b.metrics.compositeScore - a.metrics.compositeScore) || (b.metrics.conf - a.metrics.conf);
+    });
+
+    for (let idx = 0; idx < models.length; idx += 1) {
+      const { m, metrics } = models[idx];
       const tr = document.createElement('tr');
       const st = STATUS_META[m.status] || { label: m.status || '-', cls: 'mra-st-disabled' };
       const sug = m.suggested || {};
-      const q = sug.q ? `code:${sug.q.code ?? '-'} / ana:${sug.q.analysis ?? '-'} / chat:${sug.q.chat ?? '-'}` : '-';
-      const costText = sug.cost != null ? `cost:${sug.cost}` : '';
+      const res = m.research || null;
+      const qObj = (res && res.effectiveQ) || sug.q || null;
+      const q = qObj ? `avg:${metrics.avgQ} (c:${qObj.code ?? '-'} / a:${qObj.analysis ?? '-'} / ch:${qObj.chat ?? '-'})` : '-';
+      const costText = `cost:${metrics.effCost}` + (res && res.pricing && res.pricing.outputUsdPer1M != null ? ` ($${res.pricing.outputUsdPer1M}/1M)` : '');
       const basisText = sug.basis || '';
 
+      const confVal = typeof m.confidence === 'number' ? m.confidence : null;
+      const srcCount = res && typeof res.uniqueDomainCount === 'number' ? res.uniqueDomainCount : null;
+      const confCls = confVal == null ? 'mra-conf-mid'
+        : (res && res.agreement === 'conflict') || confVal < 50 ? 'mra-conf-low'
+          : (confVal >= 76 && (srcCount === null || srcCount >= 3)) ? 'mra-conf-high'
+            : 'mra-conf-mid';
+
+      const srcLinksHtml = (res && Array.isArray(res.sources) && res.sources.length > 0)
+        ? `<div class="mra-src-links">${res.sources.slice(0, 5).map((s) =>
+            `<a class="mra-src-link" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title || s.domain)}">${escapeHtml(s.domain)}</a>`
+          ).join('')}</div>`
+        : '';
+
+      const srcMetaHtml = srcCount !== null
+        ? `<div class="mra-sub">${srcCount} แหล่งอิสระ · ${escapeHtml(res.agreement || '-')}</div>`
+        : '';
+
       tr.innerHTML = `
-        <td><strong>${escapeHtml(m.id)}</strong></td>
+        <td><strong>#${idx + 1} ${escapeHtml(m.id)}</strong></td>
         <td>${escapeHtml(m.name || '-')}</td>
         <td>${escapeHtml(m.engine || '-')}</td>
         <td><span class="mra-st ${st.cls}">${st.label}</span></td>
-        <td>${typeof m.confidence === 'number' ? m.confidence + '%' : '-'}</td>
         <td>
-          <div>${escapeHtml(q)} ${escapeHtml(costText)}</div>
+          <span class="mra-conf-pill ${confCls}">${confVal != null ? confVal + '%' : '-'}</span>
+          ${srcMetaHtml}
+        </td>
+        <td>
+          <div>${escapeHtml(q)} · ${escapeHtml(costText)}</div>
           ${basisText ? `<div class="mra-sub">${escapeHtml(basisText)}</div>` : ''}
+          ${srcLinksHtml}
         </td>
         <td>${escapeHtml(formatTime(m.lastSeen))}</td>
         <td><div class="mra-row-actions"></div></td>
       `;
 
       const actWrap = tr.querySelector('.mra-row-actions');
+      const bRes = makeActionBtn('🔎', 'mra-btn', async () => {
+        await apiJson('/api/model-registry/research', {
+          method: 'POST',
+          body: JSON.stringify({ modelId: m.id, skipCache: true })
+        });
+        await refreshRegistry();
+        renderModalContent(`วิจัยภายนอกสำเร็จสำหรับ ${m.id}`);
+      });
+      bRes.title = 'วิจัยข้อมูลภายนอกเฉพาะโมเดลนี้';
+      actWrap.appendChild(bRes);
+
       if (m.status === 'pending') {
         const bApp = makeActionBtn('✅ อนุมัติ', 'mra-btn mra-btn-approve', async () => {
           await apiJson('/api/model-registry/approve', {
@@ -729,6 +834,14 @@
             <div class="mra-scan-meta" id="mra-scan-meta">กำลังโหลดข้อมูล...</div>
           </div>
           <div class="mra-modal-controls">
+            <select id="mra-sort-select" class="mra-select" title="เรียงลำดับโมเดล">
+              <option value="composite">เรียง: คะแนนรวม</option>
+              <option value="confidence">เรียง: ความมั่นใจ</option>
+              <option value="intelligence">เรียง: ความฉลาด (avgQ)</option>
+              <option value="value">เรียง: ความคุ้มค่า</option>
+              <option value="cost">เรียง: ต้นทุนต่ำ→สูง</option>
+            </select>
+            <button type="button" class="mra-btn mra-btn-primary" id="mra-btn-research">🔎 วิจัยภายนอก</button>
             <button type="button" class="mra-btn mra-btn-primary" id="mra-btn-scan">🔄 สแกนเดี๋ยวนี้</button>
             <button type="button" class="mra-btn" id="mra-btn-close">ปิด</button>
           </div>
@@ -763,6 +876,41 @@
       if (e.target === backdrop) closeModal();
     });
     backdrop.querySelector('#mra-btn-close').onclick = closeModal;
+
+    const sortSelect = backdrop.querySelector('#mra-sort-select');
+    if (sortSelect) {
+      sortSelect.value = sortBy;
+      sortSelect.onchange = () => {
+        sortBy = sortSelect.value;
+        renderModalContent();
+      };
+    }
+
+    const btnResearch = backdrop.querySelector('#mra-btn-research');
+    if (btnResearch) {
+      btnResearch.onclick = async () => {
+        if (researching) return;
+        researching = true;
+        btnResearch.disabled = true;
+        btnResearch.innerHTML = '<span class="mra-spin"></span> กำลังวิจัยภายนอก...';
+        try {
+          const res = await apiJson('/api/model-registry/research', {
+            method: 'POST',
+            body: JSON.stringify({ sortBy })
+          });
+          await refreshRegistry();
+          renderModalContent(
+            `วิจัยภายนอกเสร็จสิ้น: ประเมิน ${res.researchedCount || 0} โมเดล (ผ่านเกณฑ์ ≥3 แหล่งอิสระ ${res.meetsMinSourcesCount || 0} โมเดล)`
+          );
+        } catch (err) {
+          renderModalContent('วิจัยภายนอกไม่สำเร็จ: ' + err.message);
+        } finally {
+          researching = false;
+          btnResearch.disabled = false;
+          btnResearch.textContent = '🔎 วิจัยภายนอก';
+        }
+      };
+    }
 
     const btnScan = backdrop.querySelector('#mra-btn-scan');
     btnScan.onclick = async () => {

@@ -2262,6 +2262,8 @@ const server = http.createServer(async (req, res) => {
                     ok: true,
                     lastScanAt: (reg && reg.lastScanAt) || null,
                     lastScanOk: Boolean(reg && reg.lastScanOk),
+                    lastResearchAt: (reg && reg.lastResearchAt) || null,
+                    lastResearchSummary: (reg && reg.lastResearchSummary) || null,
                     models,
                     customFamilies: (reg && reg.customFamilies) || [],
                     pendingCount
@@ -2340,6 +2342,39 @@ const server = http.createServer(async (req, res) => {
                 const ids = body && body.ids === 'all' ? 'all' : (Array.isArray(body && body.ids) ? body.ids : []);
                 const result = await modelRegistry.ackAlerts(ids);
                 return sendJson(res, 200, { ok: true, ...result });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/research' && req.method === 'POST') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const body = await readJsonBody(req);
+                const skipCache = Boolean(body && body.skipCache);
+                const useGemini = Boolean(body && body.useGemini);
+                const sortBy = typeof (body && body.sortBy) === 'string' ? body.sortBy : 'composite';
+                if (body && body.modelId) {
+                    const modelId = body.modelId;
+                    if (typeof modelId !== 'string' || !/^[a-z0-9.\-_]{1,80}$/i.test(modelId)) {
+                        return sendJson(res, 400, { ok: false, error: 'invalid modelId' });
+                    }
+                    const result = await modelRegistry.researchModel(modelId, { skipCache });
+                    return sendJson(res, result && result.ok ? 200 : 404, result);
+                }
+                const result = await modelRegistry.researchAll({ skipCache, useGemini, sortBy, allowAgyCli: useGemini });
+                return sendJson(res, 200, result);
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
+            }
+        }
+        if (p === '/api/model-registry/ranking' && req.method === 'GET') {
+            try {
+                if (typeof aiRouter.activeFamilies === 'function') aiRouter.activeFamilies();
+                const allowed = new Set(['composite', 'confidence', 'intelligence', 'value', 'cost']);
+                const reqSort = url.searchParams.get('sortBy') || 'composite';
+                const sortBy = allowed.has(reqSort) ? reqSort : 'composite';
+                const result = modelRegistry.getResearchRanking({ sortBy });
+                return sendJson(res, 200, result);
             } catch (err) {
                 return sendJson(res, 500, { ok: false, error: err && err.message ? err.message : String(err) });
             }

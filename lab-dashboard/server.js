@@ -1909,6 +1909,20 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
             }
         }
+        if (req.method === 'POST' && p === '/api/video-studio/upload-raw') {
+            try {
+                const rawName = url.searchParams.get('filename') || req.headers['x-filename'] || 'reference.mp4';
+                let decodedName = 'reference.mp4';
+                try {
+                    decodedName = decodeURIComponent(String(rawName));
+                } catch (_) {
+                    decodedName = String(rawName);
+                }
+                return sendJson(res, 200, await videoStudioManager.saveUploadStream(req, decodedName));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
         if (req.method === 'POST' && p === '/api/video-studio/upload') {
             try {
                 const body = await readJsonBody(req, 64 * 1024 * 1024);

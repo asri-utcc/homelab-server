@@ -21,6 +21,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
+const { pipeline } = require('stream/promises');
 
 const BASE = '/home/dev/.local/share/motion-studio';
 const VENV_PY = path.join(BASE, 'venv', 'bin', 'python');
@@ -932,6 +933,110 @@ async function saveUpload(dataUrl, originalName = 'reference.mp4') {
     };
 }
 
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.m4v']);
+const ACTIVE_PROXY_JOBS = new Set();
+const PROXY_LAST_SPAWN = new Map();
+const PROXY_COOLDOWN_MS = 120 * 1000;
+const PROXY_FAIL_TTL_MS = 10 * 60 * 1000;
+
+function spawnProxyJob(jobDir, fileName) {
+    const key = `${jobDir}/${fileName}`;
+    if (ACTIVE_PROXY_JOBS.has(key)) return;
+
+    const now = Date.now();
+    const lastSpawn = PROXY_LAST_SPAWN.get(key);
+    if (lastSpawn && (now - lastSpawn) < PROXY_COOLDOWN_MS) return;
+
+    const stem = path.basename(fileName, path.extname(fileName));
+    const failedMarker = path.join(jobDir, 'editor_assets', 'proxy', `${stem}_proxy.failed`);
+    try {
+        const st = fs.statSync(failedMarker);
+        if ((now - st.mtimeMs) < PROXY_FAIL_TTL_MS) return;
+    } catch (_) {}
+
+    ACTIVE_PROXY_JOBS.add(key);
+    PROXY_LAST_SPAWN.set(key, now);
+
+    try {
+        const child = spawn(VENV_PY, [STUDIO_JOB, 'proxy', '--job', jobDir, '--file', fileName], {
+            detached: true,
+            stdio: 'ignore',
+            cwd: BASE,
+            env: {
+                ...process.env,
+                HOME: os.homedir(),
+                PYTHONUNBUFFERED: '1',
+            },
+        });
+        child.on('exit', () => {
+            ACTIVE_PROXY_JOBS.delete(key);
+        });
+        child.on('error', () => {
+            ACTIVE_PROXY_JOBS.delete(key);
+        });
+        child.unref();
+    } catch (_) {
+        ACTIVE_PROXY_JOBS.delete(key);
+    }
+}
+
+async function saveUploadStream(req, originalName = 'reference.mp4', maxBytes = 200 * 1024 * 1024) {
+    const origBase = path.basename(String(originalName || 'reference.mp4'));
+    const ext = path.extname(origBase).replace('.', '').toLowerCase();
+    if (!ext || !ALLOWED_UPLOAD_EXTS.has(ext)) {
+        throw httpError('รองรับเฉพาะไฟล์ภาพ (PNG, JPG, WEBP, GIF), วิดีโอ (MP4, MOV, WEBM, MKV, M4V) หรือเสียง (MP3, WAV, M4A, AAC, OGG)', 400);
+    }
+
+    await fsp.mkdir(UPLOAD_DIR, { recursive: true });
+    pruneDir(UPLOAD_DIR, UPLOAD_TTL_MS).catch(() => {});
+
+    const uploadId = generateId('up');
+    const filename = `${uploadId}.${ext}`;
+    const filePath = path.join(UPLOAD_DIR, filename);
+    const partPath = `${filePath}.part`;
+
+    let bytes = 0;
+    let tooLarge = false;
+    req.on('data', (chunk) => {
+        bytes += chunk.length;
+        if (bytes > maxBytes && !tooLarge) {
+            tooLarge = true;
+            req.destroy();
+        }
+    });
+
+    try {
+        await pipeline(req, fs.createWriteStream(partPath));
+    } catch (err) {
+        await fsp.unlink(partPath).catch(() => {});
+        if (tooLarge) {
+            throw httpError(`ไฟล์มีขนาดเกิน ${(maxBytes / 1024 / 1024).toFixed(0)} MB`, 413);
+        }
+        throw httpError(`อัปโหลดไฟล์ไม่สำเร็จ: ${err.message}`, 400);
+    }
+
+    if (tooLarge || bytes > maxBytes) {
+        await fsp.unlink(partPath).catch(() => {});
+        throw httpError(`ไฟล์มีขนาดเกิน ${(maxBytes / 1024 / 1024).toFixed(0)} MB`, 413);
+    }
+    if (bytes === 0) {
+        await fsp.unlink(partPath).catch(() => {});
+        throw httpError('ไฟล์ว่างเปล่า', 400);
+    }
+
+    await fsp.rename(partPath, filePath);
+
+    return {
+        ok: true,
+        uploadId,
+        id: uploadId,
+        filename,
+        originalName: origBase,
+        bytes,
+        ext,
+    };
+}
+
 async function resolveUploadPath(uploadIdOrName) {
     const raw = String(uploadIdOrName || '').trim();
     if (!raw) throw httpError('uploadId ว่างเปล่า', 400);
@@ -1508,11 +1613,18 @@ async function saveEditorProject(id, project) {
                 const destPath = path.join(assetsDir, safeFile);
                 await fsp.copyFile(upPath, destPath);
                 clip.src = { type: 'jobasset', file: safeFile };
+                if (VIDEO_EXTS.has(path.extname(safeFile).toLowerCase())) {
+                    spawnProxyJob(jobDir, safeFile);
+                }
             }
         }
     }
 
-    await atomicWriteJson(path.join(jobDir, 'editor_project.json'), sanitized);
+    const projectPath = path.join(jobDir, 'editor_project.json');
+    const existingProject = await readJsonSafe(projectPath, null);
+    if (!existingProject || JSON.stringify(existingProject) !== JSON.stringify(sanitized)) {
+        await atomicWriteJson(projectPath, sanitized);
+    }
     return { ok: true, project: sanitized };
 }
 
@@ -1611,13 +1723,25 @@ async function listEditorAssets(jobId) {
             const st = await fsp.stat(full).catch(() => null);
             if (!st || !st.isFile()) continue;
             const ext = path.extname(f).toLowerCase();
-            jobAssets.push({
+            const item = {
                 file: f,
                 size: st.size,
                 mime: SERVE_MIME_MAP[ext] || 'application/octet-stream',
                 durationSec: await probeDurationSec(full),
                 url: `/api/video-studio/media/jobasset/${encodeURIComponent(f)}?job=${encodeURIComponent(cleanId)}`,
-            });
+            };
+            if (VIDEO_EXTS.has(ext)) {
+                const stem = path.basename(f, ext);
+                const proxyFile = `${stem}_proxy.mp4`;
+                const proxyPath = path.join(assetsDir, 'proxy', proxyFile);
+                if (fs.existsSync(proxyPath)) {
+                    item.proxyUrl = `/api/video-studio/media/jobproxy/${encodeURIComponent(proxyFile)}?job=${encodeURIComponent(cleanId)}`;
+                    item.hasProxy = true;
+                } else {
+                    spawnProxyJob(jobDir, f);
+                }
+            }
+            jobAssets.push(item);
         }
     } catch (_) {}
 
@@ -1660,6 +1784,14 @@ async function resolveEditorMedia(jobId, type, name) {
         }
         const baseDir = path.resolve(jobDir, 'editor_assets');
         const resolved = path.resolve(baseDir, cleanName);
+        if (!resolved.startsWith(baseDir + path.sep)) return null;
+        targetPath = resolved;
+    } else if (cleanType === 'jobproxy') {
+        if (!cleanName || cleanName.includes('..') || cleanName.includes('/') || cleanName.includes('\\')) {
+            return null;
+        }
+        const baseDir = path.resolve(jobDir, 'editor_assets', 'proxy');
+        const resolved = path.resolve(baseDir, path.basename(cleanName));
         if (!resolved.startsWith(baseDir + path.sep)) return null;
         targetPath = resolved;
     } else {
@@ -1709,6 +1841,7 @@ module.exports = {
     abortActive,
     deleteJob,
     saveUpload,
+    saveUploadStream,
     learnStyle,
     getLearn,
     deleteCustomStyle,

@@ -2,8 +2,9 @@
   'use strict';
 
   const MAX_HISTORY = 100;
-  const AUTOSAVE_MS = 1500;
+  const AUTOSAVE_MS = 3000;
   const MAX_UPLOAD_BYTES = 60 * 1024 * 1024;
+  const MAX_RAW_UPLOAD_BYTES = 200 * 1024 * 1024;
 
   const DEFAULT_BGM_LIST = [
     { name: 'warm_tech', label: 'Warm Tech (เทคโนโลยีอบอุ่น)', durationSec: 60 },
@@ -81,6 +82,11 @@
     isDirty: false,
     isSaving: false,
     autosaveTimer: null,
+    lastSavedJson: null,
+
+    // Proxy polling
+    proxyPollTimer: null,
+    proxyPollCount: 0,
 
     // Timeline instance
     timeline: null,
@@ -277,6 +283,10 @@
       return `/api/video-studio/media/sfx/${encodeURIComponent(src.name)}?job=${job}`;
     }
     if (src.type === 'jobasset' && src.file) {
+      const found = state.assets.jobAssets.find((a) => a.file === src.file);
+      if (found && found.proxyUrl) {
+        return found.proxyUrl;
+      }
       return `/api/video-studio/media/jobasset/${encodeURIComponent(src.file)}?job=${job}`;
     }
     if (src.type === 'upload' && src.id) {
@@ -437,6 +447,14 @@
       return false;
     }
     if (state.isSaving) return false;
+    const bodyStr = JSON.stringify({ project: state.project });
+    const hasUploads = bodyStr.includes('"type":"upload"');
+    if (bodyStr === state.lastSavedJson && !hasUploads) {
+      state.lastSavedJson = JSON.stringify({ project: state.project });
+      state.isDirty = false;
+      updateSaveStatus('saved');
+      return true;
+    }
     state.isSaving = true;
     updateSaveStatus('saving');
 
@@ -444,7 +462,7 @@
       const resp = await fetchJsonSafe(`/api/video-studio/jobs/${encodeURIComponent(state.jobId)}/project`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project: state.project }),
+        body: bodyStr,
       });
       if (resp.status === 404 || resp.isHtml) {
         state.apiUnavailable = true;
@@ -471,6 +489,7 @@
         }
       }
 
+      state.lastSavedJson = JSON.stringify({ project: state.project });
       state.isDirty = false;
       updateSaveStatus('saved');
       if (!silent) showToast('บันทึกโปรเจกต์แล้ว');
@@ -484,6 +503,23 @@
     }
   }
 
+  function scheduleProxyPoll() {
+    clearTimeout(state.proxyPollTimer);
+    if (!state.jobId || state.apiUnavailable) return;
+    const needsProxy = state.assets.jobAssets.some(
+      (a) => !isAudioFile(a.file) && !isImageFile(a.file) && !a.hasProxy && !a.proxyUrl
+    );
+    if (!needsProxy) {
+      state.proxyPollCount = 0;
+      return;
+    }
+    if (state.proxyPollCount >= 15) return;
+    state.proxyPollTimer = setTimeout(() => {
+      state.proxyPollCount += 1;
+      refreshEditorAssets();
+    }, 20000);
+  }
+
   async function refreshEditorAssets() {
     if (!state.jobId || state.apiUnavailable) return;
     try {
@@ -495,6 +531,8 @@
         state.assets.jobAssets = Array.isArray(r.data.jobAssets) ? r.data.jobAssets : [];
         renderMediaBin();
         renderInspector();
+        renderPreviewAt(state.currentTime);
+        scheduleProxyPoll();
       }
     } catch (_) {}
   }
@@ -1162,7 +1200,7 @@
             body.appendChild(createMediaCard({
               kind: 'video',
               ico: isImageFile(a.file) ? '🖼️' : '🎥',
-              label: a.file,
+              label: (a.hasProxy || a.proxyUrl) ? `${a.file} ⚡ proxy` : a.file,
               durationSec: a.durationSec || 4,
               src: { type: 'jobasset', file: a.file },
             }));
@@ -1260,26 +1298,43 @@
     const files = Array.from(fileList || []);
     if (!files.length) return;
     for (const file of files) {
-      if (file.size > MAX_UPLOAD_BYTES) {
-        showToast(`ไฟล์ "${file.name}" ใหญ่เกิน 60 MB`);
+      if (file.size > MAX_RAW_UPLOAD_BYTES) {
+        showToast(`ไฟล์ "${file.name}" ใหญ่เกิน 200 MB`);
         continue;
       }
       showToast(`กำลังอัปโหลด ${file.name}...`, 4000);
       try {
         const objUrl = URL.createObjectURL(file);
         const durationSec = await probeClientMediaDuration(file, objUrl);
-        const dataUrl = await new Promise((resolve, reject) => {
-          const fr = new FileReader();
-          fr.onload = () => resolve(fr.result);
-          fr.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
-          fr.readAsDataURL(file);
-        });
 
-        const resp = await fetchJsonSafe('/api/video-studio/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataUrl, filename: file.name }),
-        });
+        let resp = await fetchJsonSafe(
+          '/api/video-studio/upload-raw?filename=' + encodeURIComponent(file.name),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+          }
+        );
+
+        if (resp.status === 404 || resp.isHtml) {
+          if (file.size > MAX_UPLOAD_BYTES) {
+            showToast(`ไฟล์ "${file.name}" ใหญ่เกิน 60 MB`);
+            URL.revokeObjectURL(objUrl);
+            continue;
+          }
+          const dataUrl = await new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(fr.result);
+            fr.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+            fr.readAsDataURL(file);
+          });
+
+          resp = await fetchJsonSafe('/api/video-studio/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl, filename: file.name }),
+          });
+        }
 
         if (!resp.ok || !resp.data) {
           const msg = (resp.data && resp.data.error) || `HTTP ${resp.status}`;
@@ -1915,6 +1970,9 @@
       if (url && state.lastVideoSrc !== url) {
         state.lastVideoSrc = url;
         dom.video.src = url;
+        dom.video.addEventListener('loadedmetadata', () => {
+          try { dom.video.currentTime = Math.max(0, srcTime); } catch (_) {}
+        }, { once: true });
         dom.video.load();
       }
       if (dom.video.readyState >= 1) {
@@ -2564,6 +2622,7 @@
       updateSaveStatus('dirty');
     } else if (projResp.ok && projResp.data && projResp.data.project) {
       state.project = projResp.data.project;
+      state.lastSavedJson = JSON.stringify({ project: state.project });
       if (assetsResp.ok && assetsResp.data) {
         state.assets.bgm = Array.isArray(assetsResp.data.bgm) ? assetsResp.data.bgm : [];
         state.assets.sfx = Array.isArray(assetsResp.data.sfx) ? assetsResp.data.sfx : [];
@@ -2571,6 +2630,7 @@
         state.assets.jobAssets = Array.isArray(assetsResp.data.jobAssets) ? assetsResp.data.jobAssets : [];
       }
       updateSaveStatus('saved', 'โหลดโปรเจกต์แล้ว');
+      scheduleProxyPoll();
     } else {
       const errMsg = (projResp.data && projResp.data.error) || 'ไม่พบข้อมูลโปรเจกต์';
       showApiBanner(`โหลดโปรเจกต์ไม่สำเร็จ: ${errMsg}`);

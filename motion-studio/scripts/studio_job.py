@@ -2038,6 +2038,9 @@ def run_mix_stage(
     if bgm not in VALID_BGMS and not Path(bgm).exists():
         bgm = "warm_tech"
     cmd = [
+        "nice",
+        "-n",
+        "15",
         MOTION_STUDIO_BIN,
         "mix",
         str(render_mp4),
@@ -2057,7 +2060,12 @@ def run_mix_stage(
         + (f", bgm_vol={bgm_vol:.3f}" if bgm_vol is not None else "")
         + (f", duck_db={duck_db:.1f}" if duck_db is not None else ""),
     )
-    rc, stdout, stderr = _run_subprocess(cmd, cwd=BASE_DIR, timeout=300)
+    rc, stdout, stderr = _run_subprocess(
+        cmd,
+        cwd=BASE_DIR,
+        env={**os.environ, "OMP_NUM_THREADS": "2"},
+        timeout=300,
+    )
     if rc != 0 or not final_mp4.exists():
         err = (stderr or stdout or f"mix exited {rc}").strip()
         append_log(job_dir, f"Mix failed: {err}")
@@ -2071,6 +2079,9 @@ def run_preview_stage(job_dir: Path, video_mp4: Path, timeline_path: Path | None
     preview_dir = job_dir / "preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
+        "nice",
+        "-n",
+        "15",
         MOTION_STUDIO_BIN,
         "preview",
         str(video_mp4),
@@ -2081,7 +2092,12 @@ def run_preview_stage(job_dir: Path, video_mp4: Path, timeline_path: Path | None
     ]
     if timeline_path and timeline_path.exists():
         cmd.extend(["--timeline", str(timeline_path)])
-    rc, stdout, stderr = _run_subprocess(cmd, cwd=BASE_DIR, timeout=180)
+    rc, stdout, stderr = _run_subprocess(
+        cmd,
+        cwd=BASE_DIR,
+        env={**os.environ, "OMP_NUM_THREADS": "2"},
+        timeout=180,
+    )
     if rc != 0:
         err = (stderr or stdout or f"preview exited {rc}").strip()
         append_log(job_dir, f"Preview warning (non-fatal): {err}")
@@ -2388,11 +2404,7 @@ def stage_trim(job_dir: Path, start_sec: float, end_sec: float) -> dict[str, Any
     write_status(job_dir, status="editing", stage="trim", progress=50, message=f"กำลังตัดหัวท้าย ({start_sec:.2f}s–{clamped_end:.2f}s)...")
     append_log(job_dir, f"Trimming {src_mp4.name} [{start_sec:.3f}, {clamped_end:.3f}] -> {out_mp4.name}")
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-v",
-        "error",
+    argv = [
         "-ss",
         f"{start_sec:.3f}",
         "-to",
@@ -2413,12 +2425,26 @@ def stage_trim(job_dir: Path, start_sec: float, end_sec: float) -> dict[str, Any
         "192k",
         "-movflags",
         "+faststart",
-        str(out_mp4),
     ]
-    rc, stdout, stderr = _run_subprocess(cmd, timeout=300)
-    if rc != 0 or not out_mp4.exists():
-        err = (stderr or stdout or f"ffmpeg trim exited {rc}").strip()
-        raise RuntimeError(f"ตัดหัวท้ายวิดีโอไม่สำเร็จ: {err.splitlines()[-1][:200]}")
+    offload_rc = _offload_ffmpeg(
+        job_dir,
+        argv,
+        [src_mp4],
+        out_mp4,
+        label="trim",
+        stage="trim",
+        timeout_sec=600,
+        status_msg="กำลังตัดต่อบนเครื่องลูกข่าย...",
+        progress=50,
+    )
+    if offload_rc != 0 or not out_mp4.exists():
+        reason = "no worker node online (rc=3)" if offload_rc == 3 else f"offload rc={offload_rc}"
+        append_log(job_dir, f"Trim offload fallback to local throttled ffmpeg ({reason})")
+        cmd = ["nice", "-n", "15", "ffmpeg", "-y", "-v", "error", *argv, "-threads", "2", str(out_mp4)]
+        rc, stdout, stderr = _run_subprocess(cmd, timeout=300)
+        if rc != 0 or not out_mp4.exists():
+            err = (stderr or stdout or f"ffmpeg trim exited {rc}").strip()
+            raise RuntimeError(f"ตัดหัวท้ายวิดีโอไม่สำเร็จ: {err.splitlines()[-1][:200]}")
 
     return _finalize_edit_version(job_dir, out_mp4, ver, f"trim:{start_sec:.2f}-{clamped_end:.2f}", f"{slug}_v{ver}.mp4")
 
@@ -2444,21 +2470,17 @@ def stage_cut(job_dir: Path, cut_from: float, cut_to: float) -> dict[str, Any]:
 
     if cut_from <= 0.05:
         # Cut from start -> keep [cut_to, end]
-        cmd = [
-            "ffmpeg", "-y", "-v", "error",
+        argv = [
             "-ss", f"{cut_to:.3f}", "-i", str(src_mp4),
             "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-            str(out_mp4),
         ]
     elif cut_to >= total_dur - 0.05:
         # Cut to end -> keep [0, cut_from]
-        cmd = [
-            "ffmpeg", "-y", "-v", "error",
+        argv = [
             "-to", f"{cut_from:.3f}", "-i", str(src_mp4),
             "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-            str(out_mp4),
         ]
     else:
         filter_complex = (
@@ -2468,20 +2490,33 @@ def stage_cut(job_dir: Path, cut_from: float, cut_to: float) -> dict[str, Any]:
             f"[0:a]atrim=start={cut_to:.3f},asetpts=PTS-STARTPTS[a1];"
             f"[v0][a0][v1][a1]concat=n=2:v=1:a=1[vout][aout]"
         )
-        cmd = [
-            "ffmpeg", "-y", "-v", "error",
+        argv = [
             "-i", str(src_mp4),
             "-filter_complex", filter_complex,
             "-map", "[vout]", "-map", "[aout]",
             "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-            str(out_mp4),
         ]
 
-    rc, stdout, stderr = _run_subprocess(cmd, timeout=300)
-    if rc != 0 or not out_mp4.exists():
-        err = (stderr or stdout or f"ffmpeg cut exited {rc}").strip()
-        raise RuntimeError(f"ตัดท่อนกลางวิดีโอไม่สำเร็จ: {err.splitlines()[-1][:200]}")
+    offload_rc = _offload_ffmpeg(
+        job_dir,
+        argv,
+        [src_mp4],
+        out_mp4,
+        label="cut",
+        stage="cut",
+        timeout_sec=600,
+        status_msg="กำลังตัดต่อบนเครื่องลูกข่าย...",
+        progress=50,
+    )
+    if offload_rc != 0 or not out_mp4.exists():
+        reason = "no worker node online (rc=3)" if offload_rc == 3 else f"offload rc={offload_rc}"
+        append_log(job_dir, f"Cut offload fallback to local throttled ffmpeg ({reason})")
+        cmd = ["nice", "-n", "15", "ffmpeg", "-y", "-v", "error", *argv, "-threads", "2", str(out_mp4)]
+        rc, stdout, stderr = _run_subprocess(cmd, timeout=300)
+        if rc != 0 or not out_mp4.exists():
+            err = (stderr or stdout or f"ffmpeg cut exited {rc}").strip()
+            raise RuntimeError(f"ตัดท่อนกลางวิดีโอไม่สำเร็จ: {err.splitlines()[-1][:200]}")
 
     return _finalize_edit_version(job_dir, out_mp4, ver, f"cut:{cut_from:.2f}-{cut_to:.2f}", f"{slug}_v{ver}.mp4")
 
@@ -3247,6 +3282,188 @@ def build_export_ffmpeg(job_dir: Path, project: dict[str, Any]) -> tuple[list[st
     return argv, inputs, total_sec
 
 
+PROXY_VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
+
+
+def _quote_win_arg(arg: str) -> str:
+    """Quote a single argument for Windows cmd.exe /S /C invocation."""
+    if not arg or any(ch in arg for ch in (' ', '\t', '"', ';', '[', ']', '(', ')', ',', "'", '*', '&', '|', '<', '>', '^', '=')):
+        escaped = arg.replace('"', '\\"')
+        return f'"{escaped}"'
+    return arg
+
+
+def _offload_ffmpeg(
+    job_dir: Path,
+    argv: list[str],
+    inputs: list[Path],
+    out_path: Path,
+    *,
+    label: str,
+    stage: str,
+    timeout_sec: int = 1800,
+    status_msg: str | None = None,
+    progress: int = 20,
+    log_fn: Any = None,
+) -> int:
+    """Offload an ffmpeg command via agent-ctl run --requires ffmpeg.
+
+    Returns:
+      0 = succeeded and copied output to out_path
+      3 = no worker node online (or agent-ctl unavailable)
+      other non-zero = disabled / failed
+    """
+    _log = log_fn if callable(log_fn) else (lambda msg: append_log(job_dir, msg))
+
+    if os.environ.get("STUDIO_OFFLOAD", "").strip().lower() == "off":
+        _log(f"Offload ({label}) disabled via STUDIO_OFFLOAD=off.")
+        return 2
+
+    if not Path(AGENT_CTL_BIN).exists():
+        _log(f"Offload ({label}) unavailable: {AGENT_CTL_BIN} not found.")
+        return 3
+
+    safe_label = re.sub(r"[^a-zA-Z0-9._-]+", "_", label).strip("_") or "job"
+    stage_dir = job_dir / "editor_tmp" / f"offload_{safe_label}_stage"
+    offload_out_dir = job_dir / "editor_tmp" / f"offload_{safe_label}_out"
+    shutil.rmtree(stage_dir, ignore_errors=True)
+    shutil.rmtree(offload_out_dir, ignore_errors=True)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    offload_out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        staged_files: list[Path] = []
+        staged_names: list[str] = []
+        for i, orig in enumerate(inputs):
+            ext = orig.suffix or ".bin"
+            name = f"in{i}{ext}"
+            dest = stage_dir / name
+            try:
+                os.link(orig, dest)
+            except OSError:
+                shutil.copy2(orig, dest)
+            staged_files.append(dest)
+            staged_names.append(name)
+
+        # Rewrite argv for remote execution (inputs -> staged basenames, filter_complex -> script file)
+        remote_argv: list[str] = []
+        in_idx = 0
+        fc_raw = ""
+        i = 0
+        while i < len(argv):
+            tok = argv[i]
+            if tok == "-i" and i + 1 < len(argv):
+                remote_argv.extend(["-i", staged_names[in_idx]])
+                in_idx += 1
+                i += 2
+                continue
+            if tok == "-filter_complex" and i + 1 < len(argv):
+                fc_raw = argv[i + 1]
+                remote_argv.extend(["-filter_complex_script", "fc_remote.txt"])
+                i += 2
+                continue
+            remote_argv.append(tok)
+            i += 1
+
+        # Stage any drawtext textfiles and rewrite their paths to relative basenames
+        if fc_raw:
+            txt_counter = 0
+
+            def _repl_textfile(m: re.Match[str]) -> str:
+                nonlocal txt_counter
+                raw_p = m.group(1).replace("\\:", ":").replace("\\'", "'")
+                p = Path(raw_p)
+                if p.exists():
+                    tname = f"txt{txt_counter}.txt"
+                    txt_counter += 1
+                    dest = stage_dir / tname
+                    shutil.copy2(p, dest)
+                    staged_files.append(dest)
+                    return f"textfile='{tname}'"
+                return m.group(0)
+
+            fc_remote = re.sub(r"textfile='([^']+)'", _repl_textfile, fc_raw)
+            # Drop homelab-specific fontfile path on remote workers (may be Windows/different font path)
+            fc_remote = re.sub(r"fontfile='[^']+':", "", fc_remote)
+            fc_file = stage_dir / "fc_remote.txt"
+            fc_file.write_text(fc_remote, encoding="utf-8")
+            staged_files.append(fc_file)
+
+        out_ext = out_path.suffix or ".mp4"
+        remote_out_name = f"out{out_ext}"
+
+        posix_args = " ".join(shlex.quote(a) for a in remote_argv)
+        win_args = " ".join(_quote_win_arg(a) for a in remote_argv)
+
+        cmd_posix = f'cd "$LAB_IN_DIR" && ffmpeg -y -hide_banner -v error {posix_args} "$LAB_OUT_DIR/{remote_out_name}"'
+        cmd_win = f'cd /d "%LAB_IN_DIR%" && ffmpeg -y -hide_banner -v error {win_args} "%LAB_OUT_DIR%\\{remote_out_name}"'
+
+        ctl_cmd: list[str] = [
+            AGENT_CTL_BIN,
+            "run",
+            "--name",
+            f"editor-{safe_label}-{safe_slug(job_dir.name)}",
+            "--requires",
+            "ffmpeg",
+        ]
+        for sf in staged_files:
+            ctl_cmd.extend(["--input", str(sf)])
+        ctl_cmd.extend([
+            "--cmd-posix",
+            cmd_posix,
+            "--cmd-win",
+            cmd_win,
+            "--timeout",
+            str(int(timeout_sec)),
+            "--out-dir",
+            str(offload_out_dir),
+        ])
+
+        _log(f"Attempting remote offload {label} via agent-ctl ({len(staged_files)} staged inputs)...")
+        if status_msg:
+            write_status(
+                job_dir,
+                status="editing",
+                stage=stage,
+                progress=progress,
+                message=status_msg,
+            )
+        try:
+            rc, stdout, stderr = _run_subprocess(ctl_cmd, timeout=int(timeout_sec) + 60)
+        except AbortedError:
+            raise
+        except TimeoutError as exc:
+            _log(f"Offload {label} timed out: {exc}")
+            return 124
+        except Exception as exc:
+            _log(f"Offload {label} exception: {exc}")
+            return 1
+
+        remote_out = offload_out_dir / remote_out_name
+        if rc == 0 and remote_out.exists() and remote_out.stat().st_size > 0:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(remote_out, out_path)
+            _log(f"Remote offload {label} succeeded -> {out_path.name} ({out_path.stat().st_size} bytes)")
+            if status_msg:
+                done_msg = (
+                    "Export วิดีโอบนเครื่องลูกข่ายเสร็จสิ้น"
+                    if stage == "export"
+                    else f"ประมวลผล {stage} บนเครื่องลูกข่ายเสร็จสิ้น"
+                )
+                write_status(job_dir, status="editing", stage=stage, progress=95, message=done_msg)
+            return 0
+
+        if rc == 3:
+            _log(f"No worker node online for {label} (agent-ctl exit 3).")
+        else:
+            err_tail = (stderr or stdout or f"exit {rc}").strip().splitlines()[-1:] or [f"exit {rc}"]
+            _log(f"Offload {label} unavailable/failed (rc={rc}: {err_tail[0][:200]}).")
+        return rc if rc != 0 else 1
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
+        shutil.rmtree(offload_out_dir, ignore_errors=True)
+
+
 def _try_offload_export_ffmpeg(
     job_dir: Path,
     argv: list[str],
@@ -3254,119 +3471,125 @@ def _try_offload_export_ffmpeg(
     out_mp4: Path,
 ) -> bool:
     """Attempt to offload ffmpeg export via agent-ctl run --requires ffmpeg. Returns True on success."""
-    stage_dir = job_dir / "editor_tmp" / "offload_stage"
-    offload_out_dir = job_dir / "editor_tmp" / "offload_out"
-    shutil.rmtree(stage_dir, ignore_errors=True)
-    shutil.rmtree(offload_out_dir, ignore_errors=True)
-    stage_dir.mkdir(parents=True, exist_ok=True)
-    offload_out_dir.mkdir(parents=True, exist_ok=True)
-
-    staged_files: list[Path] = []
-    staged_names: list[str] = []
-    for i, orig in enumerate(inputs):
-        ext = orig.suffix or ".bin"
-        name = f"in{i}{ext}"
-        dest = stage_dir / name
-        try:
-            os.link(orig, dest)
-        except OSError:
-            shutil.copy2(orig, dest)
-        staged_files.append(dest)
-        staged_names.append(name)
-
-    # Rewrite argv for remote execution (inputs -> staged basenames, filter_complex -> script file)
-    remote_argv: list[str] = []
-    in_idx = 0
-    fc_raw = ""
-    i = 0
-    while i < len(argv):
-        tok = argv[i]
-        if tok == "-i" and i + 1 < len(argv):
-            remote_argv.extend(["-i", staged_names[in_idx]])
-            in_idx += 1
-            i += 2
-            continue
-        if tok == "-filter_complex" and i + 1 < len(argv):
-            fc_raw = argv[i + 1]
-            remote_argv.extend(["-filter_complex_script", "fc_remote.txt"])
-            i += 2
-            continue
-        remote_argv.append(tok)
-        i += 1
-
-    # Stage any drawtext textfiles and rewrite their paths to relative basenames
-    if fc_raw:
-        txt_counter = 0
-
-        def _repl_textfile(m: re.Match[str]) -> str:
-            nonlocal txt_counter
-            raw_p = m.group(1).replace("\\:", ":").replace("\\'", "'")
-            p = Path(raw_p)
-            if p.exists():
-                tname = f"txt{txt_counter}.txt"
-                txt_counter += 1
-                dest = stage_dir / tname
-                shutil.copy2(p, dest)
-                staged_files.append(dest)
-                return f"textfile='{tname}'"
-            return m.group(0)
-
-        fc_remote = re.sub(r"textfile='([^']+)'", _repl_textfile, fc_raw)
-        # Drop homelab-specific fontfile path on remote workers (may be Windows/different font path)
-        fc_remote = re.sub(r"fontfile='[^']+':", "", fc_remote)
-        fc_file = stage_dir / "fc_remote.txt"
-        fc_file.write_text(fc_remote, encoding="utf-8")
-        staged_files.append(fc_file)
-
-    posix_args = " ".join(shlex.quote(a) for a in remote_argv)
-    win_args = " ".join(f'"{a}"' if (" " in a or ";" in a or "[" in a) else a for a in remote_argv)
-
-    cmd_posix = f'cd "$LAB_IN_DIR" && ffmpeg -y -hide_banner -v error {posix_args} "$LAB_OUT_DIR/out.mp4"'
-    cmd_win = f'cd /d "%LAB_IN_DIR%" && ffmpeg -y -hide_banner -v error {win_args} "%LAB_OUT_DIR%\\out.mp4"'
-
-    ctl_cmd: list[str] = [
-        AGENT_CTL_BIN,
-        "run",
-        "--name",
-        f"editor-export-{safe_slug(job_dir.name)}",
-        "--requires",
-        "ffmpeg",
-    ]
-    for sf in staged_files:
-        ctl_cmd.extend(["--input", str(sf)])
-    ctl_cmd.extend([
-        "--cmd-posix",
-        cmd_posix,
-        "--cmd-win",
-        cmd_win,
-        "--timeout",
-        "1800",
-        "--out-dir",
-        str(offload_out_dir),
-    ])
-
-    append_log(job_dir, f"Attempting remote offload export via agent-ctl ({len(staged_files)} staged inputs)...")
-    write_status(
-        job_dir,
-        status="editing",
-        stage="export",
-        progress=20,
-        message="กำลังส่งงาน Export วิดีโอไปยังเครื่องลูกข่าย...",
+    return (
+        _offload_ffmpeg(
+            job_dir,
+            argv,
+            inputs,
+            out_mp4,
+            label="export",
+            stage="export",
+            timeout_sec=1800,
+            status_msg="กำลังส่งงาน Export วิดีโอไปยังเครื่องลูกข่าย...",
+            progress=20,
+        )
+        == 0
     )
-    rc, stdout, stderr = _run_subprocess(ctl_cmd, timeout=1860)
-    remote_out = offload_out_dir / "out.mp4"
-    if rc == 0 and remote_out.exists() and remote_out.stat().st_size > 0:
-        shutil.copy2(remote_out, out_mp4)
-        append_log(job_dir, f"Remote offload export succeeded -> {out_mp4.name} ({out_mp4.stat().st_size} bytes)")
-        write_status(job_dir, status="editing", stage="export", progress=95, message="Export วิดีโอบนเครื่องลูกข่ายเสร็จสิ้น")
-        return True
 
-    if rc == 3:
-        append_log(job_dir, "No worker node online (agent-ctl exit 3); falling back to throttled local ffmpeg.")
-    else:
-        err_tail = (stderr or stdout or f"exit {rc}").strip().splitlines()[-1:] or [f"exit {rc}"]
-        append_log(job_dir, f"Offload export unavailable/failed (rc={rc}: {err_tail[0][:200]}); falling back to local ffmpeg.")
-    return False
+
+def _append_proxy_log(job_dir: Path, message: str) -> None:
+    proxy_dir = job_dir / "editor_assets" / "proxy"
+    proxy_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_path = proxy_dir / "proxy.log"
+    with log_path.open("a", encoding="utf-8") as f:
+        for line in str(message).splitlines() or [""]:
+            f.write(f"[{ts}] {line}\n")
+        f.flush()
+
+
+def run_proxy(job_dir: Path, filename: str) -> int:
+    """Generate a lightweight 540p preview proxy on a worker node only (never runs ffmpeg on homelab)."""
+    if not filename or "/" in filename or "\\" in filename or ".." in filename or Path(filename).name != filename:
+        msg = f"Invalid proxy filename (must be a single filename without '/' or '..'): {filename!r}"
+        _append_proxy_log(job_dir, msg)
+        print(msg, file=sys.stderr)
+        return 1
+
+    assets_dir = job_dir / "editor_assets"
+    src_path = assets_dir / filename
+    if not src_path.is_file():
+        _append_proxy_log(job_dir, f"skip proxy (source not found): {filename}")
+        return 0
+
+    if src_path.suffix.lower() not in PROXY_VIDEO_EXTS:
+        _append_proxy_log(job_dir, f"skip proxy (non-video extension {src_path.suffix}): {filename}")
+        return 0
+
+    stem = src_path.stem
+    proxy_dir = assets_dir / "proxy"
+    proxy_dir.mkdir(parents=True, exist_ok=True)
+    out_proxy = proxy_dir / f"{stem}_proxy.mp4"
+    failed_marker = proxy_dir / f"{stem}_proxy.failed"
+
+    if out_proxy.exists():
+        try:
+            if out_proxy.stat().st_size > 0 and out_proxy.stat().st_mtime >= src_path.stat().st_mtime:
+                _append_proxy_log(job_dir, f"skip proxy (up-to-date): {out_proxy.name}")
+                return 0
+        except OSError:
+            pass
+
+    tmp_proxy = proxy_dir / f".{stem}_proxy.tmp.{os.getpid()}.mp4"
+    argv = [
+        "-i",
+        str(src_path),
+        "-vf",
+        "scale='min(960,iw)':'min(960,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "28",
+        "-g",
+        "30",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "96k",
+        "-movflags",
+        "+faststart",
+    ]
+    _append_proxy_log(job_dir, f"Starting remote proxy for {filename} -> {out_proxy.name}")
+    try:
+        rc = _offload_ffmpeg(
+            job_dir,
+            argv,
+            [src_path],
+            tmp_proxy,
+            label=f"proxy_{stem}",
+            stage="proxy",
+            timeout_sec=900,
+            status_msg=None,
+            log_fn=lambda msg: _append_proxy_log(job_dir, msg),
+        )
+        if rc == 0 and tmp_proxy.exists() and tmp_proxy.stat().st_size > 0:
+            os.replace(tmp_proxy, out_proxy)
+            try:
+                failed_marker.unlink()
+            except OSError:
+                pass
+            _append_proxy_log(job_dir, f"Proxy ready: {out_proxy.name} ({out_proxy.stat().st_size} bytes)")
+            return 0
+        if rc != 0:
+            try:
+                failed_marker.write_text(
+                    json.dumps({"rc": rc, "ts": int(time.time())}),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+        _append_proxy_log(job_dir, f"skip proxy (no worker / failed, rc={rc}): {filename}")
+        return 0
+    finally:
+        if tmp_proxy.exists():
+            try:
+                tmp_proxy.unlink()
+            except OSError:
+                pass
 
 
 def run_export_ffmpeg(
@@ -3603,6 +3826,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p_ex = sub.add_parser("export")
     p_ex.add_argument("--job", required=True, help="Job directory path")
 
+    p_px = sub.add_parser("proxy")
+    p_px.add_argument("--job", required=True, help="Job directory path")
+    p_px.add_argument("--file", required=True, help="Single video filename inside job/editor_assets")
+
     return parser.parse_args(argv)
 
 
@@ -3611,6 +3838,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
     job_dir = Path(args.job).resolve()
     job_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.cmd == "proxy":
+        _install_signal_handlers()
+        try:
+            return run_proxy(job_dir, args.file)
+        except AbortedError:
+            return 143
+        except Exception as exc:
+            _append_proxy_log(job_dir, f"ERROR (proxy): {exc}")
+            return 0
+
     _current_job_dir = job_dir
     _install_signal_handlers()
 

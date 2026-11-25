@@ -231,10 +231,11 @@
   }
 
   function findClipById(clipId, proj = state.project) {
-    if (!clipId || !proj || !Array.isArray(proj.tracks)) return null;
+    const id = Array.isArray(clipId) ? clipId[clipId.length - 1] : clipId;
+    if (!id || !proj || !Array.isArray(proj.tracks)) return null;
     for (const track of proj.tracks) {
       if (!Array.isArray(track.clips)) continue;
-      const idx = track.clips.findIndex((c) => c.id === clipId);
+      const idx = track.clips.findIndex((c) => c.id === id);
       if (idx >= 0) {
         return { track, clip: track.clips[idx], index: idx };
       }
@@ -2329,10 +2330,12 @@
       onChange: (updatedProject) => {
         applyProjectChange(updatedProject, { recordHistory: true, fromTimeline: true });
       },
-      onSelect: (clipId) => {
-        state.selectedClipId = clipId || null;
+      onSelect: (ids, primaryId) => {
+        const sel = primaryId || (Array.isArray(ids) ? ids[ids.length - 1] : ids) || null;
+        state.selectedClipId = (typeof sel === 'string') ? sel : null;
         renderInspector();
         renderPreviewAt(state.currentTime);
+        if (state.activeTab === 'text') renderMediaBin();
       },
       onSeek: (sec) => {
         seekTo(sec, { fromTimeline: true });

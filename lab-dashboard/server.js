@@ -1987,20 +1987,27 @@ const server = http.createServer(async (req, res) => {
                     const body = await readJsonBody(req, 16 * 1024);
                     return sendJson(res, 200, await videoStudioManager.remixJob(jobId, body || {}));
                 }
+                if (parts.length === 2 && action === 'project' && req.method === 'GET') {
+                    return sendJson(res, 200, await videoStudioManager.getEditorProject(jobId));
+                }
+                if (parts.length === 2 && action === 'project' && req.method === 'PUT') {
+                    const body = await readJsonBody(req, 1024 * 1024);
+                    const proj = body && body.project !== undefined ? body.project : body;
+                    return sendJson(res, 200, await videoStudioManager.saveEditorProject(jobId, proj));
+                }
+                if (parts.length === 3 && action === 'project' && parts[2] === 'reset' && req.method === 'POST') {
+                    return sendJson(res, 200, await videoStudioManager.resetEditorProject(jobId));
+                }
+                if (parts.length === 2 && action === 'export' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 1024 * 1024).catch(() => ({}));
+                    return sendJson(res, 200, await videoStudioManager.exportEditorProject(jobId, body && body.project));
+                }
                 return sendJson(res, 404, { ok: false, error: 'Video Studio route not found' });
             } catch (err) {
                 return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
             }
         }
-        if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/api/video-studio/file/')) {
-            const rel = p.slice('/api/video-studio/file/'.length);
-            const slashIdx = rel.indexOf('/');
-            if (slashIdx <= 0) return sendJson(res, 404, { ok: false, error: 'File not found' });
-            const jobId = rel.slice(0, slashIdx);
-            const subPath = rel.slice(slashIdx + 1);
-            const info = await videoStudioManager.resolveSafeFile(jobId, subPath);
-            if (!info) return sendJson(res, 404, { ok: false, error: 'File not found' });
-
+        const streamFileWithRange = (info) => {
             const isDownload = url.searchParams.get('download') === '1';
             const safeName = info.filename.replace(/["\r\n]/g, '');
             const headers = {
@@ -2049,7 +2056,39 @@ const server = http.createServer(async (req, res) => {
             res.on('close', () => stream.destroy());
             stream.on('error', () => { if (!res.writableEnded) res.end(); });
             stream.pipe(res);
-            return;
+        };
+        if (req.method === 'GET' && p === '/api/video-studio/editor-assets') {
+            try {
+                const jobId = url.searchParams.get('job') || '';
+                return sendJson(res, 200, await videoStudioManager.listEditorAssets(jobId));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/api/video-studio/media/')) {
+            const rel = p.slice('/api/video-studio/media/'.length);
+            const slashIdx = rel.indexOf('/');
+            if (slashIdx <= 0) return sendJson(res, 404, { ok: false, error: 'Media not found' });
+            const mediaType = rel.slice(0, slashIdx);
+            const mediaName = decodeURIComponent(rel.slice(slashIdx + 1));
+            const jobId = url.searchParams.get('job') || '';
+            try {
+                const info = await videoStudioManager.resolveEditorMedia(jobId, mediaType, mediaName);
+                if (!info) return sendJson(res, 404, { ok: false, error: 'Media not found' });
+                return streamFileWithRange(info);
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/api/video-studio/file/')) {
+            const rel = p.slice('/api/video-studio/file/'.length);
+            const slashIdx = rel.indexOf('/');
+            if (slashIdx <= 0) return sendJson(res, 404, { ok: false, error: 'File not found' });
+            const jobId = rel.slice(0, slashIdx);
+            const subPath = rel.slice(slashIdx + 1);
+            const info = await videoStudioManager.resolveSafeFile(jobId, subPath);
+            if (!info) return sendJson(res, 404, { ok: false, error: 'File not found' });
+            return streamFileWithRange(info);
         }
         if (req.method === 'POST' && p === '/api/settings/telegram-test') {
             return new Promise((resolve) => {

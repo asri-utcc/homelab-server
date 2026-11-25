@@ -10,6 +10,7 @@ Handles:
   - remix      : lock -> mix latest render_v{N}/render.mp4 + work/timeline.json -> final_v{N}.mp4
   - trim       : ffmpeg trim [start, end] -> final_v{N}.mp4
   - cut        : ffmpeg cut out [from, to] -> final_v{N}.mp4
+  - export     : lock -> ffmpeg EDL export from editor_project.json -> final_v{N}.mp4
 """
 
 from __future__ import annotations
@@ -21,10 +22,12 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +35,7 @@ from typing import Any, Iterator
 
 BASE_DIR = Path("/home/dev/.local/share/motion-studio")
 SCRIPTS_DIR = BASE_DIR / "scripts"
+AUDIO_ASSETS_DIR = BASE_DIR / "assets" / "audio"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 import credit_ledger  # noqa: E402
@@ -40,6 +44,7 @@ PRESETS_PATH = BASE_DIR / "assets" / "studio_style_presets.json"
 CUSTOM_STYLES_PATH = BASE_DIR / "assets" / "studio_custom_styles.json"
 
 MOTION_STUDIO_BIN = "/home/dev/.local/bin/motion-studio"
+AGENT_CTL_BIN = "/home/dev/.local/bin/agent-ctl"
 AGY_BIN = os.environ.get("AGY_BIN", "/home/dev/.local/bin/agy")
 PROFILES_DIR = Path("/home/dev/.agy-profiles")
 MAIN_TOKEN_REL = Path(".gemini/antigravity-cli/antigravity-oauth-token")
@@ -2520,6 +2525,997 @@ def stage_remix(job_dir: Path, bgm: str, bgm_vol: float, duck_db: float) -> dict
         return _finalize_edit_version(job_dir, out_mp4, ver, "remix", f"{slug}_v{ver}.mp4")
 
 
+# ---------------------------------------------------------------------------
+# Multi-track Video Editor Export (EDL -> FFmpeg filter_complex)
+# ---------------------------------------------------------------------------
+
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+_DRAWTEXT_AVAILABLE: bool | None = None
+_THAI_FONT_PATH: str | None = None
+
+
+def _ffmpeg_has_drawtext() -> bool:
+    global _DRAWTEXT_AVAILABLE
+    if _DRAWTEXT_AVAILABLE is not None:
+        return _DRAWTEXT_AVAILABLE
+    try:
+        rc, stdout, _stderr = _run_subprocess(["ffmpeg", "-hide_banner", "-filters"], timeout=15)
+        _DRAWTEXT_AVAILABLE = rc == 0 and bool(re.search(r"\bdrawtext\b", stdout))
+    except Exception:
+        _DRAWTEXT_AVAILABLE = False
+    return _DRAWTEXT_AVAILABLE
+
+
+def _find_thai_font() -> str:
+    global _THAI_FONT_PATH
+    if _THAI_FONT_PATH is not None:
+        return _THAI_FONT_PATH
+    candidates: list[str] = []
+    try:
+        rc, stdout, _stderr = _run_subprocess(["fc-list", ":lang=th", "file"], timeout=15)
+        if rc == 0:
+            for line in stdout.splitlines():
+                p = line.split(":", 1)[0].strip()
+                if p and p.lower().endswith((".ttf", ".otf")) and Path(p).exists():
+                    candidates.append(p)
+    except Exception:
+        pass
+
+    preferred = ("NotoLoopedThai-Bold", "NotoSansThai-Bold", "NotoSansThai", "Waree-Bold", "Kinnari-Bold")
+    chosen = ""
+    for pref in preferred:
+        for c in candidates:
+            if pref.lower() in Path(c).name.lower():
+                chosen = c
+                break
+        if chosen:
+            break
+    if not chosen and candidates:
+        chosen = candidates[0]
+    _THAI_FONT_PATH = chosen
+    return chosen
+
+
+def _escape_drawtext_path(path_str: str) -> str:
+    """Escape path for ffmpeg drawtext option value (single-quoted)."""
+    return path_str.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+
+
+def _build_atempo_chain(speed: float) -> str:
+    """Split arbitrary playback speed into valid ffmpeg atempo filters in [0.5, 2.0]."""
+    if abs(speed - 1.0) < 0.001:
+        return ""
+    parts: list[str] = []
+    s = max(0.1, min(16.0, float(speed)))
+    while s > 2.0:
+        parts.append("atempo=2.0")
+        s /= 2.0
+    while s < 0.5:
+        parts.append("atempo=0.5")
+        s /= 0.5
+    if abs(s - 1.0) >= 0.001:
+        parts.append(f"atempo={s:.6f}")
+    return ",".join(parts)
+
+
+def _has_audio_stream(media_path: Path, cache: dict[Path, bool]) -> bool:
+    if media_path in cache:
+        return cache[media_path]
+    if media_path.suffix.lower() in _IMAGE_EXTS:
+        cache[media_path] = False
+        return False
+    try:
+        rc, stdout, _stderr = _run_subprocess(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(media_path),
+            ],
+            timeout=20,
+        )
+        has_a = rc == 0 and bool(stdout.strip())
+    except Exception:
+        has_a = False
+    cache[media_path] = has_a
+    return has_a
+
+
+def resolve_editor_src(job_dir: Path, src: Any) -> Path:
+    """Resolve an editor clip src descriptor into a safe, existing local Path."""
+    if not isinstance(src, dict):
+        raise ValueError("ข้อมูลแหล่งสื่อ (src) ไม่ถูกต้อง")
+    src_type = str(src.get("type") or "").strip().lower()
+
+    if src_type == "render":
+        return _latest_render_path(job_dir)
+
+    if src_type == "final":
+        return _latest_video_path(job_dir)
+
+    if src_type == "narration":
+        tl_path = job_dir / "timeline.json"
+        if not tl_path.exists():
+            tl_path = job_dir / "work" / "timeline.json"
+        tl = read_json(tl_path, None)
+        if not isinstance(tl, dict) or not tl.get("narrationPath"):
+            raise FileNotFoundError("ไม่พบไฟล์เสียงพากย์ (narrationPath) ใน timeline.json")
+        narr = Path(str(tl["narrationPath"]))
+        if not narr.is_absolute():
+            narr = (job_dir / narr).resolve()
+        if not narr.exists():
+            raise FileNotFoundError(f"ไม่พบไฟล์เสียงพากย์: {narr}")
+        return narr
+
+    if src_type == "bgm":
+        name = str(src.get("name") or "").strip()
+        if not name or name.lower() == "none":
+            raise ValueError("ไม่ได้ระบุชื่อเพลงประกอบ (BGM)")
+        safe_name = Path(name).name
+        if safe_name != name or "/" in name or "\\" in name or ".." in name:
+            raise ValueError(f"ชื่อเพลงประกอบไม่ถูกต้อง: {name}")
+        cand = AUDIO_ASSETS_DIR / (safe_name if safe_name.startswith("bgm_") and safe_name.endswith(".wav") else f"bgm_{safe_name}.wav")
+        if not cand.exists():
+            raise FileNotFoundError(f"ไม่พบไฟล์เพลงประกอบ: {name}")
+        return cand
+
+    if src_type == "sfx":
+        name = str(src.get("name") or "").strip()
+        if not name:
+            raise ValueError("ไม่ได้ระบุชื่อเอฟเฟกต์เสียง (SFX)")
+        safe_name = Path(name).name
+        if safe_name != name or "/" in name or "\\" in name or ".." in name:
+            raise ValueError(f"ชื่อเอฟเฟกต์เสียงไม่ถูกต้อง: {name}")
+        cand = AUDIO_ASSETS_DIR / (safe_name if safe_name.startswith("sfx_") and safe_name.endswith(".wav") else f"sfx_{safe_name}.wav")
+        if not cand.exists():
+            raise FileNotFoundError(f"ไม่พบไฟล์เอฟเฟกต์เสียง: {name}")
+        return cand
+
+    if src_type == "jobasset":
+        file_name = str(src.get("file") or "").strip()
+        if not file_name:
+            raise ValueError("ไม่ได้ระบุชื่อไฟล์สื่อในโปรเจกต์ (jobasset)")
+        assets_root = (job_dir / "editor_assets").resolve()
+        cand = (assets_root / file_name).resolve()
+        if cand == assets_root or assets_root not in cand.parents:
+            raise ValueError(f"พาธไฟล์ jobasset ไม่อยู่ในโฟลเดอร์ที่อนุญาต: {file_name}")
+        if not cand.exists() or not cand.is_file():
+            raise FileNotFoundError(f"ไม่พบไฟล์สื่อในโปรเจกต์: {file_name}")
+        return cand
+
+    raise ValueError(f"ไม่รู้จักชนิดแหล่งสื่อ (src.type): {src_type or '(ว่าง)'}")
+
+
+def _clip_timeline_duration(clip: dict[str, Any], is_image_or_text: bool = False, src_path: Path | None = None) -> float:
+    speed = max(0.1, min(16.0, float(clip.get("speed") or 1.0)))
+    in_pt = max(0.0, float(clip.get("in") or 0.0))
+    out_raw = clip.get("out")
+    out_pt = float(out_raw) if out_raw is not None else 0.0
+    if out_pt > in_pt:
+        return (out_pt - in_pt) / (1.0 if is_image_or_text else speed)
+    dur_raw = clip.get("duration")
+    if dur_raw is not None and float(dur_raw) > 0:
+        return float(dur_raw)
+    end_raw = clip.get("end")
+    start_pt = max(0.0, float(clip.get("start") or 0.0))
+    if end_raw is not None and float(end_raw) > start_pt:
+        return float(end_raw) - start_pt
+    if src_path is not None and not is_image_or_text and src_path.exists():
+        probed = probe_duration(src_path)
+        if probed > in_pt:
+            return (probed - in_pt) / speed
+    return 3.0 if is_image_or_text else 0.0
+
+
+def build_export_ffmpeg(job_dir: Path, project: dict[str, Any]) -> tuple[list[str], list[Path], float]:
+    """Build ffmpeg arguments (excluding binary/global flags and output path), input list, and total duration."""
+    if not isinstance(project, dict):
+        raise ValueError("ข้อมูลโปรเจกต์ตัดต่อไม่ถูกต้อง")
+
+    width = max(64, int(project.get("width") or 1080))
+    height = max(64, int(project.get("height") or 1920))
+    # Ensure even dimensions for yuv420p
+    width = width - (width % 2)
+    height = height - (height % 2)
+    fps = max(1, min(120, int(round(float(project.get("fps") or 30)))))
+
+    tracks = project.get("tracks")
+    if not isinstance(tracks, list) or not tracks:
+        raise ValueError("โปรเจกต์ไม่มีแทร็กสำหรับ Export")
+
+    master = project.get("master") if isinstance(project.get("master"), dict) else {}
+    master_vol = max(0.0, float(master.get("volume") if master.get("volume") is not None else 1.0))
+    master_lufs = float(master.get("lufs") if master.get("lufs") is not None else -14.0)
+    master_lufs = max(-36.0, min(-5.0, master_lufs))
+
+    # Separate active tracks
+    video_tracks: list[dict[str, Any]] = []
+    text_tracks: list[dict[str, Any]] = []
+    voice_tracks: list[dict[str, Any]] = []
+    music_tracks: list[dict[str, Any]] = []
+    sfx_tracks: list[dict[str, Any]] = []
+
+    for tr in tracks:
+        if not isinstance(tr, dict):
+            continue
+        kind = str(tr.get("kind") or "").strip().lower()
+        clips = tr.get("clips")
+        if not isinstance(clips, list) or not clips:
+            continue
+        if kind == "video":
+            if not tr.get("hidden"):
+                video_tracks.append(tr)
+        elif kind == "text":
+            if not tr.get("hidden"):
+                text_tracks.append(tr)
+        elif kind == "voice":
+            if not tr.get("muted"):
+                voice_tracks.append(tr)
+        elif kind == "music":
+            if not tr.get("muted"):
+                music_tracks.append(tr)
+        elif kind == "sfx":
+            if not tr.get("muted"):
+                sfx_tracks.append(tr)
+
+    # First pass: compute total_sec across all active clips
+    max_end = 0.0
+    resolved_cache: dict[str, Path] = {}
+    audio_stream_cache: dict[Path, bool] = {}
+
+    def _resolve_cached(src_obj: Any) -> Path:
+        key = json.dumps(src_obj, sort_keys=True, ensure_ascii=False)
+        if key not in resolved_cache:
+            resolved_cache[key] = resolve_editor_src(job_dir, src_obj)
+        return resolved_cache[key]
+
+    for tr in video_tracks + voice_tracks + music_tracks + sfx_tracks:
+        for cl in tr.get("clips") or []:
+            if not isinstance(cl, dict) or not cl.get("src"):
+                continue
+            sp = _resolve_cached(cl["src"])
+            is_img = sp.suffix.lower() in _IMAGE_EXTS
+            st = max(0.0, float(cl.get("start") or 0.0))
+            dur = _clip_timeline_duration(cl, is_image_or_text=is_img, src_path=sp)
+            if dur > 0:
+                max_end = max(max_end, st + dur)
+
+    for tr in text_tracks:
+        for cl in tr.get("clips") or []:
+            if not isinstance(cl, dict):
+                continue
+            st = max(0.0, float(cl.get("start") or 0.0))
+            dur = _clip_timeline_duration(cl, is_image_or_text=True)
+            if dur > 0:
+                max_end = max(max_end, st + dur)
+
+    total_sec = round(max_end, 3)
+    if total_sec < 0.05:
+        raise ValueError("โปรเจกต์ไม่มีคลิปที่มีความยาวมากกว่า 0 วินาทีสำหรับ Export")
+
+    # Input management: keep exact 1-to-1 mapping between -i occurrences and `inputs` list
+    input_args: list[str] = []
+    inputs: list[Path] = []
+    dedup_input_idx: dict[Path, int] = {}
+
+    def add_media_input(path: Path) -> int:
+        if path in dedup_input_idx:
+            return dedup_input_idx[path]
+        idx = len(inputs)
+        inputs.append(path)
+        input_args.extend(["-i", str(path)])
+        dedup_input_idx[path] = idx
+        return idx
+
+    def add_image_input(path: Path, dur_sec: float) -> int:
+        idx = len(inputs)
+        inputs.append(path)
+        input_args.extend(["-loop", "1", "-t", f"{max(0.05, dur_sec):.3f}", "-i", str(path)])
+        return idx
+
+    filter_parts: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 1. Video tracks: main track (v1) + overlay tracks (v2+)
+    # ------------------------------------------------------------------
+    main_vtrack: dict[str, Any] | None = None
+    overlay_vtracks: list[dict[str, Any]] = []
+    for tr in video_tracks:
+        if main_vtrack is None and (str(tr.get("id") or "") == "v1" or not overlay_vtracks):
+            main_vtrack = tr
+        else:
+            overlay_vtracks.append(tr)
+
+    # Extra audio clips from video tracks with volume > 0
+    extra_audio_entries: list[tuple[dict[str, Any], Path, int]] = []
+
+    v_cur_label = "vbase"
+    if main_vtrack is not None:
+        v1_clips = sorted(
+            [c for c in (main_vtrack.get("clips") or []) if isinstance(c, dict) and c.get("src")],
+            key=lambda c: float(c.get("start") or 0.0),
+        )
+        v1_segs: list[str] = []
+        cursor = 0.0
+        seg_idx = 0
+        v1_track_muted = bool(main_vtrack.get("muted"))
+
+        for cl in v1_clips:
+            sp = _resolve_cached(cl["src"])
+            is_img = sp.suffix.lower() in _IMAGE_EXTS
+            raw_start = max(0.0, float(cl.get("start") or 0.0))
+            in_pt = max(0.0, float(cl.get("in") or 0.0))
+            speed = max(0.1, min(16.0, float(cl.get("speed") or 1.0)))
+            dur = _clip_timeline_duration(cl, is_image_or_text=is_img, src_path=sp)
+            if dur < 0.02:
+                continue
+
+            # If clip starts after cursor, fill gap with black
+            if raw_start > cursor + 0.005:
+                gap = raw_start - cursor
+                lbl = f"vseg{seg_idx}"
+                seg_idx += 1
+                filter_parts.append(
+                    f"color=c=black:s={width}x{height}:r={fps}:d={gap:.3f},format=yuv420p,setsar=1[{lbl}]"
+                )
+                v1_segs.append(f"[{lbl}]")
+                cursor = raw_start
+            elif raw_start < cursor - 0.005:
+                # Trim overlapping head so timeline stays aligned
+                overlap = cursor - raw_start
+                if overlap >= dur - 0.02:
+                    continue
+                if not is_img:
+                    in_pt += overlap * speed
+                dur -= overlap
+
+            lbl = f"vseg{seg_idx}"
+            seg_idx += 1
+            fade_in = max(0.0, float(cl.get("fadeIn") or 0.0))
+            fade_out = max(0.0, float(cl.get("fadeOut") or 0.0))
+            fade_str = ""
+            if fade_in > 0:
+                fade_str += f",fade=t=in:st=0:d={min(fade_in, dur):.3f}"
+            if fade_out > 0:
+                fade_str += f",fade=t=out:st={max(0.0, dur - fade_out):.3f}:d={min(fade_out, dur):.3f}"
+
+            if is_img:
+                idx = add_image_input(sp, dur)
+                filter_parts.append(
+                    f"[{idx}:v]trim=duration={dur:.3f},setpts=PTS-STARTPTS,"
+                    f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                    f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
+                    f"fps={fps},format=yuv420p,setsar=1{fade_str}[{lbl}]"
+                )
+            else:
+                out_pt = in_pt + dur * speed
+                idx = add_media_input(sp)
+                filter_parts.append(
+                    f"[{idx}:v]trim=start={in_pt:.3f}:end={out_pt:.3f},"
+                    f"setpts=(PTS-STARTPTS)/{speed:.6f},"
+                    f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                    f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
+                    f"fps={fps},format=yuv420p,setsar=1{fade_str}[{lbl}]"
+                )
+                cl_vol = float(cl.get("volume") or 0.0)
+                if not v1_track_muted and cl_vol > 0 and _has_audio_stream(sp, audio_stream_cache):
+                    adj = dict(cl)
+                    adj["start"] = cursor
+                    adj["in"] = in_pt
+                    adj["out"] = out_pt
+                    extra_audio_entries.append((adj, sp, idx))
+
+            v1_segs.append(f"[{lbl}]")
+            cursor += dur
+
+        if total_sec > cursor + 0.005:
+            gap = total_sec - cursor
+            lbl = f"vseg{seg_idx}"
+            seg_idx += 1
+            filter_parts.append(
+                f"color=c=black:s={width}x{height}:r={fps}:d={gap:.3f},format=yuv420p,setsar=1[{lbl}]"
+            )
+            v1_segs.append(f"[{lbl}]")
+
+        if not v1_segs:
+            filter_parts.append(
+                f"color=c=black:s={width}x{height}:r={fps}:d={total_sec:.3f},format=yuv420p,setsar=1[vbase]"
+            )
+        elif len(v1_segs) == 1:
+            filter_parts.append(f"{v1_segs[0]}null[vbase]")
+        else:
+            filter_parts.append(f"{''.join(v1_segs)}concat=n={len(v1_segs)}:v=1:a=0[vbase]")
+    else:
+        filter_parts.append(
+            f"color=c=black:s={width}x{height}:r={fps}:d={total_sec:.3f},format=yuv420p,setsar=1[vbase]"
+        )
+
+    # Overlay tracks (v2+)
+    ov_idx = 0
+    for tr in overlay_vtracks:
+        tr_muted = bool(tr.get("muted"))
+        for cl in sorted(
+            [c for c in (tr.get("clips") or []) if isinstance(c, dict) and c.get("src")],
+            key=lambda c: float(c.get("start") or 0.0),
+        ):
+            sp = _resolve_cached(cl["src"])
+            is_img = sp.suffix.lower() in _IMAGE_EXTS
+            start_pt = max(0.0, float(cl.get("start") or 0.0))
+            in_pt = max(0.0, float(cl.get("in") or 0.0))
+            speed = max(0.1, min(16.0, float(cl.get("speed") or 1.0)))
+            dur = _clip_timeline_duration(cl, is_image_or_text=is_img, src_path=sp)
+            if dur < 0.02:
+                continue
+            end_pt = start_pt + dur
+
+            tf = cl.get("transform") if isinstance(cl.get("transform"), dict) else {}
+            tx = float(tf.get("x") if tf.get("x") is not None else 0.5)
+            ty = float(tf.get("y") if tf.get("y") is not None else 0.5)
+            sc = max(0.05, min(5.0, float(tf.get("scale") if tf.get("scale") is not None else 1.0)))
+            ow = max(2, int(round(width * sc / 2) * 2))
+            oh = max(2, int(round(height * sc / 2) * 2))
+
+            ov_lbl = f"ov{ov_idx}"
+            next_v_lbl = f"vov{ov_idx}"
+            ov_idx += 1
+
+            if is_img:
+                idx = add_image_input(sp, dur)
+                filter_parts.append(
+                    f"[{idx}:v]trim=duration={dur:.3f},setpts=PTS-STARTPTS+{start_pt:.3f}/TB,"
+                    f"scale={ow}:{oh}:force_original_aspect_ratio=decrease,format=rgba[{ov_lbl}]"
+                )
+            else:
+                out_pt = in_pt + dur * speed
+                idx = add_media_input(sp)
+                filter_parts.append(
+                    f"[{idx}:v]trim=start={in_pt:.3f}:end={out_pt:.3f},"
+                    f"setpts=(PTS-STARTPTS)/{speed:.6f}+{start_pt:.3f}/TB,"
+                    f"scale={ow}:{oh}:force_original_aspect_ratio=decrease,fps={fps},format=rgba[{ov_lbl}]"
+                )
+                cl_vol = float(cl.get("volume") or 0.0)
+                if not tr_muted and cl_vol > 0 and _has_audio_stream(sp, audio_stream_cache):
+                    extra_audio_entries.append((cl, sp, idx))
+
+            x_expr = f"({tx:.4f}*W-w/2)"
+            y_expr = f"({ty:.4f}*H-h/2)"
+            filter_parts.append(
+                f"[{v_cur_label}][{ov_lbl}]overlay=x={x_expr}:y={y_expr}:"
+                f"enable='between(t,{start_pt:.3f},{end_pt:.3f})':eof_action=pass[{next_v_lbl}]"
+            )
+            v_cur_label = next_v_lbl
+
+    # ------------------------------------------------------------------
+    # 2. Text tracks (drawtext + textfile under job_dir/editor_tmp)
+    # ------------------------------------------------------------------
+    has_text_clips = any(tr.get("clips") for tr in text_tracks)
+    if has_text_clips:
+        if not _ffmpeg_has_drawtext():
+            append_log(job_dir, "Warning: ffmpeg lacks drawtext filter; skipping text clips.")
+        else:
+            tmp_dir = job_dir / "editor_tmp"
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            thai_font = _find_thai_font()
+            txt_idx = 0
+            for tr in text_tracks:
+                for cl in tr.get("clips") or []:
+                    if not isinstance(cl, dict):
+                        continue
+                    text_val = str(cl.get("text") if cl.get("text") is not None else cl.get("label") or "").strip()
+                    if not text_val:
+                        continue
+                    start_pt = max(0.0, float(cl.get("start") or 0.0))
+                    dur = _clip_timeline_duration(cl, is_image_or_text=True)
+                    if dur < 0.02:
+                        continue
+                    end_pt = start_pt + dur
+
+                    txt_file = tmp_dir / f"text_{txt_idx}.txt"
+                    txt_file.write_text(text_val, encoding="utf-8")
+
+                    style = cl.get("style") if isinstance(cl.get("style"), dict) else {}
+                    font_size = int(cl.get("fontSize") or style.get("fontSize") or max(20, round(width * 0.055)))
+                    font_size = max(12, min(300, font_size))
+                    raw_color = str(cl.get("color") or style.get("color") or "#ffffff").strip()
+                    color = raw_color if re.fullmatch(r"#[0-9a-fA-F]{6,8}|[a-zA-Z]+(@[0-9.]+)?", raw_color) else "white"
+                    raw_bg = str(cl.get("bg") or cl.get("background") or style.get("bg") or "").strip()
+                    box_opts = ""
+                    if raw_bg and raw_bg.lower() not in ("none", "transparent"):
+                        bg_col = raw_bg if re.fullmatch(r"#[0-9a-fA-F]{6,8}|[a-zA-Z]+(@[0-9.]+)?", raw_bg) else "black@0.55"
+                        box_opts = f":box=1:boxcolor={bg_col}:boxborderw=10"
+
+                    x_val = cl.get("x") if cl.get("x") is not None else style.get("x")
+                    y_val = cl.get("y") if cl.get("y") is not None else style.get("y")
+                    tx = float(x_val) if x_val is not None else 0.5
+                    ty = float(y_val) if y_val is not None else 0.8
+                    x_expr = f"(w*{tx:.4f}-text_w/2)"
+                    y_expr = f"(h*{ty:.4f}-text_h/2)"
+
+                    font_opt = f"fontfile='{_escape_drawtext_path(thai_font)}':" if thai_font else ""
+                    next_v_lbl = f"vtxt{txt_idx}"
+                    txt_idx += 1
+                    filter_parts.append(
+                        f"[{v_cur_label}]drawtext={font_opt}"
+                        f"textfile='{_escape_drawtext_path(str(txt_file))}':"
+                        f"fontsize={font_size}:fontcolor={color}:borderw=2:bordercolor=black@0.75{box_opts}:"
+                        f"x={x_expr}:y={y_expr}:enable='between(t,{start_pt:.3f},{end_pt:.3f})'[{next_v_lbl}]"
+                    )
+                    v_cur_label = next_v_lbl
+
+    # Ensure final video stream is yuv420p and capped at total_sec
+    filter_parts.append(f"[{v_cur_label}]trim=duration={total_sec:.3f},setpts=PTS-STARTPTS,format=yuv420p[vout]")
+
+    # ------------------------------------------------------------------
+    # 3. Audio tracks: voice bus, sfx bus, music bus (+ sidechain ducking)
+    # ------------------------------------------------------------------
+    voice_labels: list[str] = []
+    sfx_labels: list[str] = []
+    music_labels: list[str] = []
+    max_duck_db = 0.0
+    a_clip_idx = 0
+
+    def _add_audio_clip(cl: dict[str, Any], sp: Path, idx: int, *, is_music: bool = False) -> str | None:
+        nonlocal a_clip_idx, max_duck_db
+        vol = float(cl.get("volume") if cl.get("volume") is not None else (0.14 if is_music else 1.0))
+        if vol <= 0.0:
+            return None
+        start_pt = max(0.0, float(cl.get("start") or 0.0))
+        in_pt = max(0.0, float(cl.get("in") or 0.0))
+        speed = max(0.1, min(16.0, float(cl.get("speed") or 1.0)))
+        fade_in = max(0.0, float(cl.get("fadeIn") or 0.0))
+        fade_out = max(0.0, float(cl.get("fadeOut") or 0.0))
+        loop_flag = bool(cl.get("loop")) if is_music else False
+
+        if is_music:
+            duck_val = float(cl.get("duckDb") or 0.0)
+            if duck_val > max_duck_db:
+                max_duck_db = duck_val
+
+        out_raw = cl.get("out")
+        out_pt = float(out_raw) if out_raw is not None else 0.0
+        if loop_flag:
+            if out_pt > in_pt:
+                clip_dur = (out_pt - in_pt) / speed
+            elif cl.get("duration") and float(cl["duration"]) > 0:
+                clip_dur = float(cl["duration"])
+            else:
+                clip_dur = max(0.05, total_sec - start_pt)
+            chain = (
+                f"[{idx}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+                f"aloop=loop=-1:size=2000000000,"
+                f"atrim=start={in_pt:.3f}:duration={clip_dur * speed:.3f},asetpts=PTS-STARTPTS"
+            )
+        else:
+            if out_pt <= in_pt:
+                probed = probe_duration(sp)
+                if probed <= in_pt:
+                    return None
+                out_pt = probed
+            clip_dur = (out_pt - in_pt) / speed
+            if clip_dur < 0.02:
+                return None
+            chain = (
+                f"[{idx}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+                f"atrim=start={in_pt:.3f}:end={out_pt:.3f},asetpts=PTS-STARTPTS"
+            )
+
+        atempo = _build_atempo_chain(speed)
+        if atempo:
+            chain += f",{atempo}"
+        chain += f",volume={vol:.4f}"
+        if fade_in > 0:
+            chain += f",afade=t=in:st=0:d={min(fade_in, clip_dur):.3f}"
+        if fade_out > 0:
+            chain += f",afade=t=out:st={max(0.0, clip_dur - fade_out):.3f}:d={min(fade_out, clip_dur):.3f}"
+        delay_ms = int(round(start_pt * 1000.0))
+        if delay_ms > 0:
+            chain += f",adelay={delay_ms}|{delay_ms}"
+        lbl = f"ac{a_clip_idx}"
+        a_clip_idx += 1
+        chain += f",apad=whole_dur={total_sec:.3f},atrim=0:{total_sec:.3f}[{lbl}]"
+        filter_parts.append(chain)
+        return f"[{lbl}]"
+
+    for tr in voice_tracks:
+        for cl in tr.get("clips") or []:
+            if not isinstance(cl, dict) or not cl.get("src") or cl.get("muted"):
+                continue
+            sp = _resolve_cached(cl["src"])
+            idx = add_media_input(sp)
+            lbl = _add_audio_clip(cl, sp, idx, is_music=False)
+            if lbl:
+                voice_labels.append(lbl)
+
+    for cl, sp, idx in extra_audio_entries:
+        lbl = _add_audio_clip(cl, sp, idx, is_music=False)
+        if lbl:
+            voice_labels.append(lbl)
+
+    for tr in sfx_tracks:
+        for cl in tr.get("clips") or []:
+            if not isinstance(cl, dict) or not cl.get("src") or cl.get("muted"):
+                continue
+            sp = _resolve_cached(cl["src"])
+            idx = add_media_input(sp)
+            lbl = _add_audio_clip(cl, sp, idx, is_music=False)
+            if lbl:
+                sfx_labels.append(lbl)
+
+    for tr in music_tracks:
+        for cl in tr.get("clips") or []:
+            if not isinstance(cl, dict) or not cl.get("src") or cl.get("muted"):
+                continue
+            sp = _resolve_cached(cl["src"])
+            idx = add_media_input(sp)
+            lbl = _add_audio_clip(cl, sp, idx, is_music=True)
+            if lbl:
+                music_labels.append(lbl)
+
+    voice_bus = ""
+    if len(voice_labels) == 1:
+        filter_parts.append(f"{voice_labels[0]}anull[vbus_raw]")
+        voice_bus = "vbus_raw"
+    elif len(voice_labels) > 1:
+        filter_parts.append(
+            f"{''.join(voice_labels)}amix=inputs={len(voice_labels)}:duration=longest:dropout_transition=0:normalize=0[vbus_raw]"
+        )
+        voice_bus = "vbus_raw"
+
+    sfx_bus = ""
+    if len(sfx_labels) == 1:
+        filter_parts.append(f"{sfx_labels[0]}anull[sbus_mix]")
+        sfx_bus = "sbus_mix"
+    elif len(sfx_labels) > 1:
+        filter_parts.append(
+            f"{''.join(sfx_labels)}amix=inputs={len(sfx_labels)}:duration=longest:dropout_transition=0:normalize=0[sbus_mix]"
+        )
+        sfx_bus = "sbus_mix"
+
+    music_bus = ""
+    if len(music_labels) == 1:
+        filter_parts.append(f"{music_labels[0]}anull[mbus_raw]")
+        music_bus = "mbus_raw"
+    elif len(music_labels) > 1:
+        filter_parts.append(
+            f"{''.join(music_labels)}amix=inputs={len(music_labels)}:duration=longest:dropout_transition=0:normalize=0[mbus_raw]"
+        )
+        music_bus = "mbus_raw"
+
+    mix_buses: list[str] = []
+    if voice_bus and music_bus and max_duck_db > 0.0:
+        ratio = max(2.0, min(20.0, max_duck_db / 2.0))
+        filter_parts.append(f"[{voice_bus}]asplit=2[vbus_mix][vbus_key]")
+        filter_parts.append(
+            f"[{music_bus}][vbus_key]sidechaincompress=threshold=0.03:ratio={ratio:.2f}:attack=30:release=350:makeup=1[mbus_mix]"
+        )
+        mix_buses.extend(["[vbus_mix]", "[mbus_mix]"])
+    else:
+        if voice_bus:
+            mix_buses.append(f"[{voice_bus}]")
+        if music_bus:
+            mix_buses.append(f"[{music_bus}]")
+    if sfx_bus:
+        mix_buses.append(f"[{sfx_bus}]")
+
+    if not mix_buses:
+        filter_parts.append(f"anullsrc=r=44100:cl=stereo,atrim=0:{total_sec:.3f}[aout]")
+    else:
+        if len(mix_buses) == 1:
+            filter_parts.append(f"{mix_buses[0]}anull[amix_raw]")
+        else:
+            filter_parts.append(
+                f"{''.join(mix_buses)}amix=inputs={len(mix_buses)}:duration=longest:dropout_transition=0:normalize=0[amix_raw]"
+            )
+        filter_parts.append(
+            f"[amix_raw]volume={master_vol:.4f},loudnorm=I={master_lufs:.1f}:TP=-1.5:LRA=11,"
+            f"atrim=0:{total_sec:.3f}[aout]"
+        )
+
+    filter_complex = ";".join(filter_parts)
+
+    argv: list[str] = [
+        *input_args,
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[vout]",
+        "-map",
+        "[aout]",
+        "-t",
+        f"{total_sec:.3f}",
+        "-c:v",
+        "libx264",
+        "-crf",
+        "18",
+        "-preset",
+        "veryfast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+    ]
+    return argv, inputs, total_sec
+
+
+def _try_offload_export_ffmpeg(
+    job_dir: Path,
+    argv: list[str],
+    inputs: list[Path],
+    out_mp4: Path,
+) -> bool:
+    """Attempt to offload ffmpeg export via agent-ctl run --requires ffmpeg. Returns True on success."""
+    stage_dir = job_dir / "editor_tmp" / "offload_stage"
+    offload_out_dir = job_dir / "editor_tmp" / "offload_out"
+    shutil.rmtree(stage_dir, ignore_errors=True)
+    shutil.rmtree(offload_out_dir, ignore_errors=True)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    offload_out_dir.mkdir(parents=True, exist_ok=True)
+
+    staged_files: list[Path] = []
+    staged_names: list[str] = []
+    for i, orig in enumerate(inputs):
+        ext = orig.suffix or ".bin"
+        name = f"in{i}{ext}"
+        dest = stage_dir / name
+        try:
+            os.link(orig, dest)
+        except OSError:
+            shutil.copy2(orig, dest)
+        staged_files.append(dest)
+        staged_names.append(name)
+
+    # Rewrite argv for remote execution (inputs -> staged basenames, filter_complex -> script file)
+    remote_argv: list[str] = []
+    in_idx = 0
+    fc_raw = ""
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "-i" and i + 1 < len(argv):
+            remote_argv.extend(["-i", staged_names[in_idx]])
+            in_idx += 1
+            i += 2
+            continue
+        if tok == "-filter_complex" and i + 1 < len(argv):
+            fc_raw = argv[i + 1]
+            remote_argv.extend(["-filter_complex_script", "fc_remote.txt"])
+            i += 2
+            continue
+        remote_argv.append(tok)
+        i += 1
+
+    # Stage any drawtext textfiles and rewrite their paths to relative basenames
+    if fc_raw:
+        txt_counter = 0
+
+        def _repl_textfile(m: re.Match[str]) -> str:
+            nonlocal txt_counter
+            raw_p = m.group(1).replace("\\:", ":").replace("\\'", "'")
+            p = Path(raw_p)
+            if p.exists():
+                tname = f"txt{txt_counter}.txt"
+                txt_counter += 1
+                dest = stage_dir / tname
+                shutil.copy2(p, dest)
+                staged_files.append(dest)
+                return f"textfile='{tname}'"
+            return m.group(0)
+
+        fc_remote = re.sub(r"textfile='([^']+)'", _repl_textfile, fc_raw)
+        # Drop homelab-specific fontfile path on remote workers (may be Windows/different font path)
+        fc_remote = re.sub(r"fontfile='[^']+':", "", fc_remote)
+        fc_file = stage_dir / "fc_remote.txt"
+        fc_file.write_text(fc_remote, encoding="utf-8")
+        staged_files.append(fc_file)
+
+    posix_args = " ".join(shlex.quote(a) for a in remote_argv)
+    win_args = " ".join(f'"{a}"' if (" " in a or ";" in a or "[" in a) else a for a in remote_argv)
+
+    cmd_posix = f'cd "$LAB_IN_DIR" && ffmpeg -y -hide_banner -v error {posix_args} "$LAB_OUT_DIR/out.mp4"'
+    cmd_win = f'cd /d "%LAB_IN_DIR%" && ffmpeg -y -hide_banner -v error {win_args} "%LAB_OUT_DIR%\\out.mp4"'
+
+    ctl_cmd: list[str] = [
+        AGENT_CTL_BIN,
+        "run",
+        "--name",
+        f"editor-export-{safe_slug(job_dir.name)}",
+        "--requires",
+        "ffmpeg",
+    ]
+    for sf in staged_files:
+        ctl_cmd.extend(["--input", str(sf)])
+    ctl_cmd.extend([
+        "--cmd-posix",
+        cmd_posix,
+        "--cmd-win",
+        cmd_win,
+        "--timeout",
+        "1800",
+        "--out-dir",
+        str(offload_out_dir),
+    ])
+
+    append_log(job_dir, f"Attempting remote offload export via agent-ctl ({len(staged_files)} staged inputs)...")
+    write_status(
+        job_dir,
+        status="editing",
+        stage="export",
+        progress=20,
+        message="กำลังส่งงาน Export วิดีโอไปยังเครื่องลูกข่าย...",
+    )
+    rc, stdout, stderr = _run_subprocess(ctl_cmd, timeout=1860)
+    remote_out = offload_out_dir / "out.mp4"
+    if rc == 0 and remote_out.exists() and remote_out.stat().st_size > 0:
+        shutil.copy2(remote_out, out_mp4)
+        append_log(job_dir, f"Remote offload export succeeded -> {out_mp4.name} ({out_mp4.stat().st_size} bytes)")
+        write_status(job_dir, status="editing", stage="export", progress=95, message="Export วิดีโอบนเครื่องลูกข่ายเสร็จสิ้น")
+        return True
+
+    if rc == 3:
+        append_log(job_dir, "No worker node online (agent-ctl exit 3); falling back to throttled local ffmpeg.")
+    else:
+        err_tail = (stderr or stdout or f"exit {rc}").strip().splitlines()[-1:] or [f"exit {rc}"]
+        append_log(job_dir, f"Offload export unavailable/failed (rc={rc}: {err_tail[0][:200]}); falling back to local ffmpeg.")
+    return False
+
+
+def run_export_ffmpeg(
+    job_dir: Path,
+    argv: list[str],
+    inputs: list[Path],
+    out_mp4: Path,
+    total_sec: float,
+) -> None:
+    """Run export ffmpeg: try Homelab Agent Hub offload first, else throttled local ffmpeg with progress."""
+    force_local = os.environ.get("STUDIO_EXPORT_LOCAL") == "1"
+    if not force_local and Path(AGENT_CTL_BIN).exists():
+        try:
+            if _try_offload_export_ffmpeg(job_dir, argv, inputs, out_mp4):
+                return
+        except Exception as exc:
+            append_log(job_dir, f"Offload export exception ({exc}); falling back to local ffmpeg.")
+
+    local_cmd = [
+        "nice",
+        "-n",
+        "15",
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-threads",
+        "2",
+        "-filter_complex_threads",
+        "2",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+        *argv,
+        str(out_mp4),
+    ]
+    append_log(job_dir, f"Running local throttled ffmpeg export (total={total_sec:.2f}s) -> {out_mp4.name}")
+    write_status(
+        job_dir,
+        status="editing",
+        stage="export",
+        progress=10,
+        message="กำลัง Export วิดีโอจากโปรแกรมตัดต่อ...",
+    )
+
+    proc = subprocess.Popen(
+        local_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    _active_procs.add(proc)
+
+    stderr_chunks: list[str] = []
+
+    def _drain_stderr() -> None:
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            stderr_chunks.append(line)
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
+    timeout_sec = 1800.0
+    deadline = time.monotonic() + timeout_sec
+    last_report_ts = 0.0
+    last_pct = 10
+
+    try:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"Export ffmpeg timed out after {int(timeout_sec)}s")
+            sline = line.strip()
+            if sline.startswith("out_time_ms=") or sline.startswith("out_time_us="):
+                val_str = sline.split("=", 1)[1].strip()
+                try:
+                    us = int(val_str)
+                    cur_sec = max(0.0, us / 1_000_000.0)
+                    pct = clamp(10 + int((cur_sec / max(0.1, total_sec)) * 85), 10, 95)
+                    now_ts = time.monotonic()
+                    if pct > last_pct and (pct - last_pct >= 3 or now_ts - last_report_ts >= 1.5):
+                        last_pct = pct
+                        last_report_ts = now_ts
+                        write_status(
+                            job_dir,
+                            status="editing",
+                            stage="export",
+                            progress=pct,
+                            message="กำลัง Export วิดีโอจากโปรแกรมตัดต่อ...",
+                        )
+                except ValueError:
+                    pass
+
+        rem = max(1.0, deadline - time.monotonic())
+        proc.wait(timeout=rem)
+        stderr_thread.join(timeout=5.0)
+    except (subprocess.TimeoutExpired, TimeoutError):
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except Exception:
+            proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except Exception:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                proc.kill()
+        raise TimeoutError(f"Export ffmpeg timed out after {int(timeout_sec)}s")
+    finally:
+        _active_procs.discard(proc)
+
+    stderr_text = "".join(stderr_chunks).strip()
+    if proc.returncode != 0 or not out_mp4.exists() or out_mp4.stat().st_size == 0:
+        last_line = stderr_text.splitlines()[-1] if stderr_text else f"ffmpeg exited {proc.returncode}"
+        raise RuntimeError(f"Export วิดีโอไม่สำเร็จ: {last_line[:240]}")
+
+
+def stage_export(job_dir: Path) -> dict[str, Any]:
+    """Export multi-track EDL from <jobDir>/editor_project.json into final_v{N}.mp4."""
+    project_path = job_dir / "editor_project.json"
+    if not project_path.exists():
+        raise ValueError("ยังไม่มีโปรเจกต์ตัดต่อ")
+    project = read_json(project_path, None)
+    if not isinstance(project, dict):
+        raise ValueError("ไฟล์โปรเจกต์ตัดต่อ (editor_project.json) ไม่ถูกต้อง")
+
+    ver = _next_version_number(job_dir)
+    out_mp4 = job_dir / f"final_v{ver}.mp4"
+    slug = safe_slug(job_dir.name)
+
+    with acquire_render_lock(job_dir):
+        write_status(
+            job_dir,
+            status="editing",
+            stage="export",
+            progress=10,
+            message="กำลังเตรียม Export วิดีโอจากโปรแกรมตัดต่อ...",
+        )
+        append_log(job_dir, f"Starting editor export -> {out_mp4.name}")
+        argv, inputs, total_sec = build_export_ffmpeg(job_dir, project)
+        run_export_ffmpeg(job_dir, argv, inputs, out_mp4, total_sec)
+        shutil.rmtree(job_dir / "editor_tmp", ignore_errors=True)
+        return _finalize_edit_version(job_dir, out_mp4, ver, "export:editor", f"{slug}_v{ver}.mp4")
+
+
 def _finalize_edit_version(
     job_dir: Path,
     out_mp4: Path,
@@ -2604,6 +3600,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p_cut.add_argument("--from", "--cut-from", dest="cut_from", type=float, required=True, help="Cut start in seconds")
     p_cut.add_argument("--to", "--cut-to", dest="cut_to", type=float, required=True, help="Cut end in seconds")
 
+    p_ex = sub.add_parser("export")
+    p_ex.add_argument("--job", required=True, help="Job directory path")
+
     return parser.parse_args(argv)
 
 
@@ -2634,6 +3633,8 @@ def main(argv: list[str] | None = None) -> int:
             stage_trim(job_dir, args.start, args.end)
         elif args.cmd == "cut":
             stage_cut(job_dir, args.cut_from, args.cut_to)
+        elif args.cmd == "export":
+            stage_export(job_dir)
         else:
             raise ValueError(f"ไม่รู้จักคำสั่ง: {args.cmd}")
         append_log(job_dir, f"=== studio_job.py {args.cmd} completed ===")

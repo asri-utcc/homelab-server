@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Video Editor · โปรแกรมตัดต่อ — Homelab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-void: #0f1115;
+      --bg-panel: #171a21;
+      --bg-surface: #1f242f;
+      --bg-hover: #282f3e;
+      --bg-active: #2e3748;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --ink: #eef2f6;
+      --ink-2: #b9c2cf;
+      --muted: #7f8b9c;
+      --cyan: #22d3ee;
+      --cyan-soft: rgba(34, 211, 238, 0.14);
+      --violet: #a855f7;
+      --violet-soft: rgba(168, 85, 247, 0.16);
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --red-soft: rgba(239, 68, 68, 0.16);
+
+      /* Track semantic colors */
+      --c-video: #3b82f6;
+      --c-voice: #22c55e;
+      --c-music: #a855f7;
+      --c-sfx: #f59e0b;
+      --c-text: #ec4899;
+
+      --sans: "Noto Sans Thai", "IBM Plex Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      --topbar-h: 52px;
+      --timeline-h: 38vh;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: var(--bg-void);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+    button, input, select, textarea { font-family: inherit; color: inherit; font-size: inherit; }
+    button { cursor: pointer; background: none; border: none; }
+    input, select, textarea { user-select: text; }
+    :focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+
+    /* Custom slim scrollbars */
+    ::-webkit-scrollbar { width: 7px; height: 7px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+
+    /* =====================================================================
+       APP SHELL (100vh CSS Grid)
+       ===================================================================== */
+    .ve-shell {
+      display: grid;
+      grid-template-rows: var(--topbar-h) auto 1fr 6px var(--timeline-h);
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      background: var(--bg-void);
+    }
+
+    /* =====================================================================
+       TOPBAR
+       ===================================================================== */
+    .ve-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 14px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      z-index: 20;
+    }
+    .ve-topbar-left, .ve-topbar-center, .ve-topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .ve-topbar-left { flex: 1; }
+    .ve-topbar-center { flex: 0 0 auto; }
+    .ve-topbar-right { flex: 1; justify-content: flex-end; }
+
+    .ve-back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--ink-2);
+      text-decoration: none;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .ve-back-link:hover {
+      background: var(--bg-hover);
+      color: var(--ink);
+      border-color: var(--border-strong);
+    }
+
+    .ve-project-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .ve-brand-badge {
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--cyan-soft);
+      color: var(--cyan);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .ve-job-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 340px;
+    }
+    .ve-job-switch-btn {
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 11.5px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .ve-job-switch-btn:hover { background: var(--bg-surface); color: var(--ink); }
+
+    .ve-icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 30px;
+      min-width: 30px;
+      padding: 0 8px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--ink-2);
+      font-size: 12.5px;
+      font-weight: 500;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .ve-icon-btn:hover:not(:disabled) {
+      background: var(--bg-hover);
+      color: var(--ink);
+      border-color: var(--border-strong);
+    }
+    .ve-icon-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .ve-icon-btn.is-active {
+      background: var(--cyan-soft);
+      border-color: rgba(34, 211, 238, 0.5);
+      color: var(--cyan);
+    }
+
+    .ve-save-status {
+      font-size: 11.5px;
+      color: var(--muted);
+      padding: 0 6px;
+      white-space: nowrap;
+    }
+    .ve-save-status.is-dirty { color: var(--amber); }
+    .ve-save-status.is-saving { color: var(--cyan); }
+    .ve-save-status.is-saved { color: var(--green); }
+    .ve-save-status.is-error { color: var(--red); }
+
+    .ve-btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 14px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 12.5px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      white-space: nowrap;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    .ve-btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+    .ve-btn-primary:active:not(:disabled) { transform: translateY(1px); }
+    .ve-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* =====================================================================
+       API WARNING BANNER
+       ===================================================================== */
+    .ve-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 16px;
+      background: rgba(245, 158, 11, 0.14);
+      border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fde68a;
+      font-size: 12.5px;
+    }
+    .ve-banner.is-visible { display: flex; }
+    .ve-banner-msg { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    .ve-banner-close {
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(253, 230, 138, 0.3);
+      color: #fde68a;
+      font-size: 11px;
+    }
+    .ve-banner-close:hover { background: rgba(245, 158, 11, 0.2); }
+
+    /* =====================================================================
+       MIDDLE WORKSPACE (Bin | Preview | Inspector)
+       ===================================================================== */
+    .ve-workspace {
+      display: grid;
+      grid-template-columns: 300px minmax(280px, 1fr) 320px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* ----- LEFT: MEDIA BIN ----- */
+    .ve-bin {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      min-height: 0;
+      overflow: hidden;
+    }
+    .ve-bin-tabs {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.16);
+      flex-shrink: 0;
+    }
+    .ve-bin-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 8px 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      transition: color 0.12s, background 0.12s, border-color 0.12s;
+    }
+    .ve-bin-tab:hover { color: var(--ink-2); background: rgba(255, 255, 255, 0.03); }
+    .ve-bin-tab.is-active {
+      color: var(--cyan);
+      border-bottom-color: var(--cyan);
+      background: rgba(34, 211, 238, 0.06);
+    }
+    .ve-bin-tab-ico { font-size: 14px; line-height: 1; }
+
+    .ve-bin-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ve-bin-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-top: 4px;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .ve-bin-hint {
+      font-size: 11.5px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      line-height: 1.45;
+    }
+
+    .ve-asset-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      cursor: grab;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .ve-asset-card:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .ve-asset-card:active { cursor: grabbing; }
+    .ve-asset-card.is-current-bgm {
+      border-color: rgba(168, 85, 247, 0.6);
+      background: rgba(168, 85, 247, 0.1);
+    }
+    .ve-asset-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .ve-asset-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .ve-asset-badge[data-kind="video"] { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+    .ve-asset-badge[data-kind="voice"] { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+    .ve-asset-badge[data-kind="music"] { background: rgba(168, 85, 247, 0.2); color: #d8b4fe; }
+    .ve-asset-badge[data-kind="sfx"]   { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+    .ve-asset-badge[data-kind="text"]  { background: rgba(236, 72, 153, 0.2); color: #f9a8d4; }
+
+    .ve-asset-info { flex: 1; min-width: 0; }
+    .ve-asset-name {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ve-asset-meta {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .ve-asset-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .ve-chip-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 11.5px;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--ink-2);
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .ve-chip-btn:hover { background: rgba(255, 255, 255, 0.12); color: var(--ink); }
+    .ve-chip-btn.is-accent {
+      background: var(--violet-soft);
+      border-color: rgba(168, 85, 247, 0.45);
+      color: #e9d5ff;
+      flex: 1;
+    }
+    .ve-chip-btn.is-accent:hover { background: rgba(168, 85, 247, 0.28); color: #fff; }
+    .ve-chip-btn.is-cyan {
+      background: var(--cyan-soft);
+      border-color: rgba(34, 211, 238, 0.4);
+      color: var(--cyan);
+    }
+    .ve-chip-btn.is-playing {
+      background: rgba(34, 197, 94, 0.2);
+      border-color: rgba(34, 197, 94, 0.5);
+      color: #86efac;
+    }
+
+    .ve-upload-dropzone {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 20px 14px;
+      border: 1.5px dashed rgba(34, 211, 238, 0.35);
+      border-radius: var(--radius);
+      background: rgba(34, 211, 238, 0.04);
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .ve-upload-dropzone:hover, .ve-upload-dropzone.is-dragover {
+      background: rgba(34, 211, 238, 0.1);
+      border-color: var(--cyan);
+    }
+    .ve-upload-dropzone strong { font-size: 12.5px; color: var(--ink); }
+    .ve-upload-dropzone span { font-size: 11px; color: var(--muted); }
+
+    /* ----- CENTER: PREVIEW STAGE ----- */
+    .ve-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-void);
+      min-height: 0;
+      padding: 12px 16px 10px;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ve-stage-wrap {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .ve-stage {
+      position: relative;
+      height: 100%;
+      max-height: 100%;
+      max-width: 100%;
+      aspect-ratio: 9 / 16;
+      background: #000000;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 16px 40px rgba(0, 0, 0, 0.6);
+    }
+    .ve-stage video,
+    .ve-stage .ve-overlay-media {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      pointer-events: none;
+    }
+    .ve-stage .ve-overlay-media {
+      background: transparent;
+      display: none;
+    }
+    .ve-stage-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+      background: #000;
+    }
+    .ve-text-overlays {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .ve-text-item {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      font-weight: 700;
+      text-align: center;
+      white-space: pre-wrap;
+      max-width: 92%;
+      line-height: 1.25;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.95);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .ve-text-item.is-selected {
+      outline: 1.5px dashed var(--cyan);
+      background: rgba(34, 211, 238, 0.1);
+    }
+
+    .ve-transport {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 560px;
+      gap: 10px;
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .ve-timecode {
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+    .ve-timecode .ve-timecode-total { color: var(--muted); }
+    .ve-transport-btns {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .ve-play-btn {
+      width: 34px;
+      height: 30px;
+      border-radius: var(--radius-sm);
+      background: var(--cyan);
+      color: #091017;
+      font-weight: 700;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: filter 0.12s;
+    }
+    .ve-play-btn:hover { filter: brightness(1.1); }
+    .ve-transport-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* ----- RIGHT: INSPECTOR ----- */
+    .ve-inspector {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      min-height: 0;
+      overflow: hidden;
+    }
+    .ve-inspector-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.14);
+      flex-shrink: 0;
+    }
+    .ve-inspector-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .ve-kind-pill {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--bg-surface);
+      color: var(--ink-2);
+    }
+    .ve-inspector-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .ve-field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--border);
+    }
+    .ve-field-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .ve-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ve-field-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .ve-field-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .ve-field label {
+      font-size: 11.5px;
+      color: var(--ink-2);
+      font-weight: 500;
+    }
+    .ve-field-val {
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 11.5px;
+      color: var(--cyan);
+    }
+    .ve-input, .ve-select, .ve-textarea {
+      width: 100%;
+      background: var(--bg-void);
+      border: 1px solid var(--border-strong);
+      border-radius: 5px;
+      padding: 6px 8px;
+      color: var(--ink);
+      font-size: 12.5px;
+    }
+    .ve-input:focus, .ve-select:focus, .ve-textarea:focus {
+      border-color: var(--cyan);
+      outline: none;
+    }
+    .ve-textarea { resize: vertical; min-height: 68px; }
+    .ve-range {
+      width: 100%;
+      accent-color: var(--cyan);
+      cursor: pointer;
+    }
+    .ve-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .ve-checkbox-row input { accent-color: var(--cyan); width: 15px; height: 15px; }
+
+    .ve-swatches {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .ve-swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      border: 1.5px solid rgba(255, 255, 255, 0.25);
+      cursor: pointer;
+    }
+    .ve-btn-danger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--red-soft);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .ve-btn-danger:hover { background: rgba(239, 68, 68, 0.28); color: #fff; }
+
+    .ve-btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .ve-btn-secondary:hover { background: var(--bg-hover); }
+
+    /* =====================================================================
+       HORIZONTAL SPLITTER (between workspace and timeline)
+       ===================================================================== */
+    .ve-splitter {
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      cursor: row-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s;
+    }
+    .ve-splitter::after {
+      content: "";
+      width: 44px;
+      height: 2px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .ve-splitter:hover, .ve-splitter.is-dragging {
+      background: rgba(34, 211, 238, 0.16);
+    }
+    .ve-splitter:hover::after, .ve-splitter.is-dragging::after {
+      background: var(--cyan);
+    }
+
+    /* =====================================================================
+       TIMELINE CONTAINER (#ve-timeline) & SHARED .vt-* CLASSES (for t4)
+       ===================================================================== */
+    .ve-timeline-host {
+      min-height: 0;
+      height: 100%;
+      width: 100%;
+      background: var(--bg-panel);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .ve-timeline-error {
+      margin: auto;
+      padding: 16px 22px;
+      border-radius: var(--radius);
+      background: var(--red-soft);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fecaca;
+      text-align: center;
+      max-width: 520px;
+    }
+    .ve-timeline-error strong { display: block; margin-bottom: 4px; color: #fff; }
+
+    /* Shared Timeline classes for video-editor-timeline.js (t4) */
+    .vt-root {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+      background: var(--bg-void);
+      color: var(--ink);
+      overflow: hidden;
+      position: relative;
+      font-size: 12px;
+    }
+    .vt-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      height: 36px;
+      padding: 0 10px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .vt-toolbar button {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 26px;
+      padding: 0 8px;
+      border-radius: 5px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--ink-2);
+      font-size: 11.5px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .vt-toolbar button:hover:not(:disabled) {
+      background: var(--bg-hover);
+      color: var(--ink);
+      border-color: var(--border-strong);
+    }
+    .vt-toolbar button.is-active {
+      background: var(--cyan-soft);
+      border-color: rgba(34, 211, 238, 0.55);
+      color: var(--cyan);
+    }
+    .vt-toolbar button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .vt-toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .vt-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 168px 1fr;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+    }
+    .vt-headers {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      overflow-x: hidden;
+      z-index: 4;
+    }
+    .vt-headers-corner {
+      height: 26px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 10.5px;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+    .vt-track-header {
+      height: 46px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 0 8px 0 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+      border-left: 3px solid transparent;
+    }
+    .vt-track-header[data-kind="video"] { border-left-color: var(--c-video); }
+    .vt-track-header[data-kind="voice"] { border-left-color: var(--c-voice); }
+    .vt-track-header[data-kind="music"] { border-left-color: var(--c-music); }
+    .vt-track-header[data-kind="sfx"]   { border-left-color: var(--c-sfx); }
+    .vt-track-header[data-kind="text"]  { border-left-color: var(--c-text); }
+    .vt-track-header.is-muted,
+    .vt-track-header.is-hidden { opacity: 0.55; }
+    .vt-track-name {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+    .vt-track-controls {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .vt-track-controls button {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .vt-track-controls button:hover { background: var(--bg-hover); color: var(--ink); }
+    .vt-track-controls button.is-active {
+      background: rgba(239, 68, 68, 0.22);
+      color: #fca5a5;
+    }
+
+    .vt-scroll {
+      position: relative;
+      overflow: auto;
+      min-height: 0;
+      background: var(--bg-void);
+    }
+    .vt-ruler {
+      position: sticky;
+      top: 0;
+      height: 26px;
+      background: #14171e;
+      border-bottom: 1px solid var(--border-strong);
+      z-index: 6;
+      cursor: pointer;
+    }
+    .vt-ruler-tick {
+      position: absolute;
+      bottom: 0;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.2);
+      pointer-events: none;
+    }
+    .vt-ruler-label {
+      position: absolute;
+      top: 3px;
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 10px;
+      color: var(--muted);
+      padding-left: 4px;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .vt-lanes {
+      position: relative;
+      min-width: 100%;
+    }
+    .vt-lane {
+      position: relative;
+      height: 46px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.012);
+    }
+    .vt-lane:nth-child(even) { background: rgba(255, 255, 255, 0.022); }
+    .vt-lane.is-locked {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 8px,
+        rgba(255, 255, 255, 0.025) 8px,
+        rgba(255, 255, 255, 0.025) 16px
+      );
+    }
+    .vt-lane.is-dragover {
+      background: rgba(34, 211, 238, 0.1);
+      box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.5);
+    }
+
+    .vt-clip {
+      position: absolute;
+      top: 4px;
+      height: 38px;
+      border-radius: 5px;
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      overflow: hidden;
+      cursor: grab;
+      color: #ffffff;
+      font-size: 11.5px;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      user-select: none;
+      transition: filter 0.08s;
+    }
+    .vt-clip:hover { filter: brightness(1.08); }
+    .vt-clip:active { cursor: grabbing; }
+    .vt-clip[data-kind="video"] { background: rgba(59, 130, 246, 0.78); border-color: #60a5fa; }
+    .vt-clip[data-kind="voice"] { background: rgba(34, 197, 94, 0.72); border-color: #4ade80; }
+    .vt-clip[data-kind="music"] { background: rgba(168, 85, 247, 0.76); border-color: #c084fc; }
+    .vt-clip[data-kind="sfx"]   { background: rgba(245, 158, 11, 0.78); border-color: #fbbf24; }
+    .vt-clip[data-kind="text"]  { background: rgba(236, 72, 153, 0.76); border-color: #f472b6; }
+
+    .vt-clip.is-selected {
+      outline: 2px solid #ffffff;
+      outline-offset: -1px;
+      box-shadow: 0 0 0 2px var(--cyan), 0 4px 14px rgba(0, 0, 0, 0.45);
+      z-index: 3;
+    }
+    .vt-clip.is-linked-hover {
+      outline: 1.5px dashed rgba(255, 255, 255, 0.8);
+    }
+    .vt-clip-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+    }
+    .vt-clip .vt-handle-l,
+    .vt-clip .vt-handle-r {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 7px;
+      cursor: ew-resize;
+      z-index: 4;
+      background: transparent;
+      transition: background 0.1s;
+    }
+    .vt-clip .vt-handle-l { left: 0; border-radius: 5px 0 0 5px; }
+    .vt-clip .vt-handle-r { right: 0; border-radius: 0 5px 5px 0; }
+    .vt-clip:hover .vt-handle-l,
+    .vt-clip:hover .vt-handle-r,
+    .vt-clip.is-selected .vt-handle-l,
+    .vt-clip.is-selected .vt-handle-r {
+      background: rgba(255, 255, 255, 0.28);
+    }
+
+    .vt-playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--cyan);
+      pointer-events: none;
+      z-index: 10;
+      box-shadow: 0 0 8px rgba(34, 211, 238, 0.65);
+    }
+    .vt-playhead::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -5px;
+      width: 12px;
+      height: 12px;
+      background: var(--cyan);
+      clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+    }
+    .vt-snapline {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: #fde047;
+      pointer-events: none;
+      z-index: 9;
+      display: none;
+      box-shadow: 0 0 6px rgba(253, 224, 71, 0.8);
+    }
+    .vt-snapline.is-visible { display: block; }
+
+    /* =====================================================================
+       MODALS (Job Picker / Export Progress & Result / Shortcuts)
+       ===================================================================== */
+    .ve-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 8, 12, 0.78);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+    .ve-modal-backdrop.is-open { display: flex; }
+    .ve-modal {
+      width: 100%;
+      max-width: 560px;
+      max-height: 86vh;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+    }
+    .ve-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ve-modal-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+    .ve-modal-body {
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .ve-modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.16);
+    }
+
+    .ve-job-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ve-job-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      text-align: left;
+      width: 100%;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .ve-job-item:hover {
+      border-color: var(--cyan);
+      background: var(--bg-hover);
+    }
+    .ve-job-item-title { font-weight: 600; color: var(--ink); font-size: 13px; }
+    .ve-job-item-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+    .ve-progress-track {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--bg-void);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .ve-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--cyan), var(--violet));
+      transition: width 0.25s ease;
+    }
+    .ve-export-video {
+      width: 100%;
+      max-height: 52vh;
+      background: #000;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    .ve-toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 9px 14px;
+      border-radius: var(--radius-sm);
+      background: #1f2937;
+      border: 1px solid var(--border-strong);
+      color: var(--ink);
+      font-size: 12.5px;
+      font-weight: 500;
+      z-index: 200;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity 0.18s, transform 0.18s;
+    }
+    .ve-toast.is-visible { opacity: 1; transform: translateY(0); }
+
+    .ve-kbd-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 14px;
+      font-size: 12px;
+    }
+    .ve-kbd-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    kbd {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--bg-void);
+      border: 1px solid var(--border-strong);
+      color: var(--cyan);
+    }
+
+    @media (max-width: 1024px) {
+      .ve-workspace {
+        grid-template-columns: 240px minmax(220px, 1fr) 260px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ve-shell" id="ve-shell">
+    <!-- TOPBAR -->
+    <header class="ve-topbar">
+      <div class="ve-topbar-left">
+        <a class="ve-back-link" href="/video-studio">← กลับ Studio</a>
+        <div class="ve-project-title-wrap">
+          <span class="ve-brand-badge">EDITOR</span>
+          <span class="ve-job-title" id="ve-job-title">กำลังโหลดโปรเจกต์...</span>
+          <button type="button" class="ve-job-switch-btn" id="ve-btn-open-jobs" title="สลับงานวิดีโอ">เปลี่ยนงาน</button>
+        </div>
+      </div>
+
+      <div class="ve-topbar-center">
+        <button type="button" class="ve-icon-btn" id="ve-btn-undo" title="เลิกทำ (Ctrl+Z)" disabled>↶</button>
+        <button type="button" class="ve-icon-btn" id="ve-btn-redo" title="ทำซ้ำ (Ctrl+Shift+Z)" disabled>↷</button>
+        <button type="button" class="ve-icon-btn" id="ve-btn-save" title="บันทึกโปรเจกต์ (Ctrl+S)">💾 บันทึก</button>
+        <button type="button" class="ve-icon-btn" id="ve-btn-shortcuts" title="คีย์ลัด">⌨️</button>
+      </div>
+
+      <div class="ve-topbar-right">
+        <span class="ve-save-status" id="ve-save-status">พร้อมใช้งาน</span>
+        <button type="button" class="ve-btn-primary" id="ve-btn-export">⬇ Export MP4</button>
+      </div>
+    </header>
+
+    <!-- API 404 BANNER -->
+    <div class="ve-banner" id="ve-api-banner" role="alert">
+      <div class="ve-banner-msg">
+        <span>⚠️</span>
+        <span id="ve-api-banner-text">ต้องรีสตาร์ท lab-dashboard เพื่อเปิดใช้ API โปรแกรมตัดต่อ</span>
+      </div>
+      <button type="button" class="ve-banner-close" id="ve-api-banner-close">ปิด</button>
+    </div>
+
+    <!-- MIDDLE WORKSPACE -->
+    <main class="ve-workspace">
+      <!-- LEFT: MEDIA BIN -->
+      <aside class="ve-bin" aria-label="คลังสื่อ">
+        <div class="ve-bin-tabs" role="tablist">
+          <button type="button" class="ve-bin-tab is-active" data-tab="media" role="tab" aria-selected="true">
+            <span class="ve-bin-tab-ico">🎞️</span><span>สื่อ</span>
+          </button>
+          <button type="button" class="ve-bin-tab" data-tab="music" role="tab" aria-selected="false">
+            <span class="ve-bin-tab-ico">🎵</span><span>เพลง</span>
+          </button>
+          <button type="button" class="ve-bin-tab" data-tab="sfx" role="tab" aria-selected="false">
+            <span class="ve-bin-tab-ico">✨</span><span>เอฟเฟกต์</span>
+          </button>
+          <button type="button" class="ve-bin-tab" data-tab="text" role="tab" aria-selected="false">
+            <span class="ve-bin-tab-ico">🔤</span><span>ข้อความ</span>
+          </button>
+          <button type="button" class="ve-bin-tab" data-tab="upload" role="tab" aria-selected="false">
+            <span class="ve-bin-tab-ico">⬆️</span><span>อัปโหลด</span>
+          </button>
+        </div>
+        <div class="ve-bin-body" id="ve-bin-body"></div>
+      </aside>
+
+      <!-- CENTER: PREVIEW STAGE -->
+      <section class="ve-preview" aria-label="จอพรีวิว">
+        <div class="ve-stage-wrap">
+          <div class="ve-stage" id="ve-stage">
+            <video id="ve-video" muted playsinline preload="auto"></video>
+            <video id="ve-overlay-video" class="ve-overlay-media" muted playsinline preload="auto"></video>
+            <img id="ve-overlay-img" class="ve-overlay-media" alt="" />
+            <div class="ve-stage-empty" id="ve-stage-empty">ไม่มีคลิปวิดีโอที่ตำแหน่งนี้</div>
+            <div class="ve-text-overlays" id="ve-text-overlays"></div>
+          </div>
+        </div>
+
+        <div class="ve-transport">
+          <div class="ve-timecode">
+            <span id="ve-tc-cur">00:00:00:00</span>
+            <span class="ve-timecode-total"> / <span id="ve-tc-total">00:00:00:00</span></span>
+          </div>
+          <div class="ve-transport-btns">
+            <button type="button" class="ve-icon-btn" id="ve-btn-home" title="ไปต้นคลิป (Home)">⏮</button>
+            <button type="button" class="ve-icon-btn" id="ve-btn-prev-frame" title="ถอย 1 เฟรม (←)">◀</button>
+            <button type="button" class="ve-play-btn" id="ve-btn-play" title="เล่น / หยุด (Space)">▶</button>
+            <button type="button" class="ve-icon-btn" id="ve-btn-next-frame" title="เดินหน้า 1 เฟรม (→)">▶</button>
+            <button type="button" class="ve-icon-btn" id="ve-btn-end" title="ไปท้ายคลิป (End)">⏭</button>
+          </div>
+          <div class="ve-transport-right">
+            <button type="button" class="ve-icon-btn" id="ve-btn-mute-master" title="ปิดเสียงพรีวิว">🔊</button>
+            <button type="button" class="ve-icon-btn" id="ve-btn-fullscreen" title="เต็มจอ">⛶</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT: INSPECTOR -->
+      <aside class="ve-inspector" aria-label="ตัวปรับแต่งคุณสมบัติ">
+        <div class="ve-inspector-header">
+          <div class="ve-inspector-title">
+            <span id="ve-inspector-title">โปรเจกต์</span>
+          </div>
+          <span class="ve-kind-pill" id="ve-inspector-pill">Project</span>
+        </div>
+        <div class="ve-inspector-body" id="ve-inspector-body"></div>
+      </aside>
+    </main>
+
+    <!-- SPLITTER -->
+    <div class="ve-splitter" id="ve-splitter" title="ลากเพื่อปรับความสูง Timeline" role="separator" aria-orientation="horizontal"></div>
+
+    <!-- BOTTOM: TIMELINE MOUNT -->
+    <section class="ve-timeline-host" id="ve-timeline" aria-label="Timeline หลายแทร็ก"></section>
+  </div>
+
+  <!-- MODAL: JOB PICKER -->
+  <div class="ve-modal-backdrop" id="ve-modal-jobs" role="dialog" aria-modal="true" aria-labelledby="ve-modal-jobs-title">
+    <div class="ve-modal">
+      <div class="ve-modal-header">
+        <h2 class="ve-modal-title" id="ve-modal-jobs-title">เลือกงานวิดีโอเพื่อเปิดในโปรแกรมตัดต่อ</h2>
+        <button type="button" class="ve-icon-btn" data-close-modal="ve-modal-jobs">✕</button>
+      </div>
+      <div class="ve-modal-body" id="ve-modal-jobs-body">
+        <div style="color:var(--muted)">กำลังโหลดรายการงาน...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: EXPORT -->
+  <div class="ve-modal-backdrop" id="ve-modal-export" role="dialog" aria-modal="true" aria-labelledby="ve-modal-export-title">
+    <div class="ve-modal">
+      <div class="ve-modal-header">
+        <h2 class="ve-modal-title" id="ve-modal-export-title">Export วิดีโอ (MP4)</h2>
+        <button type="button" class="ve-icon-btn" data-close-modal="ve-modal-export">✕</button>
+      </div>
+      <div class="ve-modal-body" id="ve-modal-export-body"></div>
+      <div class="ve-modal-footer" id="ve-modal-export-footer">
+        <button type="button" class="ve-btn-secondary" data-close-modal="ve-modal-export">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: KEYBOARD SHORTCUTS -->
+  <div class="ve-modal-backdrop" id="ve-modal-shortcuts" role="dialog" aria-modal="true" aria-labelledby="ve-modal-shortcuts-title">
+    <div class="ve-modal">
+      <div class="ve-modal-header">
+        <h2 class="ve-modal-title" id="ve-modal-shortcuts-title">คีย์ลัดโปรแกรมตัดต่อ</h2>
+        <button type="button" class="ve-icon-btn" data-close-modal="ve-modal-shortcuts">✕</button>
+      </div>
+      <div class="ve-modal-body">
+        <div class="ve-kbd-grid">
+          <div class="ve-kbd-row"><span>เล่น / หยุด</span><kbd>Space</kbd></div>
+          <div class="ve-kbd-row"><span>ตัดแยกคลิปที่ Playhead</span><kbd>S</kbd></div>
+          <div class="ve-kbd-row"><span>เครื่องมือเลือก (Select)</span><kbd>V</kbd></div>
+          <div class="ve-kbd-row"><span>เครื่องมือใบมีด (Razor)</span><kbd>C</kbd></div>
+          <div class="ve-kbd-row"><span>ลบคลิปที่เลือก</span><kbd>Delete</kbd></div>
+          <div class="ve-kbd-row"><span>ลบแบบเลื่อนชิด (Ripple)</span><kbd>Shift+Del</kbd></div>
+          <div class="ve-kbd-row"><span>เลิกทำ (Undo)</span><kbd>Ctrl+Z</kbd></div>
+          <div class="ve-kbd-row"><span>ทำซ้ำ (Redo)</span><kbd>Ctrl+Shift+Z</kbd></div>
+          <div class="ve-kbd-row"><span>ขยับทีละ 1 เฟรม</span><kbd>← / →</kbd></div>
+          <div class="ve-kbd-row"><span>ขยับทีละ 1 วินาที</span><kbd>Shift+←/→</kbd></div>
+          <div class="ve-kbd-row"><span>ต้นคลิป / ท้ายคลิป</span><kbd>Home / End</kbd></div>
+          <div class="ve-kbd-row"><span>ซูมเข้า / ซูมออก</span><kbd>+ / -</kbd></div>
+          <div class="ve-kbd-row"><span>บันทึกทันที</span><kbd>Ctrl+S</kbd></div>
+          <div class="ve-kbd-row"><span>ทำสำเนาคลิป</span><kbd>Ctrl+D</kbd></div>
+        </div>
+      </div>
+      <div class="ve-modal-footer">
+        <button type="button" class="ve-btn-secondary" data-close-modal="ve-modal-shortcuts">เข้าใจแล้ว</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ve-toast" id="ve-toast" role="status" aria-live="polite"></div>
+
+  <script src="/video-editor-timeline.js"></script>
+  <script src="/video-editor-app.js"></script>
+</body>
+</html>

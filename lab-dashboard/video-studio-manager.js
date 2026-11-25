@@ -31,6 +31,7 @@ const STYLE_LEARN = path.join(BASE, 'scripts', 'style_learn.py');
 const PRESETS_PATH = path.join(BASE, 'assets', 'studio_style_presets.json');
 const CUSTOM_STYLES_PATH = path.join(BASE, 'assets', 'studio_custom_styles.json');
 const CATALOG_PATH = path.join(BASE, 'assets', 'styles_catalog.json');
+const AUDIO_ASSETS_DIR = path.join(BASE, 'assets', 'audio');
 
 const OUT_ROOT = '/home/dev/.gemini/outputs/video-studio';
 const JOBS_DIR = path.join(OUT_ROOT, 'jobs');
@@ -66,6 +67,7 @@ const RUNNING_STATUSES = new Set([
 const ALLOWED_UPLOAD_EXTS = new Set([
     'png', 'jpg', 'jpeg', 'webp', 'gif',
     'mp4', 'mov', 'webm', 'mkv', 'm4v',
+    'mp3', 'wav', 'm4a', 'aac', 'ogg',
 ]);
 
 const UPLOAD_MIME_MAP = {
@@ -79,6 +81,15 @@ const UPLOAD_MIME_MAP = {
     'video/webm': 'webm',
     'video/x-matroska': 'mkv',
     'video/x-m4v': 'm4v',
+    'audio/mpeg': 'mp3',
+    'audio/mp3': 'mp3',
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'audio/wave': 'wav',
+    'audio/mp4': 'm4a',
+    'audio/x-m4a': 'm4a',
+    'audio/aac': 'aac',
+    'audio/ogg': 'ogg',
 };
 
 const SERVE_MIME_MAP = {
@@ -92,6 +103,9 @@ const SERVE_MIME_MAP = {
     '.gif': 'image/gif',
     '.wav': 'audio/wav',
     '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac',
+    '.ogg': 'audio/ogg',
     '.json': 'application/json; charset=utf-8',
     '.txt': 'text/plain; charset=utf-8',
     '.log': 'text/plain; charset=utf-8',
@@ -895,7 +909,7 @@ async function saveUpload(dataUrl, originalName = 'reference.mp4') {
         ext = origExt;
     }
     if (!ext || !ALLOWED_UPLOAD_EXTS.has(ext)) {
-        throw httpError('รองรับเฉพาะไฟล์ภาพ (PNG, JPG, WEBP, GIF) หรือวิดีโอ (MP4, MOV, WEBM, MKV, M4V)', 400);
+        throw httpError('รองรับเฉพาะไฟล์ภาพ (PNG, JPG, WEBP, GIF), วิดีโอ (MP4, MOV, WEBM, MKV, M4V) หรือเสียง (MP3, WAV, M4A, AAC, OGG)', 400);
     }
 
     await fsp.mkdir(UPLOAD_DIR, { recursive: true });
@@ -1099,6 +1113,575 @@ async function resolveSafeFile(jobId, relSubpath) {
     }
 }
 
+// ── Video Editor (Project / Assets / Media / Export) ─────────────────────────
+const AUDIO_NAME_RE = /^[a-z0-9_]{1,40}$/;
+const JOBASSET_NAME_RE = /^[a-zA-Z0-9._-]{1,120}$/;
+const ALLOWED_TRACK_KINDS = new Set(['video', 'voice', 'music', 'sfx', 'text']);
+const ALLOWED_SRC_TYPES = new Set(['render', 'final', 'narration', 'bgm', 'sfx', 'jobasset', 'upload']);
+const BGM_LABELS = {
+    warm_tech: 'Warm Tech (ทันสมัย อบอุ่น)',
+    story_cinematic: 'Story Cinematic (เล่าเรื่อง ดราม่า)',
+    dawn_ambient: 'Dawn Ambient (สงบ นุ่มนวล)',
+};
+
+const durationProbeCache = new Map();
+
+function uidHex(prefix = 'c') {
+    return `${prefix}_${crypto.randomBytes(5).toString('hex')}`;
+}
+
+function clampNum(val, min, max, fallback) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+}
+
+async function probeDurationSec(filePath) {
+    if (!filePath) return 0;
+    let st;
+    try {
+        st = await fsp.stat(filePath);
+    } catch (_) {
+        return 0;
+    }
+    const cacheKey = `${filePath}:${st.mtimeMs}:${st.size}`;
+    if (durationProbeCache.has(cacheKey)) {
+        return durationProbeCache.get(cacheKey);
+    }
+    const dur = await new Promise((resolve) => {
+        execFile(
+            'ffprobe',
+            ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
+            { timeout: 8000 },
+            (err, stdout) => {
+                if (err) return resolve(0);
+                const parsed = parseFloat(String(stdout || '').trim());
+                resolve(Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 1000) / 1000 : 0);
+            }
+        );
+    });
+    if (durationProbeCache.size > 500) durationProbeCache.clear();
+    durationProbeCache.set(cacheKey, dur);
+    return dur;
+}
+
+async function findLatestJobRender(jobDir) {
+    const candidates = [];
+    try {
+        const entries = await fsp.readdir(jobDir);
+        for (const f of entries) {
+            if (f === 'render.mp4' || /^render_v\d+\.mp4$/.test(f)) {
+                const full = path.join(jobDir, f);
+                const st = await fsp.stat(full).catch(() => null);
+                if (st && st.isFile()) candidates.push({ file: full, name: f, mtime: st.mtimeMs });
+            }
+        }
+    } catch (_) {}
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    return candidates[0] || null;
+}
+
+async function findLatestJobFinal(jobDir) {
+    const candidates = [];
+    try {
+        const entries = await fsp.readdir(jobDir);
+        for (const f of entries) {
+            if (f === 'final.mp4' || /^final_v\d+\.mp4$/.test(f)) {
+                const full = path.join(jobDir, f);
+                const st = await fsp.stat(full).catch(() => null);
+                if (st && st.isFile()) candidates.push({ file: full, name: f, mtime: st.mtimeMs });
+            }
+        }
+    } catch (_) {}
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    return candidates[0] || null;
+}
+
+async function buildDefaultProject(cleanId) {
+    const jobDir = path.join(JOBS_DIR, cleanId);
+    const props = await readJsonSafe(path.join(jobDir, 'props.json'), {});
+    const reqData = await readJsonSafe(path.join(jobDir, 'request.json'), {});
+    const timeline = await readJsonSafe(path.join(jobDir, 'timeline.json'), {});
+
+    const fps = clampNum(props.fps, 15, 60, 30);
+    const width = clampNum(props.width, 240, 3840, 1080);
+    const height = clampNum(props.height, 240, 3840, 1920);
+
+    const renderInfo = await findLatestJobRender(jobDir);
+    const renderDur = renderInfo ? await probeDurationSec(renderInfo.file) : 0;
+    const totalSec = clampNum(props.totalSec || renderDur, 0.5, 7200, 10);
+
+    const v1Clips = [];
+    const a1Clips = [];
+    const scenes = Array.isArray(props.scenes) ? props.scenes : [];
+
+    if (scenes.length > 0) {
+        for (let i = 0; i < scenes.length; i++) {
+            const sc = scenes[i] || {};
+            const startSec = clampNum(sc.startSec, 0, 7200, 0);
+            const endSec = clampNum(sc.endSec, startSec + 0.1, 7200, totalSec);
+            const linkId = uidHex('lnk');
+            const label = String(sc.title || `ฉาก ${i + 1}`).slice(0, 80);
+            v1Clips.push({
+                id: uidHex('v'),
+                linkId,
+                label,
+                sceneId: sc.id ? String(sc.id) : undefined,
+                src: { type: 'render' },
+                in: startSec,
+                out: endSec,
+                start: startSec,
+                speed: 1,
+                volume: 0,
+                fadeIn: 0,
+                fadeOut: 0,
+            });
+            a1Clips.push({
+                id: uidHex('a'),
+                linkId,
+                label: `พากย์: ${label}`,
+                sceneId: sc.id ? String(sc.id) : undefined,
+                src: { type: 'narration' },
+                in: startSec,
+                out: endSec,
+                start: startSec,
+                speed: 1,
+                volume: 1,
+                fadeIn: 0,
+                fadeOut: 0,
+            });
+        }
+    } else {
+        const linkId = uidHex('lnk');
+        v1Clips.push({
+            id: uidHex('v'),
+            linkId,
+            label: 'วิดีโอหลัก',
+            src: { type: 'render' },
+            in: 0,
+            out: totalSec,
+            start: 0,
+            speed: 1,
+            volume: 0,
+            fadeIn: 0,
+            fadeOut: 0,
+        });
+        if (timeline && timeline.narrationPath) {
+            a1Clips.push({
+                id: uidHex('a'),
+                linkId,
+                label: 'เสียงพากย์',
+                src: { type: 'narration' },
+                in: 0,
+                out: totalSec,
+                start: 0,
+                speed: 1,
+                volume: 1,
+                fadeIn: 0,
+                fadeOut: 0,
+            });
+        }
+    }
+
+    const bgmName = String(reqData.bgm || 'warm_tech').trim();
+    const m1Clips = [];
+    if (bgmName && bgmName !== 'none' && AUDIO_NAME_RE.test(bgmName)) {
+        const bgmFile = path.join(AUDIO_ASSETS_DIR, `bgm_${bgmName}.wav`);
+        if (fs.existsSync(bgmFile)) {
+            m1Clips.push({
+                id: uidHex('m'),
+                label: BGM_LABELS[bgmName] || bgmName,
+                src: { type: 'bgm', name: bgmName },
+                in: 0,
+                out: totalSec,
+                start: 0,
+                volume: 0.14,
+                fadeIn: 1,
+                fadeOut: 2,
+                duckDb: 12,
+                loop: true,
+            });
+        }
+    }
+
+    const s1Clips = [];
+    const sfxEvents = Array.isArray(timeline.sfx) ? timeline.sfx : [];
+    for (const ev of sfxEvents) {
+        if (!ev || !ev.name) continue;
+        const sfxName = String(ev.name).trim();
+        if (!AUDIO_NAME_RE.test(sfxName)) continue;
+        const sfxFile = path.join(AUDIO_ASSETS_DIR, `sfx_${sfxName}.wav`);
+        if (!fs.existsSync(sfxFile)) continue;
+        const sfxDur = (await probeDurationSec(sfxFile)) || 0.8;
+        const stSec = clampNum(ev.atSec ?? ev.startSec ?? ev.time, 0, 7200, 0);
+        s1Clips.push({
+            id: uidHex('s'),
+            label: sfxName,
+            src: { type: 'sfx', name: sfxName },
+            in: 0,
+            out: sfxDur,
+            start: stSec,
+            speed: 1,
+            volume: clampNum(ev.volume, 0, 2, 0.7),
+            fadeIn: 0,
+            fadeOut: 0,
+        });
+    }
+
+    return {
+        version: 1,
+        jobId: cleanId,
+        fps,
+        width,
+        height,
+        master: { volume: 1, lufs: -14 },
+        tracks: [
+            { id: 'v1', kind: 'video', name: 'วิดีโอหลัก', muted: false, locked: false, hidden: false, clips: v1Clips },
+            { id: 'v2', kind: 'video', name: 'โอเวอร์เลย์', muted: false, locked: false, hidden: false, clips: [] },
+            { id: 'a1', kind: 'voice', name: 'เสียงพากย์', muted: false, locked: false, hidden: false, clips: a1Clips },
+            { id: 'm1', kind: 'music', name: 'เพลงประกอบ (BGM)', muted: false, locked: false, hidden: false, clips: m1Clips },
+            { id: 's1', kind: 'sfx', name: 'เอฟเฟกต์เสียง', muted: false, locked: false, hidden: false, clips: s1Clips },
+            { id: 't1', kind: 'text', name: 'ข้อความ', muted: false, locked: false, hidden: false, clips: [] },
+        ],
+    };
+}
+
+function sanitizeClipSrc(rawSrc) {
+    if (!rawSrc || typeof rawSrc !== 'object') return null;
+    const type = String(rawSrc.type || '').trim();
+    if (!ALLOWED_SRC_TYPES.has(type)) return null;
+
+    if (type === 'render' || type === 'final' || type === 'narration') {
+        return { type };
+    }
+    if (type === 'bgm' || type === 'sfx') {
+        const name = String(rawSrc.name || '').trim();
+        if (!AUDIO_NAME_RE.test(name)) return null;
+        const prefix = type === 'bgm' ? 'bgm_' : 'sfx_';
+        if (!fs.existsSync(path.join(AUDIO_ASSETS_DIR, `${prefix}${name}.wav`))) {
+            return null;
+        }
+        return { type, name };
+    }
+    if (type === 'jobasset') {
+        const file = path.basename(String(rawSrc.file || '').trim());
+        if (!JOBASSET_NAME_RE.test(file) || file.includes('..')) return null;
+        return { type: 'jobasset', file };
+    }
+    if (type === 'upload') {
+        const id = String(rawSrc.id || rawSrc.uploadId || '').trim();
+        if (!id) return null;
+        return { type: 'upload', id };
+    }
+    return null;
+}
+
+function sanitizeProject(project, cleanId) {
+    if (!project || typeof project !== 'object') {
+        throw httpError('ข้อมูลโปรเจกต์ไม่ถูกต้อง', 400);
+    }
+    const rawTracks = Array.isArray(project.tracks) ? project.tracks : [];
+    if (rawTracks.length > 12) {
+        throw httpError('จำนวนแทร็กเกินกำหนด (สูงสุด 12 แทร็ก)', 400);
+    }
+
+    const masterRaw = project.master && typeof project.master === 'object' ? project.master : {};
+    const sanitized = {
+        version: 1,
+        jobId: cleanId,
+        fps: clampNum(project.fps, 15, 60, 30),
+        width: Math.round(clampNum(project.width, 240, 3840, 1080)),
+        height: Math.round(clampNum(project.height, 240, 3840, 1920)),
+        master: {
+            volume: clampNum(masterRaw.volume, 0, 2, 1),
+            lufs: clampNum(masterRaw.lufs, -30, -5, -14),
+        },
+        tracks: [],
+    };
+
+    let totalClips = 0;
+    for (let ti = 0; ti < rawTracks.length; ti++) {
+        const tr = rawTracks[ti];
+        if (!tr || typeof tr !== 'object') continue;
+        const kind = String(tr.kind || '').trim();
+        if (!ALLOWED_TRACK_KINDS.has(kind)) continue;
+
+        const rawClips = Array.isArray(tr.clips) ? tr.clips : [];
+        const cleanClips = [];
+        for (let ci = 0; ci < rawClips.length; ci++) {
+            totalClips += 1;
+            if (totalClips > 500) {
+                throw httpError('จำนวนคลิปรวมเกินกำหนด (สูงสุด 500 คลิป)', 400);
+            }
+            const c = rawClips[ci];
+            if (!c || typeof c !== 'object') continue;
+
+            const inSec = clampNum(c.in, 0, 7200, 0);
+            const outSec = clampNum(c.out, inSec + 0.05, 7200, inSec + 1);
+            const startSec = clampNum(c.start, 0, 7200, 0);
+
+            const cleanClip = {
+                id: String(c.id || uidHex('c')).slice(0, 48),
+                label: String(c.label || '').slice(0, 120),
+                in: inSec,
+                out: outSec,
+                start: startSec,
+                speed: clampNum(c.speed, 0.25, 4, 1),
+                volume: clampNum(c.volume, 0, 2, kind === 'video' ? 0 : 1),
+                fadeIn: clampNum(c.fadeIn, 0, 10, 0),
+                fadeOut: clampNum(c.fadeOut, 0, 10, 0),
+            };
+            if (c.linkId) cleanClip.linkId = String(c.linkId).slice(0, 48);
+            if (c.sceneId) cleanClip.sceneId = String(c.sceneId).slice(0, 64);
+
+            if (kind === 'text') {
+                cleanClip.text = String(c.text || '').slice(0, 300);
+                cleanClip.fontSize = Math.round(clampNum(c.fontSize, 12, 200, 48));
+                cleanClip.color = String(c.color || '#ffffff').slice(0, 24);
+                cleanClip.x = clampNum(c.x, 0, 1, 0.5);
+                cleanClip.y = clampNum(c.y, 0, 1, 0.8);
+            } else {
+                const src = sanitizeClipSrc(c.src);
+                if (!src) continue;
+                cleanClip.src = src;
+            }
+
+            if (kind === 'music') {
+                cleanClip.duckDb = clampNum(c.duckDb, 0, 30, 12);
+                cleanClip.loop = Boolean(c.loop);
+            }
+            if (kind === 'video' && c.transform && typeof c.transform === 'object') {
+                cleanClip.transform = {
+                    x: clampNum(c.transform.x, 0, 1, 0.5),
+                    y: clampNum(c.transform.y, 0, 1, 0.5),
+                    scale: clampNum(c.transform.scale, 0.1, 4, 1),
+                };
+            }
+
+            cleanClips.push(cleanClip);
+        }
+
+        sanitized.tracks.push({
+            id: String(tr.id || uidHex('tr')).slice(0, 32),
+            kind,
+            name: String(tr.name || kind).slice(0, 60),
+            muted: Boolean(tr.muted),
+            locked: Boolean(tr.locked),
+            hidden: Boolean(tr.hidden),
+            clips: cleanClips,
+        });
+    }
+
+    return sanitized;
+}
+
+async function getEditorProject(id) {
+    const cleanId = validateId(id, 'Job ID');
+    const jobDir = path.join(JOBS_DIR, cleanId);
+    const job = await readJsonSafe(path.join(jobDir, 'job.json'), null);
+    if (!job) throw httpError('ไม่พบงานที่ระบุ', 404);
+
+    const projPath = path.join(jobDir, 'editor_project.json');
+    const existing = await readJsonSafe(projPath, null);
+    if (existing && typeof existing === 'object') {
+        return { ok: true, project: existing, isDefault: false };
+    }
+    const def = await buildDefaultProject(cleanId);
+    return { ok: true, project: def, isDefault: true };
+}
+
+async function saveEditorProject(id, project) {
+    const cleanId = validateId(id, 'Job ID');
+    const jobDir = path.join(JOBS_DIR, cleanId);
+    const job = await readJsonSafe(path.join(jobDir, 'job.json'), null);
+    if (!job) throw httpError('ไม่พบงานที่ระบุ', 404);
+
+    const sanitized = sanitizeProject(project, cleanId);
+    const assetsDir = path.join(jobDir, 'editor_assets');
+
+    for (const tr of sanitized.tracks) {
+        for (const clip of tr.clips) {
+            if (clip.src && clip.src.type === 'upload') {
+                const upPath = await resolveUploadPath(clip.src.id);
+                await fsp.mkdir(assetsDir, { recursive: true });
+                const safeFile = path.basename(upPath).replace(/[^a-zA-Z0-9._-]/g, '_');
+                const destPath = path.join(assetsDir, safeFile);
+                await fsp.copyFile(upPath, destPath);
+                clip.src = { type: 'jobasset', file: safeFile };
+            }
+        }
+    }
+
+    await atomicWriteJson(path.join(jobDir, 'editor_project.json'), sanitized);
+    return { ok: true, project: sanitized };
+}
+
+async function resetEditorProject(id) {
+    const cleanId = validateId(id, 'Job ID');
+    const jobDir = path.join(JOBS_DIR, cleanId);
+    const job = await readJsonSafe(path.join(jobDir, 'job.json'), null);
+    if (!job) throw httpError('ไม่พบงานที่ระบุ', 404);
+
+    await fsp.unlink(path.join(jobDir, 'editor_project.json')).catch(() => {});
+    const project = await buildDefaultProject(cleanId);
+    return { ok: true, project, isDefault: true };
+}
+
+async function exportEditorProject(id, project) {
+    if (project && typeof project === 'object') {
+        await saveEditorProject(id, project);
+    }
+    const { cleanId, jobPath, job } = await ensureJobReadyForAction(id);
+    job.status = 'queued';
+    job.stage = 'export';
+    job.error = null;
+    job.message = 'เข้าคิว Export จากโปรแกรมตัดต่อ...';
+    job.updatedAt = new Date().toISOString();
+    await atomicWriteJson(jobPath, job);
+
+    await spawnRunner(cleanId, 'export');
+    return { ok: true, id: cleanId, status: 'queued', stage: 'export' };
+}
+
+async function listEditorAssets(jobId) {
+    const cleanId = validateId(jobId, 'Job ID');
+    const jobDir = path.join(JOBS_DIR, cleanId);
+    const job = await readJsonSafe(path.join(jobDir, 'job.json'), null);
+    if (!job) throw httpError('ไม่พบงานที่ระบุ', 404);
+
+    const bgm = [];
+    const sfx = [];
+    try {
+        const files = (await fsp.readdir(AUDIO_ASSETS_DIR)).sort();
+        for (const f of files) {
+            if (!f.endsWith('.wav')) continue;
+            const full = path.join(AUDIO_ASSETS_DIR, f);
+            if (f.startsWith('bgm_')) {
+                const name = f.slice(4, -4);
+                const durationSec = await probeDurationSec(full);
+                bgm.push({
+                    name,
+                    label: BGM_LABELS[name] || name,
+                    durationSec,
+                    url: `/api/video-studio/media/bgm/${encodeURIComponent(name)}?job=${encodeURIComponent(cleanId)}`,
+                });
+            } else if (f.startsWith('sfx_')) {
+                const name = f.slice(4, -4);
+                const durationSec = await probeDurationSec(full);
+                sfx.push({
+                    name,
+                    label: name,
+                    durationSec,
+                    url: `/api/video-studio/media/sfx/${encodeURIComponent(name)}?job=${encodeURIComponent(cleanId)}`,
+                });
+            }
+        }
+    } catch (_) {}
+
+    const renderInfo = await findLatestJobRender(jobDir);
+    const finalInfo = await findLatestJobFinal(jobDir);
+    const timeline = await readJsonSafe(path.join(jobDir, 'timeline.json'), {});
+    const narrPath = timeline && timeline.narrationPath ? String(timeline.narrationPath) : '';
+    const hasNarr = narrPath && fs.existsSync(narrPath);
+
+    const jobMedia = {
+        render: renderInfo ? {
+            file: renderInfo.name,
+            durationSec: await probeDurationSec(renderInfo.file),
+            url: `/api/video-studio/media/render/main?job=${encodeURIComponent(cleanId)}`,
+        } : null,
+        final: finalInfo ? {
+            file: finalInfo.name,
+            durationSec: await probeDurationSec(finalInfo.file),
+            url: `/api/video-studio/media/final/main?job=${encodeURIComponent(cleanId)}`,
+        } : null,
+        narration: hasNarr ? {
+            file: path.basename(narrPath),
+            durationSec: await probeDurationSec(narrPath),
+            url: `/api/video-studio/media/narration/main?job=${encodeURIComponent(cleanId)}`,
+        } : null,
+    };
+
+    const jobAssets = [];
+    const assetsDir = path.join(jobDir, 'editor_assets');
+    try {
+        const files = (await fsp.readdir(assetsDir)).sort();
+        for (const f of files) {
+            const full = path.join(assetsDir, f);
+            const st = await fsp.stat(full).catch(() => null);
+            if (!st || !st.isFile()) continue;
+            const ext = path.extname(f).toLowerCase();
+            jobAssets.push({
+                file: f,
+                size: st.size,
+                mime: SERVE_MIME_MAP[ext] || 'application/octet-stream',
+                durationSec: await probeDurationSec(full),
+                url: `/api/video-studio/media/jobasset/${encodeURIComponent(f)}?job=${encodeURIComponent(cleanId)}`,
+            });
+        }
+    } catch (_) {}
+
+    return { ok: true, jobId: cleanId, bgm, sfx, job: jobMedia, jobAssets };
+}
+
+async function resolveEditorMedia(jobId, type, name) {
+    const cleanId = validateId(jobId, 'Job ID');
+    const cleanType = String(type || '').trim();
+    const cleanName = String(name || '').trim();
+    const jobDir = path.join(JOBS_DIR, cleanId);
+
+    let targetPath = null;
+    if (cleanType === 'bgm' || cleanType === 'sfx') {
+        if (!AUDIO_NAME_RE.test(cleanName)) return null;
+        const prefix = cleanType === 'bgm' ? 'bgm_' : 'sfx_';
+        const baseDir = path.resolve(AUDIO_ASSETS_DIR);
+        const resolved = path.resolve(baseDir, `${prefix}${cleanName}.wav`);
+        if (!resolved.startsWith(baseDir + path.sep)) return null;
+        targetPath = resolved;
+    } else if (cleanType === 'render') {
+        const info = await findLatestJobRender(jobDir);
+        targetPath = info ? info.file : null;
+    } else if (cleanType === 'final') {
+        const info = await findLatestJobFinal(jobDir);
+        targetPath = info ? info.file : null;
+    } else if (cleanType === 'narration') {
+        const timeline = await readJsonSafe(path.join(jobDir, 'timeline.json'), {});
+        const narrPath = timeline && timeline.narrationPath ? String(timeline.narrationPath) : '';
+        if (narrPath) {
+            const resolved = path.resolve(narrPath);
+            const jobRoot = path.resolve(jobDir);
+            if (resolved.startsWith(jobRoot + path.sep)) {
+                targetPath = resolved;
+            }
+        }
+    } else if (cleanType === 'jobasset') {
+        if (!cleanName || cleanName.includes('..') || cleanName.includes('/') || cleanName.includes('\\')) {
+            return null;
+        }
+        const baseDir = path.resolve(jobDir, 'editor_assets');
+        const resolved = path.resolve(baseDir, cleanName);
+        if (!resolved.startsWith(baseDir + path.sep)) return null;
+        targetPath = resolved;
+    } else {
+        return null;
+    }
+
+    if (!targetPath) return null;
+    try {
+        const st = await fsp.stat(targetPath);
+        if (!st.isFile()) return null;
+        const ext = path.extname(targetPath).toLowerCase();
+        return {
+            filePath: targetPath,
+            mime: SERVE_MIME_MAP[ext] || 'application/octet-stream',
+            filename: path.basename(targetPath),
+            size: st.size,
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
 module.exports = {
     BASE,
     VENV_PY,
@@ -1130,4 +1713,12 @@ module.exports = {
     getLearn,
     deleteCustomStyle,
     resolveSafeFile,
+    buildDefaultProject,
+    getEditorProject,
+    sanitizeProject,
+    saveEditorProject,
+    resetEditorProject,
+    exportEditorProject,
+    listEditorAssets,
+    resolveEditorMedia,
 };

@@ -104,15 +104,112 @@ PYEOF
     if [[ -n "$props" ]]; then
       args+=(--props="$props")
     fi
-    if [[ -z "$still" && -n "$props" && "${MOTION_REMOTE_RENDER:-auto}" != "off" && -x /home/dev/.local/bin/agent-ctl ]]; then
-      node_arg="${MOTION_REMOTE_RENDER:-auto}"
-      rc=0
-      /home/dev/.local/bin/agent-ctl remotion --props "$props" --comp "$comp" -o "$out" --node "$node_arg" || rc=$?
-      if [[ "$rc" -eq 0 && -s "$out" ]]; then
-        exit 0
+    remote_mode="${MOTION_REMOTE_RENDER:-auto}"
+    remote_mode_lc="${remote_mode,,}"
+    allow_local_fb="${MOTION_ALLOW_LOCAL_FALLBACK:-0}"
+    allow_local_fb_lc="${allow_local_fb,,}"
+    is_local_fb_allowed=0
+    if [[ "$allow_local_fb_lc" == "1" || "$allow_local_fb_lc" == "true" || "$allow_local_fb_lc" == "yes" || "$allow_local_fb_lc" == "on" ]]; then
+      is_local_fb_allowed=1
+    fi
+
+    if [[ -z "$still" && "$remote_mode_lc" != "off" && "$remote_mode_lc" != "local" ]]; then
+      if [[ -z "$props" ]]; then
+        echo "[render-error] ต้องระบุ --props สำหรับการส่งเรนเดอร์ไปยังเครื่องลูกข่าย (หรือตั้ง MOTION_REMOTE_RENDER=off)" >&2
+        exit 2
       fi
-      echo "[render-node] homelab (fallback: remote rc=$rc)"
-      rm -f "$out"
+      if [[ ! -x /home/dev/.local/bin/agent-ctl ]]; then
+        if [[ "$is_local_fb_allowed" -eq 1 ]]; then
+          echo "[render-node] homelab (fallback: agent-ctl unavailable)"
+        else
+          echo "[render-error] ไม่พบ /home/dev/.local/bin/agent-ctl และบล็อกการรัน Remotion บน homelab ไว้" >&2
+          exit 3
+        fi
+      else
+        node_arg="$remote_mode"
+        wait_busy_max="${MOTION_REMOTE_WAIT_SEC:-600}"
+        wait_offline_max="${MOTION_REMOTE_OFFLINE_WAIT_SEC:-60}"
+        poll_sec="${MOTION_REMOTE_POLL_SEC:-10}"
+        max_fail_retries="${MOTION_REMOTE_MAX_RETRIES:-1}"
+        retry_delay_sec="${MOTION_REMOTE_RETRY_DELAY_SEC:-5}"
+        start_epoch="$(date +%s)"
+        fail_retries=0
+        rc=0
+
+        while true; do
+          rc=0
+          /home/dev/.local/bin/agent-ctl remotion --props "$props" --comp "$comp" -o "$out" --node "$node_arg" || rc=$?
+          if [[ "$rc" -eq 0 && -s "$out" ]]; then
+            exit 0
+          fi
+          rm -f "$out"
+
+          now_epoch="$(date +%s)"
+          elapsed=$(( now_epoch - start_epoch ))
+
+          if [[ "$rc" -eq 3 ]]; then
+            # Check whether any Remotion-capable worker node is online (busy vs offline)
+            online_remotion="$(python3 - "$node_arg" << 'PYEOF'
+import json, subprocess, sys
+target = (sys.argv[1] if len(sys.argv) > 1 else "auto").strip().lower()
+try:
+    raw = subprocess.check_output(["/home/dev/.local/bin/agent-ctl", "status"], stderr=subprocess.DEVNULL, timeout=10, text=True)
+    st = json.loads(raw)
+    cnt = 0
+    for n in (st.get("nodes") or []):
+        if not n.get("online"):
+            continue
+        caps = (n.get("specs") or {}).get("capabilities") or []
+        if "remotion-render" not in caps:
+            continue
+        if target and target != "auto":
+            nid = str(n.get("nodeId") or "").lower()
+            alias = str(n.get("alias") or "").lower()
+            host = str((n.get("specs") or {}).get("hostname") or "").lower()
+            if target not in (nid, alias, host):
+                continue
+        cnt += 1
+    print(cnt)
+except Exception:
+    print(0)
+PYEOF
+)"
+            online_remotion="${online_remotion:-0}"
+            if [[ "$online_remotion" -gt 0 ]]; then
+              max_wait="$wait_busy_max"
+              wait_reason="เครื่องลูกข่ายกำลังติดงานเรนเดอร์อื่น (${online_remotion} เครื่องออนไลน์)"
+            else
+              max_wait="$wait_offline_max"
+              wait_reason="ไม่มีเครื่องลูกข่ายออนไลน์"
+            fi
+
+            if [[ "$elapsed" -lt "$max_wait" ]]; then
+              rem_wait=$(( max_wait - elapsed ))
+              sleep_for="$poll_sec"
+              if [[ "$rem_wait" -lt "$sleep_for" ]]; then sleep_for="$rem_wait"; fi
+              if [[ "$sleep_for" -lt 1 ]]; then sleep_for=1; fi
+              echo "[render-wait] ${wait_reason} — รอคิวว่าง (${elapsed}s/${max_wait}s)..."
+              sleep "$sleep_for"
+              continue
+            fi
+            break
+          else
+            if [[ "$fail_retries" -lt "$max_fail_retries" ]]; then
+              fail_retries=$(( fail_retries + 1 ))
+              echo "[render-retry] เรนเดอร์บนเครื่องลูกข่ายสะดุด (rc=$rc) กำลังลองใหม่ครั้งที่ ${fail_retries}/${max_fail_retries}..."
+              sleep "$retry_delay_sec"
+              continue
+            fi
+            break
+          fi
+        done
+
+        if [[ "$is_local_fb_allowed" -ne 1 ]]; then
+          echo "[render-error] ไม่สามารถเรนเดอร์บนเครื่องลูกข่ายได้ (rc=$rc) และบล็อกการ fallback มารัน Remotion บน homelab ไว้เพื่อปกป้องเซิร์ฟเวอร์ (ตั้ง MOTION_ALLOW_LOCAL_FALLBACK=1 หากต้องการบังคับรันบน homelab)" >&2
+          exit "${rc:-1}"
+        fi
+        echo "[render-node] homelab (fallback: remote rc=$rc)"
+      fi
     fi
     # Private TMPDIR so the webpack bundle (~50MB each, tmpfs /tmp = RAM) is always removed, even on kill/crash
     RENDER_TMP="$(mktemp -d /tmp/remotion-run.XXXXXX)"
@@ -121,10 +218,12 @@ PYEOF
     export TMPDIR="$RENDER_TMP"
     rc=0
     if [[ -n "$still" ]]; then
-      npx remotion still src/index.ts "$comp" "$out" --frame="$still" "${args[@]}" || rc=$?
+      nice -n 15 npx remotion still src/index.ts "$comp" "$out" --frame="$still" "${args[@]}" || rc=$?
     else
-      echo "[render-node] homelab"
-      npx remotion render src/index.ts "$comp" "$out" --codec=h264 --pixel-format=yuv420p --crf=18 "${args[@]}" || rc=$?
+      if [[ "$remote_mode_lc" == "off" || "$remote_mode_lc" == "local" ]]; then
+        echo "[render-node] homelab (explicit local)"
+      fi
+      nice -n 15 npx remotion render src/index.ts "$comp" "$out" --codec=h264 --pixel-format=yuv420p --crf=18 "${args[@]}" || rc=$?
     fi
     exit "$rc"
     ;;

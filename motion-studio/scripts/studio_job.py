@@ -1937,9 +1937,17 @@ def build_props(
     return props_path
 
 
-def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> None:
-    """Run motion-studio render StudioEngine and stream % progress (40..85)."""
-    write_status(job_dir, status="rendering", stage="rendering", progress=40, message="กำลังเรนเดอร์วิดีโอ...")
+def _extract_tag_value(text: str, prefix: str) -> str:
+    for raw_line in (text or "").splitlines():
+        s = raw_line.strip()
+        if s.startswith(prefix):
+            return s[len(prefix):].strip()
+    return ""
+
+
+def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> str:
+    """Run motion-studio render StudioEngine, stream % progress (40..85), and record [render-node]."""
+    write_status(job_dir, status="rendering", stage="rendering", progress=40, message="กำลังส่งงานเรนเดอร์ไปยังเครื่องลูกข่าย...")
     cmd = [
         MOTION_STUDIO_BIN,
         "render",
@@ -1965,6 +1973,7 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> None:
     last_progress = 40
     last_write_ts = time.monotonic()
     tail_lines: list[str] = []
+    render_node = ""
     pct_re = re.compile(r"(\d{1,3})%")
     frac_re = re.compile(r"Rendered\s+(\d+)\s*/\s*(\d+)", re.I)
 
@@ -1983,6 +1992,34 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> None:
                 tail_lines.append(line)
                 if len(tail_lines) > 40:
                     tail_lines.pop(0)
+
+                if line.startswith("[render-node]"):
+                    append_log(job_dir, line)
+                    node_val = line[len("[render-node]"):].strip()
+                    if node_val and not node_val.startswith("none:"):
+                        render_node = node_val
+                        write_status(
+                            job_dir,
+                            status="rendering",
+                            stage="rendering",
+                            progress=last_progress,
+                            renderNode=render_node,
+                            message=f"กำลังเรนเดอร์วิดีโอบน {render_node}...",
+                        )
+                    continue
+
+                if line.startswith(("[render-wait]", "[render-retry]", "[render-error]")):
+                    append_log(job_dir, line)
+                    human_msg = re.sub(r"^\[render-[a-z]+\]\s*", "", line).strip()
+                    if human_msg and not line.startswith("[render-error]"):
+                        write_status(
+                            job_dir,
+                            status="rendering",
+                            stage="rendering",
+                            progress=last_progress,
+                            message=human_msg,
+                        )
+                    continue
 
                 pct: float | None = None
                 m_frac = frac_re.search(line)
@@ -2003,15 +2040,23 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> None:
                     if mapped >= last_progress + 2 or (mapped > last_progress and now_t - last_write_ts >= 1.5):
                         last_progress = mapped
                         last_write_ts = now_t
+                        node_txt = f"บน {render_node} " if render_node else ""
                         write_status(
                             job_dir,
                             status="rendering",
                             stage="rendering",
                             progress=mapped,
-                            message=f"กำลังเรนเดอร์วิดีโอ ({int(round(pct))}%)",
+                            **({"renderNode": render_node} if render_node else {}),
+                            message=f"กำลังเรนเดอร์วิดีโอ{node_txt}({int(round(pct))}%)",
                         )
             else:
                 buf += ch
+
+        if buf.strip():
+            line = buf.strip()
+            tail_lines.append(line)
+            if line.startswith(("[render-node]", "[render-wait]", "[render-retry]", "[render-error]")):
+                append_log(job_dir, line)
 
         rc = proc.wait()
     finally:
@@ -2021,8 +2066,15 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> None:
         err_tail = " | ".join(tail_lines[-5:]) if tail_lines else f"render exited {rc}"
         append_log(job_dir, f"Render failed (rc={rc}): {err_tail}")
         raise RuntimeError(f"เรนเดอร์วิดีโอไม่สำเร็จ: {err_tail[:240]}")
-    write_status(job_dir, status="rendering", stage="rendering", progress=85)
-    append_log(job_dir, f"Render finished: {out_mp4} ({out_mp4.stat().st_size} bytes)")
+    write_status(
+        job_dir,
+        status="rendering",
+        stage="rendering",
+        progress=85,
+        **({"renderNode": render_node} if render_node else {}),
+    )
+    append_log(job_dir, f"Render finished on {render_node or 'unknown'}: {out_mp4} ({out_mp4.stat().st_size} bytes)")
+    return render_node
 
 
 def run_mix_stage(
@@ -2033,14 +2085,11 @@ def run_mix_stage(
     bgm: str,
     bgm_vol: float | None = None,
     duck_db: float | None = None,
-) -> None:
-    write_status(job_dir, status="mixing", stage="mixing", progress=87, message="กำลังผสมเสียงพากย์ ดนตรี และเอฟเฟกต์...")
+) -> str:
+    write_status(job_dir, status="mixing", stage="mixing", progress=87, message="กำลังส่งงานผสมเสียงไปยังเครื่องลูกข่าย...")
     if bgm not in VALID_BGMS and not Path(bgm).exists():
         bgm = "warm_tech"
     cmd = [
-        "nice",
-        "-n",
-        "15",
         MOTION_STUDIO_BIN,
         "mix",
         str(render_mp4),
@@ -2063,25 +2112,38 @@ def run_mix_stage(
     rc, stdout, stderr = _run_subprocess(
         cmd,
         cwd=BASE_DIR,
-        env={**os.environ, "OMP_NUM_THREADS": "2"},
-        timeout=300,
+        timeout=390,
     )
+    mix_node = _extract_tag_value(stderr, "[mix-node]")
+    if not mix_node and stdout.strip():
+        try:
+            mix_meta = json.loads(stdout.strip())
+            if isinstance(mix_meta, dict) and mix_meta.get("node"):
+                mix_node = str(mix_meta["node"])
+        except Exception:
+            pass
+    if mix_node:
+        append_log(job_dir, f"[mix-node] {mix_node}")
     if rc != 0 or not final_mp4.exists():
         err = (stderr or stdout or f"mix exited {rc}").strip()
         append_log(job_dir, f"Mix failed: {err}")
         raise RuntimeError(f"ผสมเสียงไม่สำเร็จ: {err.splitlines()[-1][:200]}")
-    write_status(job_dir, status="mixing", stage="mixing", progress=90)
-    append_log(job_dir, f"Mix finished: {final_mp4} ({final_mp4.stat().st_size} bytes)")
+    write_status(
+        job_dir,
+        status="mixing",
+        stage="mixing",
+        progress=90,
+        **({"mixNode": mix_node} if mix_node else {}),
+    )
+    append_log(job_dir, f"Mix finished on {mix_node or 'unknown'}: {final_mp4} ({final_mp4.stat().st_size} bytes)")
+    return mix_node
 
 
 def run_preview_stage(job_dir: Path, video_mp4: Path, timeline_path: Path | None) -> dict[str, str]:
-    write_status(job_dir, status="preview", stage="preview", progress=92, message="กำลังสร้างภาพตัวอย่างและ Storyboard...")
+    write_status(job_dir, status="preview", stage="preview", progress=92, message="กำลังสร้างภาพตัวอย่างและ Storyboard บนเครื่องลูกข่าย...")
     preview_dir = job_dir / "preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "nice",
-        "-n",
-        "15",
         MOTION_STUDIO_BIN,
         "preview",
         str(video_mp4),
@@ -2095,9 +2157,18 @@ def run_preview_stage(job_dir: Path, video_mp4: Path, timeline_path: Path | None
     rc, stdout, stderr = _run_subprocess(
         cmd,
         cwd=BASE_DIR,
-        env={**os.environ, "OMP_NUM_THREADS": "2"},
-        timeout=180,
+        timeout=390,
     )
+    preview_node = _extract_tag_value(stderr, "[preview-node]")
+    if not preview_node and stdout.strip():
+        try:
+            prev_meta = json.loads(stdout.strip())
+            if isinstance(prev_meta, dict) and prev_meta.get("node"):
+                preview_node = str(prev_meta["node"])
+        except Exception:
+            pass
+    if preview_node:
+        append_log(job_dir, f"[preview-node] {preview_node}")
     if rc != 0:
         err = (stderr or stdout or f"preview exited {rc}").strip()
         append_log(job_dir, f"Preview warning (non-fatal): {err}")
@@ -2111,7 +2182,10 @@ def run_preview_stage(job_dir: Path, video_mp4: Path, timeline_path: Path | None
     if gif.exists():
         res["gifFile"] = "preview/preview_preview.gif"
         res["gifPath"] = str(gif)
-    append_log(job_dir, f"Preview generated: {list(res.keys())}")
+    if preview_node:
+        res["previewNode"] = preview_node
+        write_status(job_dir, previewNode=preview_node)
+    append_log(job_dir, f"Preview generated on {preview_node or 'unknown'}: {list(res.keys())}")
     return res
 
 
@@ -2308,9 +2382,10 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
             dest_name = f"{slug}.mp4"
             kind = "build"
 
-        run_render_stage(job_dir, props_path, render_mp4)
-        run_mix_stage(job_dir, render_mp4, timeline_path, final_mp4, bgm)
+        render_node = run_render_stage(job_dir, props_path, render_mp4)
+        mix_node = run_mix_stage(job_dir, render_mp4, timeline_path, final_mp4, bgm)
         preview_info = run_preview_stage(job_dir, final_mp4, timeline_path)
+        preview_node = preview_info.get("previewNode") or ""
         preview_out = copy_preview_to_videos_dir(job_dir, preview_info, Path(dest_name).stem)
 
         master_copy = copy_to_videos_dir(final_mp4, dest_name)
@@ -2331,6 +2406,14 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
         dur = probe_duration(final_mp4) or float(timeline.get("totalSec") or 0.0)
         size_bytes = master_copy.stat().st_size
 
+        node_fields: dict[str, Any] = {}
+        if render_node:
+            node_fields["renderNode"] = render_node
+        if mix_node:
+            node_fields["mixNode"] = mix_node
+        if preview_node:
+            node_fields["previewNode"] = preview_node
+
         outputs: dict[str, Any] = {
             "videoPath": str(master_copy),
             "jobVideoFile": final_mp4.name,
@@ -2342,6 +2425,7 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
             "costThb": cost_thb,
             "costUsd": cost_usd,
             "costDetails": cost_details,
+            **node_fields,
             **preview_info,
             **preview_out,
         }
@@ -2363,6 +2447,7 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
             "costUsd": cost_usd,
             "costDetails": cost_details,
             "createdAt": now_iso(),
+            **node_fields,
             **preview_out,
         }
         if ver == 1:
@@ -2374,6 +2459,8 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
         done_msg = f"สร้างวิดีโอเสร็จสมบูรณ์ · ค่าใช้จ่าย ฿{cost_thb:.2f}"
         if rem_thb is not None:
             done_msg += f" (คงเหลือ ~฿{rem_thb:.2f})"
+        if render_node:
+            done_msg += f" · เรนเดอร์บน {render_node}"
         return write_status(
             job_dir,
             status="done",
@@ -2384,6 +2471,7 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
             versions=versions,
             error=None,
             message=done_msg,
+            **node_fields,
         )
 
 
@@ -3334,14 +3422,24 @@ def _offload_ffmpeg(
     try:
         staged_files: list[Path] = []
         staged_names: list[str] = []
+        seen_inodes: set[tuple[int, int]] = set()
         for i, orig in enumerate(inputs):
             ext = orig.suffix or ".bin"
             name = f"in{i}{ext}"
             dest = stage_dir / name
-            try:
-                os.link(orig, dest)
-            except OSError:
-                shutil.copy2(orig, dest)
+            real_orig = orig.resolve()
+            st = real_orig.stat()
+            inode_key = (st.st_dev, st.st_ino)
+            linked = False
+            if inode_key not in seen_inodes:
+                try:
+                    os.link(real_orig, dest)
+                    seen_inodes.add(inode_key)
+                    linked = True
+                except OSError:
+                    pass
+            if not linked:
+                shutil.copy2(real_orig, dest)
             staged_files.append(dest)
             staged_names.append(name)
 
@@ -3439,18 +3537,31 @@ def _offload_ffmpeg(
             _log(f"Offload {label} exception: {exc}")
             return 1
 
+        offload_node = _extract_tag_value(stdout, "[render-node]")
         remote_out = offload_out_dir / remote_out_name
         if rc == 0 and remote_out.exists() and remote_out.stat().st_size > 0:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(remote_out, out_path)
-            _log(f"Remote offload {label} succeeded -> {out_path.name} ({out_path.stat().st_size} bytes)")
+            node_info = f" on {offload_node}" if offload_node else ""
+            if offload_node:
+                _log(f"[offload-node] {label}: {offload_node}")
+            _log(f"Remote offload {label} succeeded{node_info} -> {out_path.name} ({out_path.stat().st_size} bytes)")
             if status_msg:
                 done_msg = (
-                    "Export วิดีโอบนเครื่องลูกข่ายเสร็จสิ้น"
+                    f"Export วิดีโอบน {offload_node or 'เครื่องลูกข่าย'} เสร็จสิ้น"
                     if stage == "export"
-                    else f"ประมวลผล {stage} บนเครื่องลูกข่ายเสร็จสิ้น"
+                    else f"ประมวลผล {stage} บน {offload_node or 'เครื่องลูกข่าย'} เสร็จสิ้น"
                 )
-                write_status(job_dir, status="editing", stage=stage, progress=95, message=done_msg)
+                write_status(
+                    job_dir,
+                    status="editing",
+                    stage=stage,
+                    progress=95,
+                    message=done_msg,
+                    **({"editNode": offload_node} if offload_node else {}),
+                )
+            elif offload_node and stage != "proxy":
+                write_status(job_dir, editNode=offload_node)
             return 0
 
         if rc == 3:
@@ -3746,7 +3857,11 @@ def _finalize_edit_version(
     kind: str,
     dest_name: str,
 ) -> dict[str, Any]:
+    pre_job = read_json(job_dir / "job.json", {}) or {}
+    edit_node = str(pre_job.get("editNode") or pre_job.get("mixNode") or "") if isinstance(pre_job, dict) else ""
+
     preview_info = run_preview_stage(job_dir, out_mp4, None)
+    preview_node = preview_info.get("previewNode") or ""
     preview_out = copy_preview_to_videos_dir(job_dir, preview_info, Path(dest_name).stem)
 
     master_copy = copy_to_videos_dir(out_mp4, dest_name)
@@ -3756,6 +3871,18 @@ def _finalize_edit_version(
     job = read_json(job_dir / "job.json", {}) or {}
     versions = list(job.get("versions") or [])
     prev_outputs = dict(job.get("outputs") or {})
+    render_node = str(job.get("renderNode") or prev_outputs.get("renderNode") or "")
+    mix_node = str(job.get("mixNode") or prev_outputs.get("mixNode") or "")
+
+    ver_nodes: dict[str, Any] = {}
+    if render_node:
+        ver_nodes["renderNode"] = render_node
+    if mix_node and kind == "remix":
+        ver_nodes["mixNode"] = mix_node
+    if edit_node and kind != "remix":
+        ver_nodes["editNode"] = edit_node
+    if preview_node:
+        ver_nodes["previewNode"] = preview_node
 
     entry: dict[str, Any] = {
         "version": ver,
@@ -3767,6 +3894,7 @@ def _finalize_edit_version(
         "durationSec": dur,
         "sizeBytes": size_bytes,
         "createdAt": now_iso(),
+        **ver_nodes,
         **preview_out,
     }
     versions.append(entry)
@@ -3779,6 +3907,7 @@ def _finalize_edit_version(
         "downloadUrl": make_download_url(master_copy),
         "durationSec": dur,
         "sizeBytes": size_bytes,
+        **ver_nodes,
         **preview_info,
         **preview_out,
     }

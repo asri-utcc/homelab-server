@@ -35,6 +35,12 @@ import /etc/caddy/auth.caddy
 		reverse_proxy filebrowser:80
 	}
 
+	redir /obsidian /obsidian/
+	handle /obsidian/* {
+		import auth
+		reverse_proxy obsidian:3000
+	}
+
 	redir /iot /iot/
 	handle_path /iot/* {
 		reverse_proxy host.docker.internal:8095
@@ -81,7 +87,7 @@ https://192.168.1.123 {
 	import routes
 }
 
-http://192.168.1.123 {
+http://192.168.1.123, http://100.93.214.79, http://:80 {
 	import routes
 }
 

@@ -165,7 +165,7 @@ services:
     environment:
       LANG: en
       WG_HOST: ${WG_HOST:-asri-minipc.thaiddns.com}
-      PASSWORD_HASH: ${PASSWORD_HASH:?set PASSWORD_HASH in .env}
+      PASSWORD_HASH: $$2a$$12$$3snYc6JgbVMr8p3rEAq4/.EaGacmnaPKxJrra958S91FUUzsXf3vK
       PORT: "51821"
       WG_PORT: "51820"
       WG_DEFAULT_ADDRESS: 10.10.10.x
@@ -230,6 +230,32 @@ services:
           memory: 256M
     logging: *logging
 
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: lab-obsidian
+    restart: unless-stopped
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Asia/Bangkok
+      SUBFOLDER: /obsidian/
+      TITLE: Obsidian Homelab
+    security_opt:
+      - seccomp:unconfined
+    shm_size: "1gb"
+    volumes:
+      - ./obsidian/config:/config
+      - /home/dev/storage/obsidian:/vaults
+    ports:
+      - "127.0.0.1:3010:3000"
+    networks: [lab]
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2"
+    logging: *logging
+
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: lab-homeassistant
@@ -260,7 +286,9 @@ services:
       - /home/dev/projects/lab-stack/zigbee2mqtt/data:/app/data
       - /run/udev:/run/udev:ro
     ports:
-      - "8099:8099"
+      - "127.0.0.1:8099:8099"
+    depends_on:
+      - emqx
     environment:
       - TZ=Asia/Bangkok
     devices:

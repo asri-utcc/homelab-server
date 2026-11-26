@@ -1,0 +1,61 @@
+# คู่มือการใช้งาน Obsidian บน Homelab
+
+เอกสารสรุปการใช้งานและการดูแล **Obsidian Web UI (`lab-obsidian`)** สำหรับจัดการความรู้และบันทึกของ Homelab
+
+## 1. URL เข้าใช้งาน
+
+- **Web UI:** `https://homelab.tail285279.ts.net/obsidian/`
+- ป้องกันด้วยระบบ Auth กลางของ Lab Dashboard (`Caddy forward_auth`) — ต้องล็อกอินผ่าน Lab Dashboard ก่อนเข้าใช้งาน
+- พอร์ตภายในโฮสต์: `127.0.0.1:3010` (ไม่เปิดพอร์ตออกนอกเครื่อง `0.0.0.0`)
+
+## 2. วิธีเปิด Vault ครั้งแรก
+
+เมื่อเข้าหน้าเว็บ Obsidian ครั้งแรก:
+1. เลือก **Open folder as vault** (Open)
+2. ระบุพาธภายใน container เป็น `/vaults/Homelab-Vault`
+3. กดเปิดใช้งาน (หน้าแรกคือ `Home.md`)
+
+> พาธจริงบนเครื่องโฮสต์: `/home/dev/storage/obsidian/Homelab-Vault` (เจ้าของ `1000:1000` / `dev:dev`, เข้าดูไฟล์ผ่าน File Browser และ SMB ได้)
+
+## 3. โครงสร้างโฟลเดอร์ใน Vault
+
+- `00-Inbox/` — บันทึกด่วนและโน้ตที่ยังไม่ได้จัดหมวด
+- `01-AI-Memory/` — ความรู้ที่ AI สรุป (`Facts.md`, `Decisions.md`) และ `_mirror/` (สำเนาอ่านอย่างเดียว)
+- `02-Homelab/` — เอกสารระบบโครงสร้างพื้นฐาน, `Incidents/` และ `Runbooks/`
+- `03-Projects/` — โน้ตเฉพาะโปรเจกต์ (`lab-dashboard`, `OnePercentBotTrade`, `iot-dashboard` ฯลฯ)
+- `04-Daily/` — บันทึกรายวัน (`YYYY-MM-DD.md`)
+- `05-Knowledge/` — คู่มือและเอกสารอ้างอิงทางเทคนิค
+- `99-Templates/` — เทมเพลตสำหรับสร้างโน้ตใหม่
+- `Home.md` — หน้าหลักของ Vault
+
+## 4. การ Sync ความจำ AI (AI Memory Mirror)
+
+- สคริปต์: `/home/dev/projects/obsidian-memory-sync.sh`
+- ตั้งเวลาทำงานอัตโนมัติผ่าน cron ของ `dev` ทุก 10 นาที (`*/10 * * * *`)
+- คัดลอกไฟล์ความจำแบบ **ทางเดียว (Read-Only)** จาก:
+  - `/home/dev/.gemini/MEMORY.md` → `01-AI-Memory/_mirror/gemini-MEMORY.md`
+  - `/home/dev/.claude/projects/-home-dev-projects/memory/*.md` → `01-AI-Memory/_mirror/claude-*.md`
+- **ข้อควรระวัง:** ห้ามแก้ไขไฟล์ใน `01-AI-Memory/_mirror/` โดยตรง ให้แก้ไขที่ไฟล์ต้นฉบับเท่านั้น และห้ามเก็บ password / token / API key ลงใน Vault
+
+## 5. คำสั่งดูแลและอัปเดต
+
+```bash
+# ดูสถานะและ log ของ container
+docker ps --filter name=lab-obsidian
+docker logs -f --tail 100 lab-obsidian
+
+# รีสตาร์ท container
+cd /home/dev/projects/lab-stack && docker compose restart obsidian
+
+# อัปเดต image เวอร์ชันล่าสุด
+cd /home/dev/projects/lab-stack && docker compose pull obsidian && docker compose up -d obsidian
+
+# รัน sync ความจำ AI ด้วยตนเอง
+/home/dev/projects/obsidian-memory-sync.sh
+```
+
+## 6. ทางเลือกการ Sync กับมือถือ (ยังไม่ได้ติดตั้ง)
+
+ปัจจุบันระบบใช้งานผ่าน Web UI เป็นหลัก หากต้องการเปิดแก้แบบออฟไลน์บนมือถือในอนาคต สามารถเลือกติดตั้งเพิ่มเติมได้ 2 แนวทาง:
+1. **Syncthing (ฟรี / Self-hosted):** รัน Syncthing container บน homelab ชี้ไปที่ `/home/dev/storage/obsidian/Homelab-Vault` เพื่อ sync แบบ P2P กับแอป Obsidian บนมือถือผ่าน Tailscale
+2. **Obsidian Sync (บริการทางการ):** สมัครแพ็กเกจของ Obsidian แล้วเชื่อมต่อจากหน้า Settings ของตัวแอปได้โดยตรง

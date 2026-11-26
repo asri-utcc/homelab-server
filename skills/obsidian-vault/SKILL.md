@@ -54,3 +54,40 @@ Centralized Markdown knowledge base for Homelab operations, AI memory, projects,
 - View logs: `docker logs lab-obsidian`
 - Restart container: `cd /home/dev/projects/lab-stack && docker compose restart obsidian`
 - Update image: `cd /home/dev/projects/lab-stack && docker compose pull obsidian && docker compose up -d obsidian`
+
+## Auto Daily Note
+- **Script:** `/home/dev/projects/obsidian-daily-note.py` (Python 3 stdlib only; generates/updates `04-Daily/YYYY-MM-DD.md` using `99-Templates/Daily.md`)
+- **Cron Schedule:** Runs daily at **23:55** (`55 23 * * *`) via `dev` crontab
+- **Cron Log:** `/home/dev/projects/lab-dashboard/cron-logs/obsidian_daily_note.log`
+- **Marker Rule (`AUTO:START` / `AUTO:END`):** Automated summaries (PZEM-01 energy, server health, PM2, Docker, git commits) are placed strictly between `<!-- AUTO:START -->` and `<!-- AUTO:END -->`. Both AI and users **MUST write only outside these markers** — anything inside the `AUTO` block is overwritten on the next run.
+- **Managed Frontmatter Keys:** The script updates only `energy_kwh`, `cost_thb`, `month_kwh`, `month_cost_thb`, `cpu_avg`, `ram_max`, and `pm2_down` while preserving all other frontmatter keys (e.g., `tags`, `created`).
+- **Backfill / Manual Run:**
+  ```bash
+  # Update today's note
+  /usr/bin/python3 /home/dev/projects/obsidian-daily-note.py
+
+  # Backfill or regenerate a specific date
+  /usr/bin/python3 /home/dev/projects/obsidian-daily-note.py --date YYYY-MM-DD
+
+  # Preview output without writing to disk
+  /usr/bin/python3 /home/dev/projects/obsidian-daily-note.py --date YYYY-MM-DD --dry-run
+  ```
+
+## Dataview
+- **Source & Installation:** Installed from the official GitHub Releases of [`blacksmithgu/obsidian-dataview`](https://github.com/blacksmithgu/obsidian-dataview/releases/latest) into `/home/dev/storage/obsidian/Homelab-Vault/.obsidian/plugins/dataview/` (`main.js`, `manifest.json`, `styles.css`) and listed in `.obsidian/community-plugins.json` (`["dataview"]`). Used by `Home.md` for live Daily Notes, Incidents, and Runbooks queries.
+- **First-Time Web UI Enablement:** If Dataview blocks render as raw code, open Obsidian **Settings → Community plugins → Turn on community plugins** and enable **Dataview**.
+- **How to Update:**
+  ```bash
+  # Download latest release assets (main.js, manifest.json, styles.css) into the plugin folder
+  cd /home/dev/storage/obsidian/Homelab-Vault/.obsidian/plugins/dataview
+  curl -fsSLO https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download/main.js
+  curl -fsSLO https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download/manifest.json
+  curl -fsSLO https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download/styles.css
+  chown -R dev:dev /home/dev/storage/obsidian/Homelab-Vault/.obsidian/plugins/dataview
+  docker restart lab-obsidian
+  ```
+
+## แนวทางให้ AI (AI Workflow Guidelines)
+- **Incident Logging:** When resolving a system problem or outage, create an Incident note at `02-Homelab/Incidents/YYYY-MM-DD-<slug>.md` following `99-Templates/Incident.md` (with `tags: [incident, homelab]`, `created: YYYY-MM-DD`, impact, root cause, resolution, and prevention).
+- **Runbooks:** Whenever a procedure or fix is repeatable, document it as a Runbook under `02-Homelab/Runbooks/<slug>.md` following `99-Templates/Runbook.md` (prerequisites, steps, verification, rollback).
+- **Daily Log Entries:** When recording work completed on a given day, write or append under the `## 📝 สิ่งที่ทำ / เหตุการณ์สำคัญ` heading of `04-Daily/YYYY-MM-DD.md` (**NEVER** write inside `<!-- AUTO:START -->` ... `<!-- AUTO:END -->`). If the daily note does not exist yet, initialize it first with `/usr/bin/python3 /home/dev/projects/obsidian-daily-note.py --date YYYY-MM-DD` or from `99-Templates/Daily.md`.

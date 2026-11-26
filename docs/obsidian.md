@@ -59,3 +59,45 @@ cd /home/dev/projects/lab-stack && docker compose pull obsidian && docker compos
 ปัจจุบันระบบใช้งานผ่าน Web UI เป็นหลัก หากต้องการเปิดแก้แบบออฟไลน์บนมือถือในอนาคต สามารถเลือกติดตั้งเพิ่มเติมได้ 2 แนวทาง:
 1. **Syncthing (ฟรี / Self-hosted):** รัน Syncthing container บน homelab ชี้ไปที่ `/home/dev/storage/obsidian/Homelab-Vault` เพื่อ sync แบบ P2P กับแอป Obsidian บนมือถือผ่าน Tailscale
 2. **Obsidian Sync (บริการทางการ):** สมัครแพ็กเกจของ Obsidian แล้วเชื่อมต่อจากหน้า Settings ของตัวแอปได้โดยตรง
+
+## 7. Auto Daily Note
+
+- **สคริปต์:** `/home/dev/projects/obsidian-daily-note.py` (ใช้ Python 3 standard library เท่านั้น สร้าง/อัปเดตโน้ต `04-Daily/YYYY-MM-DD.md` โดยอ้างอิงโครงจาก `99-Templates/Daily.md`)
+- **Cron Schedule:** ทำงานอัตโนมัติทุกคืนเวลา **23:55** (`55 23 * * *`) ภายใต้ crontab ของ `dev`
+- **Log File:** `/home/dev/projects/lab-dashboard/cron-logs/obsidian_daily_note.log`
+- **กติกา Marker (`AUTO:START` / `AUTO:END`):**
+  - ข้อมูลอัตโนมัติ (ค่าไฟ PZEM-01, สุขภาพเซิร์ฟเวอร์, สถานะ PM2, สถานะ Docker และ Git commits) จะถูกเขียนเฉพาะภายในช่วง `<!-- AUTO:START -->` ถึง `<!-- AUTO:END -->`
+  - **ผู้ใช้และ AI ต้องเขียนบันทึกนอกช่วง marker เท่านั้น** (ห้ามแก้ไขในบล็อก `AUTO` เพราะจะถูกเขียนทับเมื่อรันสคริปต์รอบถัดไป)
+- **คีย์ Frontmatter ที่สคริปต์ดูแล:** `energy_kwh`, `cost_thb`, `month_kwh`, `month_cost_thb`, `cpu_avg`, `ram_max`, `pm2_down` (สคริปต์จะอัปเดตเฉพาะคีย์เหล่านี้และคงคีย์เดิมอย่าง `tags`, `created` ไว้ครบ)
+- **วิธีรันด้วยตนเอง / รันย้อนหลัง:**
+  ```bash
+  # สร้างหรืออัปเดต Daily Note ของวันนี้
+  /usr/bin/python3 /home/dev/projects/obsidian-daily-note.py
+
+  # รันย้อนหลังหรือเจาะจงวันที่ต้องการ
+  /usr/bin/python3 /home/dev/projects/obsidian-daily-note.py --date YYYY-MM-DD
+
+  # ทดสอบผลลัพธ์โดยไม่เขียนไฟล์จริง
+  /usr/bin/python3 /home/dev/projects/obsidian-daily-note.py --date YYYY-MM-DD --dry-run
+  ```
+
+## 8. ปลั๊กอิน Dataview
+
+- **การติดตั้ง:** ติดตั้งจาก official GitHub Releases ของ `blacksmithgu/obsidian-dataview` ลงใน `/home/dev/storage/obsidian/Homelab-Vault/.obsidian/plugins/dataview/` (`main.js`, `manifest.json`, `styles.css`) และเปิดรายการใน `.obsidian/community-plugins.json` (`["dataview"]`) เพื่อใช้แสดง Dashboard ใน `Home.md` (Daily Notes 7 วันล่าสุด, Incidents และ Runbooks)
+- **การเปิดใช้งานครั้งแรกใน Web UI:** หากหน้า `Home.md` ยังแสดงโค้ด `dataview` แบบดิบ ให้เข้าไปที่ **Settings → Community plugins → Turn on community plugins** และเปิดใช้งาน **Dataview**
+- **วิธีอัปเดต Dataview:**
+  ```bash
+  cd /home/dev/storage/obsidian/Homelab-Vault/.obsidian/plugins/dataview
+  curl -fsSLO https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download/main.js
+  curl -fsSLO https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download/manifest.json
+  curl -fsSLO https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download/styles.css
+  chown -R dev:dev /home/dev/storage/obsidian/Homelab-Vault/.obsidian/plugins/dataview
+  docker restart lab-obsidian
+  ```
+
+## 9. แนวทางให้ AI
+
+- **บันทึก Incident:** เมื่อแก้ไขปัญหาระบบเสร็จ ให้สร้างโน้ต Incident ใน `02-Homelab/Incidents/YYYY-MM-DD-<slug>.md` ตามเทมเพลต `99-Templates/Incident.md` (ระบุอาการ สาเหตุ การแก้ไข และแนวทางป้องกัน)
+- **บันทึก Runbook:** ขั้นตอนปฏิบัติการหรือการแก้ไขที่ต้องทำซ้ำได้ ให้เขียนเป็น Runbook ใน `02-Homelab/Runbooks/<slug>.md` ตามเทมเพลต `99-Templates/Runbook.md`
+- **บันทึกงานประจำวัน:** เมื่อต้องการบันทึกสิ่งที่ทำในวันนั้น ให้เขียนต่อท้ายใต้หัวข้อ `## 📝 สิ่งที่ทำ / เหตุการณ์สำคัญ` ใน `04-Daily/YYYY-MM-DD.md` (**ห้ามเขียนในบล็อก `<!-- AUTO:START -->` ... `<!-- AUTO:END -->`**)
+- **ข้อห้ามเดิม:** ห้ามแก้ไขไฟล์ใน `01-AI-Memory/_mirror/` โดยตรง (read-only mirror) และห้ามใส่รหัสผ่าน, token หรือ API key ลงใน Vault

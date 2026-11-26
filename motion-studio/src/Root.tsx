@@ -38,6 +38,11 @@ import {
   DEFAULT_LAST_THIRD_PROPS,
   LastThirdNight,
 } from './projects/last-third-night/LastThirdNight';
+import {
+  DEFAULT_ROOT_CANAL_PROPS,
+  RootCanalExplainer,
+  RootCanalExplainerProps,
+} from './projects/root-canal/RootCanalExplainer';
 
 type SolarCompProps = SolarTimelineProps & Record<string, unknown>;
 type StoryCompProps = StorytellingProps & Record<string, unknown>;
@@ -168,6 +173,24 @@ export const RemotionRoot: React.FC = () => {
           durationInFrames: Math.max(
             90,
             props.totalFrames || DEFAULT_LAST_THIRD_PROPS.totalFrames,
+          ),
+          fps: props.fps || 30,
+          width: 1080,
+          height: 1920,
+        })}
+      />
+      <Composition
+        id="RootCanalExplainer"
+        component={RootCanalExplainer}
+        durationInFrames={DEFAULT_ROOT_CANAL_PROPS.totalFrames}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={DEFAULT_ROOT_CANAL_PROPS}
+        calculateMetadata={({ props }: { props: RootCanalExplainerProps }) => ({
+          durationInFrames: Math.max(
+            90,
+            props.totalFrames || DEFAULT_ROOT_CANAL_PROPS.totalFrames,
           ),
           fps: props.fps || 30,
           width: 1080,

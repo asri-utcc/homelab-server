@@ -1974,6 +1974,7 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> str:
     last_write_ts = time.monotonic()
     tail_lines: list[str] = []
     render_node = ""
+    render_fallback = False
     pct_re = re.compile(r"(\d{1,3})%")
     frac_re = re.compile(r"Rendered\s+(\d+)\s*/\s*(\d+)", re.I)
 
@@ -1998,18 +1999,24 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> str:
                     node_val = line[len("[render-node]"):].strip()
                     if node_val and not node_val.startswith("none:"):
                         render_node = node_val
+                        if node_val.startswith("homelab"):
+                            render_fallback = True
                         write_status(
                             job_dir,
                             status="rendering",
                             stage="rendering",
                             progress=last_progress,
                             renderNode=render_node,
+                            **({"renderFallback": True} if render_fallback else {}),
                             message=f"กำลังเรนเดอร์วิดีโอบน {render_node}...",
                         )
                     continue
 
-                if line.startswith(("[render-wait]", "[render-retry]", "[render-error]")):
+                if line.startswith(("[render-wait]", "[render-retry]", "[render-fallback]", "[render-error]")):
                     append_log(job_dir, line)
+                    is_fallback = line.startswith("[render-fallback]")
+                    if is_fallback:
+                        render_fallback = True
                     human_msg = re.sub(r"^\[render-[a-z]+\]\s*", "", line).strip()
                     if human_msg and not line.startswith("[render-error]"):
                         write_status(
@@ -2017,6 +2024,7 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> str:
                             status="rendering",
                             stage="rendering",
                             progress=last_progress,
+                            **({"renderFallback": True} if is_fallback else {}),
                             message=human_msg,
                         )
                     continue
@@ -2055,7 +2063,7 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> str:
         if buf.strip():
             line = buf.strip()
             tail_lines.append(line)
-            if line.startswith(("[render-node]", "[render-wait]", "[render-retry]", "[render-error]")):
+            if line.startswith(("[render-node]", "[render-wait]", "[render-retry]", "[render-fallback]", "[render-error]")):
                 append_log(job_dir, line)
 
         rc = proc.wait()
@@ -2072,6 +2080,7 @@ def run_render_stage(job_dir: Path, props_path: Path, out_mp4: Path) -> str:
         stage="rendering",
         progress=85,
         **({"renderNode": render_node} if render_node else {}),
+        **({"renderFallback": True} if render_fallback else {}),
     )
     append_log(job_dir, f"Render finished on {render_node or 'unknown'}: {out_mp4} ({out_mp4.stat().st_size} bytes)")
     return render_node

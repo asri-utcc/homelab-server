@@ -3,8 +3,9 @@
 
 Offloads keyframe extraction, Pillow contact-sheet rendering (with staged Thai + Latin fonts),
 and 2-pass lanczos GIF generation to Homelab Agent Hub worker nodes via agent-ctl run --requires python,ffmpeg.
-Falls back to throttled local execution on homelab ONLY when no worker node is online (rc=3)
-or when explicitly configured via STUDIO_OFFLOAD=off / MOTION_REMOTE_PREVIEW=off / MOTION_ALLOW_LOCAL_FALLBACK=1.
+Falls back to throttled local execution on homelab by default when offload is disabled
+(STUDIO_OFFLOAD=off / MOTION_REMOTE_PREVIEW=off), no worker node is online (rc=3), or remote
+execution fails (unless blocked via MOTION_ALLOW_LOCAL_FALLBACK=0).
 """
 
 import argparse
@@ -44,6 +45,11 @@ THAI_FONT_CANDIDATES = (
 
 def _is_truthy_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _local_fallback_allowed() -> bool:
+    val = os.environ.get("MOTION_ALLOW_LOCAL_FALLBACK", "1").strip().lower()
+    return val not in ("0", "false", "no", "off")
 
 
 def _quote_win_arg(arg: str) -> str:
@@ -448,8 +454,12 @@ def main() -> int:
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0
 
-    if rc in (-1, 3) or _is_truthy_env("MOTION_ALLOW_LOCAL_FALLBACK"):
-        fb_reason = "explicit local" if rc == -1 else ("no worker online" if rc == 3 else f"fallback rc={rc}")
+    if rc == -1 or _local_fallback_allowed():
+        fb_reason = (
+            "explicit local"
+            if rc == -1
+            else ("no worker online" if rc == 3 else f"fallback หลังเครื่องลูกข่ายล้มเหลว rc={rc}")
+        )
         node_label = f"homelab ({fb_reason})"
         print(f"[preview-node] {node_label}", file=sys.stderr, flush=True)
         res = _run_local_preview(args, throttled=True)

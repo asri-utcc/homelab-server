@@ -165,7 +165,7 @@ services:
     environment:
       LANG: en
       WG_HOST: ${WG_HOST:-asri-minipc.thaiddns.com}
-      PASSWORD_HASH: $$2a$$12$$3snYc6JgbVMr8p3rEAq4/.EaGacmnaPKxJrra958S91FUUzsXf3vK
+      PASSWORD_HASH: ${PASSWORD_HASH:?set PASSWORD_HASH in .env}
       PORT: "51821"
       WG_PORT: "51820"
       WG_DEFAULT_ADDRESS: 10.10.10.x

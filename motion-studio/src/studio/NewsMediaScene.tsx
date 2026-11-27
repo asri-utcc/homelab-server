@@ -1,19 +1,39 @@
 import React, { useState } from 'react';
-import { Img, Loop, OffthreadVideo, interpolate, spring, staticFile, useVideoConfig } from 'remotion';
+import { Img, OffthreadVideo, Sequence, interpolate, spring, staticFile, useVideoConfig } from 'remotion';
 import { THAI_FONT_FAMILY } from '../components/ThaiFontLoader';
 import type { ResolvedStyleTokens, StudioScene } from './types';
 
 /**
- * News-broadcast layout for scenes that carry real media (photo or short clip from the story).
- * Media panel (16:9 full-bleed) on top, headline + key facts below; the engine's subtitle bar
- * (bottom: 320, y ~1460..1600) stays clear because content ends at y ~1420.
+ * TV News Broadcast layout for scenes carrying real news media (5s video clip + news photo).
+ * - Video scenes play the 5s highlight clip from t=0 of the scene via <Sequence from={scene.startFrame}>,
+ *   then smoothly crossfade into the poster/still photo with gentle Ken-Burns pan/zoom for the rest of the narration.
+ * - Distinct crimson (#E11D48) vs royal-blue (#2563EB) broadcast chrome for domestic vs international news.
+ * - Content ends comfortably above SubtitleBar (bottom: 320, y ~1460..1600) with Thai vowel-safe line-height.
  */
 
-const MEDIA_TOP = 236;
+const MEDIA_TOP = 228;
 const MEDIA_H = 608; // 1080 x 608 = 16:9
 
 function resolveSrc(src: string): string {
   return src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') ? src : staticFile(src);
+}
+
+function renderHighlightedTitle(
+  title: string,
+  highlight?: string | string[],
+  accentColor = '#FACC15',
+): React.ReactNode {
+  const raw = Array.isArray(highlight) ? highlight.find((h) => h && title.includes(h)) || highlight[0] : highlight;
+  const hl = (raw || '').trim();
+  if (!hl || !title.includes(hl)) return title;
+  const idx = title.indexOf(hl);
+  return (
+    <>
+      {title.slice(0, idx)}
+      <span style={{ color: accentColor }}>{hl}</span>
+      {title.slice(idx + hl.length)}
+    </>
+  );
 }
 
 export const NewsMediaScene: React.FC<{
@@ -25,99 +45,139 @@ export const NewsMediaScene: React.FC<{
   durationFrames: number;
 }> = ({ scene, sceneIndex, totalScenes, tokens, localFrame, durationFrames }) => {
   const { fps } = useVideoConfig();
-  const [failed, setFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
+
   const media = scene.media!;
   const palette = tokens.palette;
-  const accent = palette.accent || '#E11D48';
+  const label = media.label || 'ข่าวเด่น';
+  const isWorld = label.includes('ต่างประเทศ') || (scene.badge || '').includes('ต่างประเทศ');
+  const regionColor = isWorld ? '#2563EB' : '#E11D48';
+  const regionGlow = isWorld ? 'rgba(37, 99, 235, 0.22)' : 'rgba(225, 29, 72, 0.22)';
 
-  const enter = spring({ frame: localFrame, fps, config: { damping: 18, stiffness: 120 } });
-  const textEnter = spring({ frame: Math.max(0, localFrame - 6), fps, config: { damping: 20, stiffness: 110 } });
-  const kenBurns = interpolate(localFrame, [0, Math.max(1, durationFrames)], [1.04, 1.14], {
+  const enter = spring({ frame: localFrame, fps, config: { damping: 18, stiffness: 130 } });
+  const textEnter = spring({ frame: Math.max(0, localFrame - 5), fps, config: { damping: 20, stiffness: 115 } });
+
+  const panDir = sceneIndex % 2 === 0 ? 1 : -1;
+  const kenBurns = interpolate(localFrame, [0, Math.max(1, durationFrames)], [1.03, 1.13], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  const panX = interpolate(localFrame, [0, Math.max(1, durationFrames)], [-14, 14], {
+  const panX = interpolate(localFrame, [0, Math.max(1, durationFrames)], [-16 * panDir, 16 * panDir], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
 
-  const clipFrames = Math.max(15, Math.round((media.durationSec || 8) * fps));
+  const clipSec = media.durationSec || 5;
+  const clipFrames = Math.max(30, Math.round(clipSec * fps));
   const src = resolveSrc(media.src);
-  const isVideo = media.type === 'video' && !failed;
+  const posterSrc = media.poster ? resolveSrc(media.poster) : '';
+
+  const hasVideo = media.type === 'video' && !videoFailed;
+  const canHoldPoster = Boolean(posterSrc) && !imgFailed;
+  // Smooth 14-frame crossfade from 5s video clip to still poster frame if scene is longer than clipFrames
+  const fadeStart = Math.max(15, clipFrames - 14);
+  const videoOpacity =
+    hasVideo && canHoldPoster && durationFrames > clipFrames + 6
+      ? interpolate(localFrame, [fadeStart, clipFrames], [1, 0], {
+          extrapolateLeft: 'clamp',
+          extrapolateRight: 'clamp',
+        })
+      : 1;
+  const showLiveVideoBadge = hasVideo && videoOpacity > 0.25;
+
   const facts = (scene.bullets || []).filter((b) => typeof b === 'string' && b.trim()).slice(0, 3);
-  const label = media.label || scene.badge || 'ข่าว';
+  const titleLen = (scene.title || '').length;
+  const titleSize = titleLen > 34 ? 46 : titleLen > 24 ? 52 : 56;
+  const subBadge =
+    scene.badge && scene.badge !== label ? scene.badge : `ซีนข่าว ${String(sceneIndex + 1).padStart(2, '0')}`;
 
   return (
     <div
       style={{
         position: 'absolute',
         inset: 0,
-        background: `linear-gradient(180deg, ${palette.bg} 0%, ${palette.surface} 100%)`,
+        background: `radial-gradient(circle at 50% 18%, ${regionGlow} 0%, transparent 58%), linear-gradient(180deg, #0B101B 0%, ${palette.bg || '#111622'} 55%, #090D16 100%)`,
         fontFamily: THAI_FONT_FAMILY,
         overflow: 'hidden',
       }}
     >
-      {/* Top strip: section label + counter */}
+      {/* Top broadcast header bar */}
       <div
         style={{
           position: 'absolute',
-          top: 120,
+          top: 118,
           left: 40,
           right: 40,
-          height: 84,
+          height: 86,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           opacity: enter,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div
             style={{
-              background: '#E11D48',
-              color: '#fff',
+              background: regionColor,
+              color: '#FFFFFF',
               fontWeight: 800,
-              fontSize: 34,
-              padding: '8px 22px',
+              fontSize: 30,
+              lineHeight: 1.35,
+              padding: '7px 20px',
               borderRadius: 10,
-              letterSpacing: 0.5,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
             }}
           >
             {label}
           </div>
-          {isVideo && (
+          <div
+            style={{
+              color: '#E2E8F0',
+              fontWeight: 700,
+              fontSize: 26,
+              lineHeight: 1.35,
+              background: 'rgba(15, 23, 42, 0.78)',
+              border: '1px solid rgba(148, 163, 184, 0.25)',
+              padding: '7px 16px',
+              borderRadius: 10,
+            }}
+          >
+            {subBadge}
+          </div>
+          {showLiveVideoBadge && (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                color: '#fff',
+                color: '#FFFFFF',
                 fontWeight: 700,
-                fontSize: 26,
-                background: 'rgba(0,0,0,0.45)',
+                fontSize: 24,
+                background: 'rgba(15, 23, 42, 0.78)',
                 padding: '6px 14px',
                 borderRadius: 8,
               }}
             >
               <span
                 style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 7,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
                   background: '#EF4444',
-                  opacity: Math.floor(localFrame / 15) % 2 === 0 ? 1 : 0.35,
+                  opacity: Math.floor(localFrame / 12) % 2 === 0 ? 1 : 0.3,
                 }}
               />
-              ภาพเหตุการณ์
+              คลิปข่าว
             </div>
           )}
         </div>
-        <div style={{ color: palette.muted, fontSize: 28, fontWeight: 700 }}>
-          {String(sceneIndex + 1).padStart(2, '0')} / {String(totalScenes).padStart(2, '0')}
+        <div style={{ color: '#94A3B8', fontSize: 26, fontWeight: 700 }}>
+          {String(sceneIndex + 1).padStart(2, '0')}/{String(totalScenes).padStart(2, '0')}
         </div>
       </div>
 
-      {/* Media panel */}
+      {/* 16:9 News Media Panel */}
       <div
         style={{
           position: 'absolute',
@@ -126,26 +186,20 @@ export const NewsMediaScene: React.FC<{
           width: 1080,
           height: MEDIA_H,
           overflow: 'hidden',
-          background: '#000',
+          background: '#050811',
           opacity: interpolate(enter, [0, 1], [0, 1]),
-          transform: `translateY(${interpolate(enter, [0, 1], [40, 0]).toFixed(2)}px)`,
-          boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+          transform: `translateY(${interpolate(enter, [0, 1], [32, 0]).toFixed(2)}px)`,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
         }}
       >
-        {isVideo ? (
-          <Loop durationInFrames={clipFrames}>
-            <OffthreadVideo
-              src={src}
-              muted
-              onError={() => setFailed(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          </Loop>
-        ) : (
+        {/* Still image / poster layer (always mounted underneath when available for zero-flash crossfade) */}
+        {(media.type === 'image' || canHoldPoster || videoFailed) && !imgFailed && (
           <Img
-            src={media.type === 'video' && media.poster ? resolveSrc(media.poster) : src}
-            onError={() => setFailed(true)}
+            src={media.type === 'video' && posterSrc ? posterSrc : src}
+            onError={() => setImgFailed(true)}
             style={{
+              position: 'absolute',
+              inset: 0,
               width: '100%',
               height: '100%',
               objectFit: 'cover',
@@ -153,6 +207,26 @@ export const NewsMediaScene: React.FC<{
             }}
           />
         )}
+
+        {/* 5-second News Video Layer anchored to scene.startFrame */}
+        {hasVideo && videoOpacity > 0.01 && (
+          <div style={{ position: 'absolute', inset: 0, opacity: videoOpacity }}>
+            <Sequence
+              from={scene.startFrame}
+              durationInFrames={canHoldPoster ? clipFrames + 2 : durationFrames}
+              layout="none"
+            >
+              <OffthreadVideo
+                src={src}
+                muted
+                onError={() => setVideoFailed(true)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </Sequence>
+          </div>
+        )}
+
+        {/* Bottom gradient vignette for source credit readability */}
         <div
           style={{
             position: 'absolute',
@@ -160,21 +234,23 @@ export const NewsMediaScene: React.FC<{
             right: 0,
             bottom: 0,
             height: 120,
-            background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.6))',
+            background: 'linear-gradient(180deg, transparent 0%, rgba(5, 8, 17, 0.72) 100%)',
           }}
         />
         {media.credit && (
           <div
             style={{
               position: 'absolute',
-              right: 18,
+              right: 20,
               bottom: 14,
-              padding: '5px 14px',
+              padding: '6px 14px',
               borderRadius: 8,
-              background: 'rgba(15,23,42,0.78)',
+              background: 'rgba(15, 23, 42, 0.82)',
+              border: '1px solid rgba(255,255,255,0.12)',
               color: '#F1F5F9',
               fontSize: 22,
-              maxWidth: 760,
+              lineHeight: 1.35,
+              maxWidth: 780,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -184,32 +260,70 @@ export const NewsMediaScene: React.FC<{
           </div>
         )}
       </div>
-      <div style={{ position: 'absolute', top: MEDIA_TOP + MEDIA_H, left: 0, height: 8, width: `${(enter * 100).toFixed(1)}%`, background: accent }} />
 
-      {/* Headline + facts */}
+      {/* Broadcast Accent Bar */}
       <div
         style={{
           position: 'absolute',
-          top: MEDIA_TOP + MEDIA_H + 44,
-          left: 56,
-          right: 56,
-          bottom: 500,
+          top: MEDIA_TOP + MEDIA_H,
+          left: 0,
+          height: 8,
+          width: `${(enter * 100).toFixed(1)}%`,
+          background: `linear-gradient(90deg, ${regionColor} 0%, #FACC15 100%)`,
+        }}
+      />
+
+      {/* News Lower-Third Headline + Key Facts */}
+      <div
+        style={{
+          position: 'absolute',
+          top: MEDIA_TOP + MEDIA_H + 34,
+          left: 50,
+          right: 50,
+          bottom: 485,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 22,
+          gap: 18,
           opacity: textEnter,
-          transform: `translateY(${interpolate(textEnter, [0, 1], [26, 0]).toFixed(2)}px)`,
+          transform: `translateY(${interpolate(textEnter, [0, 1], [24, 0]).toFixed(2)}px)`,
         }}
       >
-        <div style={{ color: palette.fg, fontSize: 60, fontWeight: 800, lineHeight: 1.32 }}>{scene.title}</div>
+        <div
+          style={{
+            color: '#FFFFFF',
+            fontSize: titleSize,
+            fontWeight: 800,
+            lineHeight: 1.38,
+            paddingTop: 4,
+            textShadow: '0 4px 16px rgba(0,0,0,0.45)',
+          }}
+        >
+          {renderHighlightedTitle(scene.title, scene.highlight, '#FACC15')}
+        </div>
+
         {scene.subtitle && (
-          <div style={{ color: palette.muted, fontSize: 34, fontWeight: 600, lineHeight: 1.45 }}>{scene.subtitle}</div>
+          <div
+            style={{
+              color: '#CBD5E1',
+              fontSize: 32,
+              fontWeight: 600,
+              lineHeight: 1.42,
+            }}
+          >
+            {scene.subtitle}
+          </div>
         )}
+
         {facts.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
             {facts.map((f, i) => {
-              const fe = spring({ frame: Math.max(0, localFrame - 14 - i * 8), fps, config: { damping: 20 } });
+              const delayFrames = 12 + i * Math.max(10, Math.min(28, Math.round(durationFrames * 0.14)));
+              const fe = spring({
+                frame: Math.max(0, localFrame - delayFrames),
+                fps,
+                config: { damping: 20, stiffness: 130 },
+              });
               return (
                 <div
                   key={i}
@@ -217,15 +331,18 @@ export const NewsMediaScene: React.FC<{
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 14,
-                    color: palette.fg,
-                    fontSize: 32,
+                    background: 'rgba(15, 23, 42, 0.72)',
+                    borderLeft: `6px solid ${regionColor}`,
+                    borderRadius: '0 12px 12px 0',
+                    padding: '10px 18px',
+                    color: '#F8FAFC',
+                    fontSize: 30,
                     fontWeight: 600,
-                    lineHeight: 1.4,
+                    lineHeight: 1.42,
                     opacity: fe,
                     transform: `translateX(${interpolate(fe, [0, 1], [-24, 0]).toFixed(2)}px)`,
                   }}
                 >
-                  <span style={{ width: 12, height: 12, marginTop: 16, borderRadius: 3, background: accent, flexShrink: 0 }} />
                   <span>{f}</span>
                 </div>
               );

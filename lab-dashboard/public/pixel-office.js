@@ -1,58 +1,49 @@
 /*
- * Homelab Pixel Company — Interactive 2D Pixel-Art Office Engine
+ * Homelab Pixel Company v2 — Architectural Campus 2D Pixel-Art Office Engine
+ * 40x25 tile world (640x400 px, 16:10) with 8 asymmetric architectural zones,
+ * sunlit open atrium/plaza, glass walls, wooden terrace, garden wellness deck,
+ * intra-room & cross-room handoffs, and 11 distinct Thai agents.
+ *
  * Classic IIFE using window.PixelOfficeArt (pure Canvas 2D, zero external assets).
- * Exports: window.HomelabPixelOffice = { mount }
+ * Exports: window.HomelabPixelOffice = { LAYOUT, DEPTS, AGENT_SPECS, IDLE_ACTIVITIES, mount }
  * Dispatches: window Event 'homelab:pixeloffice-ready'
  */
 (function (root) {
   'use strict';
 
   var TILE = 16;
-  var WORLD_W_TILES = 64;
-  var WORLD_H_TILES = 40;
-  var WORLD_W = WORLD_W_TILES * TILE; // 1024
-  var WORLD_H = WORLD_H_TILES * TILE; // 640
+  var WORLD_W_TILES = 40;
+  var WORLD_H_TILES = 25;
+  var WORLD_W = WORLD_W_TILES * TILE; // 640
+  var WORLD_H = WORLD_H_TILES * TILE; // 400
 
   // ---------------------------------------------------------------------------
-  // 1. Departments & Office Layout (64 x 40 tiles)
+  // 1. Departments & Asymmetric Architectural Campus Layout (40 x 25 tiles)
   // ---------------------------------------------------------------------------
   var DEPTS = {
     all:    { id: 'all',    label: '🏢 ภาพรวมทั้งบริษัท', color: '#6b7799' },
-    ai:     { id: 'ai',     label: '🤖 ฝ่าย AI Chat',      color: '#6d4bc4' },
-    video:  { id: 'video',  label: '🎬 ฝ่ายผลิตวิดีโอ',    color: '#d9667a' },
-    cron:   { id: 'cron',   label: '⏰ ฝ่ายงานตั้งเวลา',   color: '#c9a23a' },
-    hub:    { id: 'hub',    label: '🖥️ ฝ่าย IT / Hub',     color: '#3d6fb6' },
-    ops:    { id: 'ops',    label: '🛡️ ฝ่ายปฏิบัติการ',    color: '#3f8f6a' },
-    lounge: { id: 'lounge', label: '☕ โถงพักผ่อนและสวน',  color: '#8a6a4a' }
+    ai:     { id: 'ai',     label: '🤖 ทีม AI',           color: '#6d4bc4' },
+    video:  { id: 'video',  label: '🎬 สตูดิโอวิดีโอ',     color: '#d9667a' },
+    hub:    { id: 'hub',    label: '🖥️ ระบบ & โหนด',      color: '#3d6fb6' },
+    lounge: { id: 'lounge', label: '☕ พักผ่อน & สวน',     color: '#8a6a4a' }
   };
 
-  // Walkable corridors linking all 20 rooms seamlessly
+  var DEPT_ALIASES = {
+    ops: 'hub',
+    cron: 'video'
+  };
+
+  // Bright sunlit atrium & open plaza corridors (no yellow road arrows!)
   var CORRIDORS = [
-    { id: 'H1', x: 1,  y: 10, w: 62, h: 2 }, // Between Row 1 (AI+Hub) and Row 2 (Video)
-    { id: 'H2', x: 1,  y: 20, w: 62, h: 2 }, // Video Pipeline Boulevard (yellow arrows)
-    { id: 'H3', x: 1,  y: 30, w: 50, h: 2 }, // Lower Hallway (Cron, Ops, Lobby, Cafe, Games, Gym, Garden)
-    { id: 'VC', x: 25, y: 10, w: 2,  h: 22 } // Central Vertical Hallway linking H1 <-> H2 <-> H3
+    { id: 'ATRIUM_V',   x: 23, y: 2,  w: 2,  h: 22 }, // Vertical glass atrium dividing left campus & right video wing
+    { id: 'PLAZA_H',    x: 1,  y: 12, w: 22, h: 2  }, // Open central plaza linking upper & lower zones
+    { id: 'PLAZA_NOOK', x: 15, y: 11, w: 8,  h: 1  }  // Architectural setback nook under ops_hub (water cooler chat area)
   ];
 
-  // Yellow directional pipeline arrows painted on corridor floors
-  var PIPELINE_ARROWS = [
-    // AI Chat pipeline on H1 (y = 10.65)
-    { x: 9.2,  y: 10.55, dir: 'right', dept: 'ai',    stageFrom: 'ai_router',    stageTo: 'ai_architect' },
-    { x: 19.2, y: 10.55, dir: 'right', dept: 'ai',    stageFrom: 'ai_architect', stageTo: 'ai_workers' },
-    { x: 33.2, y: 10.55, dir: 'right', dept: 'ai',    stageFrom: 'ai_workers',   stageTo: 'ai_review' },
-    { x: 43.2, y: 10.55, dir: 'right', dept: 'hub',   stageFrom: 'ai_review',    stageTo: 'hub_dispatch' },
-    { x: 52.2, y: 10.55, dir: 'right', dept: 'hub',   stageFrom: 'hub_dispatch', stageTo: 'hub_workers' },
-    // Video Studio 5-stage pipeline on H2 (y = 20.55)
-    { x: 10.8, y: 20.55, dir: 'right', dept: 'video', stageFrom: 'vid_script',   stageTo: 'vid_art' },
-    { x: 22.8, y: 20.55, dir: 'right', dept: 'video', stageFrom: 'vid_art',      stageTo: 'vid_tts' },
-    { x: 28.0, y: 20.55, dir: 'right', dept: 'video', stageFrom: 'vid_art',      stageTo: 'vid_tts' },
-    { x: 36.8, y: 20.55, dir: 'right', dept: 'video', stageFrom: 'vid_tts',      stageTo: 'vid_edit' },
-    { x: 48.8, y: 20.55, dir: 'right', dept: 'video', stageFrom: 'vid_edit',     stageTo: 'vid_publish' },
-    // Cron scheduler -> Morning News on H3
-    { x: 10.8, y: 30.55, dir: 'right', dept: 'cron',  stageFrom: 'cron_sched',   stageTo: 'cron_news' }
-  ];
+  // Kept empty for backward-compatibility (yellow road arrows removed in v2)
+  var PIPELINE_ARROWS = [];
 
-  // 20 rooms across 6 departments on 64x40 tile grid
+  // 8 asymmetric architectural zones across 4 main departments on 40x25 grid
   var LAYOUT = {
     widthTiles: WORLD_W_TILES,
     heightTiles: WORLD_H_TILES,
@@ -60,541 +51,381 @@
     corridors: CORRIDORS,
     arrows: PIPELINE_ARROWS,
     rooms: [
-      // ===================== ROW 1: AI CHAT (4 rooms) =====================
+      // ===================== 1. AI STUDIO (Open-Plan 3 Corners) =====================
       {
         deptId: 'ai',
-        roomId: 'ai_router',
-        label: '🤖 เราเตอร์ AI',
-        desc: 'คัดกรองและกระจายคำสั่งแชท AI',
-        rect: { x: 1, y: 2, w: 10, h: 8 },
-        floor: 'carpet',
-        floorColor: 'ai',
-        doors: [{ x: 5, y: 9 }],
-        seats: [{ x: 5, y: 5, dir: 'down', deskX: 4.5, deskY: 5.55 }],
-        handoffSpot: { x: 8, y: 7 },
-        idleSpots: [{ x: 8, y: 6, dir: 'down' }],
-        furniture: [
-          { type: 'window_city', x: 3.2, y: 3.05, layer: 'static' },
-          { type: 'plant',       x: 8.6, y: 3.15, layer: 'static' },
-          { type: 'cabinet',     x: 1.5, y: 3.2,  layer: 'static' },
-          { type: 'chair',       x: 5.05, y: 5.05, layer: 'static' },
-          { type: 'desk',        x: 4.5, y: 5.55, layer: 'fg', solid: [{ x: 4, y: 6 }, { x: 5, y: 6 }] },
-          { type: 'dual_monitor', x: 4.65, y: 5.35, layer: 'fg', screen: true, screenCol: '#8d7bff' }
-        ]
-      },
-      {
-        deptId: 'ai',
-        roomId: 'ai_architect',
-        label: '📐 สถาปนิก',
-        desc: 'วางพิมพ์เขียวและแตกงานย่อย (ด่าน 1)',
-        rect: { x: 11, y: 2, w: 10, h: 8 },
-        floor: 'carpet',
-        floorColor: 'ai',
-        doors: [{ x: 15, y: 9 }],
-        seats: [{ x: 15, y: 5, dir: 'down', deskX: 14.5, deskY: 5.55 }],
-        handoffSpot: { x: 18, y: 7 },
-        idleSpots: [{ x: 18, y: 5, dir: 'up', kind: 'read_book' }],
-        furniture: [
-          { type: 'whiteboard', x: 12.6, y: 3.05, layer: 'static' },
-          { type: 'bookshelf',  x: 18.0, y: 3.05, layer: 'static' },
-          { type: 'chair',      x: 15.05, y: 5.05, layer: 'static' },
-          { type: 'desk',       x: 14.5, y: 5.55, layer: 'fg', solid: [{ x: 14, y: 6 }, { x: 15, y: 6 }] },
-          { type: 'dual_monitor', x: 14.65, y: 5.35, layer: 'fg', screen: true, screenCol: '#a47eff' }
-        ]
-      },
-      {
-        deptId: 'ai',
-        roomId: 'ai_workers',
-        label: '⚡ เวิร์กเกอร์',
-        desc: 'ทีมลงมือเขียนโค้ดและแก้บั๊ก (ด่าน 2)',
-        rect: { x: 21, y: 2, w: 14, h: 8 },
+        roomId: 'ai_studio',
+        label: '🤖 โซนทีม AI',
+        desc: 'พื้นที่ Open-plan ทีม AI ด่าน 1 สถาปนิก · ด่าน 2 เดฟคู่ · ด่าน 3 โค้ดรีวิว/QA',
+        rect: { x: 1, y: 2, w: 14, h: 10 },
         floor: 'wood',
-        doors: [{ x: 27, y: 9 }],
-        seats: [
-          { x: 23, y: 5, dir: 'down', deskX: 22.5, deskY: 5.55 },
-          { x: 27, y: 5, dir: 'down', deskX: 26.5, deskY: 5.55 },
-          { x: 31, y: 5, dir: 'down', deskX: 30.5, deskY: 5.55 }
+        wallStyle: 'solid',
+        signOffsetX: 0,
+        doors: [
+          { x: 7,  y: 11, openArch: true },
+          { x: 8,  y: 11, openArch: true },
+          { x: 14, y: 6,  orient: 'vertical' }
         ],
-        handoffSpot: { x: 29, y: 7 },
-        idleSpots: [{ x: 25, y: 7, dir: 'down' }],
+        seats: [
+          { x: 3,  y: 6, dir: 'down', deskX: 2.4,  deskY: 6.65 }, // ai_architect
+          { x: 6,  y: 6, dir: 'down', deskX: 5.4,  deskY: 6.65 }, // ai_worker_1
+          { x: 9,  y: 6, dir: 'down', deskX: 8.4,  deskY: 6.65 }, // ai_worker_2
+          { x: 12, y: 6, dir: 'down', deskX: 11.4, deskY: 6.65 }  // ai_review
+        ],
+        handoffSpot: { x: 7, y: 9 },
+        idleSpots: [
+          { x: 4,  y: 5, dir: 'up',   kind: 'read_book' },
+          { x: 10, y: 9, dir: 'left', kind: 'ai_chat' }
+        ],
         furniture: [
-          { type: 'kanban_board', x: 22.2, y: 3.05, layer: 'static' },
-          { type: 'window_city',  x: 26.4, y: 3.05, layer: 'static' },
-          { type: 'kanban_board', x: 30.8, y: 3.05, layer: 'static' },
-          { type: 'chair', x: 23.05, y: 5.05, layer: 'static' },
-          { type: 'chair', x: 27.05, y: 5.05, layer: 'static' },
-          { type: 'chair', x: 31.05, y: 5.05, layer: 'static' },
-          { type: 'desk',  x: 22.5, y: 5.55, layer: 'fg', solid: [{ x: 22, y: 6 }, { x: 23, y: 6 }] },
-          { type: 'desk',  x: 26.5, y: 5.55, layer: 'fg', solid: [{ x: 26, y: 6 }, { x: 27, y: 6 }] },
-          { type: 'desk',  x: 30.5, y: 5.55, layer: 'fg', solid: [{ x: 30, y: 6 }, { x: 31, y: 6 }] },
-          { type: 'dual_monitor', x: 22.65, y: 5.35, layer: 'fg', screen: true, screenCol: '#38e8c6' },
-          { type: 'dual_monitor', x: 26.65, y: 5.35, layer: 'fg', screen: true, screenCol: '#59c7ff' },
-          { type: 'dual_monitor', x: 30.65, y: 5.35, layer: 'fg', screen: true, screenCol: '#b785ff' }
-        ]
-      },
-      {
-        deptId: 'ai',
-        roomId: 'ai_review',
-        label: '🔍 รีวิว/QC',
-        desc: 'ตรวจคุณภาพ โค้ดรีวิว และทดสอบ (ด่าน 3)',
-        rect: { x: 35, y: 2, w: 10, h: 8 },
-        floor: 'carpet',
-        floorColor: 'ai',
-        doors: [{ x: 39, y: 9 }],
-        seats: [{ x: 39, y: 5, dir: 'down', deskX: 38.5, deskY: 5.55 }],
-        handoffSpot: { x: 41, y: 7 },
-        idleSpots: [{ x: 37, y: 7, dir: 'down' }],
-        furniture: [
-          { type: 'whiteboard', x: 36.6, y: 3.05, layer: 'static' },
-          { type: 'plant',      x: 42.6, y: 3.15, layer: 'static' },
-          { type: 'printer',    x: 42.2, y: 6.4,  layer: 'static' },
-          { type: 'chair',      x: 39.05, y: 5.05, layer: 'static' },
-          { type: 'desk',       x: 38.5, y: 5.55, layer: 'fg', solid: [{ x: 38, y: 6 }, { x: 39, y: 6 }] },
-          { type: 'dual_monitor', x: 38.65, y: 5.35, layer: 'fg', screen: true, screenCol: '#4de09d' }
+          // Zone rugs defining 3 soft open-plan corners without solid walls
+          { type: 'rug', x: 2.0,  y: 5.1, layer: 'static', opts: { w: 46, h: 42, color: '#584196' } },
+          { type: 'rug', x: 5.3,  y: 5.1, layer: 'static', opts: { w: 84, h: 42, color: '#3b4d78' } },
+          { type: 'rug', x: 11.1, y: 5.1, layer: 'static', opts: { w: 42, h: 42, color: '#3a6658' } },
+          // Top architectural wall fixtures (spaced neatly below room sign)
+          { type: 'whiteboard',   x: 2.1,  y: 3.15, layer: 'static' },
+          { type: 'bookshelf',    x: 4.7,  y: 3.05, layer: 'static' },
+          { type: 'window_city',  x: 6.6,  y: 3.2,  layer: 'static' },
+          { type: 'kanban_board', x: 9.3,  y: 3.15, layer: 'static' },
+          { type: 'plant',        x: 12.6, y: 3.25, layer: 'static' },
+          // Low frosted-glass planter partitions framing the open entrance aisle
+          { type: 'partition_glass', x: 4.4,  y: 9.0, layer: 'fg', solid: [{ x: 4, y: 9 }] },
+          { type: 'partition_glass', x: 9.5,  y: 9.0, layer: 'fg', solid: [{ x: 10, y: 9 }] },
+          { type: 'printer',         x: 12.1, y: 8.95, layer: 'static' },
+          { type: 'plant',           x: 2.0,  y: 8.9,  layer: 'static' },
+          // 4 Workstations (chairs static behind desks; desks & dual monitors Y-sorted fg)
+          { type: 'chair', x: 3.05,  y: 6.15, layer: 'static' },
+          { type: 'chair', x: 6.05,  y: 6.15, layer: 'static' },
+          { type: 'chair', x: 9.05,  y: 6.15, layer: 'static' },
+          { type: 'chair', x: 12.05, y: 6.15, layer: 'static' },
+          { type: 'desk',  x: 2.4,  y: 6.65, layer: 'fg', solid: [{ x: 2, y: 7 }, { x: 3, y: 7 }] },
+          { type: 'desk',  x: 5.4,  y: 6.65, layer: 'fg', solid: [{ x: 5, y: 7 }, { x: 6, y: 7 }] },
+          { type: 'desk',  x: 8.4,  y: 6.65, layer: 'fg', solid: [{ x: 8, y: 7 }, { x: 9, y: 7 }] },
+          { type: 'desk',  x: 11.4, y: 6.65, layer: 'fg', solid: [{ x: 11, y: 7 }, { x: 12, y: 7 }] },
+          { type: 'dual_monitor', x: 2.55,  y: 6.38, layer: 'fg', screen: true, screenCol: '#a47eff' },
+          { type: 'dual_monitor', x: 5.55,  y: 6.38, layer: 'fg', screen: true, screenCol: '#38e8c6' },
+          { type: 'dual_monitor', x: 8.55,  y: 6.38, layer: 'fg', screen: true, screenCol: '#59c7ff' },
+          { type: 'dual_monitor', x: 11.55, y: 6.38, layer: 'fg', screen: true, screenCol: '#4de09d' }
         ]
       },
 
-      // ===================== ROW 1 RIGHT: IT / AGENT HUB (2 rooms) =====================
+      // ===================== 2. OPS & NODE HUB (Glass-Walled Data Center) =====================
       {
         deptId: 'hub',
-        roomId: 'hub_dispatch',
-        label: '📡 ดิสแพตช์',
-        desc: 'จัดคิวและจ่ายงานหนักไปลูกข่าย Agent Hub',
-        rect: { x: 45, y: 2, w: 9, h: 8 },
-        floor: 'tile',
-        doors: [{ x: 49, y: 9 }],
-        seats: [{ x: 48, y: 5, dir: 'down', deskX: 47.5, deskY: 5.55 }],
-        handoffSpot: { x: 51, y: 7 },
-        idleSpots: [{ x: 51, y: 6, dir: 'left' }],
-        furniture: [
-          { type: 'window_city', x: 46.2, y: 3.05, layer: 'static' },
-          { type: 'server_rack', x: 51.4, y: 3.1,  layer: 'static', rack: true },
-          { type: 'chair',       x: 48.05, y: 5.05, layer: 'static' },
-          { type: 'desk',        x: 47.5, y: 5.55, layer: 'fg', solid: [{ x: 47, y: 6 }, { x: 48, y: 6 }] },
-          { type: 'dual_monitor', x: 47.65, y: 5.35, layer: 'fg', screen: true, screenCol: '#4fc3ff' }
-        ]
-      },
-      {
-        deptId: 'hub',
-        roomId: 'hub_workers',
-        label: '🖥️ เซิร์ฟเวอร์',
-        desc: 'เครื่องลูกข่าย GPU/CPU (asridaytrade, servergigi)',
-        rect: { x: 54, y: 2, w: 9, h: 8 },
+        roomId: 'ops_hub',
+        label: '🖥️ ระบบ & โหนด',
+        desc: 'ศูนย์ควบคุม Agent Hub ลูกข่าย GPU (asridaytrade/servergigi), Docker/PM2, PZEM-01 & Cron ระบบ',
+        rect: { x: 15, y: 2, w: 8, h: 9 },
         floor: 'concrete',
-        doors: [{ x: 58, y: 9 }],
-        seats: [
-          { x: 56, y: 5, dir: 'down', deskX: 55.4, deskY: 5.6 },
-          { x: 60, y: 5, dir: 'down', deskX: 59.4, deskY: 5.6 }
+        wallStyle: 'glass',
+        signOffsetX: 0,
+        doors: [
+          { x: 18, y: 10 },
+          { x: 19, y: 10 },
+          { x: 15, y: 6, orient: 'vertical', sharedHide: true }
         ],
-        handoffSpot: { x: 58, y: 7 },
-        idleSpots: [{ x: 58, y: 6, dir: 'up' }],
+        seats: [
+          { x: 17, y: 6, dir: 'down', deskX: 16.25, deskY: 6.65 }, // hub_dispatch
+          { x: 20, y: 6, dir: 'down', deskX: 19.45, deskY: 6.65 }  // ops_sys
+        ],
+        handoffSpot: { x: 18, y: 8 },
+        // Water cooler chat spots in PLAZA_NOOK right outside ops_hub's glass wall!
+        idleSpots: [
+          { x: 16, y: 11, dir: 'right', kind: 'water_chat_group' },
+          { x: 17, y: 11, dir: 'left',  kind: 'water_chat_group' }
+        ],
         furniture: [
-          { type: 'server_rack', x: 55.2, y: 3.05, layer: 'static', rack: true },
-          { type: 'server_rack', x: 57.6, y: 3.05, layer: 'static', rack: true },
-          { type: 'server_rack', x: 60.0, y: 3.05, layer: 'static', rack: true },
-          { type: 'chair', x: 56.05, y: 5.1, layer: 'static' },
-          { type: 'chair', x: 60.05, y: 5.1, layer: 'static' },
-          { type: 'desk',  x: 55.4, y: 5.6, layer: 'fg', opts: { w: 28 }, solid: [{ x: 55, y: 6 }] },
-          { type: 'desk',  x: 59.4, y: 5.6, layer: 'fg', opts: { w: 28 }, solid: [{ x: 59, y: 6 }] },
-          { type: 'pc',    x: 55.7, y: 5.35, layer: 'fg', screen: true, screenCol: '#38e8c6' },
-          { type: 'pc',    x: 59.7, y: 5.35, layer: 'fg', screen: true, screenCol: '#38e8c6' }
+          { type: 'server_rack', x: 16.2, y: 3.15, layer: 'static', rack: true },
+          { type: 'server_rack', x: 18.4, y: 3.15, layer: 'static', rack: true },
+          { type: 'server_rack', x: 20.6, y: 3.15, layer: 'static', rack: true },
+          { type: 'chair', x: 17.05, y: 6.15, layer: 'static' },
+          { type: 'chair', x: 20.05, y: 6.15, layer: 'static' },
+          { type: 'desk',  x: 16.25, y: 6.65, layer: 'fg', opts: { w: 28 }, solid: [{ x: 16, y: 7 }, { x: 17, y: 7 }] },
+          { type: 'desk',  x: 19.45, y: 6.65, layer: 'fg', opts: { w: 28 }, solid: [{ x: 20, y: 7 }, { x: 21, y: 7 }] },
+          { type: 'dual_monitor', x: 16.25, y: 6.38, layer: 'fg', screen: true, screenCol: '#4fc3ff' },
+          { type: 'dual_monitor', x: 19.45, y: 6.38, layer: 'fg', screen: true, screenCol: '#4de09d' }
         ]
       },
 
-      // ===================== ROW 2: VIDEO STUDIO PIPELINE (5 rooms) =====================
+      // ===================== 3. VIDEO CREATIVE (Script & Storyboard) =====================
       {
         deptId: 'video',
-        roomId: 'vid_script',
-        label: '📝 สคริปต์',
-        desc: 'วิจัยข้อมูลและเขียนบทวิดีโอ (ขั้น 1)',
-        rect: { x: 1, y: 12, w: 12, h: 8 },
-        floor: 'carpet',
-        floorColor: 'video',
-        doors: [{ x: 6, y: 19 }],
-        seats: [{ x: 6, y: 15, dir: 'down', deskX: 5.5, deskY: 15.55 }],
-        handoffSpot: { x: 9, y: 17 },
-        idleSpots: [{ x: 9, y: 16, dir: 'up', kind: 'read_book' }],
-        furniture: [
-          { type: 'whiteboard', x: 2.6,  y: 13.05, layer: 'static' },
-          { type: 'bookshelf',  x: 9.6,  y: 13.05, layer: 'static' },
-          { type: 'plant',      x: 1.6,  y: 16.5,  layer: 'static' },
-          { type: 'chair',      x: 6.05, y: 15.05, layer: 'static' },
-          { type: 'desk',       x: 5.5,  y: 15.55, layer: 'fg', solid: [{ x: 5, y: 16 }, { x: 6, y: 16 }] },
-          { type: 'pc',         x: 5.9,  y: 15.35, layer: 'fg', screen: true, screenCol: '#ff96ad' }
-        ]
-      },
-      {
-        deptId: 'video',
-        roomId: 'vid_art',
-        label: '🎨 วาดภาพ',
-        desc: 'ออกแบบฉาก สตอรี่บอร์ด และภาพประกอบ (ขั้น 2)',
-        rect: { x: 13, y: 12, w: 12, h: 8 },
+        roomId: 'vid_creative',
+        label: '📝 สคริปต์ & วาดภาพ',
+        desc: 'คิดบทวิดีโอ รายการข่าวเช้า ออกแบบสตอรี่บอร์ดและภาพประกอบ (ขั้น 1–2)',
+        rect: { x: 25, y: 2, w: 14, h: 8 },
         floor: 'wood',
-        doors: [{ x: 18, y: 19 }],
-        seats: [{ x: 18, y: 15, dir: 'down', deskX: 17.5, deskY: 15.55 }],
-        handoffSpot: { x: 21, y: 17 },
-        idleSpots: [{ x: 21, y: 15, dir: 'left' }],
+        wallStyle: 'solid',
+        signOffsetX: 0,
+        doors: [
+          { x: 25, y: 6, orient: 'vertical' },
+          { x: 27, y: 9 },
+          { x: 35, y: 9 }
+        ],
+        seats: [
+          { x: 29, y: 6, dir: 'down', deskX: 28.4, deskY: 6.55 }, // vid_script
+          { x: 33, y: 6, dir: 'down', deskX: 32.4, deskY: 6.55 }  // vid_art
+        ],
+        handoffSpot: { x: 31, y: 7 },
+        idleSpots: [
+          { x: 34, y: 5, dir: 'up', kind: 'read_book' }
+        ],
         furniture: [
-          { type: 'easel',      x: 21.4, y: 13.3,  layer: 'static' },
-          { type: 'whiteboard', x: 14.4, y: 13.05, layer: 'static' },
-          { type: 'plant',      x: 13.6, y: 16.5,  layer: 'static' },
-          { type: 'chair',      x: 18.05, y: 15.05, layer: 'static' },
-          { type: 'desk',       x: 17.5, y: 15.55, layer: 'fg', solid: [{ x: 17, y: 16 }, { x: 18, y: 16 }] },
-          { type: 'dual_monitor', x: 17.65, y: 15.35, layer: 'fg', screen: true, screenCol: '#ff7ea5' }
+          { type: 'rug',         x: 27.6, y: 5.0,  layer: 'static', opts: { w: 118, h: 42, color: '#7a3d4e' } },
+          { type: 'whiteboard',  x: 26.2, y: 3.15, layer: 'static' },
+          { type: 'window_city', x: 29.4, y: 3.2,  layer: 'static' },
+          { type: 'bookshelf',   x: 32.6, y: 3.05, layer: 'static' },
+          { type: 'easel',       x: 35.0, y: 3.15, layer: 'static' },
+          { type: 'plant',       x: 36.7, y: 3.25, layer: 'static' },
+          { type: 'chair',       x: 29.05, y: 6.05, layer: 'static' },
+          { type: 'chair',       x: 33.05, y: 6.05, layer: 'static' },
+          { type: 'desk',        x: 28.4,  y: 6.55, layer: 'fg', solid: [{ x: 28, y: 7 }, { x: 29, y: 7 }] },
+          { type: 'desk',        x: 32.4,  y: 6.55, layer: 'fg', solid: [{ x: 32, y: 7 }, { x: 33, y: 7 }] },
+          { type: 'pc',          x: 28.85, y: 6.3,  layer: 'fg', screen: true, screenCol: '#ff96ad' },
+          { type: 'dual_monitor', x: 32.55, y: 6.3, layer: 'fg', screen: true, screenCol: '#ff7ea5' }
         ]
       },
+
+      // ===================== 4. VOICE RECORDING BOOTH (Glass Studio) =====================
       {
         deptId: 'video',
-        roomId: 'vid_tts',
-        label: '🎙️ อัดเสียง',
+        roomId: 'vid_voice',
+        label: '🎙️ ห้องอัดเสียง',
         desc: 'พากย์เสียงไทย TTS และซิงค์คำบรรยาย (ขั้น 3)',
-        rect: { x: 27, y: 12, w: 12, h: 8 },
+        rect: { x: 25, y: 10, w: 8, h: 6 },
         floor: 'carpet',
         floorColor: 'video',
-        doors: [{ x: 32, y: 19 }],
-        seats: [{ x: 32, y: 15, dir: 'down', deskX: 31.5, deskY: 15.55 }],
-        handoffSpot: { x: 35, y: 17 },
-        idleSpots: [{ x: 35, y: 16, dir: 'left' }],
+        wallStyle: 'glass',
+        signOffsetX: 14,
+        doors: [
+          { x: 25, y: 12, orient: 'vertical' },
+          { x: 27, y: 10, sharedHide: true },
+          { x: 27, y: 15 }
+        ],
+        seats: [
+          { x: 28, y: 12, dir: 'down', deskX: 27.6, deskY: 12.65 } // vid_tts
+        ],
+        handoffSpot: { x: 27, y: 13 },
+        idleSpots: [
+          { x: 30, y: 14, dir: 'up', kind: 'voice_prep' }
+        ],
         furniture: [
-          { type: 'mic_booth',      x: 35.4, y: 13.15, layer: 'static' },
-          { type: 'clock',          x: 28.4, y: 13.15, layer: 'static' },
-          { type: 'plant',          x: 27.6, y: 16.5,  layer: 'static' },
-          { type: 'chair',          x: 32.05, y: 15.05, layer: 'static' },
-          { type: 'mixing_console', x: 31.5, y: 15.55, layer: 'fg', solid: [{ x: 31, y: 16 }, { x: 32, y: 16 }] }
+          { type: 'clock',          x: 28.4,  y: 11.15, layer: 'static' },
+          { type: 'mic_booth',      x: 30.1,  y: 11.2,  layer: 'fg', studioProp: true },
+          { type: 'chair',          x: 28.05, y: 12.1,  layer: 'static' },
+          { type: 'mixing_console', x: 27.6,  y: 12.65, layer: 'fg', studioProp: true, solid: [{ x: 28, y: 13 }, { x: 29, y: 13 }] }
         ]
       },
+
+      // ===================== 5. OUTDOOR TERRACE / BALCONY (Cantilevered Deck) =====================
+      {
+        deptId: 'video',
+        roomId: 'vid_balcony',
+        label: '🌅 ระเบียง',
+        desc: 'ระเบียงไม้กลางแจ้งรับลม ชมวิว จิบกาแฟเติมไอเดีย',
+        rect: { x: 33, y: 10, w: 6, h: 6 },
+        floor: 'deck',
+        isOutdoor: true,
+        wallStyle: 'fence',
+        signOffsetX: 12,
+        doors: [
+          { x: 35, y: 10, sharedHide: true },
+          { x: 35, y: 15 }
+        ],
+        seats: [],
+        handoffSpot: { x: 35, y: 13 },
+        idleSpots: [
+          { x: 34, y: 12, dir: 'right', kind: 'balcony_chill' },
+          { x: 35, y: 13, dir: 'right', kind: 'balcony_chill' },
+          { x: 37, y: 12, dir: 'left',  kind: 'balcony_chill' }
+        ],
+        furniture: [
+          { type: 'plant',       x: 34.05, y: 11.15, layer: 'static' },
+          { type: 'bench',       x: 36.1,  y: 11.2,  layer: 'static', opts: { w: 26 } },
+          { type: 'patio_table', x: 35.75, y: 12.35, layer: 'fg', animatedProp: true, solid: [{ x: 36, y: 13 }] },
+          { type: 'plant',       x: 37.0,  y: 13.7,  layer: 'static' }
+        ]
+      },
+
+      // ===================== 6. VIDEO EDIT & PUBLISH SUITE =====================
       {
         deptId: 'video',
         roomId: 'vid_edit',
-        label: '✂️ ตัดต่อ',
-        desc: 'เรนเดอร์ Remotion + มิกซ์เสียง BGM/SFX (ขั้น 4)',
-        rect: { x: 39, y: 12, w: 12, h: 8 },
+        label: '✂️ ตัดต่อ & เผยแพร่',
+        desc: 'เรนเดอร์ Remotion มิกซ์ BGM/SFX ตรวจ QC ส่ง Telegram และโพสต์โซเชียล (ขั้น 4–5)',
+        rect: { x: 25, y: 16, w: 14, h: 8 },
         floor: 'tile',
-        doors: [{ x: 44, y: 19 }],
-        seats: [{ x: 44, y: 15, dir: 'down', deskX: 43.5, deskY: 15.55 }],
-        handoffSpot: { x: 47, y: 17 },
-        idleSpots: [{ x: 47, y: 16, dir: 'left' }],
+        wallStyle: 'solid',
+        signOffsetX: -6,
+        doors: [
+          { x: 25, y: 19, orient: 'vertical' },
+          { x: 27, y: 16, sharedHide: true },
+          { x: 35, y: 16, sharedHide: true }
+        ],
+        seats: [
+          { x: 29, y: 20, dir: 'down', deskX: 28.4, deskY: 20.55 }, // vid_edit
+          { x: 33, y: 20, dir: 'down', deskX: 32.4, deskY: 20.55 }  // vid_publish
+        ],
+        handoffSpot: { x: 31, y: 19 },
+        idleSpots: [
+          { x: 31, y: 22, dir: 'up', kind: 'edit_review' }
+        ],
         furniture: [
-          { type: 'film_camera',  x: 47.8, y: 13.4,  layer: 'static' },
-          { type: 'kanban_board', x: 40.5, y: 13.05, layer: 'static' },
-          { type: 'chair',        x: 44.05, y: 15.05, layer: 'static' },
-          { type: 'desk',         x: 43.5, y: 15.55, layer: 'fg', solid: [{ x: 43, y: 16 }, { x: 44, y: 16 }] },
-          { type: 'dual_monitor', x: 43.65, y: 15.35, layer: 'fg', screen: true, screenCol: '#ffd05c' }
-        ]
-      },
-      {
-        deptId: 'video',
-        roomId: 'vid_publish',
-        label: '🚀 เผยแพร่',
-        desc: 'QC ตรวจสอบ ส่ง Telegram และโพสต์โซเชียล (ขั้น 5)',
-        rect: { x: 51, y: 12, w: 12, h: 8 },
-        floor: 'carpet',
-        floorColor: 'video',
-        doors: [{ x: 56, y: 19 }],
-        seats: [{ x: 56, y: 15, dir: 'down', deskX: 55.5, deskY: 15.55 }],
-        handoffSpot: { x: 59, y: 17 },
-        idleSpots: [{ x: 59, y: 16, dir: 'left' }],
-        furniture: [
-          { type: 'rocket_antenna', x: 59.6, y: 13.15, layer: 'static' },
-          { type: 'kanban_board',   x: 52.5, y: 13.05, layer: 'static' },
-          { type: 'plant',          x: 51.6, y: 16.5,  layer: 'static' },
-          { type: 'chair',          x: 56.05, y: 15.05, layer: 'static' },
-          { type: 'desk',           x: 55.5, y: 15.55, layer: 'fg', solid: [{ x: 55, y: 16 }, { x: 56, y: 16 }] },
-          { type: 'dual_monitor',   x: 55.65, y: 15.35, layer: 'fg', screen: true, screenCol: '#ff7096' }
+          { type: 'rug',            x: 27.6, y: 19.0,  layer: 'static', opts: { w: 120, h: 42, color: '#5c415e' } },
+          { type: 'film_camera',    x: 26.0, y: 17.35, layer: 'fg',     studioProp: true },
+          { type: 'kanban_board',   x: 29.4, y: 17.2,  layer: 'static' },
+          { type: 'rocket_antenna', x: 36.1, y: 17.2,  layer: 'fg',     studioProp: true },
+          { type: 'plant',          x: 36.8, y: 21.1,  layer: 'static' },
+          { type: 'chair',          x: 29.05, y: 20.05, layer: 'static' },
+          { type: 'chair',          x: 33.05, y: 20.05, layer: 'static' },
+          { type: 'desk',           x: 28.4,  y: 20.55, layer: 'fg', solid: [{ x: 28, y: 21 }, { x: 29, y: 21 }] },
+          { type: 'desk',           x: 32.4,  y: 20.55, layer: 'fg', solid: [{ x: 32, y: 21 }, { x: 33, y: 21 }] },
+          { type: 'dual_monitor',   x: 28.55, y: 20.3,  layer: 'fg', screen: true, screenCol: '#ffd05c' },
+          { type: 'dual_monitor',   x: 32.55, y: 20.3,  layer: 'fg', screen: true, screenCol: '#ff7096' }
         ]
       },
 
-      // ===================== ROW 3A LEFT: CRON & SCHEDULER (2 rooms) =====================
-      {
-        deptId: 'cron',
-        roomId: 'cron_sched',
-        label: '⏰ ตั้งเวลา',
-        desc: 'จัดการตารางงาน Cron อัตโนมัติทั้งระบบ',
-        rect: { x: 1, y: 22, w: 12, h: 8 },
-        floor: 'wood',
-        doors: [{ x: 6, y: 29 }],
-        seats: [{ x: 6, y: 25, dir: 'down', deskX: 5.5, deskY: 25.55 }],
-        handoffSpot: { x: 9, y: 27 },
-        idleSpots: [{ x: 9, y: 26, dir: 'down' }],
-        furniture: [
-          { type: 'calendar_board', x: 2.5,  y: 23.05, layer: 'static' },
-          { type: 'clock',          x: 9.8,  y: 23.15, layer: 'static' },
-          { type: 'cabinet',        x: 10.2, y: 26.2,  layer: 'static' },
-          { type: 'chair',          x: 6.05, y: 25.05, layer: 'static' },
-          { type: 'desk',           x: 5.5,  y: 25.55, layer: 'fg', solid: [{ x: 5, y: 26 }, { x: 6, y: 26 }] },
-          { type: 'pc',             x: 5.9,  y: 25.35, layer: 'fg', screen: true, screenCol: '#f2c94c' }
-        ]
-      },
-      {
-        deptId: 'cron',
-        roomId: 'cron_news',
-        label: '📰 ข่าวเช้า',
-        desc: 'ผลิตคลิปรายการข่าวเช้า Daily News Broadcast v2',
-        rect: { x: 13, y: 22, w: 12, h: 8 },
-        floor: 'carpet',
-        floorColor: 'cron',
-        doors: [{ x: 18, y: 29 }],
-        seats: [{ x: 18, y: 25, dir: 'down', deskX: 17.5, deskY: 25.55 }],
-        handoffSpot: { x: 21, y: 27 },
-        idleSpots: [{ x: 21, y: 26, dir: 'left' }],
-        furniture: [
-          { type: 'whiteboard',  x: 14.5, y: 23.05, layer: 'static' },
-          { type: 'film_camera', x: 21.8, y: 23.4,  layer: 'static' },
-          { type: 'printer',     x: 14.0, y: 26.8,  layer: 'static' },
-          { type: 'chair',       x: 18.05, y: 25.05, layer: 'static' },
-          { type: 'desk',        x: 17.5, y: 25.55, layer: 'fg', solid: [{ x: 17, y: 26 }, { x: 18, y: 26 }] },
-          { type: 'dual_monitor', x: 17.65, y: 25.35, layer: 'fg', screen: true, screenCol: '#ffd966' }
-        ]
-      },
-
-      // ===================== ROW 3B LEFT: OPERATIONS / INFRA (2 rooms) =====================
-      {
-        deptId: 'ops',
-        roomId: 'ops_monitor',
-        label: '🛡️ มอนิเตอร์',
-        desc: 'เฝ้าระวัง Docker, PM2, Kuma และสุขภาพเซิร์ฟเวอร์',
-        rect: { x: 1, y: 32, w: 12, h: 7 },
-        floor: 'concrete',
-        doors: [{ x: 2, y: 32 }],
-        seats: [{ x: 6, y: 35, dir: 'down', deskX: 5.5, deskY: 35.55 }],
-        handoffSpot: { x: 4, y: 34 },
-        idleSpots: [{ x: 9, y: 35, dir: 'left' }],
-        furniture: [
-          { type: 'server_rack', x: 10.2, y: 33.15, layer: 'static', rack: true },
-          { type: 'plant',       x: 1.6,  y: 35.8,  layer: 'static' },
-          { type: 'chair',       x: 6.05, y: 35.05, layer: 'static' },
-          { type: 'desk',        x: 5.5,  y: 35.55, layer: 'fg', solid: [{ x: 5, y: 36 }, { x: 6, y: 36 }] },
-          { type: 'dual_monitor', x: 5.65, y: 35.35, layer: 'fg', screen: true, screenCol: '#4de09d' }
-        ]
-      },
-      {
-        deptId: 'ops',
-        roomId: 'ops_energy',
-        label: '⚡ พลังงาน',
-        desc: 'ติดตามมิเตอร์ไฟฟ้า PZEM-01 และค่าไฟแบบเรียลไทม์',
-        rect: { x: 13, y: 32, w: 12, h: 7 },
-        floor: 'tile',
-        doors: [{ x: 23, y: 32 }],
-        seats: [{ x: 18, y: 35, dir: 'down', deskX: 17.5, deskY: 35.55 }],
-        handoffSpot: { x: 21, y: 34 },
-        idleSpots: [{ x: 15, y: 35, dir: 'right' }],
-        furniture: [
-          { type: 'cabinet', x: 14.0, y: 33.2,  layer: 'static' },
-          { type: 'clock',   x: 21.8, y: 33.3,  layer: 'static' },
-          { type: 'plant',   x: 22.8, y: 35.8,  layer: 'static' },
-          { type: 'chair',   x: 18.05, y: 35.05, layer: 'static' },
-          { type: 'desk',    x: 17.5, y: 35.55, layer: 'fg', solid: [{ x: 17, y: 36 }, { x: 18, y: 36 }] },
-          { type: 'dual_monitor', x: 17.65, y: 35.35, layer: 'fg', screen: true, screenCol: '#59e5a8' }
-        ]
-      },
-
-      // ===================== ROW 3 CENTER & RIGHT: LOUNGE & RECREATION (5 areas) =====================
+      // ===================== 7. CAFE & GAME LOUNGE (Combined!) =====================
       {
         deptId: 'lounge',
         roomId: 'lounge_cafe',
-        label: '☕ คาเฟ่',
-        desc: 'มุมชงกาแฟ ตู้ขนม และโซฟาพักสายตา',
-        rect: { x: 27, y: 22, w: 12, h: 8 },
+        label: '☕ คาเฟ่ & มุมเกม',
+        desc: 'มุมชงกาแฟ ตู้ขนม โซฟาพักสายตา โต๊ะไพ่ โต๊ะปิงปอง และชั้นหนังสือ',
+        rect: { x: 1, y: 14, w: 14, h: 10 },
         floor: 'wood',
-        doors: [{ x: 32, y: 29 }],
-        seats: [],
-        handoffSpot: { x: 32, y: 27 },
-        idleSpots: [
-          { x: 29, y: 25, dir: 'up',    kind: 'coffee' },
-          { x: 31, y: 25, dir: 'up',    kind: 'coffee' },
-          { x: 36, y: 25, dir: 'up',    kind: 'snack' },
-          { x: 30, y: 27, dir: 'down',  kind: 'sofa_nap' },
-          { x: 34, y: 27, dir: 'right', kind: 'hallway_chat_group' },
-          { x: 36, y: 27, dir: 'left',  kind: 'hallway_chat_group' }
-        ],
-        furniture: [
-          { type: 'rug',             x: 28.5, y: 25.6,  layer: 'static', opts: { color: '#7a5238' } },
-          { type: 'coffee_machine',  x: 28.8, y: 23.15, layer: 'static' },
-          { type: 'vending_machine', x: 35.8, y: 23.05, layer: 'static' },
-          { type: 'plant',           x: 27.6, y: 23.3,  layer: 'static' },
-          { type: 'clock',           x: 32.6, y: 23.25, layer: 'static' },
-          { type: 'sofa',            x: 29.0, y: 26.6,  layer: 'fg', solid: [{ x: 29, y: 27 }] }
-        ]
-      },
-      {
-        deptId: 'lounge',
-        roomId: 'lounge_games',
-        label: '🃏 มุมเกม',
-        desc: 'โต๊ะไพ่ โต๊ะปิงปอง และมุมหนังสือคลายเครียด',
-        rect: { x: 39, y: 22, w: 12, h: 8 },
-        floor: 'carpet',
-        floorColor: 'lounge',
-        doors: [{ x: 44, y: 29 }],
-        seats: [],
-        handoffSpot: { x: 44, y: 27 },
-        idleSpots: [
-          // 4 seats around card table (group card game!)
-          { x: 41, y: 25, dir: 'right', kind: 'cards_group' },
-          { x: 43, y: 25, dir: 'left',  kind: 'cards_group' },
-          { x: 42, y: 24, dir: 'down',  kind: 'cards_group' },
-          { x: 42, y: 27, dir: 'up',    kind: 'cards_group' },
-          // 2 spots facing across pingpong table (group pingpong!)
-          { x: 46, y: 26, dir: 'right', kind: 'pingpong_group' },
-          { x: 49, y: 26, dir: 'left',  kind: 'pingpong_group' },
-          // Bookshelf reading spot
-          { x: 47, y: 24, dir: 'up',    kind: 'read_book' }
-        ],
-        furniture: [
-          { type: 'rug',            x: 40.5, y: 24.4,  layer: 'static', opts: { color: '#5c4b6e', w: 56, h: 42 } },
-          { type: 'bookshelf',      x: 46.8, y: 23.02, layer: 'static' },
-          { type: 'plant',          x: 49.4, y: 23.2,  layer: 'static' },
-          { type: 'card_table',     x: 41.3, y: 24.8,  layer: 'fg', solid: [{ x: 42, y: 25 }] },
-          { type: 'pingpong_table', x: 46.6, y: 25.4,  layer: 'fg', solid: [{ x: 47, y: 26 }, { x: 48, y: 26 }] }
-        ]
-      },
-      {
-        deptId: 'lounge',
-        roomId: 'lounge_lobby',
-        label: '🛎️ ต้อนรับ',
-        desc: 'โถงต้อนรับหน้าบริษัท ประตูทางเข้าหลัก',
-        rect: { x: 25, y: 32, w: 14, h: 7 },
-        floor: 'tile',
+        wallStyle: 'solid',
+        signOffsetX: -36,
         doors: [
-          { x: 26, y: 32 },
-          { x: 36, y: 32 }
+          { x: 7,  y: 14, openArch: true },
+          { x: 8,  y: 14, openArch: true },
+          { x: 14, y: 18, orient: 'vertical' },
+          { x: 14, y: 19, orient: 'vertical' }
         ],
-        frontEntrance: { x: 31, y: 38, w: 2 },
-        seats: [{ x: 28, y: 35, dir: 'down', deskX: 27.5, deskY: 35.6 }],
-        handoffSpot: { x: 32, y: 35 },
-        idleSpots: [
-          { x: 34, y: 34, dir: 'right', kind: 'water_chat_group' },
-          { x: 36, y: 34, dir: 'left',  kind: 'water_chat_group' },
-          { x: 31, y: 36, dir: 'up',    kind: 'lobby_chat' }
-        ],
-        furniture: [
-          { type: 'rug',          x: 30.5, y: 35.6,  layer: 'static', opts: { w: 48, h: 36, color: '#9c2d3a' } },
-          { type: 'water_cooler', x: 34.8, y: 33.15, layer: 'static' },
-          { type: 'plant',        x: 26.0, y: 36.1,  layer: 'static' },
-          { type: 'plant',        x: 37.0, y: 36.1,  layer: 'static' },
-          { type: 'chair',        x: 28.05, y: 35.1, layer: 'static' },
-          { type: 'desk',         x: 27.5, y: 35.6,  layer: 'fg', opts: { color: '#a86b3a' }, solid: [{ x: 27, y: 36 }, { x: 28, y: 36 }] },
-          { type: 'pc',           x: 27.8, y: 35.35, layer: 'fg', screen: true, screenCol: '#ffd966' }
-        ]
-      },
-      {
-        deptId: 'lounge',
-        roomId: 'lounge_gym',
-        label: '🏋️ ฟิตเนส',
-        desc: 'ลู่วิ่งไฟฟ้า ดัมเบล และมุมออกกำลังกาย',
-        rect: { x: 39, y: 32, w: 12, h: 7 },
-        floor: 'concrete',
-        doors: [{ x: 40, y: 32 }],
         seats: [],
-        handoffSpot: { x: 42, y: 34 },
+        handoffSpot: { x: 7, y: 17 },
         idleSpots: [
-          { x: 43, y: 34, dir: 'right', kind: 'treadmill' },
-          { x: 46, y: 34, dir: 'right', kind: 'treadmill' },
-          { x: 43, y: 36, dir: 'down',  kind: 'dumbbell' },
-          { x: 47, y: 36, dir: 'down',  kind: 'dumbbell' }
+          // Cafe left side
+          { x: 3,  y: 17, dir: 'up',    kind: 'coffee' },
+          { x: 4,  y: 17, dir: 'up',    kind: 'coffee' },
+          { x: 5,  y: 17, dir: 'up',    kind: 'snack' },
+          { x: 3,  y: 20, dir: 'down',  kind: 'sofa_nap' },
+          { x: 5,  y: 19, dir: 'right', kind: 'cafe_chat_group' },
+          { x: 6,  y: 19, dir: 'left',  kind: 'cafe_chat_group' },
+          // Game corner right side — 4 seats around card table
+          { x: 9,  y: 18, dir: 'right', kind: 'cards_group' },
+          { x: 11, y: 18, dir: 'left',  kind: 'cards_group' },
+          { x: 10, y: 17, dir: 'down',  kind: 'cards_group' },
+          { x: 10, y: 19, dir: 'up',    kind: 'cards_group' },
+          // 2 seats flanking pingpong table
+          { x: 9,  y: 21, dir: 'right', kind: 'pingpong_group' },
+          { x: 12, y: 21, dir: 'left',  kind: 'pingpong_group' },
+          // Bookshelf reading spot
+          { x: 9,  y: 16, dir: 'up',    kind: 'read_book' }
         ],
         furniture: [
-          { type: 'water_cooler', x: 49.0, y: 33.15, layer: 'static' },
-          { type: 'plant',        x: 49.2, y: 36.0,  layer: 'static' },
-          { type: 'treadmill',    x: 42.3, y: 34.15, layer: 'static' },
-          { type: 'treadmill',    x: 45.3, y: 34.15, layer: 'static' },
-          { type: 'dumbbell',     x: 42.6, y: 36.6,  layer: 'static' },
-          { type: 'dumbbell',     x: 46.6, y: 36.6,  layer: 'static' }
+          // Left cafe rugs & appliances
+          { type: 'rug',             x: 2.05, y: 18.0,  layer: 'static', opts: { w: 68, h: 52, color: '#7a4b32' } },
+          { type: 'coffee_machine',  x: 2.15, y: 15.15, layer: 'fg',     animatedProp: true },
+          { type: 'vending_machine', x: 4.5,  y: 15.05, layer: 'static' },
+          { type: 'sofa',            x: 2.25, y: 20.6,  layer: 'fg',     solid: [{ x: 2, y: 21 }, { x: 3, y: 21 }] },
+          { type: 'plant',           x: 5.5,  y: 21.05, layer: 'static' },
+          // Right game lounge rug & furniture
+          { type: 'rug',            x: 8.4,  y: 16.5,  layer: 'static', opts: { w: 82, h: 72, color: '#4d416e' } },
+          { type: 'bookshelf',      x: 9.2,  y: 15.05, layer: 'static' },
+          { type: 'clock',          x: 11.4, y: 15.2,  layer: 'static' },
+          { type: 'plant',          x: 12.6, y: 15.2,  layer: 'static' },
+          { type: 'card_table',     x: 9.2,  y: 17.5,  layer: 'fg', cardTable: true, solid: [{ x: 10, y: 18 }] },
+          { type: 'pingpong_table', x: 9.3,  y: 20.45, layer: 'fg', pingpong: true,  solid: [{ x: 10, y: 21 }, { x: 11, y: 21 }] }
         ]
       },
+
+      // ===================== 8. GARDEN & OUTDOOR WELLNESS DECK =====================
       {
         deptId: 'lounge',
         roomId: 'lounge_garden',
-        label: '🌳 สวนพักผ่อน',
-        desc: 'สวนสีเขียวกลางแจ้ง ต้นไม้ และม้านั่งรับลม',
-        rect: { x: 51, y: 22, w: 12, h: 17 },
+        label: '🌳 สวน & ฟิตเนส',
+        desc: 'สวนสีเขียว ทางเดินหิน ต้นไม้ ม้านั่ง และลานไม้ฟิตเนสลู่วิ่ง/ดัมเบล',
+        rect: { x: 15, y: 14, w: 8, h: 10 },
         floor: 'grass',
         isOutdoor: true,
+        wallStyle: 'fence',
+        signOffsetX: 0,
         doors: [
-          { x: 51, y: 30, orient: 'vertical' },
-          { x: 51, y: 31, orient: 'vertical' }
+          { x: 18, y: 14, openArch: true },
+          { x: 19, y: 14, openArch: true },
+          { x: 15, y: 18, orient: 'vertical', sharedHide: true },
+          { x: 15, y: 19, orient: 'vertical', sharedHide: true },
+          { x: 22, y: 19, orient: 'vertical' }
         ],
         seats: [],
-        handoffSpot: { x: 53, y: 30 },
+        handoffSpot: { x: 18, y: 18 },
         idleSpots: [
-          { x: 55, y: 26, dir: 'down',  kind: 'garden_bench' },
-          { x: 57, y: 33, dir: 'down',  kind: 'garden_bench' },
-          { x: 54, y: 28, dir: 'right', kind: 'garden_stroll' },
-          { x: 58, y: 29, dir: 'down',  kind: 'garden_stroll' },
-          { x: 55, y: 35, dir: 'left',  kind: 'garden_stroll' },
-          { x: 59, y: 35, dir: 'up',    kind: 'garden_stroll' }
+          { x: 18, y: 16, dir: 'down',  kind: 'garden_bench' },
+          { x: 17, y: 18, dir: 'right', kind: 'garden_stroll' },
+          { x: 20, y: 18, dir: 'down',  kind: 'garden_stroll' },
+          { x: 19, y: 19, dir: 'left',  kind: 'garden_stroll' },
+          { x: 17, y: 21, dir: 'right', kind: 'treadmill' },
+          { x: 20, y: 21, dir: 'down',  kind: 'dumbbell' }
         ],
         furniture: [
-          { type: 'tree',  x: 52.3, y: 23.2, layer: 'fg', solid: [{ x: 53, y: 24 }] },
-          { type: 'tree',  x: 59.5, y: 23.3, layer: 'fg', solid: [{ x: 60, y: 24 }] },
-          { type: 'bench', x: 54.6, y: 25.5, layer: 'static' },
-          { type: 'tree',  x: 59.5, y: 29.8, layer: 'fg', solid: [{ x: 60, y: 31 }] },
-          { type: 'bench', x: 56.4, y: 32.5, layer: 'static' },
-          { type: 'tree',  x: 52.3, y: 35.0, layer: 'fg', solid: [{ x: 53, y: 36 }] },
-          { type: 'plant', x: 59.8, y: 36.0, layer: 'static' }
+          { type: 'tree',      x: 15.85, y: 15.05, layer: 'fg',     solid: [{ x: 16, y: 16 }] },
+          { type: 'tree',      x: 20.55, y: 15.1,  layer: 'fg',     solid: [{ x: 21, y: 16 }] },
+          { type: 'bench',     x: 17.6,  y: 16.4,  layer: 'static' },
+          { type: 'plant',     x: 20.9,  y: 18.1,  layer: 'static' },
+          // Outdoor wooden fitness deck (y=20..22)
+          { type: 'treadmill', x: 16.2,  y: 20.65, layer: 'fg',     treadmill: true },
+          { type: 'dumbbell',  x: 19.4,  y: 20.85, layer: 'static' }
         ]
       }
     ]
   };
 
   // ---------------------------------------------------------------------------
-  // 2. Agent Roster (19 Distinct Thai Agents)
+  // 2. Agent Roster (11 Distinct Thai Agents with Clear Roles)
   // ---------------------------------------------------------------------------
   var AGENT_SPECS = [
-    // AI Chat (6)
-    { id: 'ai_router',    name: 'น้องเราเตอร์',      role: 'คัดกรองและส่งต่อแชท AI',        deptId: 'ai',     homeRoom: 'ai_router',    seatIdx: 0, look: { shirt: '#7b5be0', accessory: 'headset' } },
-    { id: 'ai_architect', name: 'น้องสถาปนิก',      role: 'วางพิมพ์เขียวระบบ (ด่าน 1)',    deptId: 'ai',     homeRoom: 'ai_architect', seatIdx: 0, look: { shirt: '#6d4bc4', accessory: 'glasses' } },
-    { id: 'ai_worker_1',  name: 'น้องเวิร์กเกอร์ 1', role: 'เขียนโค้ดและสร้างฟีเจอร์ #1',  deptId: 'ai',     homeRoom: 'ai_workers',   seatIdx: 0, look: { shirt: '#8b6ae6', accessory: 'none' } },
-    { id: 'ai_worker_2',  name: 'น้องเวิร์กเกอร์ 2', role: 'เขียนโค้ดและสร้างฟีเจอร์ #2',  deptId: 'ai',     homeRoom: 'ai_workers',   seatIdx: 1, look: { shirt: '#5e3eb8', accessory: 'glasses' } },
-    { id: 'ai_worker_3',  name: 'น้องเวิร์กเกอร์ 3', role: 'เขียนโค้ดและสร้างฟีเจอร์ #3',  deptId: 'ai',     homeRoom: 'ai_workers',   seatIdx: 2, look: { shirt: '#9c7ef0', accessory: 'cap' } },
-    { id: 'ai_review',    name: 'น้องรีวิว',        role: 'ตรวจคุณภาพโค้ดและ QA (ด่าน 3)', deptId: 'ai',     homeRoom: 'ai_review',    seatIdx: 0, look: { shirt: '#5941a9', accessory: 'glasses' } },
-    // Video Studio (5)
-    { id: 'vid_script',   name: 'น้องสคริปต์',      role: 'วิจัยข้อมูลและเขียนสคริปต์',     deptId: 'video',  homeRoom: 'vid_script',   seatIdx: 0, look: { shirt: '#d9667a', accessory: 'glasses' } },
-    { id: 'vid_art',      name: 'น้องอาร์ต',        role: 'ออกแบบภาพและสตอรี่บอร์ด',       deptId: 'video',  homeRoom: 'vid_art',      seatIdx: 0, look: { shirt: '#e57a8d', accessory: 'cap' } },
-    { id: 'vid_tts',      name: 'น้องพากย์',        role: 'พากย์เสียงไทยและซิงค์ซับ',       deptId: 'video',  homeRoom: 'vid_tts',      seatIdx: 0, look: { shirt: '#c85268', accessory: 'headset' } },
-    { id: 'vid_edit',     name: 'น้องตัดต่อ',       role: 'ตัดต่อ Remotion & มิกซ์เสียง',   deptId: 'video',  homeRoom: 'vid_edit',     seatIdx: 0, look: { shirt: '#df6e82', accessory: 'headset' } },
-    { id: 'vid_publish',  name: 'น้องโปรดิวเซอร์',   role: 'ตรวจ QC และเผยแพร่โซเชียล',     deptId: 'video',  homeRoom: 'vid_publish',  seatIdx: 0, look: { shirt: '#b8485e', accessory: 'none' } },
-    // Cron (2)
-    { id: 'cron_sched',   name: 'น้องตั้งเวลา',     role: 'ดูแลตารางงานอัตโนมัติ Cron',     deptId: 'cron',   homeRoom: 'cron_sched',   seatIdx: 0, look: { shirt: '#c9a23a', accessory: 'glasses' } },
-    { id: 'cron_news',    name: 'น้องข่าวเช้า',     role: 'ผู้ประกาศข่าวเช้า v2',           deptId: 'cron',   homeRoom: 'cron_news',    seatIdx: 0, look: { shirt: '#d9b34a', accessory: 'headset' } },
-    // IT / Agent Hub (3)
-    { id: 'hub_dispatch', name: 'น้องดิสแพตช์',     role: 'กระจายงานหนักไป Agent Hub',      deptId: 'hub',    homeRoom: 'hub_dispatch', seatIdx: 0, look: { shirt: '#3d6fb6', accessory: 'headset' } },
-    { id: 'hub_srv_1',    name: 'น้องเซิร์ฟเวอร์ 1', role: 'ดูแลโหนด asridaytrade',         deptId: 'hub',    homeRoom: 'hub_workers',  seatIdx: 0, look: { shirt: '#2e5c9e', accessory: 'cap' } },
-    { id: 'hub_srv_2',    name: 'น้องเซิร์ฟเวอร์ 2', role: 'ดูแลโหนด servergigi',           deptId: 'hub',    homeRoom: 'hub_workers',  seatIdx: 1, look: { shirt: '#4e82cc', accessory: 'glasses' } },
-    // Operations / Infra (2)
-    { id: 'ops_monitor',  name: 'น้องมอนิเตอร์',    role: 'เฝ้าระวังเซอร์วิสและแจ้งเตือน',  deptId: 'ops',    homeRoom: 'ops_monitor',  seatIdx: 0, look: { shirt: '#3f8f6a', accessory: 'glasses' } },
-    { id: 'ops_energy',   name: 'น้องพลังงาน',      role: 'วัดไฟ PZEM-01 และสรุปค่าไฟ',     deptId: 'ops',    homeRoom: 'ops_energy',   seatIdx: 0, look: { shirt: '#337a59', accessory: 'cap' } },
-    // Lobby Reception (1)
-    { id: 'lounge_host',  name: 'พี่ต้อนรับ',       role: 'ประชาสัมพันธ์หน้าบริษัท',        deptId: 'lounge', homeRoom: 'lounge_lobby', seatIdx: 0, look: { shirt: '#a86d42', accessory: 'none' } }
+    // AI Team (4) — open-plan ai_studio
+    { id: 'ai_architect', name: 'น้องสถาปนิก',   role: 'คัดกรองและวางพิมพ์เขียว (ด่าน 1)',     deptId: 'ai',    homeRoom: 'ai_studio',    seatIdx: 0, look: { shirt: '#6d4bc4', accessory: 'glasses' } },
+    { id: 'ai_worker_1',  name: 'น้องเดฟ 1',     role: 'เขียนโค้ดและสร้างฟีเจอร์หลัก (ด่าน 2)', deptId: 'ai',    homeRoom: 'ai_studio',    seatIdx: 1, look: { shirt: '#8b6ae6', accessory: 'headset' } },
+    { id: 'ai_worker_2',  name: 'น้องเดฟ 2',     role: 'เขียนโค้ดและทดสอบระบบ (ด่าน 2)',       deptId: 'ai',    homeRoom: 'ai_studio',    seatIdx: 2, look: { shirt: '#5e3eb8', accessory: 'cap' } },
+    { id: 'ai_review',    name: 'น้องรีวิว',     role: 'โค้ดรีวิวและตรวจสอบคุณภาพ (ด่าน 3)',   deptId: 'ai',    homeRoom: 'ai_studio',    seatIdx: 3, look: { shirt: '#4c3a9e', accessory: 'glasses' } },
+    // Video Studio Wing (5) — vid_creative, vid_voice, vid_edit
+    { id: 'vid_script',   name: 'น้องสคริปต์',   role: 'คิดบทวิดีโอและรายการข่าวเช้า',          deptId: 'video', homeRoom: 'vid_creative', seatIdx: 0, look: { shirt: '#d9667a', accessory: 'glasses' } },
+    { id: 'vid_art',      name: 'น้องอาร์ต',     role: 'ออกแบบภาพและสตอรี่บอร์ด',              deptId: 'video', homeRoom: 'vid_creative', seatIdx: 1, look: { shirt: '#e57a8d', accessory: 'cap' } },
+    { id: 'vid_tts',      name: 'น้องพากย์',     role: 'พากย์เสียงไทยและซิงค์คำบรรยาย',        deptId: 'video', homeRoom: 'vid_voice',    seatIdx: 0, look: { shirt: '#c85268', accessory: 'headset' } },
+    { id: 'vid_edit',     name: 'น้องตัดต่อ',    role: 'เรนเดอร์ Remotion และมิกซ์เสียง',      deptId: 'video', homeRoom: 'vid_edit',     seatIdx: 0, look: { shirt: '#df6e82', accessory: 'headset' } },
+    { id: 'vid_publish',  name: 'น้องโปรดิวเซอร์', role: 'ตรวจ QC ส่ง Telegram และเผยแพร่',    deptId: 'video', homeRoom: 'vid_edit',     seatIdx: 1, look: { shirt: '#b8485e', accessory: 'none' } },
+    // Systems & Agent Hub (2) — ops_hub
+    { id: 'hub_dispatch', name: 'น้องฮับ',       role: 'คุม Agent Hub และลูกข่าย GPU',         deptId: 'hub',   homeRoom: 'ops_hub',      seatIdx: 0, look: { shirt: '#3d6fb6', accessory: 'headset' } },
+    { id: 'ops_sys',      name: 'น้องระบบ',      role: 'มอนิเตอร์ Docker/PM2 ไฟฟ้า PZEM & Cron', deptId: 'hub',   homeRoom: 'ops_hub',      seatIdx: 1, look: { shirt: '#3f8f6a', accessory: 'glasses' } }
   ];
 
   // ---------------------------------------------------------------------------
-  // 3. Idle Activities (>= 14 rich activities, including group activities!)
+  // 3. Idle Activities (14 Rich Activities, Including Group Play & Balcony!)
   // ---------------------------------------------------------------------------
   var IDLE_ACTIVITIES = [
-    { id: 'coffee',             label: 'ชงกาแฟหอมๆ',         roomId: 'lounge_cafe',   spotKind: 'coffee',             pose: 'drink', bubble: '☕', minSec: 8,  maxSec: 15, weight: 14 },
-    { id: 'snack',              label: 'กดขนมตู้จำหน่าย',     roomId: 'lounge_cafe',   spotKind: 'snack',              pose: 'idle',  bubble: '🍪', minSec: 6,  maxSec: 11, weight: 9  },
-    { id: 'sofa_nap',           label: 'งีบพักสายตาบนโซฟา',  roomId: 'lounge_cafe',   spotKind: 'sofa_nap',           pose: 'sleep', bubble: '💤', minSec: 10, maxSec: 18, weight: 8  },
-    { id: 'cards_group',        label: 'เล่นไพ่กับเพื่อน',    roomId: 'lounge_games',  spotKind: 'cards_group',        pose: 'cards', bubble: '🃏', minSec: 11, maxSec: 20, weight: 13, group: true, maxGroup: 4 },
-    { id: 'pingpong_group',     label: 'ตีปิงปองคลายเครียด',  roomId: 'lounge_games',  spotKind: 'pingpong_group',     pose: 'talk',  bubble: '🏓', minSec: 10, maxSec: 18, weight: 11, group: true, maxGroup: 2 },
-    { id: 'treadmill',          label: 'วิ่งลู่วิ่งฟิตเนส',   roomId: 'lounge_gym',    spotKind: 'treadmill',          pose: 'walk',  bubble: '🏃', minSec: 9,  maxSec: 16, weight: 10 },
-    { id: 'dumbbell',           label: 'ยกดัมเบลออกกำลัง',   roomId: 'lounge_gym',    spotKind: 'dumbbell',           pose: 'lift',  bubble: '💪', minSec: 8,  maxSec: 15, weight: 10 },
-    { id: 'water_chat_group',   label: 'คุยเล่นหน้าตู้กดน้ำ', roomId: 'lounge_lobby',  spotKind: 'water_chat_group',   pose: 'talk',  bubble: '💬', minSec: 8,  maxSec: 14, weight: 10, group: true, maxGroup: 2 },
-    { id: 'garden_stroll',      label: 'เดินเล่นรับลมในสวน', roomId: 'lounge_garden', spotKind: 'garden_stroll',      pose: 'walk',  bubble: '🌿', minSec: 8,  maxSec: 14, weight: 11, wander: true },
-    { id: 'garden_bench',       label: 'นั่งชิลม้านั่งสวน',  roomId: 'lounge_garden', spotKind: 'garden_bench',       pose: 'sit',   bubble: '🌸', minSec: 9,  maxSec: 16, weight: 9  },
-    { id: 'read_book',          label: 'อ่านหนังสือหาไอเดีย', roomId: 'lounge_games',  spotKind: 'read_book',          pose: 'idle',  bubble: '📖', minSec: 9,  maxSec: 15, weight: 8  },
-    { id: 'lobby_chat',         label: 'แวะทักทายหน้าบริษัท', roomId: 'lounge_lobby',  spotKind: 'lobby_chat',         pose: 'talk',  bubble: '👋', minSec: 6,  maxSec: 12, weight: 7  },
-    { id: 'hallway_chat_group', label: 'จับกลุ่มเม้าท์มอย',   roomId: 'lounge_cafe',   spotKind: 'hallway_chat_group', pose: 'talk',  bubble: '😄', minSec: 8,  maxSec: 15, weight: 10, group: true, maxGroup: 2 },
-    { id: 'desk_chill',         label: 'พักฟังเพลงที่โต๊ะ',   roomId: null,            spotKind: 'home_seat',          pose: 'sit',   bubble: '🎵', minSec: 7,  maxSec: 13, weight: 8  }
+    { id: 'coffee',           label: 'ชงกาแฟหอมๆ',          roomId: 'lounge_cafe',   spotKind: 'coffee',           pose: 'drink', bubble: '☕', minSec: 8,  maxSec: 15, weight: 14 },
+    { id: 'snack',            label: 'กดขนมตู้จำหน่าย',      roomId: 'lounge_cafe',   spotKind: 'snack',            pose: 'idle',  bubble: '🍪', minSec: 6,  maxSec: 11, weight: 8  },
+    { id: 'sofa_nap',         label: 'งีบพักสายตาบนโซฟา',   roomId: 'lounge_cafe',   spotKind: 'sofa_nap',         pose: 'sleep', bubble: '💤', minSec: 10, maxSec: 18, weight: 8  },
+    { id: 'cards_group',      label: 'เล่นไพ่กับเพื่อน',     roomId: 'lounge_cafe',   spotKind: 'cards_group',      pose: 'cards', bubble: '🃏', minSec: 11, maxSec: 20, weight: 14, group: true, maxGroup: 4 },
+    { id: 'pingpong_group',   label: 'ตีปิงปองคลายเครียด',   roomId: 'lounge_cafe',   spotKind: 'pingpong_group',   pose: 'talk',  bubble: '🏓', minSec: 10, maxSec: 18, weight: 12, group: true, maxGroup: 2 },
+    { id: 'cafe_chat_group',  label: 'จับกลุ่มเม้าท์มอย',    roomId: 'lounge_cafe',   spotKind: 'cafe_chat_group',  pose: 'talk',  bubble: '😄', minSec: 8,  maxSec: 15, weight: 10, group: true, maxGroup: 2 },
+    { id: 'read_book',        label: 'อ่านหนังสือหาไอเดีย',  roomId: 'lounge_cafe',   spotKind: 'read_book',        pose: 'idle',  bubble: '📖', minSec: 8,  maxSec: 14, weight: 7  },
+    { id: 'treadmill',        label: 'วิ่งลู่วิ่งกลางสวน',   roomId: 'lounge_garden', spotKind: 'treadmill',        pose: 'walk',  bubble: '🏃', minSec: 9,  maxSec: 16, weight: 10 },
+    { id: 'dumbbell',         label: 'ยกดัมเบลออกกำลัง',    roomId: 'lounge_garden', spotKind: 'dumbbell',         pose: 'lift',  bubble: '💪', minSec: 8,  maxSec: 15, weight: 10 },
+    { id: 'garden_bench',     label: 'นั่งชิลม้านั่งสวน',   roomId: 'lounge_garden', spotKind: 'garden_bench',     pose: 'sit',   bubble: '🌸', minSec: 9,  maxSec: 16, weight: 9  },
+    { id: 'garden_stroll',    label: 'เดินเล่นรับลมในสวน',  roomId: 'lounge_garden', spotKind: 'garden_stroll',    pose: 'walk',  bubble: '🌿', minSec: 8,  maxSec: 14, weight: 10, wander: true },
+    { id: 'balcony_chill',    label: 'ชมวิวรับลมที่ระเบียง', roomId: 'vid_balcony',   spotKind: 'balcony_chill',    pose: 'drink', bubble: '🌅', minSec: 9,  maxSec: 16, weight: 12, group: true, maxGroup: 3 },
+    { id: 'water_chat_group', label: 'คุยเล่นหน้าตู้กดน้ำ',  roomId: 'ops_hub',       spotKind: 'water_chat_group', pose: 'talk',  bubble: '💬', minSec: 8,  maxSec: 14, weight: 11, group: true, maxGroup: 2 },
+    { id: 'desk_chill',       label: 'พักฟังเพลงที่โต๊ะ',    roomId: null,            spotKind: 'home_seat',        pose: 'sit',   bubble: '🎵', minSec: 7,  maxSec: 13, weight: 7  }
   ];
 
   // Work bubble icons per department
   var WORK_BUBBLES = {
-    ai:     ['💻', '🧠', '⚡', '✨'],
-    video:  ['🎬', '🎨', '🎙️', '✂️'],
-    cron:   ['⏰', '📰', '📡'],
-    hub:    ['🖥️', '⚙️', '🚀'],
-    ops:    ['🛡️', '📊', '⚡'],
-    lounge: ['🛎️', '😊', '👋']
+    ai:     ['💻', '🧠', '⚡', '🔍'],
+    video:  ['📝', '🎨', '🎙️', '✂️', '🚀'],
+    hub:    ['🖥️', '📡', '🛡️', '⚡'],
+    lounge: ['☕', '😊', '👋']
   };
 
   // ---------------------------------------------------------------------------
@@ -631,7 +462,7 @@
       }
     };
 
-    // 1) Corridors are walkable
+    // 1) Corridors / Atrium / Plaza are walkable
     for (var c = 0; c < LAYOUT.corridors.length; c++) {
       var cor = LAYOUT.corridors[c];
       for (var cy = cor.y; cy < cor.y + cor.h; cy++) {
@@ -650,14 +481,13 @@
           setWalk(rx, ry, 1);
         }
       }
-      // Doors open through perimeter wall
       for (var d = 0; d < r.doors.length; d++) {
         var dr = r.doors[d];
         setWalk(dr.x, dr.y, 1);
       }
     }
 
-    // 3) Solid furniture footprints (skipping doors/seats/idleSpots)
+    // 3) Solid furniture footprints (protecting doors, seats, handoffSpots & idleSpots)
     var protectedSet = {};
     var markProtected = function (x, y) { protectedSet[x + ',' + y] = true; };
     for (var p = 0; p < LAYOUT.rooms.length; p++) {
@@ -696,7 +526,7 @@
     return grid;
   }
 
-  // Fast 4-directional A* on 64x40 grid
+  // Fast 4-directional A* on 40x25 grid
   function findPath(grid, sx, sy, gx, gy) {
     sx = clamp(sx | 0, 0, WORLD_W_TILES - 1);
     sy = clamp(sy | 0, 0, WORLD_H_TILES - 1);
@@ -708,7 +538,6 @@
     var startIdx = sy * WORLD_W_TILES + sx;
     var goalIdx = gy * WORLD_W_TILES + gx;
 
-    // If start or goal happens to be non-walkable, nudge to closest walkable neighbor
     var dirs = [
       [1, 0], [-1, 0], [0, 1], [0, -1]
     ];
@@ -738,7 +567,6 @@
     fScore[startIdx] = Math.abs(gx - sx) + Math.abs(gy - sy);
     state[startIdx] = 1;
 
-    // Binary min-heap of open node indices
     var heap = [startIdx];
     function heapPush(node) {
       heap.push(node);
@@ -778,9 +606,7 @@
     }
 
     var found = false;
-    var iter = 0;
-    while (heap.length > 0 && iter < 4000) {
-      iter++;
+    while (heap.length > 0) {
       var cur = heapPop();
       if (state[cur] === 2) continue;
       if (cur === goalIdx) {
@@ -788,7 +614,6 @@
         break;
       }
       state[cur] = 2;
-
       var cx = cur % WORLD_W_TILES;
       var cy = (cur / WORLD_W_TILES) | 0;
       var baseG = gScore[cur] + 1;
@@ -823,11 +648,11 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 5. Video Job Stage Detection (Reused concept from workshop-3d.js, no import)
+  // 5. Video Job Stage Detection
   // ---------------------------------------------------------------------------
-  var VIDEO_STAGE_ROOMS = ['vid_script', 'vid_art', 'vid_tts', 'vid_edit', 'vid_publish'];
   var VIDEO_STAGE_AGENTS = ['vid_script', 'vid_art', 'vid_tts', 'vid_edit', 'vid_publish'];
-  var AI_PIPELINE_ROOMS = ['ai_router', 'ai_architect', 'ai_workers', 'ai_review'];
+  var VIDEO_STAGE_ROOMS  = ['vid_creative', 'vid_creative', 'vid_voice', 'vid_edit', 'vid_edit'];
+  var VIDEO_STAGE_LABELS = ['สคริปต์', 'วาดภาพ', 'อัดเสียง', 'ตัดต่อ', 'เผยแพร่'];
 
   function detectVideoStageIndex(job) {
     if (!job || typeof job !== 'object') return 0;
@@ -867,19 +692,19 @@
     var pal = Art.getTheme(themeName);
     var isLight = themeName === 'light';
 
-    // Sky backdrop (top 2 tiles = 32px + thin left/right margins)
+    // Sky & exterior courtyard backdrop
     var grad = ctx.createLinearGradient(0, 0, 0, WORLD_H);
     grad.addColorStop(0, pal.skyTop);
-    grad.addColorStop(0.12, pal.skyBottom);
-    grad.addColorStop(0.15, isLight ? '#5c8c4a' : '#121829');
+    grad.addColorStop(0.14, pal.skyBottom);
+    grad.addColorStop(0.20, isLight ? '#5c8f4b' : '#12192b');
     grad.addColorStop(1, isLight ? '#4b7a3d' : '#0f1422');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
-    // Pixel clouds (light) or stars (dark) in sky strip y=0..30
+    // Pixel clouds (light) or twinkling stars (dark) in sky strip y=0..30
     if (isLight) {
       var clouds = [
-        [40, 6, 36], [190, 9, 44], [380, 5, 34], [620, 8, 46], [830, 6, 38], [950, 10, 30]
+        [28, 6, 36], [135, 9, 44], [250, 5, 34], [435, 8, 42], [548, 6, 38]
       ];
       for (var c = 0; c < clouds.length; c++) {
         var cx = clouds[c][0], cy = clouds[c][1], cw = clouds[c][2];
@@ -890,21 +715,21 @@
         ctx.fillRect(cx + 2, cy + 6, cw - 4, 2);
       }
     } else {
-      for (var s = 0; s < 42; s++) {
-        var sx = ((s * 97 + 19) % (WORLD_W - 12)) + 6;
-        var sy = ((s * 37 + 5) % 24) + 2;
+      for (var s = 0; s < 32; s++) {
+        var sx = ((s * 73 + 13) % (WORLD_W - 12)) + 6;
+        var sy = ((s * 29 + 4) % 24) + 2;
         ctx.fillStyle = (s % 3 === 0) ? '#ffe89e' : '#b8d8ff';
         ctx.fillRect(sx, sy, (s % 5 === 0) ? 2 : 1, 1);
       }
     }
 
-    // Distant pixel cityscape silhouettes along left & right roof shoulders
+    // Distant skyline silhouettes on left & right shoulders (640px scale)
     var cityCol = isLight ? '#6e8db0' : '#15203b';
     var cityHi = isLight ? '#8aa8c9' : '#1f2e52';
     var winCol = isLight ? '#d8eeff' : '#ffd966';
     var skyline = [
-      [10, 14, 18], [32, 8, 24], [60, 16, 16], [82, 10, 22], [110, 15, 17],
-      [880, 12, 20], [906, 8, 24], [936, 14, 18], [960, 10, 22], [988, 13, 19]
+      [8, 14, 16], [28, 8, 20], [52, 16, 15], [72, 11, 18], [94, 15, 16],
+      [524, 12, 18], [546, 8, 22], [572, 14, 18], [594, 10, 20], [616, 15, 16]
     ];
     for (var b = 0; b < skyline.length; b++) {
       var bx = skyline[b][0], by = skyline[b][1], bw = skyline[b][2];
@@ -919,79 +744,88 @@
       }
     }
 
-    // Outer architectural building shell with beveled roof cornice
-    var bLeft = TILE - 6;
-    var bTop = TILE * 2 - 6;
-    var bWidth = WORLD_W - (TILE - 6) * 2;
-    var bHeight = WORLD_H - TILE - bTop + 4;
+    // Asymmetric Architectural Building Shell (indented C-cutout around vid_balcony!)
+    // Main left campus + atrium + video studio top/bottom wings
+    var shellPads = [
+      // Left campus + Atrium (x=1..25, y=2..24)
+      { x: TILE - 5, y: 2 * TILE - 6, w: 24 * TILE + 6, h: 22 * TILE + 8 },
+      // Right Video Wing Upper (vid_creative, x=25..39, y=2..10)
+      { x: 25 * TILE - 2, y: 2 * TILE - 4, w: 14 * TILE + 7, h: 8 * TILE + 6 },
+      // Right Video Wing Mid-Left (vid_voice only, recessed around vid_balcony!)
+      { x: 25 * TILE - 2, y: 10 * TILE, w: 8 * TILE + 4, h: 6 * TILE },
+      // Right Video Wing Lower (vid_edit, x=25..39, y=16..24)
+      { x: 25 * TILE - 2, y: 16 * TILE - 2, w: 14 * TILE + 7, h: 8 * TILE + 4 }
+    ];
+
+    // Draw dark outlines first, then shell fill so sections fuse cleanly into an L/C architectural footprint
     ctx.fillStyle = pal.outline;
-    ctx.fillRect(bLeft - 2, bTop - 2, bWidth + 4, bHeight + 4);
+    for (var p0 = 0; p0 < shellPads.length; p0++) {
+      var sp0 = shellPads[p0];
+      ctx.fillRect(sp0.x - 2, sp0.y - 2, sp0.w + 4, sp0.h + 4);
+    }
     ctx.fillStyle = pal.buildingShell;
-    ctx.fillRect(bLeft, bTop, bWidth, bHeight);
-    // Roof top bevel trim
+    for (var p1 = 0; p1 < shellPads.length; p1++) {
+      var sp1 = shellPads[p1];
+      ctx.fillRect(sp1.x, sp1.y, sp1.w, sp1.h);
+    }
+
+    // Stepped roof cornice trim (left wing slightly higher than right studio wing!)
     ctx.fillStyle = pal.buildingTrim;
-    ctx.fillRect(bLeft + 2, bTop + 1, bWidth - 4, 3);
+    ctx.fillRect(TILE - 3, 2 * TILE - 5, 22 * TILE + 2, 3);
+    ctx.fillRect(25 * TILE, 2 * TILE - 3, 14 * TILE + 3, 3);
+    // Glass atrium skylight roof cap over ATRIUM_V (x=23..25)
+    ctx.fillStyle = isLight ? '#9cd8fa' : '#4a8ec2';
+    ctx.fillRect(23 * TILE, 2 * TILE - 6, 2 * TILE, 4);
+    ctx.fillStyle = isLight ? '#ffffff' : '#a8e4ff';
+    ctx.fillRect(23 * TILE + 3, 2 * TILE - 5, 2 * TILE - 6, 1);
+
+    // Subtle open-air garden strip visible outside the recessed balcony on the far right edge
+    Art.drawFloor(ctx, 39 * TILE + 1, 10 * TILE, TILE - 1, 6 * TILE, 'grass', { theme: themeName });
 
     // Company Roof Marquee Banner
-    Art.drawRoomSign(ctx, WORLD_W / 2, 6, '🏢 HOMELAB PIXEL COMPANY', isLight ? '#2b4a78' : '#25375e', {
+    Art.drawRoomSign(ctx, WORLD_W / 2, 5, '🏢 HOMELAB STUDIO', isLight ? '#2b4a78' : '#25375e', {
       theme: themeName,
       fontSize: 10,
-      padX: 14,
+      padX: 12,
       h: 19
     });
 
-    // Front outdoor sidewalk + lawn strip at y = 39 (624..640)
-    Art.drawFloor(ctx, 0, 39 * TILE, WORLD_W, TILE, 'tile', {
+    // Front outdoor sidewalk + lawn strip at y = 24 (384..400)
+    var frontY = 24 * TILE;
+    Art.drawFloor(ctx, 0, frontY, WORLD_W, TILE, 'tile', {
       theme: themeName,
       color: isLight ? '#d3cec4' : '#32384b',
       tileSize: 8
     });
-    // Green planters / grass flanking front entrance
-    Art.drawFloor(ctx, 0, 39 * TILE + 2, 24 * TILE, TILE - 2, 'grass', { theme: themeName });
-    Art.drawFloor(ctx, 39 * TILE, 39 * TILE + 2, 25 * TILE, TILE - 2, 'grass', { theme: themeName });
-    // Entrance stone walkway leading out from lobby front doors (x = 30..34)
+    // Green planters / grass flanking the atrium front entrance (x = 23..24)
+    Art.drawFloor(ctx, 0, frontY + 2, 22 * TILE, TILE - 2, 'grass', { theme: themeName });
+    Art.drawFloor(ctx, 26 * TILE, frontY + 2, 14 * TILE, TILE - 2, 'grass', { theme: themeName });
+    // Stone walkway & red carpet leading out from ATRIUM_V front glass doors (x = 23..24)
     ctx.fillStyle = pal.outline;
-    ctx.fillRect(30 * TILE - 1, 39 * TILE, 4 * TILE + 2, TILE);
+    ctx.fillRect(22 * TILE - 1, frontY, 4 * TILE + 2, TILE);
     ctx.fillStyle = isLight ? '#e4ded2' : '#4a526a';
-    ctx.fillRect(30 * TILE, 39 * TILE, 4 * TILE, TILE);
+    ctx.fillRect(22 * TILE, frontY, 4 * TILE, TILE);
     ctx.fillStyle = '#9c2d3a';
-    ctx.fillRect(31 * TILE, 39 * TILE, 2 * TILE, TILE - 3);
+    ctx.fillRect(23 * TILE, frontY, 2 * TILE, TILE - 2);
     ctx.fillStyle = '#c94a58';
-    ctx.fillRect(31 * TILE + 2, 39 * TILE, 2 * TILE - 4, TILE - 5);
+    ctx.fillRect(23 * TILE + 2, frontY, 2 * TILE - 4, TILE - 4);
   }
 
-  function drawYellowArrow(ctx, xPx, yPx, dir, glowAlpha) {
-    var ix = xPx | 0;
-    var iy = yPx | 0;
-    var out = '#38250a';
-    var fill = glowAlpha > 0 ? '#ffe76b' : '#f2c144';
-    var hi = '#fff7b2';
-
-    if (glowAlpha > 0) {
-      ctx.fillStyle = 'rgba(255, 224, 92, ' + glowAlpha.toFixed(2) + ')';
-      ctx.fillRect(ix - 2, iy - 2, 24, 14);
-    }
-
-    if (dir === 'right') {
-      // Shaft + arrowhead pointing right (20x10 px)
-      ctx.fillStyle = out;
-      ctx.fillRect(ix, iy + 2, 13, 6);
-      ctx.fillRect(ix + 11, iy, 3, 10);
-      ctx.fillRect(ix + 14, iy + 1, 2, 8);
-      ctx.fillRect(ix + 16, iy + 2, 2, 6);
-      ctx.fillRect(ix + 18, iy + 3, 2, 4);
-
-      ctx.fillStyle = fill;
-      ctx.fillRect(ix + 1, iy + 3, 12, 4);
-      ctx.fillRect(ix + 12, iy + 1, 2, 8);
-      ctx.fillRect(ix + 14, iy + 2, 2, 6);
-      ctx.fillRect(ix + 16, iy + 3, 2, 4);
-      ctx.fillRect(ix + 18, iy + 4, 1, 2);
-
-      ctx.fillStyle = hi;
-      ctx.fillRect(ix + 2, iy + 3, 10, 1);
-      ctx.fillRect(ix + 12, iy + 2, 2, 1);
-    }
+  function drawOpenArchJambs(ctx, xPx, yPx, wPx, hPx, isLight, outline) {
+    var wood = isLight ? '#b07a4a' : '#7d5232';
+    var hi = isLight ? '#d9a473' : '#a6744c';
+    ctx.fillStyle = outline;
+    ctx.fillRect(xPx, yPx, 4, hPx);
+    ctx.fillRect(xPx + wPx - 4, yPx, 4, hPx);
+    ctx.fillStyle = wood;
+    ctx.fillRect(xPx + 1, yPx + 1, 2, hPx - 2);
+    ctx.fillRect(xPx + wPx - 3, yPx + 1, 2, hPx - 2);
+    ctx.fillStyle = hi;
+    ctx.fillRect(xPx + 1, yPx + 1, 1, hPx - 2);
+    ctx.fillRect(xPx + wPx - 3, yPx + 1, 1, hPx - 2);
+    // Warm light threshold runner across open archway
+    ctx.fillStyle = isLight ? 'rgba(255, 250, 232, 0.35)' : 'rgba(255, 238, 196, 0.12)';
+    ctx.fillRect(xPx + 4, yPx + 2, wPx - 8, hPx - 4);
   }
 
   function renderStaticLayer(Art, themeName) {
@@ -1004,70 +838,99 @@
     var pal = Art.getTheme(themeName);
     var isLight = themeName === 'light';
 
-    // 1) Sky, skyline, roof banner, building shell, sidewalk
+    // 1) Sky, skyline, stepped roof, C-shaped building shell, front entrance lawn
     drawSkyAndBuildingShell(ctx, Art, themeName);
 
-    // 2) Corridors floor
+    // 2) Open sunlit atrium & plaza floors (bright marble/ceramic tile, zero yellow arrows!)
+    var plazaCol = isLight ? '#ece6da' : '#3d455e';
     for (var c = 0; c < LAYOUT.corridors.length; c++) {
       var cor = LAYOUT.corridors[c];
       Art.drawFloor(ctx, cor.x * TILE, cor.y * TILE, cor.w * TILE, cor.h * TILE, 'tile', {
         theme: themeName,
-        color: pal.corridor,
+        color: plazaCol,
         tileSize: 16
       });
-      // Subtle hallway center runner stripe
-      ctx.fillStyle = isLight ? 'rgba(95, 86, 72, 0.12)' : 'rgba(130, 155, 210, 0.10)';
-      if (cor.w > cor.h) {
-        ctx.fillRect(cor.x * TILE + 4, cor.y * TILE + TILE - 2, cor.w * TILE - 8, 4);
-      } else {
-        ctx.fillRect(cor.x * TILE + TILE - 2, cor.y * TILE + 4, 4, cor.h * TILE - 8);
-      }
     }
 
-    // 3) Pipeline yellow arrows on corridor floors
-    for (var a = 0; a < LAYOUT.arrows.length; a++) {
-      var arr = LAYOUT.arrows[a];
-      drawYellowArrow(ctx, arr.x * TILE, arr.y * TILE, arr.dir, 0);
-    }
+    // Subtle sunlit architectural accents in Atrium & Plaza (rugs, soft inlay, greenery, water cooler)
+    // Atrium light beam / welcome runner
+    ctx.fillStyle = isLight ? 'rgba(255, 245, 215, 0.34)' : 'rgba(130, 185, 245, 0.08)';
+    ctx.fillRect(23 * TILE + 5, 2 * TILE + 6, 2 * TILE - 10, 20 * TILE + 4);
+    // Plaza decorative welcome rug & atrium entrance mat
+    Art.drawFurniture(ctx, 'rug', 6.4 * TILE, 12.15 * TILE, {
+      theme: themeName, w: 50, h: 26, color: isLight ? '#8a6b52' : '#4a5578'
+    });
+    Art.drawFurniture(ctx, 'rug', 15.6 * TILE, 11.05 * TILE, {
+      theme: themeName, w: 46, h: 22, color: isLight ? '#5c7c8a' : '#345269'
+    });
+    Art.drawFurniture(ctx, 'rug', 23.08 * TILE, 21.6 * TILE, {
+      theme: themeName, w: 30, h: 20, color: '#9c2d3a'
+    });
+    // Atrium top plants & plaza plants + PLAZA_NOOK water cooler
+    Art.drawFurniture(ctx, 'plant', 23.05 * TILE, 2.1 * TILE, { theme: themeName });
+    Art.drawFurniture(ctx, 'plant', 24.08 * TILE, 2.1 * TILE, { theme: themeName });
+    Art.drawFurniture(ctx, 'plant', 1.25 * TILE,  12.15 * TILE, { theme: themeName });
+    Art.drawFurniture(ctx, 'water_cooler', 15.15 * TILE, 10.6 * TILE, { theme: themeName });
+    Art.drawFurniture(ctx, 'plant', 21.85 * TILE, 10.75 * TILE, { theme: themeName });
 
-    // 4) Draw each room: floor -> walls -> doors (closed base) -> signs -> static furniture
+    // 3) Draw each of the 8 rooms: floor -> specialty overlays -> segmented walls -> static furniture -> signs
     for (var i = 0; i < LAYOUT.rooms.length; i++) {
       var r = LAYOUT.rooms[i];
       var rx = r.rect.x * TILE;
       var ry = r.rect.y * TILE;
       var rw = r.rect.w * TILE;
       var rh = r.rect.h * TILE;
+      var wStyle = r.wallStyle || 'solid';
 
-      // Interior floor (full room rect, walls draw over perimeter)
+      // Interior floor
       Art.drawFloor(ctx, rx, ry, rw, rh, r.floor, {
         theme: themeName,
         color: r.floorColor || undefined
       });
 
-      // Garden stone footpath overlay
-      if (r.isOutdoor) {
-        ctx.fillStyle = isLight ? '#d8cfc0' : '#4a4f5e';
-        ctx.fillRect(rx + 6, 30 * TILE + 2, 5 * TILE, 2 * TILE - 4);
-        ctx.fillRect(rx + 4 * TILE, 26 * TILE, 2 * TILE, 10 * TILE);
-        ctx.fillStyle = isLight ? '#ece5d8' : '#5e6475';
-        for (var sy = 26 * TILE + 3; sy < 36 * TILE; sy += 12) {
-          ctx.fillRect(rx + 4 * TILE + 3, sy, 2 * TILE - 6, 8);
+      // Garden stone stepping footpath + outdoor wooden wellness deck (y=20..22)
+      if (r.roomId === 'lounge_garden') {
+        // Warm wooden fitness deck in lower section of garden
+        Art.drawFloor(ctx, (r.rect.x + 1) * TILE, 20 * TILE + 2, (r.rect.w - 2) * TILE, 3 * TILE - 4, 'deck', {
+          theme: themeName
+        });
+        // Crisp wooden deck border
+        ctx.strokeStyle = pal.outline;
+        ctx.lineWidth = 1;
+        ctx.strokeRect((r.rect.x + 1) * TILE + 0.5, 20 * TILE + 2.5, (r.rect.w - 2) * TILE - 1, 3 * TILE - 5);
+
+        // Stone stepping pathway linking top gate (18..19,14), left cafe (15,18..19), and right atrium (22,19)
+        var stoneBase = isLight ? '#d8cfc0' : '#4a4f5e';
+        var stoneHi = isLight ? '#ece5d8' : '#636a7d';
+        ctx.fillStyle = stoneBase;
+        ctx.fillRect(18 * TILE + 2, 15 * TILE, 2 * TILE - 4, 5 * TILE);
+        ctx.fillRect(15 * TILE + 4, 18 * TILE + 2, 7 * TILE - 4, 2 * TILE - 4);
+        ctx.fillStyle = stoneHi;
+        for (var sy = 15 * TILE + 3; sy < 20 * TILE - 3; sy += 11) {
+          ctx.fillRect(18 * TILE + 4, sy, 2 * TILE - 8, 7);
+        }
+        for (var sx = 16 * TILE + 2; sx < 22 * TILE - 4; sx += 12) {
+          ctx.fillRect(sx, 18 * TILE + 4, 8, 2 * TILE - 8);
         }
       }
 
-      // Build door lookup so walls skip doorways cleanly
+      // Build door lookup so ALL 4 perimeter walls skip doorways cleanly!
       var doorSet = {};
       for (var d = 0; d < r.doors.length; d++) {
         doorSet[r.doors[d].x + ',' + r.doors[d].y] = r.doors[d];
       }
-      if (r.frontEntrance) {
-        for (var fe = 0; fe < r.frontEntrance.w; fe++) {
-          doorSet[(r.frontEntrance.x + fe) + ',' + r.frontEntrance.y] = { front: true };
-        }
-      }
 
-      // Top wall (segmented around any top doors)
-      var topWallColor = r.isOutdoor ? '#6b5036' : r.deptId;
+      // Determine wall styles per side for architectural authenticity
+      var wallColor = r.isOutdoor ? '#785a3d' : r.deptId;
+      var topStyle = (wStyle === 'fence') ? 'fence' : 'solid';
+      var leftStyle = (wStyle === 'fence') ? 'fence'
+        : ((wStyle === 'glass' && r.rect.x === 25) ? 'glass' : 'solid');
+      var rightStyle = (wStyle === 'fence') ? 'fence' : 'solid';
+      var botStyle = wStyle; // 'solid' | 'glass' | 'fence'
+
+      // --- TOP WALL (segmented around top doors) ---
+      var topH = (topStyle === 'fence') ? 10 : TILE;
+      var topY = (topStyle === 'fence') ? (ry + 4) : ry;
       var tx = r.rect.x;
       while (tx < r.rect.x + r.rect.w) {
         if (doorSet[tx + ',' + r.rect.y]) {
@@ -1076,16 +939,14 @@
         }
         var segStart = tx;
         while (tx < r.rect.x + r.rect.w && !doorSet[tx + ',' + r.rect.y]) tx++;
-        Art.drawWall(ctx, segStart * TILE, ry, (tx - segStart) * TILE, TILE, topWallColor, {
-          theme: themeName
+        Art.drawWall(ctx, segStart * TILE, topY, (tx - segStart) * TILE, topH, wallColor, {
+          theme: themeName,
+          style: topStyle
         });
       }
 
-      // Left & right side walls (thin 6px architectural partition walls)
-      var sideCol = r.isOutdoor ? '#785a3d' : r.deptId;
+      // --- LEFT WALL (segmented around vertical doors) ---
       var leftWallX = rx;
-      var rightWallX = rx + rw - 5;
-      // Left wall segmented around vertical doors
       var ly = r.rect.y + 1;
       while (ly < r.rect.y + r.rect.h - 1) {
         if (doorSet[r.rect.x + ',' + ly]) {
@@ -1094,18 +955,33 @@
         }
         var lStart = ly;
         while (ly < r.rect.y + r.rect.h - 1 && !doorSet[r.rect.x + ',' + ly]) ly++;
-        Art.drawWall(ctx, leftWallX, lStart * TILE, 5, (ly - lStart) * TILE, sideCol, {
+        Art.drawWall(ctx, leftWallX, lStart * TILE, 5, (ly - lStart) * TILE, wallColor, {
           theme: themeName,
+          style: leftStyle,
           shadow: false
         });
       }
-      Art.drawWall(ctx, rightWallX, ry + TILE, 5, rh - TILE * 2, sideCol, {
-        theme: themeName,
-        shadow: false
-      });
 
-      // Bottom wall (lower 8px parapet so interior stays super open & readable!)
-      var botY = ry + rh - 10;
+      // --- RIGHT WALL (SEGMENTED around vertical doors — fixed from v1!) ---
+      var rightWallX = rx + rw - 5;
+      var rwy = r.rect.y + 1;
+      while (rwy < r.rect.y + r.rect.h - 1) {
+        if (doorSet[(r.rect.x + r.rect.w - 1) + ',' + rwy]) {
+          rwy++;
+          continue;
+        }
+        var rwStart = rwy;
+        while (rwy < r.rect.y + r.rect.h - 1 && !doorSet[(r.rect.x + r.rect.w - 1) + ',' + rwy]) rwy++;
+        Art.drawWall(ctx, rightWallX, rwStart * TILE, 5, (rwy - rwStart) * TILE, wallColor, {
+          theme: themeName,
+          style: rightStyle,
+          shadow: false
+        });
+      }
+
+      // --- BOTTOM WALL (lower 10px parapet/glass/fence, segmented around bottom doors) ---
+      var botH = (botStyle === 'glass') ? 11 : 10;
+      var botY = ry + rh - botH;
       var bx = r.rect.x;
       while (bx < r.rect.x + r.rect.w) {
         if (doorSet[bx + ',' + (r.rect.y + r.rect.h - 1)]) {
@@ -1114,32 +990,33 @@
         }
         var bStart = bx;
         while (bx < r.rect.x + r.rect.w && !doorSet[bx + ',' + (r.rect.y + r.rect.h - 1)]) bx++;
-        Art.drawWall(ctx, bStart * TILE, botY, (bx - bStart) * TILE, 10, topWallColor, {
-          theme: themeName
+        Art.drawWall(ctx, bStart * TILE, botY, (bx - bStart) * TILE, botH, wallColor, {
+          theme: themeName,
+          style: botStyle
         });
       }
 
-      // Draw lobby front glass double entrance doors
-      if (r.frontEntrance) {
-        var fx = r.frontEntrance.x * TILE;
-        var fy = r.frontEntrance.y * TILE + 2;
-        Art.drawDoor(ctx, fx, fy, false, {
-          theme: themeName,
-          w: TILE,
-          h: 14,
-          color: '#3a6289',
-          frameColor: '#2a3448'
-        });
-        Art.drawDoor(ctx, fx + TILE, fy, false, {
-          theme: themeName,
-          w: TILE,
-          h: 14,
-          color: '#3a6289',
-          frameColor: '#2a3448'
-        });
+      // Draw wide open archway jambs for paired openArch doors (ai_studio & lounge_cafe)
+      for (var da = 0; da < r.doors.length; da++) {
+        var ad = r.doors[da];
+        if (!ad.openArch) continue;
+        // Pair horizontally adjacent openArch doors once
+        var nextDoor = doorSet[(ad.x + 1) + ',' + ad.y];
+        if (nextDoor && nextDoor.openArch) {
+          var isTopArch = (ad.y === r.rect.y);
+          drawOpenArchJambs(
+            ctx,
+            ad.x * TILE,
+            isTopArch ? ry : botY,
+            TILE * 2,
+            isTopArch ? TILE : botH,
+            isLight,
+            pal.outline
+          );
+        }
       }
 
-      // Static furniture inside room (skipping animated racks/fg items)
+      // Static furniture inside room
       for (var fi = 0; fi < r.furniture.length; fi++) {
         var item = r.furniture[fi];
         if (item.layer !== 'static') continue;
@@ -1147,14 +1024,23 @@
         Art.drawFurniture(ctx, item.type, item.x * TILE, item.y * TILE, fOpts);
       }
 
-      // Room Sign Plaque centered on top wall!
-      Art.drawRoomSign(ctx, rx + rw / 2, ry + 1, r.label, r.deptId, {
+      // Room Sign Plaque (using signOffsetX to avoid top doors, fontSize: 10, h: 17!)
+      Art.drawRoomSign(ctx, rx + rw / 2 + (r.signOffsetX || 0), ry + 1, r.label, r.deptId, {
         theme: themeName,
-        fontSize: 9,
+        fontSize: 10,
         padX: 6,
-        h: 15
+        h: 17
       });
     }
+
+    // 4) Atrium Front Glass Double Entrance Doors (x = 23..24, y = 23)
+    var entY = 23 * TILE + 2;
+    Art.drawDoor(ctx, 23 * TILE, entY, false, {
+      theme: themeName, w: TILE, h: 14, color: '#3a6289', frameColor: '#2a3448'
+    });
+    Art.drawDoor(ctx, 24 * TILE, entY, false, {
+      theme: themeName, w: TILE, h: 14, color: '#3a6289', frameColor: '#2a3448'
+    });
 
     return off;
   }
@@ -1180,7 +1066,6 @@
     var active = true;
     var destroyed = false;
 
-    // Reduced motion preference
     var mqlReduced = (typeof window !== 'undefined' && window.matchMedia)
       ? window.matchMedia('(prefers-reduced-motion: reduce)')
       : null;
@@ -1202,27 +1087,31 @@
     var viewW = WORLD_W;
     var viewH = WORLD_H;
 
-    // Offscreen static cache
+    // Offscreen static world cache
     var staticCanvas = renderStaticLayer(Art, themeName);
 
     // World structures
     var roomById = buildRoomMap();
     var walkableGrid = buildWalkableGrid();
 
-    // Collect foreground props & animated props for fast dynamic pass
+    // Collect foreground props, animated props & doors for fast dynamic pass
     var fgFurniture = [];
-    var screenFurniture = [];
     var rackFurniture = [];
     var allDoors = [];
     for (var ri = 0; ri < LAYOUT.rooms.length; ri++) {
       var rm = LAYOUT.rooms[ri];
       for (var di = 0; di < rm.doors.length; di++) {
+        var dSpec = rm.doors[di];
         allDoors.push({
           roomId: rm.roomId,
           deptId: rm.deptId,
-          x: rm.doors[di].x,
-          y: rm.doors[di].y,
-          orient: rm.doors[di].orient || 'horizontal',
+          x: dSpec.x,
+          y: dSpec.y,
+          orient: dSpec.orient || 'horizontal',
+          openArch: Boolean(dSpec.openArch),
+          sharedHide: Boolean(dSpec.sharedHide),
+          isGlass: rm.wallStyle === 'glass',
+          isFence: rm.wallStyle === 'fence',
           openTimer: 0
         });
       }
@@ -1239,10 +1128,14 @@
           opts: fItem.opts || {},
           screen: Boolean(fItem.screen),
           screenCol: fItem.screenCol || '#38e8c6',
-          rack: Boolean(fItem.rack)
+          rack: Boolean(fItem.rack),
+          pingpong: Boolean(fItem.pingpong),
+          cardTable: Boolean(fItem.cardTable),
+          treadmill: Boolean(fItem.treadmill),
+          studioProp: Boolean(fItem.studioProp),
+          animatedProp: Boolean(fItem.animatedProp)
         };
         if (fItem.layer === 'fg') fgFurniture.push(entry);
-        if (fItem.screen) screenFurniture.push(entry);
         if (fItem.rack) rackFurniture.push(entry);
       }
     }
@@ -1254,7 +1147,7 @@
       roomState[rObj.roomId] = {
         active: false,
         alert: false,
-        statusText: 'ว่าง',
+        statusText: 'พักผ่อน/พร้อม',
         detail: rObj.desc || '',
         pulse: 0
       };
@@ -1270,7 +1163,7 @@
       agent.claimedSpotKey = null;
     }
 
-    // Initialize 19 agents at their home seats
+    // Initialize 11 agents at their home seats
     var agents = [];
     var agentById = {};
     for (var ai = 0; ai < AGENT_SPECS.length; ai++) {
@@ -1289,7 +1182,6 @@
         homeRoom: sp.homeRoom,
         seat: seat,
         look: look,
-        // Position (pixels, foot-center)
         px: startPx,
         py: startPy,
         tx: seat.x,
@@ -1303,18 +1195,19 @@
         assignedWork: false,
         workDetail: '',
         workBubble: '',
-        // Pathfinding
+        // Pathfinding (tuned for 40x25 world)
         path: [],
         pathIdx: 0,
-        speed: 58, // px/sec (~3.6 tiles/sec)
+        speed: 48,
         // Handoff state
         handoffTargetRoom: null,
+        handoffTargetAgentId: null,
         handoffLabel: '',
         handoffColor: '#f2c14e',
         handoffPause: 0,
         // Idle activity state
         activity: null,
-        activityTimer: randRange(1.5, 6.5),
+        activityTimer: randRange(1.5, 6.0),
         claimedSpotKey: null,
         bubble: '',
         currentRoomId: sp.homeRoom
@@ -1360,10 +1253,10 @@
     var demoVideoStage = 0;
     var demoAiStage = 0;
     var demoStageTimer = 0;
-    var demoAiTimer = 3.2;
+    var demoAiTimer = 3.0;
 
     // -----------------------------------------------------------------------
-    // Helper: Room lookup at tile / pixel
+    // Helper: Room & Agent hit-testing (tuned for 14x22 sprites on 640x400)
     // -----------------------------------------------------------------------
     function getRoomAtPixel(wx, wy) {
       var tx = wx / TILE;
@@ -1379,11 +1272,11 @@
 
     function getAgentAtPixel(wx, wy) {
       var best = null;
-      var bestDist = 15;
+      var bestDist = 18;
       for (var i = 0; i < agents.length; i++) {
         var a = agents[i];
         var dx = wx - a.px;
-        var dy = wy - (a.py - 9);
+        var dy = wy - (a.py - 11);
         var d = Math.hypot(dx, dy);
         if (d < bestDist) {
           bestDist = d;
@@ -1391,6 +1284,26 @@
         }
       }
       return best;
+    }
+
+    // Find a walkable delivery tile directly beside a target agent's seat (for intra-room handoffs!)
+    function findAdjacentWalkableTile(tx, ty) {
+      var candidates = [
+        { x: tx - 1, y: ty },
+        { x: tx + 1, y: ty },
+        { x: tx,     y: ty - 1 },
+        { x: tx,     y: ty + 1 },
+        { x: tx - 1, y: ty - 1 },
+        { x: tx + 1, y: ty - 1 }
+      ];
+      for (var i = 0; i < candidates.length; i++) {
+        var c = candidates[i];
+        if (c.x >= 0 && c.x < WORLD_W_TILES && c.y >= 0 && c.y < WORLD_H_TILES &&
+            walkableGrid[c.y * WORLD_W_TILES + c.x]) {
+          return c;
+        }
+      }
+      return { x: tx, y: ty };
     }
 
     // -----------------------------------------------------------------------
@@ -1404,7 +1317,7 @@
         agent.path = p;
         agent.pathIdx = 0;
         agent.subState = 'walking';
-        agent.speed = speed || 62;
+        agent.speed = speed || 50;
         return true;
       }
       agent.path = [];
@@ -1416,7 +1329,7 @@
     function sendAgentToWork(agent, detail, bubble) {
       agent.assignedWork = true;
       agent.workDetail = detail || agent.role;
-      agent.workBubble = bubble || WORK_BUBBLES[agent.deptId][0];
+      agent.workBubble = bubble || (WORK_BUBBLES[agent.deptId] && WORK_BUBBLES[agent.deptId][0]) || '💻';
       if (agent.state === 'handoff') return; // let handoff finish first!
 
       releaseSpot(agent);
@@ -1437,7 +1350,7 @@
         agent.state = 'returning';
         agent.pose = 'walk';
         agent.bubble = '⚡';
-        setAgentDestination(agent, agent.seat.x, agent.seat.y, 92);
+        setAgentDestination(agent, agent.seat.x, agent.seat.y, 74);
       }
     }
 
@@ -1454,55 +1367,56 @@
       }
     }
 
-    function triggerHandoff(fromAgentId, toRoomId, label, folderColor) {
+    // Supports target as: agentId (intra-room or cross-room!), roomId, or { x, y, roomId }
+    function triggerHandoff(fromAgentId, target, label, folderColor) {
       var agent = agentById[fromAgentId];
-      var destRoom = roomById[toRoomId];
-      if (!agent || !destRoom) return;
+      if (!agent || !target) return;
       if (agent.state === 'handoff') return;
+
+      var destSpot = null;
+      var destRoomId = null;
+      var targetAgentId = null;
+      var defaultLabel = 'ส่งต่องาน';
+
+      if (typeof target === 'string') {
+        if (agentById[target]) {
+          var tAg = agentById[target];
+          targetAgentId = tAg.id;
+          destRoomId = tAg.homeRoom;
+          destSpot = findAdjacentWalkableTile(tAg.seat.x, tAg.seat.y);
+          defaultLabel = 'ส่งงานให้ ' + tAg.name;
+        } else if (roomById[target]) {
+          var destRm = roomById[target];
+          destRoomId = destRm.roomId;
+          destSpot = destRm.handoffSpot || destRm.doors[0] || { x: destRm.rect.x + 3, y: destRm.rect.y + 4 };
+          defaultLabel = 'ส่งงานไป ' + destRm.label;
+        }
+      } else if (typeof target === 'object' && target.x != null && target.y != null) {
+        destSpot = { x: target.x | 0, y: target.y | 0 };
+        destRoomId = target.roomId || null;
+      }
+
+      if (!destSpot) return;
 
       releaseSpot(agent);
       agent.activity = null;
       agent.state = 'handoff';
-      agent.handoffTargetRoom = toRoomId;
-      agent.handoffLabel = label || ('ส่งงานไป ' + destRoom.label);
+      agent.handoffTargetRoom = destRoomId;
+      agent.handoffTargetAgentId = targetAgentId;
+      agent.handoffLabel = label || defaultLabel;
       agent.handoffColor = folderColor || '#f2c14e';
       agent.handoffPause = 0;
       agent.pose = 'carry';
       agent.bubble = '📦';
 
-      var spot = destRoom.handoffSpot || destRoom.doors[0] || { x: destRoom.rect.x + 3, y: destRoom.rect.y + 4 };
-      setAgentDestination(agent, spot.x, spot.y, 88);
+      setAgentDestination(agent, destSpot.x, destSpot.y, 70);
     }
 
     function pickIdleActivity(agent) {
       releaseSpot(agent);
 
-      // Receptionist stays near front lobby 70% of the time so front desk feels welcoming
-      if (agent.id === 'lounge_host' && Math.random() < 0.72) {
-        agent.activity = {
-          id: 'lobby_duty',
-          label: 'ต้อนรับแขกหน้าบริษัท',
-          pose: 'sit',
-          bubble: Math.random() < 0.5 ? '👋' : '😊'
-        };
-        agent.activityTimer = randRange(8, 16);
-        var sx = agent.seat.x;
-        var sy = agent.seat.y;
-        var dist = Math.hypot(agent.px - (sx + 0.5) * TILE, agent.py - (sy + 0.85) * TILE);
-        if (dist > 6) {
-          agent.pose = 'walk';
-          setAgentDestination(agent, sx, sy, 56);
-        } else {
-          agent.subState = 'at_spot';
-          agent.dir = 'down';
-          agent.pose = 'sit';
-          agent.bubble = agent.activity.bubble;
-        }
-        return;
-      }
-
-      // Check if an existing group activity has an open buddy slot (encourages lively group play!)
-      if (Math.random() < 0.45) {
+      // Encourage lively group play (cards / pingpong / cafe chat / balcony / water cooler)
+      if (Math.random() < 0.50) {
         for (var g = 0; g < IDLE_ACTIVITIES.length; g++) {
           var gAct = IDLE_ACTIVITIES[g];
           if (!gAct.group) continue;
@@ -1526,7 +1440,7 @@
       // Weighted random pick from IDLE_ACTIVITIES
       var totalW = 0;
       for (var w = 0; w < IDLE_ACTIVITIES.length; w++) totalW += IDLE_ACTIVITIES[w].weight;
-      var attempts = 6;
+      var attempts = 7;
       while (attempts-- > 0) {
         var r = Math.random() * totalW;
         var chosen = IDLE_ACTIVITIES[0];
@@ -1538,14 +1452,14 @@
         if (chosen.spotKind === 'home_seat') {
           agent.activity = chosen;
           agent.activityTimer = randRange(chosen.minSec, chosen.maxSec);
-          setAgentDestination(agent, agent.seat.x, agent.seat.y, 58);
+          agent.targetDir = agent.seat.dir || 'down';
+          setAgentDestination(agent, agent.seat.x, agent.seat.y, 48);
           agent.bubble = '';
           return;
         }
 
         var targetRoom = roomById[chosen.roomId];
         if (!targetRoom) continue;
-        // Find free matching spot
         var candidates = [];
         for (var j = 0; j < targetRoom.idleSpots.length; j++) {
           if (targetRoom.idleSpots[j].kind !== chosen.spotKind) continue;
@@ -1559,10 +1473,11 @@
         }
       }
 
-      // Fallback: stroll to garden or home seat
+      // Fallback: chill at home desk
       agent.activity = IDLE_ACTIVITIES[IDLE_ACTIVITIES.length - 1];
       agent.activityTimer = randRange(6, 11);
-      setAgentDestination(agent, agent.seat.x, agent.seat.y, 55);
+      agent.targetDir = agent.seat.dir || 'down';
+      setAgentDestination(agent, agent.seat.x, agent.seat.y, 46);
     }
 
     function assignIdleSpot(agent, act, room, spotIdx) {
@@ -1574,7 +1489,7 @@
       agent.activityTimer = randRange(act.minSec, act.maxSec);
       agent.targetDir = spot.dir || 'down';
       agent.bubble = '';
-      setAgentDestination(agent, spot.x, spot.y, randRange(50, 64));
+      setAgentDestination(agent, spot.x, spot.y, randRange(42, 54));
     }
 
     // -----------------------------------------------------------------------
@@ -1587,7 +1502,6 @@
       var sq = data.socialQueue;
       var crons = Array.isArray(data.cronJobs) ? data.cronJobs : [];
 
-      // Reset room flags (preserve brief pulse)
       for (var rKey in roomState) {
         if (!Object.prototype.hasOwnProperty.call(roomState, rKey)) continue;
         roomState[rKey].active = false;
@@ -1597,17 +1511,17 @@
       }
 
       var workAssign = {}; // agentId -> { detail, bubble }
-      var assign = function (agId, detail, bubble) {
+      var assign = function (agId, detail, bubble, customStatus) {
         workAssign[agId] = { detail: detail, bubble: bubble };
         var ag = agentById[agId];
         if (ag && roomState[ag.homeRoom]) {
           roomState[ag.homeRoom].active = true;
-          roomState[ag.homeRoom].statusText = '⚡ กำลังทำงาน';
+          roomState[ag.homeRoom].statusText = customStatus || '⚡ กำลังทำงาน';
           if (detail) roomState[ag.homeRoom].detail = detail;
         }
       };
 
-      // ---- 1) AI Chat Mapping ----
+      // ---- 1) AI Chat Mapping (Stage 1: Architect -> Stage 2: Devs 1+2 -> Stage 3: Review) ----
       var aiObj = (ov.ai && typeof ov.ai === 'object') ? ov.ai : {};
       var aiRunningList = Array.isArray(aiObj.running) ? aiObj.running : [];
       var aiRunningCount = Number(aiObj.runningCount != null ? aiObj.runningCount : aiRunningList.length) || 0;
@@ -1620,33 +1534,33 @@
 
         if (/(ด่าน\s*3|review|รีวิว|qc|ตรวจ|verify|test)/.test(stepRaw)) {
           curAiStage = 3;
-          assign('ai_review', 'รีวิว: ' + chatTitle, '🔍');
-        } else if (/(ด่าน\s*2|worker|เวิร์กเกอร์|build|code|เขียน|implement)/.test(stepRaw)) {
+          assign('ai_review', 'ด่าน 3 รีวิว: ' + chatTitle, '🔍');
+        } else if (/(ด่าน\s*2|worker|เวิร์กเกอร์|เดฟ|build|code|เขียน|implement)/.test(stepRaw)) {
           curAiStage = 2;
-          assign('ai_worker_1', 'ด่าน 2: ' + chatTitle, '💻');
-          assign('ai_worker_2', 'ด่าน 2: ' + chatTitle, '⚡');
-          assign('ai_worker_3', 'ด่าน 2: ' + chatTitle, '🛠️');
+          assign('ai_worker_1', 'ด่าน 2 โค้ด: ' + chatTitle, '💻');
+          assign('ai_worker_2', 'ด่าน 2 ทดสอบ: ' + chatTitle, '⚡');
         } else if (/(ด่าน\s*1|architect|สถาปนิก|plan|วางแผน|blueprint)/.test(stepRaw)) {
           curAiStage = 1;
-          assign('ai_architect', 'วางแผน: ' + chatTitle, '📐');
+          assign('ai_architect', 'ด่าน 1 พิมพ์เขียว: ' + chatTitle, '📐');
         } else {
-          curAiStage = 0;
-          assign('ai_router', 'รับงาน: ' + chatTitle, '🤖');
+          curAiStage = 1;
+          assign('ai_architect', 'รับงาน/วิเคราะห์: ' + chatTitle, '🤖');
           assign('ai_worker_1', 'ประมวลผล: ' + chatTitle, '💻');
           if (aiRunningCount >= 2) assign('ai_worker_2', 'แชทซ้อน #' + aiRunningCount, '⚡');
-          if (aiRunningCount >= 3) assign('ai_worker_3', 'แชทซ้อน #' + aiRunningCount, '⚡');
         }
 
-        // Trigger physical handoff on AI stage transition
-        if (prevAiStage >= 0 && curAiStage > prevAiStage && curAiStage < AI_PIPELINE_ROOMS.length) {
-          var fromAiAgent = prevAiStage === 0 ? 'ai_router'
-            : (prevAiStage === 1 ? 'ai_architect' : 'ai_worker_1');
-          triggerHandoff(fromAiAgent, AI_PIPELINE_ROOMS[curAiStage], 'ส่งงาน AI → ' + roomById[AI_PIPELINE_ROOMS[curAiStage]].label, '#9b7eff');
+        // Intra-room handoff inside ai_studio between architect -> worker_1 -> review!
+        if (prevAiStage >= 0 && curAiStage > prevAiStage) {
+          if (curAiStage === 2) {
+            triggerHandoff('ai_architect', 'ai_worker_1', 'ส่งพิมพ์เขียว → น้องเดฟ 1', '#9b7eff');
+          } else if (curAiStage === 3) {
+            triggerHandoff('ai_worker_1', 'ai_review', 'ส่งงานตรวจ QA → น้องรีวิว', '#9b7eff');
+          }
         }
       }
       prevAiStage = curAiStage;
 
-      // ---- 2) Video Studio Pipeline Mapping ----
+      // ---- 2) Video Studio 5-Stage Pipeline Mapping ----
       var jobs = Array.isArray(fs.jobs) ? fs.jobs : [];
       var socialItems = Array.isArray(sq) ? sq : (sq && Array.isArray(sq.items) ? sq.items : []);
       var runningVideoJob = null;
@@ -1673,11 +1587,12 @@
         var vBubbles = ['📝', '🎨', '🎙️', '✂️', '🚀'];
         assign(VIDEO_STAGE_AGENTS[curVidStage], vTitle + (vPct > 0 ? ' (' + Math.round(vPct) + '%)' : ''), vBubbles[curVidStage]);
 
-        if (prevVideoStage >= 0 && curVidStage !== prevVideoStage && curVidStage > prevVideoStage) {
+        if (prevVideoStage >= 0 && curVidStage > prevVideoStage) {
+          var nextTargetAg = VIDEO_STAGE_AGENTS[curVidStage];
           triggerHandoff(
             VIDEO_STAGE_AGENTS[prevVideoStage],
-            VIDEO_STAGE_ROOMS[curVidStage],
-            'ส่งต่อคลิป → ' + roomById[VIDEO_STAGE_ROOMS[curVidStage]].label,
+            nextTargetAg,
+            'ส่งต่อคลิป → ' + agentById[nextTargetAg].name,
             '#ff8fa3'
           );
         }
@@ -1688,20 +1603,22 @@
 
       if (socialActive) {
         assign('vid_publish', 'กำลังอัปโหลด/โพสต์โซเชียล', '🚀');
-      } else if (qcPending > 0 && !workAssign.vid_publish) {
-        roomState.vid_publish.statusText = 'รอตรวจ QC (' + qcPending + ')';
-        roomState.vid_publish.detail = 'มีคลิปเสร็จรอตรวจ QC ' + qcPending + ' รายการ';
+      } else if (qcPending > 0 && !workAssign.vid_edit && !workAssign.vid_publish) {
+        roomState.vid_edit.statusText = 'รอตรวจ QC (' + qcPending + ')';
+        roomState.vid_edit.detail = 'มีคลิปเสร็จรอตรวจ QC ' + qcPending + ' รายการ';
       }
       prevVideoStage = curVidStage;
 
-      // ---- 3) Cron & Scheduler Mapping (lastRunAt within 3 min) ----
+      // ---- 3) Cron Mapping (News/Video Cron -> Video Wing; System Cron -> ops_sys in ops_hub) ----
       var nowMs = Date.now();
       var activeCrons = [];
       for (var ci = 0; ci < crons.length; ci++) {
         var cj = crons[ci];
-        if (!cj || !cj.lastRunAt) continue;
-        var ms = Number(cj.lastRunAt);
-        if (isFinite(ms) && (nowMs - ms) >= 0 && (nowMs - ms) < 180000) {
+        if (!cj) continue;
+        var isRunningCron = Boolean(cj.running) || String(cj.status || '').toLowerCase() === 'running';
+        var ms = cj.lastRunAt ? Number(cj.lastRunAt) : NaN;
+        var recentCron = isFinite(ms) && (nowMs - ms) >= 0 && (nowMs - ms) < 180000;
+        if (isRunningCron || recentCron) {
           activeCrons.push(cj);
         }
       }
@@ -1709,20 +1626,21 @@
       if (activeCrons.length > 0) {
         for (var ac = 0; ac < activeCrons.length; ac++) {
           var cName = String(activeCrons[ac].name || activeCrons[ac].id || 'Cron Job');
-          if (/(news|ข่าว|broadcast|daily-news)/i.test(cName)) {
+          if (/(news|ข่าว|broadcast|daily-news|video|คลิป)/i.test(cName)) {
             cronNewsNow = true;
-            assign('cron_news', 'รันข่าวเช้า: ' + truncateText(cName, 22), '📰');
+            var newsTarget = /(render|edit|ตัดต่อ|mix)/i.test(cName) ? 'vid_edit' : 'vid_script';
+            assign(newsTarget, '📰 ข่าวเช้า: ' + truncateText(cName, 22), '📰', '📰 ข่าวเช้า');
           } else {
-            assign('cron_sched', 'รันงานตั้งเวลา: ' + truncateText(cName, 22), '⏰');
+            assign('ops_sys', '⏰ Cron ระบบ: ' + truncateText(cName, 22), '⏰');
           }
         }
         if (cronNewsNow && !prevCronNewsActive) {
-          triggerHandoff('cron_sched', 'cron_news', 'ทริกเกอร์ข่าวเช้าอัตโนมัติ', '#f2c94c');
+          triggerHandoff('ops_sys', 'vid_script', 'ทริกเกอร์ข่าวเช้า → สตูดิโอวิดีโอ', '#f2c94c');
         }
       }
       prevCronNewsActive = cronNewsNow;
 
-      // ---- 4) IT / Agent Hub Mapping ----
+      // ---- 4) Agent Hub & Worker Nodes Mapping (hub_dispatch in ops_hub) ----
       var agHub = (ov.agents && typeof ov.agents === 'object') ? ov.agents : {};
       var hubActiveCount = Number(agHub.activeJobCount || 0);
       var hubActiveJobs = Array.isArray(agHub.activeJobs) ? agHub.activeJobs : [];
@@ -1731,29 +1649,27 @@
       var totalNodes = Number(agHub.totalNodes != null ? agHub.totalNodes : hubNodes.length);
 
       hubOfflineAlert = (totalNodes > 0 && onlineNodes === 0);
+      var opsDetails = [];
       if (hubOfflineAlert) {
-        roomState.hub_workers.alert = true;
-        roomState.hub_workers.statusText = '⚠️ ลูกข่ายออฟไลน์';
-        roomState.hub_workers.detail = 'ไม่มีลูกข่าย Agent Hub ออนไลน์ (0/' + totalNodes + ')';
+        roomState.ops_hub.alert = true;
+        roomState.ops_hub.statusText = '⚠️ ลูกข่ายออฟไลน์';
+        opsDetails.push('ลูกข่ายออฟไลน์ (0/' + totalNodes + ')');
       } else if (totalNodes > 0) {
-        roomState.hub_workers.detail = 'โหนดออนไลน์ ' + onlineNodes + '/' + totalNodes + ' เครื่อง';
+        opsDetails.push('โหนด ' + onlineNodes + '/' + totalNodes + ' ออนไลน์');
       }
 
       var hubBusy = (hubActiveCount > 0 || hubActiveJobs.length > 0);
       if (hubBusy) {
         var hJobName = truncateText((hubActiveJobs[0] && (hubActiveJobs[0].name || hubActiveJobs[0].kind)) || ('งาน Offload ' + hubActiveCount + ' รายการ'), 24);
-        assign('hub_dispatch', 'กระจายงาน: ' + hJobName, '📡');
-        assign('hub_srv_1', 'ประมวลผล: ' + hJobName, '🖥️');
-        if (hubActiveCount >= 2 || onlineNodes >= 2) {
-          assign('hub_srv_2', 'ช่วยรันงาน: ' + hJobName, '⚙️');
-        }
+        assign('hub_dispatch', 'Offload โหนด: ' + hJobName, '📡');
         if (!prevHubActive) {
-          triggerHandoff('hub_dispatch', 'hub_workers', 'โยนงานหนักไปลูกข่าย', '#52b4ff');
+          var sender = workAssign.ai_worker_1 ? 'ai_worker_1' : (workAssign.vid_edit ? 'vid_edit' : 'ops_sys');
+          triggerHandoff(sender, 'hub_dispatch', 'โยนงานหนักไปลูกข่าย GPU', '#52b4ff');
         }
       }
       prevHubActive = hubBusy;
 
-      // ---- 5) Operations / Infra & Energy Mapping ----
+      // ---- 5) Infra & PZEM-01 Energy Mapping (ops_sys in ops_hub) ----
       var infra = (ov.infra && typeof ov.infra === 'object') ? ov.infra : {};
       var problems = Array.isArray(infra.problems) ? infra.problems : [];
       var downCount = Number((ov.attention && ov.attention.servicesDown) || problems.length || 0);
@@ -1761,13 +1677,12 @@
 
       if (opsAlert) {
         var probText = problems[0]
-          ? truncateText(typeof problems[0] === 'string' ? problems[0] : (problems[0].name || problems[0].message || 'เซอร์วิสขัดข้อง'), 26)
+          ? truncateText(typeof problems[0] === 'string' ? problems[0] : (problems[0].name || problems[0].message || 'เซอร์วิสขัดข้อง'), 24)
           : ('พบปัญหา ' + downCount + ' รายการ');
-        roomState.ops_monitor.alert = true;
-        roomState.ops_monitor.statusText = '🚨 แจ้งเตือน!';
-        assign('ops_monitor', 'ตรวจแก้: ' + probText, '🚨');
+        roomState.ops_hub.alert = true;
+        assign('ops_sys', 'ตรวจแก้: ' + probText, '🚨', '🚨 แจ้งเตือน!');
       } else {
-        roomState.ops_monitor.detail = 'เซอร์วิสทั้งหมดทำงานปกติ (0 ปัญหา)';
+        opsDetails.push('เซอร์วิสปกติ');
       }
 
       var energy = infra.energy && typeof infra.energy === 'object' ? infra.energy : null;
@@ -1776,33 +1691,36 @@
         var kwh = Number(energy.todayKwh != null ? energy.todayKwh : NaN);
         var eParts = [];
         if (isFinite(watts)) eParts.push(Math.round(watts) + 'W');
-        if (isFinite(kwh)) eParts.push(kwh.toFixed(2) + ' kWh วันนี้');
+        if (isFinite(kwh)) eParts.push(kwh.toFixed(2) + ' kWh');
         if (eParts.length > 0) {
-          roomState.ops_energy.detail = 'มิเตอร์ PZEM-01: ' + eParts.join(' · ');
+          opsDetails.push('ไฟ ' + eParts.join(' / '));
         }
-        if (isFinite(watts) && watts >= 900) {
-          assign('ops_energy', 'โหลดไฟสูง ' + Math.round(watts) + 'W', '⚡');
+        if (isFinite(watts) && watts >= 900 && !workAssign.ops_sys) {
+          assign('ops_sys', 'โหลดไฟสูง ' + Math.round(watts) + 'W', '⚡');
         }
       }
 
-      // Check whether any real work exists
+      if (!workAssign.hub_dispatch && !workAssign.ops_sys && opsDetails.length > 0) {
+        roomState.ops_hub.detail = opsDetails.join(' · ');
+      }
+
       var activeKeys = Object.keys(workAssign);
       hasLiveWork = activeKeys.length > 0;
 
-      // Build human headline
       if (hasLiveWork) {
         var hl = [];
         if (curAiStage >= 0) hl.push('🤖 AI (' + Math.max(1, aiRunningCount) + ')');
-        if (curVidStage >= 0 || socialActive) hl.push('🎬 วิดีโอ (' + roomById[VIDEO_STAGE_ROOMS[Math.max(0, curVidStage)]].label.replace(/^[^\s]+\s/, '') + ')');
-        if (activeCrons.length > 0) hl.push('⏰ Cron (' + activeCrons.length + ')');
+        if (curVidStage >= 0 || socialActive) hl.push('🎬 วิดีโอ (' + VIDEO_STAGE_LABELS[Math.max(0, curVidStage)] + ')');
+        if (cronNewsNow) hl.push('📰 ข่าวเช้า');
         if (hubBusy) hl.push('🖥️ Hub (' + Math.max(1, hubActiveCount) + ')');
-        if (opsAlert) hl.push('🚨 Ops แจ้งเตือน');
+        if (opsAlert) hl.push('🚨 ระบบแจ้งเตือน');
+        if (hl.length === 0 && activeCrons.length > 0) hl.push('⏰ Cron (' + activeCrons.length + ')');
+        if (hl.length === 0 && workAssign.ops_sys) hl.push('⚡ โหลดไฟสูง');
         liveHeadline = '⚡ กำลังทำงานจริง · ' + hl.join(' · ');
       } else {
         liveHeadline = '';
       }
 
-      // Apply live assignments only when NOT in demoMode
       if (!demoMode) {
         for (var i = 0; i < agents.length; i++) {
           var ag = agents[i];
@@ -1816,7 +1734,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Demo Mode Choreographer (Lively company simulation: work + handoffs + chill)
+    // Demo Mode Choreographer (3-4 working & handing off, 7-8 chilling/playing!)
     // -----------------------------------------------------------------------
     function stepDemoSimulation(dt) {
       if (!demoMode) return;
@@ -1824,43 +1742,42 @@
       demoStageTimer += dt;
       demoAiTimer += dt;
 
-      // Cycle Video Pipeline every 6.5s with physical folder handoff along yellow arrows!
+      // Cycle Video Pipeline every 6.5s with intra-room & cross-room handoffs!
       if (demoStageTimer >= 6.5) {
         demoStageTimer = 0;
         var prevV = demoVideoStage;
-        demoVideoStage = (demoVideoStage + 1) % VIDEO_STAGE_ROOMS.length;
+        demoVideoStage = (demoVideoStage + 1) % VIDEO_STAGE_AGENTS.length;
         if (demoVideoStage > prevV) {
+          var toAgV = VIDEO_STAGE_AGENTS[demoVideoStage];
           triggerHandoff(
             VIDEO_STAGE_AGENTS[prevV],
-            VIDEO_STAGE_ROOMS[demoVideoStage],
-            'ส่งต่อคลิป Daily News v2 → ' + roomById[VIDEO_STAGE_ROOMS[demoVideoStage]].label,
+            toAgV,
+            'ส่งต่อคลิปข่าวเช้า → ' + agentById[toAgV].name,
             '#ff8fa3'
           );
         }
       }
 
-      // Cycle AI Chat Pipeline every 7.5s with handoff along H1!
-      if (demoAiTimer >= 7.5) {
+      // Cycle AI Pipeline inside ai_studio every 7.2s (intra-room + cross-room to ops_hub!)
+      if (demoAiTimer >= 7.2) {
         demoAiTimer = 0;
         var prevA = demoAiStage;
-        demoAiStage = (demoAiStage + 1) % AI_PIPELINE_ROOMS.length;
-        if (demoAiStage > prevA) {
-          var fromA = prevA === 0 ? 'ai_router' : (prevA === 1 ? 'ai_architect' : 'ai_worker_1');
-          triggerHandoff(
-            fromA,
-            AI_PIPELINE_ROOMS[demoAiStage],
-            'ส่งต่องาน AI → ' + roomById[AI_PIPELINE_ROOMS[demoAiStage]].label,
-            '#9b7eff'
-          );
+        demoAiStage = (demoAiStage + 1) % 3; // 0=architect, 1=devs, 2=review
+        if (prevA === 0 && demoAiStage === 1) {
+          triggerHandoff('ai_architect', 'ai_worker_1', 'ส่งพิมพ์เขียว → น้องเดฟ 1', '#9b7eff');
+        } else if (prevA === 1 && demoAiStage === 2) {
+          triggerHandoff('ai_worker_1', 'ai_review', 'ส่งโค้ดรีวิว → น้องรีวิว', '#9b7eff');
+        } else if (prevA === 2 && demoAiStage === 0) {
+          triggerHandoff('ai_review', 'hub_dispatch', 'โยนงานทดสอบไปลูกข่าย GPU', '#52b4ff');
         }
       }
 
-      // Determine active demo agents (~6-7 working, ~12-13 chilling/playing in lounge!)
+      // Assign 3-4 active workers so 7-8 agents actively chill/play cards/pingpong/balcony/garden!
       var demoWork = {};
       var vBubbles = ['📝', '🎨', '🎙️', '✂️', '🚀'];
       var vDetails = [
-        'เขียนสคริปต์ Daily News v2',
-        'สร้างภาพประกอบข่าว 6 ข่าว',
+        '📰 เขียนสคริปต์ข่าวเช้า v2',
+        'วาดสตอรี่บอร์ดและภาพประกอบ',
         'พากย์เสียงไทย + ซิงค์ซับ',
         'เรนเดอร์ Remotion + มิกซ์ BGM',
         'ตรวจ QC และส่ง Telegram'
@@ -1868,30 +1785,22 @@
       demoWork[VIDEO_STAGE_AGENTS[demoVideoStage]] = { detail: vDetails[demoVideoStage], bubble: vBubbles[demoVideoStage] };
 
       if (demoAiStage === 0) {
-        demoWork.ai_router = { detail: 'คัดกรองคำสั่งผู้ใช้ใหม่', bubble: '🤖' };
+        demoWork.ai_architect = { detail: 'ด่าน 1 · วางพิมพ์เขียวระบบ', bubble: '📐' };
       } else if (demoAiStage === 1) {
-        demoWork.ai_architect = { detail: 'วางพิมพ์เขียวฟีเจอร์ใหม่', bubble: '📐' };
-      } else if (demoAiStage === 2) {
-        demoWork.ai_worker_1 = { detail: 'ด่าน 2 · เขียนโมดูลหลัก', bubble: '💻' };
+        demoWork.ai_worker_1 = { detail: 'ด่าน 2 · เขียนฟีเจอร์หลัก', bubble: '💻' };
         demoWork.ai_worker_2 = { detail: 'ด่าน 2 · ทำ Unit Test', bubble: '⚡' };
       } else {
         demoWork.ai_review = { detail: 'ด่าน 3 · โค้ดรีวิวและ QA', bubble: '🔍' };
       }
 
-      // Alternate Hub / Cron / Ops background duty so every dept shines
-      var bgPhase = Math.floor(demoClock / 10) % 3;
+      // Alternate Hub vs Ops System worker (1 active in ops_hub)
+      var bgPhase = Math.floor(demoClock / 9) % 2;
       if (bgPhase === 0) {
-        demoWork.hub_dispatch = { detail: 'โยนงานเรนเดอร์ไป GPU โหนด', bubble: '📡' };
-        demoWork.hub_srv_1 = { detail: 'asridaytrade · เรนเดอร์ NVENC', bubble: '🖥️' };
-      } else if (bgPhase === 1) {
-        demoWork.cron_news = { detail: 'จัดเตรียมข่าวเช้า 07:30', bubble: '📰' };
-        demoWork.ops_energy = { detail: 'วัดไฟ PZEM-01 · 342W', bubble: '⚡' };
+        demoWork.hub_dispatch = { detail: 'โยนงานเรนเดอร์ไป asridaytrade', bubble: '📡' };
       } else {
-        demoWork.ops_monitor = { detail: 'ตรวจสุขภาพ 13 คอนเทนเนอร์', bubble: '🛡️' };
-        demoWork.cron_sched = { detail: 'เช็คตาราง Cron อัตโนมัติ', bubble: '⏰' };
+        demoWork.ops_sys = { detail: 'ตรวจ Docker/PM2 · PZEM 342W', bubble: '🛡️' };
       }
 
-      // Update room statuses
       for (var rk in roomState) {
         if (!Object.prototype.hasOwnProperty.call(roomState, rk)) continue;
         roomState[rk].active = false;
@@ -1919,7 +1828,6 @@
     // Agent Movement & State Machine Tick
     // -----------------------------------------------------------------------
     function stepAgents(dt, animTick) {
-      // Decay door timers & room pulses
       for (var d = 0; d < allDoors.length; d++) {
         if (allDoors[d].openTimer > 0) allDoors[d].openTimer = Math.max(0, allDoors[d].openTimer - dt);
       }
@@ -1930,7 +1838,6 @@
       for (var i = 0; i < agents.length; i++) {
         var a = agents[i];
 
-        // 1) Walking along A* path
         if (a.subState === 'walking' && a.path && a.pathIdx < a.path.length) {
           var wp = a.path[a.pathIdx];
           var targetPx = (wp.x + 0.5) * TILE;
@@ -1968,7 +1875,6 @@
             }
           }
 
-          // Check arrival at destination
           if (a.pathIdx >= a.path.length) {
             a.path = [];
             a.pathIdx = 0;
@@ -1988,9 +1894,17 @@
               }
             } else if (a.state === 'handoff') {
               a.subState = 'delivering';
-              a.handoffPause = 1.25;
+              a.handoffPause = 1.15;
               a.pose = 'talk';
-              a.dir = 'down';
+              // Face target agent if intra-room or targeted delivery
+              if (a.handoffTargetAgentId && agentById[a.handoffTargetAgentId]) {
+                var tAg = agentById[a.handoffTargetAgentId];
+                var dtx = tAg.px - a.px;
+                var dty = tAg.py - a.py;
+                a.dir = Math.abs(dtx) >= Math.abs(dty) ? (dtx >= 0 ? 'right' : 'left') : (dty >= 0 ? 'down' : 'up');
+              } else {
+                a.dir = 'down';
+              }
               a.bubble = '🤝';
               if (a.handoffTargetRoom && roomState[a.handoffTargetRoom]) {
                 roomState[a.handoffTargetRoom].pulse = 1.0;
@@ -2002,11 +1916,9 @@
             }
           }
         } else {
-          // 2) Stationary / Performing State Action
           if (a.state === 'working') {
             a.pose = 'type';
             a.dir = a.seat.dir || 'down';
-            // Subtle bubble rotation while working
             if (((animTick + a.frameOffset) % 90) === 0) {
               var bList = WORK_BUBBLES[a.deptId] || ['💻'];
               a.bubble = a.workBubble || bList[((animTick / 90 + i) | 0) % bList.length];
@@ -2015,10 +1927,11 @@
             a.handoffPause -= dt;
             if (a.handoffPause <= 0) {
               a.handoffTargetRoom = null;
+              a.handoffTargetAgentId = null;
               if (a.assignedWork) {
                 a.state = 'returning';
                 a.bubble = '⚡';
-                setAgentDestination(a, a.seat.x, a.seat.y, 90);
+                setAgentDestination(a, a.seat.x, a.seat.y, 72);
               } else {
                 a.state = 'idle';
                 a.subState = 'at_spot';
@@ -2028,18 +1941,17 @@
           } else if (a.state === 'idle') {
             a.activityTimer -= dt;
             if (a.activity && a.activity.wander && a.activityTimer > 2 && Math.random() < dt * 0.25) {
-              // Wander gently to another garden spot
               var gRm = roomById.lounge_garden;
               if (gRm && gRm.idleSpots.length > 0) {
-                var gs = gRm.idleSpots[(Math.random() * gRm.idleSpots.length) | 0];
-                setAgentDestination(a, gs.x, gs.y, 44);
+                var strolls = gRm.idleSpots.filter(function (s) { return s.kind === 'garden_stroll'; });
+                var gs = strolls.length > 0 ? strolls[(Math.random() * strolls.length) | 0] : gRm.idleSpots[0];
+                setAgentDestination(a, gs.x, gs.y, 38);
               }
             }
             if (a.activityTimer <= 0) {
               pickIdleActivity(a);
             }
           } else if (a.state === 'returning') {
-            // Arrived or stuck fallback
             if (a.assignedWork) {
               a.state = 'working';
               a.pose = 'type';
@@ -2051,26 +1963,24 @@
           }
         }
 
-        // Track current room for tooltip
         var curRm = getRoomAtPixel(a.px, a.py);
         a.currentRoomId = curRm ? curRm.roomId : null;
       }
     }
 
     // -----------------------------------------------------------------------
-    // Camera Smooth Interpolation & Focus Helpers
+    // Camera Smooth Interpolation & Focus Helpers (with alias mapping!)
     // -----------------------------------------------------------------------
     function focusRect(minX, minY, maxX, maxY, padTiles) {
-      var pad = (padTiles != null ? padTiles : 1.5) * TILE;
-      var bw = Math.max(120, (maxX - minX) + pad * 2);
-      var bh = Math.max(80, (maxY - minY) + pad * 2);
+      var pad = (padTiles != null ? padTiles : 1.2) * TILE;
+      var bw = Math.max(96, (maxX - minX) + pad * 2);
+      var bh = Math.max(64, (maxY - minY) + pad * 2);
       var zx = WORLD_W / bw;
       var zy = WORLD_H / bh;
-      var z = clamp(Math.min(zx, zy), 1.0, 2.55);
+      var z = clamp(Math.min(zx, zy), 1.0, 2.45);
       var cx = (minX + maxX) / 2;
       var cy = (minY + maxY) / 2;
 
-      // Keep viewport inside world bounds
       var halfW = (WORLD_W / 2) / z;
       var halfH = (WORLD_H / 2) / z;
       cam.targetZoom = z;
@@ -2085,10 +1995,10 @@
     }
 
     function focusDept(deptId) {
-      var id = String(deptId || 'all');
+      var raw = String(deptId || 'all');
+      var id = DEPT_ALIASES[raw] || raw;
       cam.focusedRoomId = null;
 
-      // Also support passing a roomId directly
       if (roomById[id]) {
         return focusRoom(id);
       }
@@ -2117,7 +2027,7 @@
         maxY = Math.max(maxY, (r.rect.y + r.rect.h) * TILE);
       }
       if (isFinite(minX)) {
-        focusRect(minX, minY, maxX, maxY, 1.8);
+        focusRect(minX, minY, maxX, maxY, 1.4);
       }
     }
 
@@ -2134,7 +2044,7 @@
         r.rect.y * TILE,
         (r.rect.x + r.rect.w) * TILE,
         (r.rect.y + r.rect.h) * TILE,
-        1.4
+        1.2
       );
     }
 
@@ -2214,21 +2124,19 @@
         var curRmObj = hoverAgent.currentRoomId ? roomById[hoverAgent.currentRoomId] : null;
         lines.push(hoverAgent.name + ' · ' + stateLabel);
         lines.push(taskInfo);
-        if (curRmObj) lines.push('ตำแหน่ง: ' + curRmObj.label);
+        lines.push('ตำแหน่ง: ' + (curRmObj ? curRmObj.label : 'โถงกลางออฟฟิศ'));
       } else if (hoverRoom) {
         var rs = roomState[hoverRoom.roomId];
         var deptMeta = DEPTS[hoverRoom.deptId];
         lines.push(hoverRoom.label + (deptMeta ? ' (' + deptMeta.label.replace(/^[^\s]+\s/, '') + ')' : ''));
         lines.push((rs && rs.statusText ? rs.statusText + ' · ' : '') + (rs ? rs.detail : hoverRoom.desc));
-        lines.push('คลิกเพื่อซูมดูห้องนี้');
+        lines.push('คลิกเพื่อซูมดูโซนนี้');
       }
 
-      // Spec: write textContent (never innerHTML!)
       tooltipEl.textContent = lines.join('\n');
       tooltipEl.style.whiteSpace = 'pre-line';
       tooltipEl.hidden = false;
 
-      // Position neatly inside hostEl
       var rect = hostEl.getBoundingClientRect();
       var relX = mouseClientX - rect.left + 12;
       var relY = mouseClientY - rect.top + 12;
@@ -2244,7 +2152,6 @@
     // Coordinate Transform (Screen <-> World)
     // -----------------------------------------------------------------------
     function getViewportTransform() {
-      // Fit 1024x640 world into canvas keeping aspect ratio clean
       var scaleBase = Math.min(viewW / WORLD_W, viewH / WORLD_H);
       var scale = scaleBase * cam.zoom;
       var offsetX = (viewW / 2) - cam.x * scale;
@@ -2287,7 +2194,6 @@
       ctx2d.font = '700 10px "Noto Sans Thai", "Sarabun", system-ui, sans-serif';
       ctx2d.textBaseline = 'middle';
 
-      // Left pill: real clock + working / handoff / idle counters
       var leftText = '🕒 ' + clockStr +
         '  │  ⚡ ทำงาน ' + summary.working +
         '  ·  📦 ส่งงาน ' + summary.handoff +
@@ -2304,7 +2210,6 @@
       ctx2d.textAlign = 'left';
       ctx2d.fillText(leftText, pad + 9, y + h / 2 + 0.5);
 
-      // Right zoom pill when focused on a room/department
       if (cam.focusedDept !== 'all' || cam.focusedRoomId) {
         var zLabel = cam.focusedRoomId && roomById[cam.focusedRoomId]
           ? ('🔍 ' + roomById[cam.focusedRoomId].label + ' · คลิกพื้นว่างเพื่อดูทั้งหมด')
@@ -2341,22 +2246,35 @@
       // 1) Blit cached static world layer (1 drawImage call!)
       ctx.drawImage(staticCanvas, 0, 0);
 
-      // 2) Animated yellow pipeline arrow pulse when department is active
-      var arrowPulse = 0.28 + 0.24 * Math.sin(animTick * 0.25);
-      for (var a = 0; a < LAYOUT.arrows.length; a++) {
-        var arr = LAYOUT.arrows[a];
-        var fromSt = roomState[arr.stageFrom];
-        var toSt = roomState[arr.stageTo];
-        if ((fromSt && fromSt.active) || (toSt && toSt.active)) {
-          drawYellowArrow(ctx, arr.x * TILE, arr.y * TILE, arr.dir, arrowPulse);
+      // 2) Subtle glowing guidance trail ONLY when an agent is carrying a handoff!
+      for (var ha = 0; ha < agents.length; ha++) {
+        var hag = agents[ha];
+        if (hag.state !== 'handoff' || hag.subState !== 'walking' || !hag.path || hag.pathIdx >= hag.path.length) continue;
+        var endIdx = Math.min(hag.path.length, hag.pathIdx + 10);
+        for (var wpIdx = hag.pathIdx; wpIdx < endIdx; wpIdx++) {
+          var wpt = hag.path[wpIdx];
+          var phase = ((animTick >> 2) - wpIdx) & 3;
+          var alpha = phase === 0 ? 0.65 : 0.25;
+          ctx.fillStyle = hag.handoffColor || '#ffe066';
+          ctx.globalAlpha = alpha;
+          ctx.fillRect((wpt.x * TILE + 6) | 0, (wpt.y * TILE + 6) | 0, 4, 4);
         }
+        ctx.globalAlpha = 1;
       }
 
-      // 3) Animated server rack LEDs & room active/alert/handoff glow overlays
+      // 3) Warm subtle spotlight glow around active working desks
+      var deskPulse = 0.14 + 0.06 * Math.sin(animTick * 0.18);
+      for (var wa = 0; wa < agents.length; wa++) {
+        var wag = agents[wa];
+        if (wag.state !== 'working') continue;
+        ctx.fillStyle = 'rgba(255, 224, 130, ' + deskPulse.toFixed(2) + ')';
+        ctx.fillRect((wag.seat.x * TILE - 8) | 0, (wag.seat.y * TILE - 2) | 0, 32, 24);
+      }
+
+      // 4) Animated server rack LEDs in ops_hub
       for (var rk = 0; rk < rackFurniture.length; rk++) {
         var rf = rackFurniture[rk];
-        var isAlert = (rf.roomId === 'hub_workers' && hubOfflineAlert) ||
-                      (rf.roomId === 'ops_monitor' && opsAlert);
+        var isAlert = (rf.roomId === 'ops_hub') && (hubOfflineAlert || opsAlert);
         var isHot = roomState[rf.roomId] && roomState[rf.roomId].active;
         Art.drawFurniture(ctx, 'server_rack', rf.x, rf.y, {
           theme: themeName,
@@ -2365,6 +2283,7 @@
         });
       }
 
+      // 5) Room active / alert / handoff pulse / focus / hover overlays
       for (var ri = 0; ri < LAYOUT.rooms.length; ri++) {
         var rm = LAYOUT.rooms[ri];
         var st = roomState[rm.roomId];
@@ -2374,23 +2293,21 @@
         var rh = rm.rect.h * TILE;
 
         if (st.alert) {
-          var al = 0.16 + 0.14 * Math.sin(animTick * 0.45);
+          var al = 0.15 + 0.12 * Math.sin(animTick * 0.45);
           ctx.fillStyle = 'rgba(255, 72, 92, ' + al.toFixed(2) + ')';
           ctx.fillRect(rx + 4, ry + TILE, rw - 8, rh - TILE - 8);
           ctx.strokeStyle = 'rgba(255, 95, 110, 0.9)';
           ctx.lineWidth = 2;
           ctx.strokeRect(rx + 2, ry + 2, rw - 4, rh - 4);
         } else if (st.pulse > 0) {
-          ctx.fillStyle = 'rgba(255, 224, 102, ' + (st.pulse * 0.28).toFixed(2) + ')';
+          ctx.fillStyle = 'rgba(255, 224, 102, ' + (st.pulse * 0.26).toFixed(2) + ')';
           ctx.fillRect(rx + 4, ry + TILE, rw - 8, rh - TILE - 8);
         } else if (st.active) {
-          // Subtle active room accent glow on inner rim
           ctx.strokeStyle = 'rgba(110, 235, 200, 0.45)';
           ctx.lineWidth = 1.5;
           ctx.strokeRect(rx + 2, ry + 2, rw - 4, rh - 4);
         }
 
-        // Focused room, focused department spotlight, or hover highlight
         if (cam.focusedDept !== 'all' && !cam.focusedRoomId && rm.deptId !== cam.focusedDept) {
           ctx.fillStyle = 'rgba(8, 10, 20, 0.36)';
           ctx.fillRect(rx, ry, rw, rh);
@@ -2410,19 +2327,40 @@
         }
       }
 
-      // 4) Dynamic doors (swing open when any agent passes nearby!)
+      // 6) Dynamic doors (skip openArch portals & duplicate sharedHide sides)
       for (var di = 0; di < allDoors.length; di++) {
         var dr = allDoors[di];
+        if (dr.openArch || dr.sharedHide) continue;
         var isOpen = dr.openTimer > 0;
-        Art.drawDoor(ctx, dr.x * TILE, dr.y * TILE, isOpen, {
+        var dOpts = {
           theme: themeName,
           orient: dr.orient,
           w: TILE,
           h: TILE
-        });
+        };
+        if (dr.isGlass) {
+          dOpts.color = '#3b6a94';
+          dOpts.frameColor = '#283347';
+        } else if (dr.isFence) {
+          dOpts.color = '#8a5a34';
+          dOpts.frameColor = '#5e3c22';
+        }
+        Art.drawDoor(ctx, dr.x * TILE, dr.y * TILE, isOpen, dOpts);
       }
 
-      // 5) Y-Sorted Render List: Foreground Furniture (desks, monitors, tables, trees) + 19 Agents
+      // Check which lounge interactive props have active players right now!
+      var pingpongActive = false;
+      var cardTableActive = false;
+      var treadmillActive = false;
+      for (var ip = 0; ip < agents.length; ip++) {
+        var pag = agents[ip];
+        if (pag.state !== 'idle' || pag.subState !== 'at_spot' || !pag.activity) continue;
+        if (pag.activity.id === 'pingpong_group') pingpongActive = true;
+        else if (pag.activity.id === 'cards_group') cardTableActive = true;
+        else if (pag.activity.id === 'treadmill') treadmillActive = true;
+      }
+
+      // 7) Y-Sorted Render List: Foreground Furniture + 11 Agents (~14x22px)
       var drawList = [];
       for (var fi = 0; fi < fgFurniture.length; fi++) {
         drawList.push({ kind: 'furn', sortY: fgFurniture[fi].sortY, ref: fgFurniture[fi] });
@@ -2437,20 +2375,26 @@
         if (item.kind === 'furn') {
           var ff = item.ref;
           var rmActive = roomState[ff.roomId] && roomState[ff.roomId].active;
+          var propActive = rmActive;
+          if (ff.pingpong) propActive = pingpongActive;
+          else if (ff.cardTable) propActive = cardTableActive;
+          else if (ff.treadmill) propActive = treadmillActive;
+          else if (ff.animatedProp) propActive = true;
+
           var fOpts = Object.assign({
             theme: themeName,
             on: true,
+            active: propActive,
             glow: ff.screen && (rmActive || themeName === 'dark'),
             screenColor: ff.screenCol,
-            frame: rmActive ? (animTick >> 1) : (animTick >> 3)
+            frame: propActive ? (animTick >> 1) : (animTick >> 3)
           }, ff.opts);
           Art.drawFurniture(ctx, ff.type, ff.x, ff.y, fOpts);
         } else {
           var ag = item.ref;
-          // Hover ring under hovered agent
           if (hoverAgent === ag) {
-            ctx.fillStyle = 'rgba(255, 232, 112, 0.55)';
-            ctx.fillRect((ag.px - 7) | 0, (ag.py - 3) | 0, 14, 5);
+            ctx.fillStyle = 'rgba(255, 232, 112, 0.58)';
+            ctx.fillRect((ag.px - 8) | 0, (ag.py - 3) | 0, 16, 5);
           }
           var charFrame = ag.pose === 'type'
             ? ((animTick >> 1) + ag.frameOffset)
@@ -2465,31 +2409,30 @@
         }
       }
 
-      // 6) Floating Status / Activity Bubbles (drawn above all furniture & characters)
+      // 8) Floating Status / Activity Bubbles (above 22px tall characters)
       for (var bi = 0; bi < agents.length; bi++) {
         var ba = agents[bi];
         if (!ba.bubble) continue;
-        // Show bubbles when working, carrying handoff, delivering, or chilling at spot
         if (ba.state === 'idle' && ba.subState === 'walking') continue;
         var bob = Math.sin((animTick * 0.14) + bi) > 0.35 ? -1 : 0;
-        Art.drawBubble(ctx, ba.px, ba.py - 21 + bob, ba.bubble, {
+        Art.drawBubble(ctx, ba.px, ba.py - 24 + bob, ba.bubble, {
           theme: themeName,
           style: ba.pose === 'sleep' ? 'thought' : 'speech'
         });
       }
 
-      // Subtle agent name tag when zoomed in (>= 1.55x) or hovered
-      if (cam.zoom >= 1.55 || hoverAgent) {
+      // 9) Agent name tags when zoomed in (>= 1.45x) or hovered
+      if (cam.zoom >= 1.45 || hoverAgent) {
         ctx.font = '700 8px "Noto Sans Thai", "Sarabun", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         for (var ni = 0; ni < agents.length; ni++) {
           var na = agents[ni];
-          if (cam.zoom < 1.55 && hoverAgent !== na) continue;
+          if (cam.zoom < 1.45 && hoverAgent !== na) continue;
           var tw = ctx.measureText(na.name).width + 6;
           var nx = (na.px - tw / 2) | 0;
           var ny = (na.py + 2) | 0;
-          ctx.fillStyle = 'rgba(15, 18, 30, 0.78)';
+          ctx.fillStyle = 'rgba(15, 18, 30, 0.80)';
           ctx.fillRect(nx, ny, tw, 11);
           ctx.fillStyle = '#ffffff';
           ctx.fillText(na.name, na.px, ny + 1.5);
@@ -2498,14 +2441,14 @@
 
       ctx.restore();
 
-      // 7) Screen-space Pixel Mini HUD (bottom bar)
+      // 10) Screen-space Pixel Mini HUD
       drawMiniHud(ctx, computeSummary());
 
       ctx.restore();
     }
 
     // -----------------------------------------------------------------------
-    // Animation Loop (Capped at 30fps, 8fps under reduced-motion, paused when hidden)
+    // Animation Loop (30fps cap, 8fps under reduced-motion, paused when hidden)
     // -----------------------------------------------------------------------
     var rafId = null;
     var lastFrameTs = 0;
@@ -2597,7 +2540,7 @@
       var rect = hostEl.getBoundingClientRect();
       var w = Math.max(320, Math.round(rect.width || hostEl.clientWidth || WORLD_W));
       var h = Math.max(200, Math.round(rect.height || hostEl.clientHeight || Math.round(w * (WORLD_H / WORLD_W))));
-      dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+      dpr = clamp((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 1, 2);
       viewW = w;
       viewH = h;
       var bw = Math.round(w * dpr);
@@ -2686,7 +2629,6 @@
         return;
       }
 
-      // Clicking corridor/outside resets zoom to overview
       if (cam.focusedDept !== 'all' || cam.focusedRoomId) {
         focusDept('all');
         if (onSelect) onSelect({ type: 'all', dept: 'all' });
@@ -2720,15 +2662,16 @@
       }
     }
 
-    // Kick off initial idle spread: seed several agents already enjoying cafe/games/gym/garden!
+    // Seed lively initial idle spread across cafe/cards/pingpong/balcony/garden/plaza nook!
     var seedSpots = [
-      { agId: 'vid_art',     roomId: 'lounge_games',  spotIdx: 0, actId: 'cards_group' },
-      { agId: 'vid_edit',    roomId: 'lounge_games',  spotIdx: 1, actId: 'cards_group' },
-      { agId: 'vid_publish', roomId: 'lounge_cafe',   spotIdx: 0, actId: 'coffee' },
-      { agId: 'ops_energy',  roomId: 'lounge_gym',    spotIdx: 0, actId: 'treadmill' },
-      { agId: 'ops_monitor', roomId: 'lounge_gym',    spotIdx: 2, actId: 'dumbbell' },
-      { agId: 'ai_review',   roomId: 'lounge_garden', spotIdx: 0, actId: 'garden_bench' },
-      { agId: 'ai_architect', roomId: 'lounge_cafe',  spotIdx: 3, actId: 'sofa_nap' }
+      { agId: 'vid_art',      roomId: 'lounge_cafe',   spotIdx: 6,  actId: 'cards_group' },
+      { agId: 'vid_edit',     roomId: 'lounge_cafe',   spotIdx: 7,  actId: 'cards_group' },
+      { agId: 'ai_worker_2',  roomId: 'lounge_cafe',   spotIdx: 10, actId: 'pingpong_group' },
+      { agId: 'vid_publish',  roomId: 'lounge_cafe',   spotIdx: 11, actId: 'pingpong_group' },
+      { agId: 'ai_review',    roomId: 'lounge_cafe',   spotIdx: 0,  actId: 'coffee' },
+      { agId: 'vid_tts',      roomId: 'vid_balcony',   spotIdx: 0,  actId: 'balcony_chill' },
+      { agId: 'ops_sys',      roomId: 'lounge_garden', spotIdx: 4,  actId: 'treadmill' },
+      { agId: 'hub_dispatch', roomId: 'ops_hub',       spotIdx: 0,  actId: 'water_chat_group' }
     ];
     for (var si = 0; si < seedSpots.length; si++) {
       var ss = seedSpots[si];

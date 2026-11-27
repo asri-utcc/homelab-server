@@ -3961,7 +3961,7 @@
     position: relative;
     width: 100%;
     aspect-ratio: 16 / 10;
-    min-height: 390px;
+    min-height: 430px;
     overflow: hidden;
     border-radius: 0;
     image-rendering: pixelated;
@@ -4080,7 +4080,7 @@
         min-width: 0;
     }
     .ov3-po__host {
-        min-height: 260px;
-        aspect-ratio: 4 / 3;
+        min-height: 270px;
+        aspect-ratio: 16 / 10;
     }
 }

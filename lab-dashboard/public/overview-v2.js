@@ -3364,7 +3364,7 @@
                 if (cronActive) parts.push('Cron');
                 jobEl.textContent = `⚡ กำลังทำงานจริง: ${parts.join(' · ') || 'Homelab Pixel Company'}`;
             } else if (ui.poDemoMode) {
-                jobEl.textContent = '🎮 โหมดจำลอง · เอเจนต์ 6 ฝ่ายกำลังทำงานและเดินพักผ่อนในออฟฟิศ';
+                jobEl.textContent = '🎮 โหมดจำลอง · ทีมเอเจนต์กำลังทำงาน ส่งงาน และพักผ่อนในออฟฟิศ';
             } else {
                 jobEl.textContent = '☕ ออฟฟิศสงบ · เอเจนต์กำลังพักผ่อนรอรับงานใหม่';
             }
@@ -3388,13 +3388,13 @@
                         <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--idle"></i>พักผ่อน/เดินเล่น <strong>${resting}</strong></span>
                         <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--handoff"></i>เดินส่งงาน <strong>${handoff}</strong></span>
                     </div>
-                    <span class="ov3-po__legend-item">👥 เอเจนต์ทั้งหมด <strong>${total || 18}</strong> ตัว · คลิกห้องเพื่อซูม</span>
+                    <span class="ov3-po__legend-item">👥 เอเจนต์ทั้งหมด <strong>${total || 11}</strong> ตัว · คลิกห้องเพื่อซูม</span>
                 `;
             } else {
                 legendEl.innerHTML = `
                     <div class="ov3-po__legend-group">
-                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--work"></i>AI / วิดีโอ / Cron / IT / Ops</span>
-                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--idle"></i>โถงพักผ่อน 6 ฝ่าย</span>
+                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--work"></i>AI · วิดีโอ · ระบบ &amp; โหนด · พักผ่อน</span>
+                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--idle"></i>โถงพักผ่อน 4 โซน</span>
                     </div>
                     <span class="ov3-po__legend-item">${window.HomelabPixelOffice ? '👾 พร้อมแสดงผลพิกเซลออฟฟิศ' : '⏳ กำลังรอโมดูลพิกเซลออฟฟิศ…'}</span>
                 `;
@@ -3416,7 +3416,8 @@
                     demoMode: ui.poDemoMode,
                     onSelect: (meta) => {
                         if (meta && meta.dept) {
-                            ui.poSelectedDept = meta.dept;
+                            const deptMap = { ops: 'hub', cron: 'video' };
+                            ui.poSelectedDept = deptMap[meta.dept] || meta.dept;
                             updatePixelDeptHighlight();
                         }
                     },

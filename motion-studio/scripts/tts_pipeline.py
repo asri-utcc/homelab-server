@@ -303,30 +303,37 @@ def _synth_gemini_sync(
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent?key={api_key}"
     )
-    payload = {
-        "contents": [{"parts": [{"text": director_prompt}]}],
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {
-                "voiceConfig": {
-                    "prebuiltVoiceConfig": {
-                        "voiceName": voice_name,
+    def _build_req(prompt_text: str) -> urllib.request.Request:
+        payload = {
+            "contents": [{"parts": [{"text": prompt_text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {
+                            "voiceName": voice_name,
+                        }
                     }
-                }
+                },
             },
-        },
-    }
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+        }
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        return urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+    # finishReason=OTHER / empty audio is a transient Gemini TTS glitch: retry quickly with a
+    # slightly varied prompt instead of resending the identical request.
+    _nudges = ("", "Speak clearly and naturally. ", "Deliver this as a clean voice-over. ", "")
 
     last_err: Exception | None = None
     # Gentle backoff handles AI Studio Free Tier RPM limits smoothly
-    for attempt, wait_s in enumerate((6.0, 15.0, 30.0, 60.0), 1):
+    waits = (6.0, 15.0, 30.0, 60.0, 60.0, 90.0)
+    for attempt, wait_s in enumerate(waits, 1):
+        req = _build_req(_nudges[(attempt - 1) % len(_nudges)] + director_prompt)
         try:
             with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -367,12 +374,12 @@ def _synth_gemini_sync(
             retry_after = e.headers.get("Retry-After") if e.headers else None
             delay = float(retry_after) if (retry_after and retry_after.isdigit()) else wait_s
             last_err = RuntimeError(f"Gemini TTS HTTP {e.code}: {err_body}")
-            if attempt < 4:
+            if attempt < len(waits):
                 time.sleep(delay)
         except Exception as e:
             last_err = e
-            if attempt < 4:
-                time.sleep(wait_s)
+            if attempt < len(waits):
+                time.sleep(3.0 if "no audio data" in str(e) else wait_s)
 
     raise RuntimeError(f"Gemini TTS failed after retries: {last_err}")
 

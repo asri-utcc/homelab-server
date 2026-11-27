@@ -3479,8 +3479,10 @@ function loadSettingsView() {
         });
 
         initPrayerSettingsUI(notify);
+        initFamilySettingsUI(notify);
     }
     if (typeof window._syncPrayerSettingsUI === 'function') window._syncPrayerSettingsUI();
+    if (typeof window._syncFamilySettingsUI === 'function') window._syncFamilySettingsUI();
 
     fetch('/api/gemini/status').then(r => r.json()).then(d => {
         // เติมรายชื่อโมเดลจริงทั้งหมด (Auto + ทุกค่าย) และตั้งค่าตามที่บันทึกไว้บน server
@@ -4004,6 +4006,363 @@ function initThinkSoundPicker(notify) {
             resetBtn();
         } else {
             play();
+        }
+    });
+}
+
+// ── Family Mode Settings Controller ─────────────────────────────────────────
+function initFamilySettingsUI(notify) {
+    if (window._famInit) return;
+    window._famInit = true;
+
+    const card = document.getElementById('card-family-settings');
+    if (!card) return;
+
+    const chkEnabled = document.getElementById('fam-enabled');
+    const statusBadge = document.getElementById('fam-status-badge');
+    const verBadge = document.getElementById('fam-ver-badge');
+    const inpUser = document.getElementById('fam-user');
+    const inpPin = document.getElementById('fam-pin');
+    const btnReveal = document.getElementById('btn-fam-reveal');
+    const btnGen = document.getElementById('btn-fam-gen');
+    const btnCopyPin = document.getElementById('btn-fam-copy-pin');
+    const btnSave = document.getElementById('btn-fam-save');
+    const btnRevoke = document.getElementById('btn-fam-revoke');
+    const shareText = document.getElementById('fam-share-text');
+    const btnCopyShare = document.getElementById('btn-fam-copy-share');
+    const appsBox = document.getElementById('fam-apps');
+    const btnAppsSave = document.getElementById('btn-fam-apps-save');
+
+    const famState = {
+        enabled: false,
+        user: 'family',
+        hasPin: false,
+        pinPlain: '',
+        loginUrl: window.location.origin,
+        familyVer: '0',
+        apps: []
+    };
+
+    async function copyText(text) {
+        if (!text) return false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (_) {}
+        }
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function generateClientPin(len = 6) {
+        const buf = new Uint32Array(len);
+        window.crypto.getRandomValues(buf);
+        let out = '';
+        for (let i = 0; i < len; i++) {
+            out += String(buf[i] % 10);
+        }
+        return out;
+    }
+
+    function updateStatusUI() {
+        if (statusBadge) {
+            const on = !!chkEnabled?.checked;
+            statusBadge.textContent = on ? 'เปิดใช้งาน' : 'ปิดอยู่';
+            statusBadge.className = `badge ${on ? 'badge--ok' : 'badge--warn'}`;
+        }
+        if (verBadge) {
+            verBadge.style.display = famState.familyVer ? '' : 'none';
+            verBadge.textContent = `v${famState.familyVer || '0'}`;
+        }
+    }
+
+    function getShareMessage() {
+        const url = famState.loginUrl || window.location.origin;
+        const typedPin = inpPin ? inpPin.value : '';
+        const pinVal = typedPin || famState.pinPlain || (famState.hasPin ? '<รหัส PIN ที่ตั้งไว้>' : '<ยังไม่ได้ตั้ง PIN>');
+        return `เข้า ${url} ใส่รหัส ${pinVal} ได้เลย`;
+    }
+
+    function updateShareUI() {
+        if (shareText) {
+            shareText.textContent = getShareMessage();
+        }
+    }
+
+    function renderApps(apps) {
+        if (!appsBox) return;
+        const groups = new Map();
+        (apps || []).forEach((a) => {
+            const g = a.group || 'อื่นๆ';
+            if (!groups.has(g)) groups.set(g, []);
+            groups.get(g).push(a);
+        });
+        if (!groups.size) {
+            appsBox.innerHTML = '<div style="font-size:12px;color:var(--ink-muted);">ไม่พบรายการแอป</div>';
+            return;
+        }
+        let html = '';
+        groups.forEach((items, groupName) => {
+            html += `<div style="padding:10px;border-radius:8px;border:1px solid var(--line, rgba(255,255,255,0.08));background:rgba(255,255,255,0.02);">`;
+            html += `<div style="font-size:11px;font-weight:600;color:var(--ink-muted);margin-bottom:8px;">${esc(groupName)}</div>`;
+            html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px;">`;
+            items.forEach((a) => {
+                const checked = a.family ? ' checked' : '';
+                html += `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;padding:4px 6px;border-radius:6px;background:rgba(255,255,255,0.02);">` +
+                    `<input type="checkbox" class="fam-app-chk" data-app-id="${esc(a.id)}"${checked} style="width:16px;height:16px;flex-shrink:0;" />` +
+                    `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.emoji || '📱')} ${esc(a.label || a.id)}</span>` +
+                    `</label>`;
+            });
+            html += `</div></div>`;
+        });
+        appsBox.innerHTML = html;
+    }
+
+    async function fetchRevealPin() {
+        try {
+            const res = await fetch('/api/settings/family?reveal=1');
+            if (!res.ok) return '';
+            const d = await res.json();
+            if (d && d.ok && d.pinPlain) {
+                famState.pinPlain = d.pinPlain;
+                return d.pinPlain;
+            }
+        } catch (_) {}
+        return '';
+    }
+
+    async function loadFamilySettings() {
+        try {
+            const res = await fetch('/api/settings/family');
+            if (res.status === 403) {
+                card.style.display = 'none';
+                return;
+            }
+            if (!res.ok) {
+                if (statusBadge) {
+                    statusBadge.textContent = 'โหลดไม่สำเร็จ';
+                    statusBadge.className = 'badge badge--warn';
+                }
+                return;
+            }
+            const d = await res.json();
+            if (!d || !d.ok) return;
+
+            card.style.display = '';
+            famState.enabled = !!d.enabled;
+            famState.user = d.user || 'family';
+            famState.hasPin = !!d.hasPin;
+            famState.pinPlain = d.pinPlain || '';
+            famState.loginUrl = d.loginUrl || window.location.origin;
+            famState.familyVer = String(d.familyVer ?? '0');
+            famState.apps = Array.isArray(d.apps) ? d.apps : [];
+
+            if (chkEnabled) chkEnabled.checked = famState.enabled;
+            if (inpUser) inpUser.value = famState.user;
+            if (inpPin) {
+                inpPin.value = '';
+                inpPin.type = 'password';
+                inpPin.placeholder = famState.hasPin
+                    ? (d.pinMasked || '•••••• (ตั้งไว้แล้ว กรอกใหม่เพื่อเปลี่ยน)')
+                    : 'กรอก PIN 4–64 ตัว';
+            }
+            if (btnReveal) btnReveal.textContent = '👁 แสดง';
+
+            updateStatusUI();
+            updateShareUI();
+            renderApps(famState.apps);
+        } catch (_) {
+            if (statusBadge) {
+                statusBadge.textContent = 'เชื่อมต่อไม่ได้';
+                statusBadge.className = 'badge badge--warn';
+            }
+        }
+    }
+
+    window._syncFamilySettingsUI = loadFamilySettings;
+
+    chkEnabled?.addEventListener('change', () => {
+        updateStatusUI();
+    });
+
+    inpPin?.addEventListener('input', () => {
+        updateShareUI();
+    });
+
+    btnReveal?.addEventListener('click', async () => {
+        if (!inpPin) return;
+        if (inpPin.type === 'password') {
+            if (!inpPin.value && famState.hasPin) {
+                const plain = famState.pinPlain || await fetchRevealPin();
+                if (plain) inpPin.value = plain;
+            }
+            inpPin.type = 'text';
+            btnReveal.textContent = '🙈 ซ่อน';
+            updateShareUI();
+        } else {
+            inpPin.type = 'password';
+            btnReveal.textContent = '👁 แสดง';
+        }
+    });
+
+    btnGen?.addEventListener('click', () => {
+        if (!inpPin) return;
+        const pin = generateClientPin(6);
+        inpPin.value = pin;
+        inpPin.type = 'text';
+        if (btnReveal) btnReveal.textContent = '🙈 ซ่อน';
+        updateShareUI();
+        notify('🎲 สุ่มรหัส PIN 6 หลักแล้ว (กดบันทึกเพื่อใช้งาน)');
+    });
+
+    btnCopyPin?.addEventListener('click', async () => {
+        let pin = inpPin ? inpPin.value : '';
+        if (!pin && famState.hasPin) {
+            pin = famState.pinPlain || await fetchRevealPin();
+        }
+        if (!pin) {
+            notify('⚠️ ยังไม่มีรหัส PIN ให้คัดลอก');
+            return;
+        }
+        const ok = await copyText(pin);
+        notify(ok ? '📋 คัดลอกรหัส PIN แล้ว' : '⚠️ คัดลอกไม่สำเร็จ');
+    });
+
+    btnCopyShare?.addEventListener('click', async () => {
+        if (!inpPin?.value && famState.hasPin && !famState.pinPlain) {
+            await fetchRevealPin();
+            updateShareUI();
+        }
+        const ok = await copyText(getShareMessage());
+        notify(ok ? '📋 คัดลอกข้อความแชร์แล้ว' : '⚠️ คัดลอกไม่สำเร็จ');
+    });
+
+    btnSave?.addEventListener('click', async () => {
+        const enabled = !!chkEnabled?.checked;
+        const user = (inpUser?.value || '').trim() || 'family';
+        const pin = inpPin ? inpPin.value : '';
+
+        if (pin) {
+            if (pin.length < 4 || pin.length > 64) {
+                notify('❌ รหัส PIN ต้องมีความยาว 4–64 ตัวอักษร');
+                return;
+            }
+            if (pin.trim() !== pin || /[\r\n]/.test(pin)) {
+                notify('❌ รหัส PIN ห้ามมีช่องว่างหัวท้ายหรือขึ้นบรรทัดใหม่');
+                return;
+            }
+        } else if (enabled && !famState.hasPin) {
+            notify('❌ กรุณากรอกรหัส PIN อย่างน้อย 4 ตัว หรือกดสุ่ม PIN ก่อนเปิดใช้งาน');
+            return;
+        }
+
+        const payload = { enabled, user };
+        if (pin) payload.pin = pin;
+
+        btnSave.disabled = true;
+        try {
+            const res = await fetch('/api/settings/family', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const d = await res.json();
+            if (!res.ok || !d || !d.ok) {
+                notify('❌ ' + ((d && d.error) || 'บันทึกบัญชีคนในบ้านไม่สำเร็จ'));
+                return;
+            }
+            famState.enabled = !!d.enabled;
+            famState.user = d.user || user;
+            famState.familyVer = String(d.familyVer ?? famState.familyVer);
+            if (d.pin) {
+                famState.hasPin = true;
+                famState.pinPlain = d.pin;
+                if (inpPin) {
+                    inpPin.value = d.pin;
+                    inpPin.type = 'text';
+                }
+                if (btnReveal) btnReveal.textContent = '🙈 ซ่อน';
+            } else if (!d.enabled) {
+                famState.hasPin = false;
+                famState.pinPlain = '';
+                if (inpPin) {
+                    inpPin.value = '';
+                    inpPin.type = 'password';
+                    inpPin.placeholder = 'กรอก PIN 4–64 ตัว';
+                }
+                if (btnReveal) btnReveal.textContent = '👁 แสดง';
+            }
+            if (chkEnabled) chkEnabled.checked = famState.enabled;
+            if (inpUser) inpUser.value = famState.user;
+            updateStatusUI();
+            updateShareUI();
+            notify(famState.enabled ? '✅ บันทึกและเปิดใช้งานบัญชีคนในบ้านแล้ว' : '✅ ปิดการใช้งานบัญชีคนในบ้านแล้ว');
+        } catch (e) {
+            notify('❌ บันทึกไม่สำเร็จ: ' + e.message);
+        } finally {
+            btnSave.disabled = false;
+        }
+    });
+
+    btnRevoke?.addEventListener('click', async () => {
+        if (!window.confirm('ยืนยันเตะทุกเครื่องของคนในบ้านออกจากระบบ?\nทุกคนที่ใช้บัญชีคนในบ้านจะต้องกรอก PIN ใหม่อีกครั้ง')) {
+            return;
+        }
+        btnRevoke.disabled = true;
+        try {
+            const res = await fetch('/api/settings/family/revoke', { method: 'POST' });
+            const d = await res.json();
+            if (!res.ok || !d || !d.ok) {
+                notify('❌ ' + ((d && d.error) || 'เตะเซสชันไม่สำเร็จ'));
+                return;
+            }
+            famState.familyVer = String(d.familyVer ?? famState.familyVer);
+            updateStatusUI();
+            notify(`🚪 เตะทุกเครื่องของคนในบ้านออกแล้ว (v${famState.familyVer})`);
+        } catch (e) {
+            notify('❌ เตะเซสชันไม่สำเร็จ: ' + e.message);
+        } finally {
+            btnRevoke.disabled = false;
+        }
+    });
+
+    btnAppsSave?.addEventListener('click', async () => {
+        if (!appsBox) return;
+        const apps = {};
+        appsBox.querySelectorAll('.fam-app-chk').forEach((chk) => {
+            const id = chk.dataset.appId;
+            if (id) apps[id] = !!chk.checked;
+        });
+        btnAppsSave.disabled = true;
+        try {
+            const res = await fetch('/api/settings/family/apps', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ apps })
+            });
+            const d = await res.json();
+            if (!res.ok || !d || !d.ok) {
+                notify('❌ ' + ((d && d.error) || 'บันทึกรายการแอปไม่สำเร็จ'));
+                return;
+            }
+            notify('✅ บันทึกสิทธิ์แอปที่คนในบ้านเห็นเรียบร้อย');
+        } catch (e) {
+            notify('❌ บันทึกรายการแอปไม่สำเร็จ: ' + e.message);
+        } finally {
+            btnAppsSave.disabled = false;
         }
     });
 }

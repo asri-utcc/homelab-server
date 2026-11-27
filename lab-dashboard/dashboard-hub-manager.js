@@ -192,13 +192,17 @@ function sanitizeUrl(raw) {
     }
 }
 
-function enrichBuiltinApps(links = []) {
+function enrichBuiltinApps(links = [], familyOverrides = null) {
+    const overrides = (familyOverrides && typeof familyOverrides === 'object' && !Array.isArray(familyOverrides))
+        ? familyOverrides
+        : null;
     return (Array.isArray(links) ? links : [])
         .filter((l) => l && l.id && l.url)
         .map((l) => {
             const id = String(l.id).trim();
             const meta = BUILTIN_META[id] || {};
             const embed = l.embed !== undefined ? Boolean(l.embed) : Boolean(meta.embed);
+            const hasOverride = Boolean(overrides && Object.prototype.hasOwnProperty.call(overrides, id) && typeof overrides[id] === 'boolean');
             return {
                 id,
                 label: String(l.label || id),
@@ -210,7 +214,9 @@ function enrichBuiltinApps(links = []) {
                 description: String(l.description || ''),
                 embed,
                 openInWorkspace: Boolean(l.openInWorkspace),
-                family: l.family !== undefined ? Boolean(l.family) : (meta.family !== undefined ? meta.family : DEFAULT_FAMILY_APP_IDS.has(id)),
+                family: hasOverride
+                    ? overrides[id]
+                    : (l.family !== undefined ? Boolean(l.family) : (meta.family !== undefined ? meta.family : DEFAULT_FAMILY_APP_IDS.has(id))),
             };
         });
 }
@@ -421,6 +427,112 @@ function isFamilyAllowedRequest(method, pathname) {
     return false;
 }
 
+const FORBIDDEN_ENV_KEYS = new Set(['DASH_AUTH_PASS', 'SESSION_SECRET']);
+const ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
+
+function formatEnvValue(val) {
+    const s = String(val);
+    if (/[\r\n\0]/.test(s)) {
+        const err = new Error('ค่าสภาพแวดล้อมห้ามมีอักขระขึ้นบรรทัดใหม่หรือ NUL');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (s === '') return '';
+    if (/[\s#"']/.test(s)) {
+        return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    }
+    return s;
+}
+
+/**
+ * Pure helper to upsert/delete keys in a .env text while preserving comments,
+ * blank lines, ordering, and all unrelated keys.
+ * - Value `null` removes all occurrences of the key.
+ * - Value `string` replaces the first occurrence and removes duplicates, or appends to end.
+ * - Strictly refuses to touch DASH_AUTH_PASS or SESSION_SECRET.
+ */
+function upsertEnvText(text, updates = {}) {
+    const rawText = String(text == null ? '' : text);
+    const hadTrailingNewline = rawText.endsWith('\n');
+    let lines = rawText === ''
+        ? []
+        : (hadTrailingNewline ? rawText.slice(0, -1).split('\n') : rawText.split('\n'));
+
+    for (const [key, rawVal] of Object.entries(updates || {})) {
+        if (rawVal === undefined) continue;
+        if (!ENV_KEY_RE.test(key) || FORBIDDEN_ENV_KEYS.has(key)) {
+            const err = new Error(`ไม่อนุญาตให้แก้ไขตัวแปรสภาพแวดล้อม: ${key}`);
+            err.statusCode = 400;
+            throw err;
+        }
+        const lineRe = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`);
+        if (rawVal === null) {
+            lines = lines.filter((line) => !lineRe.test(line));
+            continue;
+        }
+        const formatted = `${key}=${formatEnvValue(rawVal)}`;
+        let replaced = false;
+        const nextLines = [];
+        for (const line of lines) {
+            if (lineRe.test(line)) {
+                if (!replaced) {
+                    nextLines.push(formatted);
+                    replaced = true;
+                }
+                // Drop duplicate occurrences
+            } else {
+                nextLines.push(line);
+            }
+        }
+        if (!replaced) {
+            nextLines.push(formatted);
+        }
+        lines = nextLines;
+    }
+
+    if (lines.length === 0) return '';
+    return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Validates a Family PIN (4–64 chars, no leading/trailing spaces, no newline/NUL,
+ * and must not match env.DASH_AUTH_PASS).
+ */
+function validateFamilyPin(pin, env = {}) {
+    if (typeof pin !== 'string' || !pin) {
+        return { ok: false, error: 'กรุณากรอกรหัส PIN อย่างน้อย 4 ตัวอักษร' };
+    }
+    if (/[\r\n\0]/.test(pin)) {
+        return { ok: false, error: 'รหัส PIN ห้ามมีอักขระขึ้นบรรทัดใหม่' };
+    }
+    if (pin !== pin.trim()) {
+        return { ok: false, error: 'รหัส PIN ห้ามขึ้นต้นหรือลงท้ายด้วยช่องว่าง' };
+    }
+    if (pin.length < 4) {
+        return { ok: false, error: 'รหัส PIN ต้องยาวอย่างน้อย 4 ตัวอักษร' };
+    }
+    if (pin.length > 64) {
+        return { ok: false, error: 'รหัส PIN ต้องยาวไม่เกิน 64 ตัวอักษร' };
+    }
+    const adminPass = String((env && env.DASH_AUTH_PASS) || '');
+    if (adminPass && timingSafeTextEqual(pin, adminPass)) {
+        return { ok: false, error: 'รหัส PIN คนในบ้านห้ามซ้ำกับรหัสผ่าน Admin' };
+    }
+    return { ok: true, error: null };
+}
+
+/**
+ * Generates a numeric PIN of length `len` (default 6) using crypto.randomInt.
+ */
+function generateFamilyPin(len = 6) {
+    const n = Math.max(4, Math.min(64, Number.isFinite(Number(len)) ? Math.floor(Number(len)) : 6));
+    let out = '';
+    for (let i = 0; i < n; i++) {
+        out += String(crypto.randomInt(0, 10));
+    }
+    return out;
+}
+
 // ── Main Factory ─────────────────────────────────────────────────────────────
 
 function createDashboardHubManager(deps = {}) {
@@ -512,7 +624,7 @@ function createDashboardHubManager(deps = {}) {
             const raw = await fsp.readFile(launcherFile, 'utf8');
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-                return { pinned: defaultPinned.slice(), bookmarks: [] };
+                return { pinned: defaultPinned.slice(), bookmarks: [], familyApps: {} };
             }
             const pinned = Array.isArray(parsed.pinned)
                 ? parsed.pinned.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim())
@@ -543,16 +655,29 @@ function createDashboardHubManager(deps = {}) {
                     updatedAt: bm.updatedAt || null,
                 });
             }
-            return { pinned, bookmarks };
+            const familyApps = {};
+            if (parsed.familyApps && typeof parsed.familyApps === 'object' && !Array.isArray(parsed.familyApps)) {
+                for (const [k, v] of Object.entries(parsed.familyApps)) {
+                    const id = sanitizeText(k, 64);
+                    if (id && typeof v === 'boolean') {
+                        familyApps[id] = v;
+                    }
+                }
+            }
+            return { pinned, bookmarks, familyApps };
         } catch (_) {
-            return { pinned: defaultPinned.slice(), bookmarks: [] };
+            return { pinned: defaultPinned.slice(), bookmarks: [], familyApps: {} };
         }
     }
 
     async function writeConfig(nextConfig) {
+        const familyApps = (nextConfig.familyApps && typeof nextConfig.familyApps === 'object' && !Array.isArray(nextConfig.familyApps))
+            ? nextConfig.familyApps
+            : {};
         const payload = JSON.stringify({
             pinned: nextConfig.pinned,
             bookmarks: nextConfig.bookmarks,
+            familyApps,
             updatedAt: new Date(nowFn()).toISOString(),
         }, null, 2) + '\n';
 
@@ -630,16 +755,50 @@ function createDashboardHubManager(deps = {}) {
             throw err;
         }
         const clean = await sanitizePinnedAgainstAll(rawList, cfg.bookmarks, discovered);
-        await writeConfig({ pinned: clean, bookmarks: cfg.bookmarks });
+        await writeConfig({ pinned: clean, bookmarks: cfg.bookmarks, familyApps: cfg.familyApps });
         return { ok: true, pinned: clean };
+    }
+
+    async function setFamilyApps(map) {
+        if (!map || typeof map !== 'object' || Array.isArray(map)) {
+            const err = new Error('ข้อมูลรายการแอปคนในบ้านต้องเป็น object');
+            err.statusCode = 400;
+            throw err;
+        }
+        const validated = {};
+        for (const [rawId, val] of Object.entries(map)) {
+            const id = sanitizeText(rawId, 64);
+            if (!id || !/^[a-zA-Z0-9_-]{1,64}$/.test(id)) {
+                const err = new Error(`รหัสแอปไม่ถูกต้อง: ${String(rawId)}`);
+                err.statusCode = 400;
+                throw err;
+            }
+            if (typeof val !== 'boolean') {
+                const err = new Error(`ค่าสิทธิ์ของแอป ${id} ต้องเป็น boolean`);
+                err.statusCode = 400;
+                throw err;
+            }
+            validated[id] = val;
+        }
+        const cfg = await readConfig();
+        const nextFamilyApps = { ...(cfg.familyApps || {}), ...validated };
+        await writeConfig({ pinned: cfg.pinned, bookmarks: cfg.bookmarks, familyApps: nextFamilyApps });
+        resetCache();
+        return { ok: true, familyApps: nextFamilyApps };
     }
 
     async function listBookmarks(opts = {}) {
         const role = resolveRole(opts.role ? { role: opts.role } : opts.session);
         const cfg = await readConfig();
+        const overrides = cfg.familyApps || {};
+        const resolvedBookmarks = cfg.bookmarks.map((b) => (
+            Object.prototype.hasOwnProperty.call(overrides, b.id) && typeof overrides[b.id] === 'boolean'
+                ? { ...b, family: overrides[b.id] }
+                : b
+        ));
         const bookmarks = role === 'family'
-            ? cfg.bookmarks.filter((b) => b.family)
-            : cfg.bookmarks;
+            ? resolvedBookmarks.filter((b) => b.family)
+            : resolvedBookmarks;
         return { ok: true, bookmarks };
     }
 
@@ -652,7 +811,7 @@ function createDashboardHubManager(deps = {}) {
         }
         const bookmark = sanitizeBookmark(body, null);
         const nextBookmarks = [...cfg.bookmarks, bookmark];
-        await writeConfig({ pinned: cfg.pinned, bookmarks: nextBookmarks });
+        await writeConfig({ pinned: cfg.pinned, bookmarks: nextBookmarks, familyApps: cfg.familyApps });
         return { ok: true, bookmark, bookmarks: nextBookmarks };
     }
 
@@ -668,7 +827,7 @@ function createDashboardHubManager(deps = {}) {
         const updated = sanitizeBookmark(body, cfg.bookmarks[idx]);
         const nextBookmarks = cfg.bookmarks.slice();
         nextBookmarks[idx] = updated;
-        await writeConfig({ pinned: cfg.pinned, bookmarks: nextBookmarks });
+        await writeConfig({ pinned: cfg.pinned, bookmarks: nextBookmarks, familyApps: cfg.familyApps });
         return { ok: true, bookmark: updated, bookmarks: nextBookmarks };
     }
 
@@ -683,7 +842,7 @@ function createDashboardHubManager(deps = {}) {
         }
         const nextBookmarks = cfg.bookmarks.filter((b) => b.id !== cleanId);
         const nextPinned = cfg.pinned.filter((pid) => pid !== cleanId);
-        await writeConfig({ pinned: nextPinned, bookmarks: nextBookmarks });
+        await writeConfig({ pinned: nextPinned, bookmarks: nextBookmarks, familyApps: cfg.familyApps });
         return { ok: true, id: cleanId, bookmarks: nextBookmarks };
     }
 
@@ -1134,16 +1293,25 @@ function createDashboardHubManager(deps = {}) {
             includeBadges ? getBadges().catch(() => ({ badges: {} })) : Promise.resolve({ badges: {} }),
         ]);
 
-        const allApps = [...builtinApps, ...discovered, ...cfg.bookmarks];
+        const overrides = cfg.familyApps || {};
+        const applyOverride = (app) => (
+            Object.prototype.hasOwnProperty.call(overrides, app.id) && typeof overrides[app.id] === 'boolean'
+                ? { ...app, family: overrides[app.id] }
+                : app
+        );
+        const resolvedBuiltins = enrichBuiltinApps(deps.links || [], overrides);
+        const resolvedDiscovered = discovered.map(applyOverride);
+        const resolvedBookmarks = cfg.bookmarks.map(applyOverride);
+        const allApps = [...resolvedBuiltins, ...resolvedDiscovered, ...resolvedBookmarks];
         const filteredApps = role === 'family' ? allApps.filter((a) => a.family) : allApps;
         const allowedIds = new Set(filteredApps.map((a) => a.id));
 
         const filteredBookmarks = role === 'family'
-            ? cfg.bookmarks.filter((b) => b.family)
-            : cfg.bookmarks;
+            ? resolvedBookmarks.filter((b) => b.family)
+            : resolvedBookmarks;
         const filteredDiscovered = role === 'family'
-            ? discovered.filter((d) => d.family)
-            : discovered;
+            ? resolvedDiscovered.filter((d) => d.family)
+            : resolvedDiscovered;
 
         const sanitizedPinned = await sanitizePinnedAgainstAll(cfg.pinned, cfg.bookmarks, discovered);
         const pinned = role === 'family'
@@ -1172,9 +1340,11 @@ function createDashboardHubManager(deps = {}) {
 
     function getRoleConfig(env = {}) {
         const familyPass = String((env && (env.DASH_FAMILY_PASS || env.FAMILY_AUTH_PASS)) || '').trim();
+        const familyVer = String((env && env.DASH_FAMILY_VER) || '0').trim() || '0';
         return {
             familyEnabled: familyPass.length >= 4,
             familyUser: String((env && env.DASH_FAMILY_USER) || 'family').trim() || 'family',
+            familyVer,
         };
     }
 
@@ -1188,6 +1358,7 @@ function createDashboardHubManager(deps = {}) {
     return {
         getLauncher,
         setPinned,
+        setFamilyApps,
         listBookmarks,
         createBookmark,
         updateBookmark,
@@ -1200,6 +1371,9 @@ function createDashboardHubManager(deps = {}) {
         checkFamilyPassword,
         isFamilyAllowedRequest,
         resolveRole,
+        upsertEnvText,
+        validateFamilyPin,
+        generateFamilyPin,
         resetCache,
     };
 }
@@ -1213,6 +1387,9 @@ module.exports = {
     resolveRole,
     isFamilyAllowedRequest,
     checkFamilyPassword,
+    upsertEnvText,
+    validateFamilyPin,
+    generateFamilyPin,
     DEFAULT_RUESO_COORDS,
     DEFAULT_FAMILY_APP_IDS,
     DEFAULT_PINNED,

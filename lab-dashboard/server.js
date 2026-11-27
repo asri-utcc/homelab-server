@@ -46,6 +46,9 @@ const {
     checkFamilyPassword,
     isFamilyAllowedRequest,
     resolveRole,
+    upsertEnvText,
+    validateFamilyPin,
+    generateFamilyPin,
 } = require('./dashboard-hub-manager');
 let browserVisionBridge = null;
 try {
@@ -1370,6 +1373,41 @@ async function readEnv() {
     return envCache.data || {};
 }
 
+let envWriteQueue = Promise.resolve();
+
+async function writeEnvUpdates(updates, auditMeta = {}) {
+    const task = envWriteQueue.then(async () => {
+        let original;
+        try {
+            original = await fsp.readFile(ENV_FILE, 'utf8');
+        } catch (_) {
+            const err = new Error('ไม่พบไฟล์ .env ของระบบ ไม่สามารถบันทึกการตั้งค่าได้');
+            err.statusCode = 500;
+            throw err;
+        }
+        const nextText = upsertEnvText(original, updates);
+        const bakFile = `${ENV_FILE}.bak-family`;
+        await fsp.writeFile(bakFile, original, { mode: 0o600 });
+        await fsp.chmod(bakFile, 0o600).catch(() => {});
+
+        const tmpFile = `${ENV_FILE}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+        try {
+            await fsp.writeFile(tmpFile, nextText, { mode: 0o600 });
+            await fsp.chmod(tmpFile, 0o600).catch(() => {});
+            await fsp.rename(tmpFile, ENV_FILE);
+        } catch (err) {
+            await fsp.unlink(tmpFile).catch(() => {});
+            throw err;
+        }
+        envCache = { mtimeMs: -1, data: null };
+        const changedKeys = Object.keys(updates || {}).filter((k) => updates[k] !== undefined);
+        log('[family-settings] updated .env keys:', changedKeys.join(', '), auditMeta.action || '');
+        return { ok: true, keys: changedKeys };
+    });
+    envWriteQueue = task.catch(() => {});
+    return task;
+}
+
 let secretPromise = null;
 
 async function sessionSecret() {
@@ -1395,13 +1433,16 @@ function signToken(payload, secret) {
     return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
-function makeSession(user, ttlMs, secret, role = 'admin') {
+function makeSession(user, ttlMs, secret, role = 'admin', ver = null) {
     const exp = Date.now() + ttlMs;
     const normRole = String(role || 'admin').toLowerCase() === 'family' ? 'family' : 'admin';
+    const rand = crypto.randomBytes(9).toString('base64url');
+    const verStr = ver != null && String(ver).trim() !== '' ? String(ver).trim() : null;
+    const nonce = (normRole === 'family' && verStr !== null) ? `${rand}~${verStr}` : rand;
     const fields = [
         Buffer.from(String(user), 'utf8').toString('base64url'),
         String(exp),
-        crypto.randomBytes(9).toString('base64url'),
+        nonce,
     ];
     if (normRole !== 'admin') fields.push(normRole);
     const payload = fields.join('.');
@@ -1426,7 +1467,12 @@ function verifySession(token, secret) {
     let user = '';
     try { user = Buffer.from(parts[0], 'base64url').toString('utf8'); } catch (_) { return null; }
     const role = hasRole && String(parts[3]).toLowerCase() === 'family' ? 'family' : 'admin';
-    return { user, exp: until, role };
+    const noncePart = String(parts[2] || '');
+    const tildeIdx = noncePart.indexOf('~');
+    const ver = role === 'family'
+        ? (tildeIdx >= 0 ? (noncePart.slice(tildeIdx + 1) || '0') : '0')
+        : null;
+    return { user, exp: until, role, ver };
 }
 
 // ── cookie ───────────────────────────────────────────────────────────────────
@@ -1537,7 +1583,25 @@ function wantsJson(req) {
 async function currentSession(req) {
     const secret = await sessionSecret();
     if (!secret) return null;
-    return verifySession(parseCookies(req)[SESSION_COOKIE], secret);
+    const sess = verifySession(parseCookies(req)[SESSION_COOKIE], secret);
+    if (!sess) return null;
+    if (resolveRole(sess) === 'family') {
+        const env = await readEnv();
+        const roleCfg = dashboardHubManager.getRoleConfig(env);
+        if (!roleCfg.familyEnabled) return null;
+        const tokVer = String(sess.ver || '0');
+        if (tokVer !== String(roleCfg.familyVer || '0')) return null;
+    }
+    return sess;
+}
+
+async function requireAdminSession(req, res) {
+    const sess = await currentSession(req);
+    if (!sess || resolveRole(sess) !== 'admin') {
+        sendJson(res, 403, { ok: false, error: 'ไม่มีสิทธิ์เข้าถึงการตั้งค่าบัญชีคนในบ้าน (เฉพาะผู้ดูแลระบบเท่านั้น)' });
+        return null;
+    }
+    return sess;
 }
 
 async function isAuthorized(req) {
@@ -1603,7 +1667,7 @@ async function handleLogin(req, res, url) {
     const user = isAdmin ? (env.DASH_AUTH_USER || 'admin') : roleCfg.familyUser;
     const secret = await sessionSecret();
     const ttl = remember ? SESSION_REMEMBER_MS : SESSION_TTL_MS;
-    const { token } = makeSession(user, ttl, secret, role);
+    const { token } = makeSession(user, ttl, secret, role, role === 'family' ? roleCfg.familyVer : null);
     const cookie = sessionCookie(token, ttl, isSecureReq(req));
 
     if (asJson) {
@@ -2264,6 +2328,157 @@ const server = http.createServer(async (req, res) => {
             const info = await videoStudioManager.resolveSafeFile(jobId, subPath);
             if (!info) return sendJson(res, 404, { ok: false, error: 'File not found' });
             return streamFileWithRange(info);
+        }
+        if (req.method === 'GET' && p === '/api/settings/family') {
+            if (!(await requireAdminSession(req, res))) return;
+            try {
+                const env = await readEnv();
+                const roleCfg = dashboardHubManager.getRoleConfig(env);
+                const launcher = await dashboardHubManager.getLauncher({ role: 'admin', includeBadges: false });
+                const apps = (launcher.apps || []).map((a) => ({
+                    id: a.id,
+                    label: a.label,
+                    emoji: a.emoji,
+                    group: a.group,
+                    source: a.source,
+                    family: Boolean(a.family),
+                }));
+                return sendJson(res, 200, {
+                    ok: true,
+                    enabled: roleCfg.familyEnabled,
+                    user: roleCfg.familyUser,
+                    hasPin: roleCfg.familyEnabled,
+                    familyVer: roleCfg.familyVer,
+                    loginUrl: `https://${TAIL_HOST}/login`,
+                    apps,
+                });
+            } catch (err) {
+                return sendJson(res, err.statusCode || 500, { ok: false, error: err.message || 'ไม่สามารถอ่านการตั้งค่าบัญชีคนในบ้านได้' });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/settings/family') {
+            if (!(await requireAdminSession(req, res))) return;
+            let body;
+            try {
+                body = await readJsonBody(req, 64 * 1024);
+            } catch (_) {
+                return sendJson(res, 400, { ok: false, error: 'ข้อมูล JSON ไม่ถูกต้อง' });
+            }
+            try {
+                const env = await readEnv();
+                const roleCfg = dashboardHubManager.getRoleConfig(env);
+                const enabled = body.enabled !== undefined ? Boolean(body.enabled) : roleCfg.familyEnabled;
+
+                let nextUser = roleCfg.familyUser || 'family';
+                if (body.user !== undefined) {
+                    const trimmed = String(body.user || '').trim();
+                    if (!trimmed || trimmed.length > 32 || !/^[\p{L}\p{N}_ .-]+$/u.test(trimmed)) {
+                        return sendJson(res, 400, { ok: false, error: 'ชื่อผู้ใช้ต้องยาว 1–32 ตัวอักษร (รองรับภาษาไทย อังกฤษ ตัวเลข ช่องว่าง _ . -)' });
+                    }
+                    nextUser = trimmed;
+                }
+
+                const curVerNum = Math.max(0, parseInt(roleCfg.familyVer, 10) || 0);
+
+                if (!enabled) {
+                    const nextVer = String(curVerNum + 1);
+                    const updates = {
+                        DASH_FAMILY_PASS: null,
+                        FAMILY_AUTH_PASS: null,
+                        DASH_FAMILY_VER: nextVer,
+                    };
+                    if (body.user !== undefined) updates.DASH_FAMILY_USER = nextUser;
+                    await writeEnvUpdates(updates, { action: 'disable' });
+                    return sendJson(res, 200, {
+                        ok: true,
+                        enabled: false,
+                        user: nextUser,
+                        pin: null,
+                        familyVer: nextVer,
+                    });
+                }
+
+                const existingPin = String(env.DASH_FAMILY_PASS || env.FAMILY_AUTH_PASS || '').trim();
+                const wantGenerate = Boolean(body.generate);
+                const providedPin = (typeof body.pin === 'string' && body.pin.length > 0) ? body.pin : null;
+
+                let targetPin;
+                let exposePin = false;
+                if (wantGenerate) {
+                    targetPin = generateFamilyPin(6);
+                    if (env.DASH_AUTH_PASS && targetPin === env.DASH_AUTH_PASS) {
+                        targetPin = generateFamilyPin(6);
+                    }
+                    exposePin = true;
+                } else if (providedPin !== null) {
+                    targetPin = providedPin;
+                    exposePin = true;
+                } else if (!existingPin) {
+                    targetPin = generateFamilyPin(6);
+                    if (env.DASH_AUTH_PASS && targetPin === env.DASH_AUTH_PASS) {
+                        targetPin = generateFamilyPin(6);
+                    }
+                    exposePin = true;
+                } else {
+                    targetPin = existingPin;
+                    exposePin = false;
+                }
+
+                const v = validateFamilyPin(targetPin, env);
+                if (!v.ok) {
+                    return sendJson(res, 400, { ok: false, error: v.error });
+                }
+
+                const pinChanged = !existingPin || targetPin !== existingPin;
+                const nextVer = pinChanged ? String(curVerNum + 1) : String(curVerNum);
+                const updates = { DASH_FAMILY_USER: nextUser };
+                if (pinChanged) {
+                    updates.DASH_FAMILY_PASS = targetPin;
+                    updates.FAMILY_AUTH_PASS = null;
+                    updates.DASH_FAMILY_VER = nextVer;
+                }
+                await writeEnvUpdates(updates, { action: pinChanged ? 'enable_or_pin_change' : 'update_user' });
+                return sendJson(res, 200, {
+                    ok: true,
+                    enabled: true,
+                    user: nextUser,
+                    pin: exposePin ? targetPin : null,
+                    familyVer: nextVer,
+                });
+            } catch (err) {
+                return sendJson(res, err.statusCode || 500, { ok: false, error: err.message || 'บันทึกการตั้งค่าบัญชีคนในบ้านไม่สำเร็จ' });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/settings/family/revoke') {
+            if (!(await requireAdminSession(req, res))) return;
+            try {
+                const env = await readEnv();
+                const roleCfg = dashboardHubManager.getRoleConfig(env);
+                const curVerNum = Math.max(0, parseInt(roleCfg.familyVer, 10) || 0);
+                const nextVer = String(curVerNum + 1);
+                await writeEnvUpdates({ DASH_FAMILY_VER: nextVer }, { action: 'revoke' });
+                return sendJson(res, 200, { ok: true, familyVer: nextVer });
+            } catch (err) {
+                return sendJson(res, err.statusCode || 500, { ok: false, error: err.message || 'ไม่สามารถยกเลิกเซสชันคนในบ้านได้' });
+            }
+        }
+        if (req.method === 'POST' && p === '/api/settings/family/apps') {
+            if (!(await requireAdminSession(req, res))) return;
+            let body;
+            try {
+                body = await readJsonBody(req, 64 * 1024);
+            } catch (_) {
+                return sendJson(res, 400, { ok: false, error: 'ข้อมูล JSON ไม่ถูกต้อง' });
+            }
+            if (!body || !body.apps || typeof body.apps !== 'object' || Array.isArray(body.apps)) {
+                return sendJson(res, 400, { ok: false, error: 'กรุณาส่งรายการแอปในฟิลด์ apps' });
+            }
+            try {
+                const result = await dashboardHubManager.setFamilyApps(body.apps);
+                return sendJson(res, 200, result);
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message || 'บันทึกรายการแอปคนในบ้านไม่สำเร็จ' });
+            }
         }
         if (req.method === 'POST' && p === '/api/settings/telegram-test') {
             return new Promise((resolve) => {

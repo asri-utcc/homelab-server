@@ -270,3 +270,28 @@ test('HTTP integration harness: launcher, badges, discovered, bookmarks CRUD, we
         await fsp.rm(tmpDir, { recursive: true, force: true });
     }
 });
+
+test('makeSession & verifySession embed ~ver in family nonce, omit ~ in admin nonce, and reject role tampering', () => {
+    const { makeSession, verifySession } = extractSessionHelpers(SERVER_SRC);
+    const secret = crypto.randomBytes(24).toString('base64url');
+
+    const famRes = makeSession('family', 60_000, secret, 'family', '3');
+    const famParts = famRes.token.split('.');
+    assert.equal(famParts.length, 5);
+    assert.ok(famParts[2].endsWith('~3'), `expected family nonce to end with ~3, got ${famParts[2]}`);
+
+    const verifiedFam = verifySession(famRes.token, secret);
+    assert.ok(verifiedFam);
+    assert.equal(verifiedFam.role, 'family');
+    assert.equal(verifiedFam.ver, '3');
+
+    // Tampering role invalidates signature
+    const tampered = [...famParts];
+    tampered[3] = 'admin';
+    assert.equal(verifySession(tampered.join('.'), secret), null);
+
+    const adminRes = makeSession('admin', 60_000, secret, 'admin', '3');
+    const adminParts = adminRes.token.split('.');
+    assert.equal(adminParts.length, 4);
+    assert.ok(!adminParts[2].includes('~'), `expected admin nonce without ~, got ${adminParts[2]}`);
+});

@@ -17,6 +17,9 @@ const {
     resolveRole,
     isFamilyAllowedRequest,
     checkFamilyPassword,
+    upsertEnvText,
+    validateFamilyPin,
+    generateFamilyPin,
     DEFAULT_RUESO_COORDS,
 } = require('../dashboard-hub-manager');
 
@@ -543,4 +546,80 @@ test('builtin and docker apps default openInWorkspace to false while preserving 
     });
     assert.equal(dockerWorkspace.embed, false);
     assert.equal(dockerWorkspace.openInWorkspace, true);
+});
+
+test('upsertEnvText replaces existing, appends new, deletes null, preserves comments/order, handles export/duplicates, rejects newline', () => {
+    const original = [
+        '# Main Homelab Env',
+        '',
+        'DASH_AUTH_PASS=supersecret',
+        'export DASH_FAMILY_USER=oldfam',
+        'DASH_FAMILY_USER=dup_user',
+        'DASH_FAMILY_PASS=9999',
+        'OTHER_KEY=keep_me',
+        '',
+    ].join('\n');
+
+    const updated = upsertEnvText(original, {
+        DASH_FAMILY_USER: 'mom & dad',
+        DASH_FAMILY_PASS: null,
+        DASH_FAMILY_VER: '2',
+    });
+
+    const lines = updated.split('\n');
+    assert.ok(lines.includes('# Main Homelab Env'));
+    assert.ok(lines.includes('DASH_AUTH_PASS=supersecret'));
+    assert.ok(lines.includes('OTHER_KEY=keep_me'));
+    assert.ok(
+        lines.includes('DASH_FAMILY_USER="mom & dad"') || lines.includes('export DASH_FAMILY_USER="mom & dad"'),
+    );
+    assert.ok(!lines.some((l) => l.includes('dup_user')));
+    assert.ok(!lines.some((l) => l.startsWith('DASH_FAMILY_PASS=')));
+    assert.ok(lines.includes('DASH_FAMILY_VER=2'));
+
+    assert.throws(() => upsertEnvText(original, { DASH_FAMILY_PASS: '1234\n5678' }));
+});
+
+test('validateFamilyPin & generateFamilyPin enforce length, admin pass collision, and 6-digit numeric output', () => {
+    const env = { DASH_AUTH_PASS: 'adminpass99' };
+
+    const tooShort = validateFamilyPin('123', env);
+    assert.equal(tooShort.ok, false);
+    assert.ok(tooShort.error);
+
+    const sameAsAdmin = validateFamilyPin('adminpass99', env);
+    assert.equal(sameAsAdmin.ok, false);
+    assert.ok(sameAsAdmin.error);
+
+    const valid = validateFamilyPin('123456', env);
+    assert.equal(valid.ok, true);
+
+    for (let i = 0; i < 5; i++) {
+        const pin = generateFamilyPin();
+        assert.match(pin, /^\d{6}$/);
+    }
+});
+
+test('setFamilyApps persists overrides in launcher-config.json and setPinned preserves familyApps', async () => {
+    const tmpDir = await makeTempDir();
+    try {
+        const deps = createFixtureDeps(tmpDir);
+        const mgr = createDashboardHubManager(deps);
+
+        await mgr.setFamilyApps({ terminal: true, homeassistant: false });
+
+        const launcher = await mgr.getLauncher({ role: 'admin' });
+        const terminalApp = launcher.apps.find((a) => a.id === 'terminal');
+        const haApp = launcher.apps.find((a) => a.id === 'homeassistant');
+        assert.equal(terminalApp.family, true);
+        assert.equal(haApp.family, false);
+
+        // setPinned must not wipe familyApps
+        await mgr.setPinned(['terminal']);
+        const rawCfg = JSON.parse(await fsp.readFile(deps.launcherFile, 'utf8'));
+        assert.deepEqual(rawCfg.pinned, ['terminal']);
+        assert.deepEqual(rawCfg.familyApps, { terminal: true, homeassistant: false });
+    } finally {
+        await fsp.rm(tmpDir, { recursive: true, force: true });
+    }
 });

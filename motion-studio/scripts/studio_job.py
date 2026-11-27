@@ -1571,6 +1571,13 @@ def run_tts_stage(job_dir: Path, script: dict[str, Any]) -> dict[str, Any]:
     append_log(job_dir, f"Running motion-studio tts -> {work_dir}")
     cmd = [MOTION_STUDIO_BIN, "tts", str(job_dir / "script.json"), "-o", str(work_dir)]
     rc, stdout, stderr = _run_subprocess(cmd, cwd=BASE_DIR, timeout=600)
+    # Per-scene audio is cached, so re-running only re-synthesizes the scene(s) that failed.
+    for tts_try in (2, 3):
+        if rc == 0:
+            break
+        append_log(job_dir, f"TTS error (will retry, attempt {tts_try}/3): {(stderr or stdout or '').strip().splitlines()[-1:]}")
+        time.sleep(20)
+        rc, stdout, stderr = _run_subprocess(cmd, cwd=BASE_DIR, timeout=600)
     if rc != 0:
         err = (stderr or stdout or f"tts exited {rc}").strip()
         append_log(job_dir, f"TTS error: {err}")

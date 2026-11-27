@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Homelab Worker Agent — สถานะเครื่องลูกข่าย</title>
+<style>
+  :root {
+    --bg-0: #05080f;
+    --bg-1: #0b111e;
+    --card: rgba(14, 22, 38, 0.92);
+    --card-border: rgba(56, 189, 248, 0.22);
+    --accent: #00e5ff;
+    --green: #10b981;
+    --blue: #0ea5e9;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --text-0: #f1f5f9;
+    --text-1: #94a3b8;
+    --text-2: #64748b;
+    --mono: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+    --sans: 'Segoe UI', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background:
+      radial-gradient(circle at 12% 8%, rgba(0, 229, 255, 0.11), transparent 45%),
+      radial-gradient(circle at 90% 18%, rgba(16, 185, 129, 0.08), transparent 45%),
+      var(--bg-0);
+    color: var(--text-0);
+    font-family: var(--sans);
+    min-height: 100vh;
+    line-height: 1.45;
+  }
+
+  .app {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 14px 14px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+  }
+  .header__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .orb {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-2);
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.2);
+  }
+  .orb--idle {
+    background: var(--green);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.7), 0 0 0 3px rgba(16, 185, 129, 0.22);
+  }
+  .orb--running {
+    background: var(--blue);
+    box-shadow: 0 0 14px rgba(14, 165, 233, 0.85), 0 0 0 3px rgba(14, 165, 233, 0.28);
+    animation: pulse 1.3s ease-in-out infinite;
+  }
+  .orb--paused {
+    background: var(--amber);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.7), 0 0 0 3px rgba(245, 158, 11, 0.24);
+  }
+  .orb--offline {
+    background: var(--red);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.75), 0 0 0 3px rgba(239, 68, 68, 0.24);
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.18); opacity: 0.75; }
+  }
+
+  .title-wrap { min-width: 0; }
+  .title-main {
+    font-size: 0.98rem;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .title-sub {
+    font-size: 0.74rem;
+    color: var(--text-1);
+    font-family: var(--mono);
+  }
+  .ver-badge {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(0, 229, 255, 0.14);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .hero {
+    border-radius: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--card-border);
+    background: linear-gradient(135deg, rgba(14, 24, 44, 0.96), rgba(10, 18, 34, 0.94));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .hero--idle { border-color: rgba(16, 185, 129, 0.45); }
+  .hero--running { border-color: rgba(14, 165, 233, 0.55); }
+  .hero--paused { border-color: rgba(245, 158, 11, 0.52); }
+  .hero--offline { border-color: rgba(239, 68, 68, 0.52); }
+
+  .hero__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .state-label {
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+  .state-tag {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+    text-transform: uppercase;
+  }
+  .state-tag--idle { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.45); }
+  .state-tag--running { background: rgba(14, 165, 233, 0.2); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.5); }
+  .state-tag--paused { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.5); }
+  .state-tag--offline { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
+
+  .hero__meta {
+    font-size: 0.78rem;
+    color: var(--text-1);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    font-family: var(--mono);
+  }
+
+  .actions-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: var(--sans);
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-0);
+    transition: all 0.15s ease;
+  }
+  .btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: var(--accent);
+  }
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn--primary {
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    border-color: rgba(56, 189, 248, 0.6);
+    color: #fff;
+  }
+  .btn--amber {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.5);
+    color: #fcd34d;
+  }
+  .btn--green {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.52);
+    color: #6ee7b7;
+  }
+  .btn--danger {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+  }
+  .btn--sm {
+    padding: 5px 9px;
+    font-size: 0.74rem;
+    border-radius: 8px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 13px 14px;
+  }
+  .card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .card__title {
+    font-size: 0.86rem;
+    font-weight: 800;
+    color: var(--text-0);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .card__sub {
+    font-size: 0.72rem;
+    color: var(--text-2);
+    font-family: var(--mono);
+  }
+
+  .verify-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .kv {
+    background: rgba(5, 8, 15, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 9px;
+    padding: 8px 10px;
+  }
+  .kv__k {
+    font-size: 0.69rem;
+    color: var(--text-2);
+    margin-bottom: 2px;
+  }
+  .kv__v {
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-family: var(--mono);
+    word-break: break-all;
+  }
+  .verify-banner {
+    padding: 9px 11px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .verify-banner--ok {
+    background: rgba(16, 185, 129, 0.14);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #6ee7b7;
+  }
+  .verify-banner--warn {
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.42);
+    color: #fcd34d;
+  }
+  .verify-banner--err {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+  }
+
+  .job-card {
+    background: rgba(5, 8, 15, 0.72);
+    border: 1px solid rgba(56, 189, 248, 0.22);
+    border-radius: 11px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .job-card:last-child { margin-bottom: 0; }
+  .job-card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+  .job-name {
+    font-size: 0.83rem;
+    font-weight: 700;
+    font-family: var(--mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kind-pill {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgba(0, 229, 255, 0.14);
+    color: var(--accent);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+  }
+  .job-msg {
+    font-size: 0.76rem;
+    color: var(--text-1);
+    margin-bottom: 6px;
+    word-break: break-word;
+  }
+  .bar {
+    height: 7px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar__fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #00e5ff, #3b82f6);
+    transition: width 0.25s ease;
+  }
+  .bar__fill--ram { background: linear-gradient(90deg, #10b981, #a855f7); }
+  .bar__fill--gpu { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+
+  .meters {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .meter__lbl {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    font-family: var(--mono);
+    color: var(--text-1);
+    margin-bottom: 3px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .tab {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 9px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: var(--text-1);
+    cursor: pointer;
+  }
+  .tab.is-active {
+    background: rgba(0, 229, 255, 0.14);
+    border-color: rgba(0, 229, 255, 0.4);
+    color: var(--accent);
+  }
+
+  .list-scroll {
+    max-height: 190px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .log-row {
+    font-family: var(--mono);
+    font-size: 0.73rem;
+    padding: 6px 8px;
+    border-radius: 7px;
+    background: rgba(5, 8, 15, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    word-break: break-word;
+  }
+  .log-row--warn { border-color: rgba(245, 158, 11, 0.35); color: #fde68a; }
+  .log-time { color: var(--text-2); margin-right: 6px; }
+
+  .empty {
+    text-align: center;
+    padding: 14px 10px;
+    font-size: 0.8rem;
+    color: var(--text-2);
+  }
+
+  .footer-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+  }
+  .toast {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(11, 17, 30, 0.96);
+    border: 1px solid var(--accent);
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+    display: none;
+    z-index: 99;
+    max-width: 92vw;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Header -->
+  <header class="header">
+    <div class="header__brand">
+      <div class="orb" id="status-orb"></div>
+      <div class="title-wrap">
+        <div class="title-main" id="node-title">Homelab Worker Agent</div>
+        <div class="title-sub" id="node-sub">กำลังโหลดสถานะ...</div>
+      </div>
+    </div>
+    <span class="ver-badge" id="ver-badge">v1.2.0</span>
+  </header>
+
+  <!-- Hero Worker Status -->
+  <section class="hero" id="hero-box">
+    <div class="hero__top">
+      <div class="state-label" id="state-thai">กำลังเชื่อมต่อ...</div>
+      <span class="state-tag" id="state-tag">—</span>
+    </div>
+    <div class="hero__meta" id="hero-meta">
+      <span>Endpoint: —</span>
+      <span>Long-Poll: —</span>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn btn--primary" id="btn-check-hub">📡 เช็กสถานะเครื่องแม่</button>
+      <button type="button" class="btn btn--amber" id="btn-toggle-pause">⏸️ พักรับงาน</button>
+    </div>
+  </section>
+
+  <!-- Master Hub Verification Card -->
+  <section class="card">
+    <div class="card__head">
+      <div class="card__title">🛰️ สถานะจากฝั่งเครื่องแม่ (Master Hub Check)</div>
+      <div class="card__sub" id="verify-time">ยังไม่เช็ก</div>
+    </div>
+    <div id="verify-body">
+      <div class="empty">กำลังตรวจสอบสถานะกับเครื่องแม่ Homelab...</div>
+    </div>
+  </section>
+
+  <!-- Active Jobs -->
+  <section class="card">
+    <div class="card__head">
+      <div class="card__title">⚙️ งานที่กำลังรันตอนนี้ (Active Jobs)</div>
+      <div class="card__sub" id="active-jobs-count">0 งาน</div>
+    </div>
+    <div id="active-jobs-list">
+      <div class="empty">ขณะนี้เครื่องนิ่ง (Idle) — ยังไม่มีงานกำลังประมวลผล</div>
+    </div>
+  </section>
+
+  <!-- System Resources -->
+  <section class="card">
+    <div class="card__head">
+      <div class="card__title">📊 ทรัพยากรเครื่องนี้ (Live Telemetry)</div>
+      <div class="card__sub" id="uptime-text">Uptime —</div>
+    </div>
+    <div class="meters" id="meters-box">
+      <div>
+        <div class="meter__lbl"><span>CPU</span><span id="m-cpu">0%</span></div>
+        <div class="bar"><div class="bar__fill" id="b-cpu" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div class="meter__lbl"><span id="m-ram-lbl">RAM</span><span id="m-ram">0%</span></div>
+        <div class="bar"><div class="bar__fill bar__fill--ram" id="b-ram" style="width:0%"></div></div>
+      </div>
+      <div id="gpu-row" style="display:none;">
+        <div class="meter__lbl"><span id="m-gpu-lbl">GPU</span><span id="m-gpu">0%</span></div>
+        <div class="bar"><div class="bar__fill bar__fill--gpu" id="b-gpu" style="width:0%"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- History & Logs -->
+  <section class="card">
+    <div class="tabs">
+      <button type="button" class="tab is-active" data-tab="recent">📜 ประวัติงานล่าสุด</button>
+      <button type="button" class="tab" data-tab="events">📝 บันทึกการทำงาน</button>
+    </div>
+    <div class="list-scroll" id="tab-content"></div>
+  </section>
+
+  <!-- Quick Actions -->
+  <div class="footer-actions">
+    <button type="button" class="btn btn--sm" id="btn-open-hub">🌐 เปิด Agent Hub</button>
+    <button type="button" class="btn btn--sm" id="btn-open-logs">📁 โฟลเดอร์ Log</button>
+    <button type="button" class="btn btn--sm" id="btn-send-hb">💓 Heartbeat</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+let lastSnap = null;
+let activeTab = 'recent';
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+function fmtBytes(b) {
+  if (!Number.isFinite(b) || b <= 0) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
+  return (b / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0) + ' ' + u[i];
+}
+
+function fmtDurSec(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function fmtTimeShort(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('th-TH', { hour12: false });
+  } catch (_) {
+    return iso;
+  }
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3200);
+}
+
+async function apiPost(url, body = {}) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'homelab-tray' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+function renderStatus(snap) {
+  if (!snap) return;
+  lastSnap = snap;
+  const st = snap.workerState || 'offline';
+  const specs = snap.specs || {};
+  const mt = snap.metrics || {};
+  const hb = snap.heartbeat || {};
+
+  $('#node-title').textContent = snap.displayName || specs.hostname || snap.nodeId || 'Homelab Worker';
+  $('#node-sub').textContent = `ID: ${snap.nodeId || '—'} · ${specs.os || ''}/${specs.arch || ''}`;
+  $('#ver-badge').textContent = `v${snap.version || '1.2.0'}`;
+
+  const orb = $('#status-orb');
+  orb.className = `orb orb--${st}`;
+
+  const hero = $('#hero-box');
+  hero.className = `hero hero--${st}`;
+
+  $('#state-thai').textContent = snap.workerStateThai || st;
+  const tagMap = {
+    idle: 'ONLINE · IDLE',
+    running: 'RUNNING',
+    paused: 'PAUSED',
+    offline: 'OFFLINE',
+  };
+  const tagEl = $('#state-tag');
+  tagEl.textContent = tagMap[st] || st.toUpperCase();
+  tagEl.className = `state-tag state-tag--${st}`;
+
+  const ep = snap.currentEndpoint || (snap.hubUrls && snap.hubUrls[0]) || '—';
+  const lpText = snap.longPollConnected ? '🟢 เชื่อมต่อแล้ว' : '⚪ รอเชื่อมต่อ';
+  const rttText = hb.ok ? `${hb.rttMs ?? 0} ms` : (hb.lastError ? 'Error' : '—');
+  $('#hero-meta').innerHTML = `
+    <span>Hub: ${esc(ep)}</span>
+    <span>Long-Poll: ${lpText}</span>
+    <span>RTT: ${esc(rttText)}</span>
+  `;
+
+  const pauseBtn = $('#btn-toggle-pause');
+  if (snap.paused) {
+    pauseBtn.textContent = '▶️ กลับมาพร้อมรับงาน';
+    pauseBtn.className = 'btn btn--green';
+  } else {
+    pauseBtn.textContent = '⏸️ พักรับงานชั่วคราว';
+    pauseBtn.className = 'btn btn--amber';
+  }
+
+  // Render Master Hub Self-Check
+  renderVerify(snap.lastSelfCheck);
+
+  // Active Jobs
+  const active = Array.isArray(snap.activeJobs) ? snap.activeJobs : [];
+  $('#active-jobs-count').textContent = `${active.length} งาน`;
+  const ajBox = $('#active-jobs-list');
+  if (active.length === 0) {
+    const idleMsg = snap.paused
+      ? '⏸️ พักรับงานอยู่ — เครื่องแม่จะไม่ส่งงานใหม่มาที่เครื่องนี้จนกว่าจะกดรับงานต่อ'
+      : (st === 'offline'
+          ? '🔴 ขาดการเชื่อมต่อเครื่องแม่ — กำลังพยายามเชื่อมต่อใหม่อัตโนมัติ'
+          : '🟢 ขณะนี้เครื่องนิ่ง (Idle) — ออนไลน์และพร้อมรับงานจาก Homelab');
+    ajBox.innerHTML = `<div class="empty">${idleMsg}</div>`;
+  } else {
+    ajBox.innerHTML = active.map((j) => {
+      const pct = Math.max(0, Math.min(100, Number(j.progress) || 0));
+      const elapsed = fmtDurSec((Number(j.durationMs) || 0) / 1000);
+      return `
+        <div class="job-card">
+          <div class="job-card__top">
+            <div class="job-name">${esc(j.name || j.jobId)}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              <span class="kind-pill">${esc(j.kind || 'job')}</span>
+              ${j.cancellable ? `<button type="button" class="btn btn--sm btn--danger" data-cancel="${esc(j.jobId)}">✖ ยกเลิก</button>` : ''}
+            </div>
+          </div>
+          <div class="job-msg">${esc(j.message || j.status || 'กำลังทำงาน...')} · ${esc(pct.toFixed(0))}% (${elapsed})</div>
+          <div class="bar"><div class="bar__fill" style="width:${pct}%"></div></div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Meters
+  const cpuPct = Math.max(0, Math.min(100, Number(mt.cpuPct) || 0));
+  const memPct = Math.max(0, Math.min(100, Number(mt.memPct) || 0));
+  $('#m-cpu').textContent = `${cpuPct.toFixed(1)}%`;
+  $('#b-cpu').style.width = `${cpuPct}%`;
+  $('#m-ram-lbl').textContent = `RAM (${fmtBytes(mt.memUsed || 0)} / ${fmtBytes(mt.memTotal || 0)})`;
+  $('#m-ram').textContent = `${memPct.toFixed(1)}%`;
+  $('#b-ram').style.width = `${memPct}%`;
+  $('#uptime-text').textContent = `Agent ${fmtDurSec(snap.uptimeAgentSec)} · OS ${fmtDurSec(mt.uptimeSec)}`;
+
+  if (specs.hasNvidiaSmi || specs.gpuModel) {
+    $('#gpu-row').style.display = 'block';
+    const gPct = Math.max(0, Math.min(100, Number(mt.gpuUtilPct) || 0));
+    $('#m-gpu-lbl').textContent = `${specs.gpuModel || 'GPU'}${mt.gpuTempC ? ` (${mt.gpuTempC}°C)` : ''}`;
+    $('#m-gpu').textContent = `${gPct}%`;
+    $('#b-gpu').style.width = `${gPct}%`;
+  } else {
+    $('#gpu-row').style.display = 'none';
+  }
+
+  renderTabContent(snap);
+}
+
+function renderVerify(sc) {
+  const box = $('#verify-body');
+  if (!sc) {
+    $('#verify-time').textContent = 'ยังไม่เช็ก';
+    box.innerHTML = '<div class="empty">กดปุ่ม "เช็กสถานะเครื่องแม่" เพื่อยืนยันว่าเครื่องแม่มองเห็นเครื่องนี้ออนไลน์หรือไม่</div>';
+    return;
+  }
+  $('#verify-time').textContent = `เช็กล่าสุด ${fmtTimeShort(sc.checkedAt)}`;
+
+  let bannerClass = 'verify-banner--err';
+  let bannerText = '🔴 ติดต่อเครื่องแม่ไม่ได้';
+  if (sc.reachable && sc.ok) {
+    if (sc.serverOnline) {
+      bannerClass = sc.serverPaused ? 'verify-banner--warn' : 'verify-banner--ok';
+      bannerText = sc.serverPaused
+        ? '🟠 เครื่องแม่เห็นเครื่องนี้: ออนไลน์ (พักรับงาน)'
+        : (sc.serverWorkerState === 'running'
+            ? `🔵 เครื่องแม่เห็นเครื่องนี้: ออนไลน์ (กำลังรัน ${sc.serverActiveJobs || 0} งาน)`
+            : '🟢 เครื่องแม่เห็นเครื่องนี้: ออนไลน์และพร้อมรับงาน!');
+    } else if (sc.registered) {
+      bannerClass = 'verify-banner--warn';
+      bannerText = '⚠️ เครื่องแม่มองว่าเครื่องนี้ออฟไลน์อยู่ (Heartbeat ขาดช่วง)';
+    } else {
+      bannerClass = 'verify-banner--warn';
+      bannerText = '⚠️ ยังไม่พบการลงทะเบียนเครื่องนี้บนเครื่องแม่';
+    }
+  }
+
+  const ageSec = sc.serverAgeMs !== null && sc.serverAgeMs !== undefined
+    ? `${(Number(sc.serverAgeMs) / 1000).toFixed(1)} วิก่อน`
+    : '—';
+  const nodesTxt = sc.hubTotalNodes ? `${sc.hubOnlineNodes || 0} / ${sc.hubTotalNodes} เครื่อง` : '—';
+
+  box.innerHTML = `
+    <div class="verify-banner ${bannerClass}">
+      <span>${esc(bannerText)}</span>
+      <span style="font-family:var(--mono);font-size:0.74rem;">${sc.rttMs ?? 0} ms</span>
+    </div>
+    ${sc.note ? `<div style="font-size:0.74rem;color:#fcd34d;margin-bottom:8px;">ℹ️ ${esc(sc.note)}</div>` : ''}
+    ${sc.error ? `<div style="font-size:0.75rem;color:#fca5a5;margin-bottom:8px;font-family:var(--mono);">❌ ${esc(sc.error)}</div>` : ''}
+    <div class="verify-grid">
+      <div class="kv"><div class="kv__k">สถานะฝั่งเครื่องแม่</div><div class="kv__v">${esc(sc.serverWorkerState || 'offline')} · ล่าสุด ${esc(ageSec)}</div></div>
+      <div class="kv"><div class="kv__k">คลัสเตอร์ / Hub Ver</div><div class="kv__v">${esc(nodesTxt)}${sc.hubAgentVersion ? ` · v${esc(sc.hubAgentVersion)}` : ''}</div></div>
+      <div class="kv"><div class="kv__k">Endpoint ที่เชื่อมต่อ</div><div class="kv__v">${esc(sc.endpoint || '—')}</div></div>
+      <div class="kv"><div class="kv__k">Long-Poll / Jobs</div><div class="kv__v">${sc.serverLongPoll ? '🟢 เชื่อมต่อ' : '⚪ ปิด'} · ${sc.serverActiveJobs || 0}/${sc.serverMaxJobs || 1} งาน</div></div>
+    </div>
+  `;
+}
+
+function renderTabContent(snap) {
+  const box = $('#tab-content');
+  if (activeTab === 'recent') {
+    const recent = Array.isArray(snap.recentJobs) ? snap.recentJobs : [];
+    if (!recent.length) {
+      box.innerHTML = '<div class="empty">ยังไม่มีประวัติงานที่ทำเสร็จในเซสชันนี้</div>';
+      return;
+    }
+    box.innerHTML = recent.map((j) => {
+      const icon = j.status === 'completed' ? '✅' : (j.status === 'cancelled' ? '🟠' : '❌');
+      const dur = fmtDurSec((Number(j.durationMs) || 0) / 1000);
+      return `
+        <div class="log-row">
+          <span class="log-time">${fmtTimeShort(j.finishedAt || j.updatedAt)}</span>
+          ${icon} <strong>${esc(j.name || j.jobId)}</strong> [${esc(j.kind)}] · ${esc(j.status)} (${dur})
+          ${j.message ? `<div style="color:var(--text-1);margin-top:2px;">${esc(j.message)}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+  } else {
+    const events = Array.isArray(snap.events) ? snap.events : [];
+    if (!events.length) {
+      box.innerHTML = '<div class="empty">ยังไม่มีบันทึกเหตุการณ์</div>';
+      return;
+    }
+    box.innerHTML = events.map((ev) => `
+      <div class="log-row ${ev.level === 'warn' || ev.level === 'error' ? 'log-row--warn' : ''}">
+        <span class="log-time">${fmtTimeShort(ev.time)}</span>${esc(ev.message)}
+      </div>
+    `).join('');
+  }
+}
+
+async function fetchStatus() {
+  try {
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    const data = await res.json();
+    renderStatus(data);
+  } catch (err) {
+    $('#state-thai').textContent = 'ไม่สามารถติดต่อ Agent บนเครื่องนี้ได้';
+    $('#status-orb').className = 'orb orb--offline';
+  }
+}
+
+async function checkHubNow(silent = false) {
+  const btn = $('#btn-check-hub');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังเช็กเครื่องแม่...';
+  try {
+    const data = await apiPost('/api/check-hub');
+    if (data.status) renderStatus(data.status);
+    if (!silent) {
+      const sc = data.selfCheck || {};
+      if (sc.serverOnline) {
+        showToast(`✅ ยืนยันแล้ว! เครื่องแม่เห็นเครื่องนี้ออนไลน์ (${sc.rttMs} ms)`);
+      } else if (sc.reachable) {
+        showToast('⚠️ ติดต่อเครื่องแม่ได้ แต่เครื่องแม่ยังมองว่าออฟไลน์');
+      } else {
+        showToast('❌ ติดต่อเครื่องแม่ไม่ได้: ' + (sc.error || 'network error'));
+      }
+    }
+  } catch (err) {
+    if (!silent) showToast('เช็กสถานะไม่สำเร็จ: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📡 เช็กสถานะเครื่องแม่';
+  }
+}
+
+$('#btn-check-hub').addEventListener('click', () => checkHubNow(false));
+
+$('#btn-toggle-pause').addEventListener('click', async () => {
+  const btn = $('#btn-toggle-pause');
+  btn.disabled = true;
+  try {
+    const nextPaused = !(lastSnap && lastSnap.paused);
+    const data = await apiPost('/api/pause', { paused: nextPaused });
+    if (data.status) renderStatus(data.status);
+    showToast(nextPaused ? '⏸️ พักรับงานชั่วคราวแล้ว (แจ้งเครื่องแม่แล้ว)' : '▶️ กลับมาพร้อมรับงานแล้ว!');
+  } catch (err) {
+    showToast('เปลี่ยนสถานะไม่สำเร็จ: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#active-jobs-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-cancel]');
+  if (!btn) return;
+  const jobId = btn.dataset.cancel;
+  btn.disabled = true;
+  try {
+    const data = await apiPost('/api/jobs/cancel', { jobId });
+    if (data.status) renderStatus(data.status);
+    showToast(`🛑 ส่งคำสั่งยกเลิกงาน ${jobId} แล้ว`);
+  } catch (err) {
+    showToast('ยกเลิกงานไม่สำเร็จ: ' + err.message);
+    btn.disabled = false;
+  }
+});
+
+document.querySelectorAll('.tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    activeTab = btn.dataset.tab;
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+    if (lastSnap) renderTabContent(lastSnap);
+  });
+});
+
+$('#btn-open-hub').addEventListener('click', async () => {
+  try { await apiPost('/api/open-hub'); } catch (_) {}
+});
+
+$('#btn-open-logs').addEventListener('click', async () => {
+  try { await apiPost('/api/open-logs'); } catch (_) {}
+});
+
+$('#btn-send-hb').addEventListener('click', async () => {
+  try {
+    const data = await apiPost('/api/heartbeat');
+    if (data.status) renderStatus(data.status);
+    showToast(data.ok ? '💓 ส่ง Heartbeat สำเร็จ!' : ('❌ Heartbeat ไม่สำเร็จ: ' + (data.error || '')));
+  } catch (err) {
+    showToast('Heartbeat Error: ' + err.message);
+  }
+});
+
+fetchStatus().then(() => checkHubNow(true));
+setInterval(fetchStatus, 2000);
+</script>
+</body>
+</html>

@@ -297,10 +297,14 @@ WshShell.Run """%s"" --service", 0, False
 	taskCmd.SysProcAttr = hideWindowAttr()
 	_ = taskCmd.Run()
 
-	// 3. Create a convenient Desktop shortcut / Start script in targetDir
+	// 3. Create convenient scripts in targetDir
 	batPath := filepath.Join(targetDir, "restart-agent.bat")
 	batContent := fmt.Sprintf("@echo off\r\nstart \"\" wscript.exe //B //Nologo \"%s\"\r\n", vbsPath)
 	_ = os.WriteFile(batPath, []byte(batContent), 0644)
+
+	uiBatPath := filepath.Join(targetDir, "open-status-app.bat")
+	uiBatContent := fmt.Sprintf("@echo off\r\n\"%s\" --ui\r\n", targetExe)
+	_ = os.WriteFile(uiBatPath, []byte(uiBatContent), 0644)
 
 	return nil
 }

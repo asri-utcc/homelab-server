@@ -34,7 +34,7 @@ import (
 )
 
 var (
-	AgentVersion   = "1.1.0"
+	AgentVersion   = "1.2.0"
 	DefaultHubURLs = "https://homelab.tail285279.ts.net,http://100.93.214.79,http://100.93.214.79:8090,http://192.168.1.123,https://192.168.1.123"
 	DefaultToken   = "hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b"
 )
@@ -74,18 +74,21 @@ type StaticSpecs struct {
 }
 
 type LiveMetrics struct {
-	CPUPct      float64    `json:"cpuPct"`
-	MemTotal    uint64     `json:"memTotal"`
-	MemUsed     uint64     `json:"memUsed"`
-	MemFree     uint64     `json:"memFree"`
-	MemPct      float64    `json:"memPct"`
-	Disks       []DiskInfo `json:"disks"`
-	UptimeSec   uint64     `json:"uptimeSec"`
-	GPUTempC    int        `json:"gpuTempC"`
-	GPUUtilPct  int        `json:"gpuUtilPct"`
-	ActiveJobs  int32      `json:"activeJobs"`
-	HubEndpoint string     `json:"hubEndpoint"`
-	Timestamp   string     `json:"timestamp"`
+	CPUPct      float64      `json:"cpuPct"`
+	MemTotal    uint64       `json:"memTotal"`
+	MemUsed     uint64       `json:"memUsed"`
+	MemFree     uint64       `json:"memFree"`
+	MemPct      float64      `json:"memPct"`
+	Disks       []DiskInfo   `json:"disks"`
+	UptimeSec   uint64       `json:"uptimeSec"`
+	GPUTempC    int          `json:"gpuTempC"`
+	GPUUtilPct  int          `json:"gpuUtilPct"`
+	ActiveJobs  int32        `json:"activeJobs"`
+	Paused      bool         `json:"paused"`
+	WorkerState string       `json:"workerState"`
+	CurrentJobs []TrackedJob `json:"currentJobs,omitempty"`
+	HubEndpoint string       `json:"hubEndpoint"`
+	Timestamp   string       `json:"timestamp"`
 }
 
 type HeartbeatPayload struct {
@@ -101,8 +104,17 @@ type AgentCommand struct {
 }
 
 type HeartbeatResponse struct {
-	OK       bool           `json:"ok"`
-	Commands []AgentCommand `json:"commands"`
+	OK           bool           `json:"ok"`
+	NodeID       string         `json:"nodeId,omitempty"`
+	ServerTime   string         `json:"serverTime,omitempty"`
+	DisplayName  string         `json:"displayName,omitempty"`
+	Alias        string         `json:"alias,omitempty"`
+	WorkerState  string         `json:"workerState,omitempty"`
+	Paused       bool           `json:"paused,omitempty"`
+	AgentVersion string         `json:"agentVersion,omitempty"`
+	TotalNodes   int            `json:"totalNodes,omitempty"`
+	OnlineNodes  int            `json:"onlineNodes,omitempty"`
+	Commands     []AgentCommand `json:"commands"`
 }
 
 type CommandResult struct {
@@ -392,6 +404,11 @@ func buildLiveMetrics() LiveMetrics {
 	endpointMutex.RLock()
 	ep := currentEndpoint
 	endpointMutex.RUnlock()
+	activeJobs := runtimeState.ActiveJobs()
+	activeCount := atomic.LoadInt32(&activeJobsCount)
+	if int32(len(activeJobs)) > activeCount {
+		activeCount = int32(len(activeJobs))
+	}
 	return LiveMetrics{
 		CPUPct:      cpuPct,
 		MemTotal:    memTotal,
@@ -402,7 +419,10 @@ func buildLiveMetrics() LiveMetrics {
 		UptimeSec:   uptimeSec,
 		GPUTempC:    gpuTempC,
 		GPUUtilPct:  gpuUtilPct,
-		ActiveJobs:  atomic.LoadInt32(&activeJobsCount),
+		ActiveJobs:  activeCount,
+		Paused:      runtimeState.IsPaused(),
+		WorkerState: runtimeState.WorkerState(),
+		CurrentJobs: activeJobs,
 		HubEndpoint: ep,
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 	}
@@ -470,22 +490,34 @@ func sendHeartbeat() error {
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
+		runtimeState.SetHeartbeatError(err.Error())
 		return err
 	}
-	resp, _, err := doHubRequest(httpClient, "POST", "/api/agent-hub/agent/heartbeat", data, "application/json")
+	t0 := time.Now()
+	resp, ep, err := doHubRequest(httpClient, "POST", "/api/agent-hub/agent/heartbeat", data, "application/json")
+	rttMs := time.Since(t0).Milliseconds()
 	if err != nil {
+		runtimeState.SetHeartbeatError(err.Error())
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return fmt.Errorf("heartbeat HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		hbErr := fmt.Errorf("heartbeat HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		runtimeState.SetHeartbeatError(hbErr.Error())
+		return hbErr
 	}
 	var hbResp HeartbeatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&hbResp); err == nil {
+		runtimeState.SetHeartbeatSuccess(ep, rttMs, hbResp.Alias, hbResp.DisplayName, hbResp.AgentVersion)
+		if hbResp.TotalNodes > 0 {
+			runtimeState.SetHubClusterCounts(hbResp.TotalNodes, hbResp.OnlineNodes)
+		}
 		for _, cmd := range hbResp.Commands {
 			dispatchCommandAsync(cmd)
 		}
+	} else {
+		runtimeState.SetHeartbeatSuccess(ep, rttMs, "", "", "")
 	}
 	return nil
 }
@@ -494,20 +526,32 @@ func pollLoop(stopCh <-chan struct{}) {
 	for {
 		select {
 		case <-stopCh:
+			runtimeState.SetLongPollConnected(false)
 			return
 		default:
 		}
 		path := fmt.Sprintf("/api/agent-hub/agent/poll?nodeId=%s&timeout=25", url.QueryEscape(agentCfg.NodeID))
 		resp, _, err := doHubRequest(longPollClient, "GET", path, nil, "")
 		if err != nil {
-			time.Sleep(3 * time.Second)
+			runtimeState.SetLongPollConnected(false)
+			select {
+			case <-stopCh:
+				return
+			case <-time.After(3 * time.Second):
+			}
 			continue
 		}
+		runtimeState.SetLongPollConnected(true)
 		var pollResp HeartbeatResponse
 		err = json.NewDecoder(resp.Body).Decode(&pollResp)
 		resp.Body.Close()
 		if err != nil {
-			time.Sleep(2 * time.Second)
+			runtimeState.SetLongPollConnected(false)
+			select {
+			case <-stopCh:
+				return
+			case <-time.After(2 * time.Second):
+			}
 			continue
 		}
 		for _, cmd := range pollResp.Commands {
@@ -655,6 +699,24 @@ func executeCommand(cmd AgentCommand) (map[string]interface{}, error) {
 
 	case "self-update":
 		return handleSelfUpdate(cmd.Payload)
+
+	case "agent.status":
+		return runtimeState.BuildLocalStatusSnapshot(), nil
+
+	case "agent.set-pause":
+		nextPaused := !runtimeState.IsPaused()
+		if _, exists := cmd.Payload["paused"]; exists {
+			nextPaused = getBool(cmd.Payload, "paused", nextPaused)
+		}
+		runtimeState.SetPaused(nextPaused, true)
+		go func() {
+			_ = sendHeartbeat()
+		}()
+		return map[string]interface{}{
+			"paused":          nextPaused,
+			"workerState":     runtimeState.WorkerState(),
+			"workerStateThai": runtimeState.WorkerStateThai(),
+		}, nil
 
 	default:
 		return nil, fmt.Errorf("unknown action: %s", cmd.Action)
@@ -1028,6 +1090,11 @@ func reportJobProgress(jobID string, status string, pct float64, message string)
 	if jobID == "" {
 		return
 	}
+	if status == "completed" || status == "failed" || status == "cancelled" || status == "timeout" {
+		runtimeState.FinishJob(jobID, status, message)
+	} else {
+		runtimeState.UpdateJob(jobID, status, pct, message)
+	}
 	body, _ := json.Marshal(map[string]interface{}{
 		"jobId":      jobID,
 		"nodeId":     agentCfg.NodeID,
@@ -1052,8 +1119,11 @@ func handleRenderFFmpeg(p map[string]interface{}) (map[string]interface{}, error
 	}
 
 	jobID := getString(p, "jobId", fmt.Sprintf("job-%d", time.Now().Unix()))
-	inputURL := getString(p, "inputUrl", "")
 	outputName := getString(p, "outputName", jobID+".mp4")
+	runtimeState.StartJob(jobID, outputName, "ffmpeg", "เตรียมเรนเดอร์ FFmpeg...", false)
+	defer runtimeState.FinishJob(jobID, "failed", "งาน FFmpeg จบลงก่อนกำหนด")
+
+	inputURL := getString(p, "inputUrl", "")
 	useNvenc := getBool(p, "useNvenc", specs.HasNVENC)
 	crf := getInt(p, "crf", 20)
 	preset := getString(p, "preset", "")
@@ -1460,6 +1530,9 @@ func handleRenderBlender(p map[string]interface{}) (map[string]interface{}, erro
 	previewName := getString(p, "previewName", "")
 	openGui := getBool(p, "openGui", false)
 
+	runtimeState.StartJob(jobID, outputName, "blender-3d", "กำลังเตรียมงาน Blender 3D...", false)
+	defer runtimeState.FinishJob(jobID, "failed", "งาน Blender จบลงก่อนกำหนด")
+
 	workDir := filepath.Join(specs.InstallDir, "jobs", jobID)
 	if err := os.MkdirAll(workDir, 0755); err != nil {
 		return nil, err
@@ -1737,6 +1810,7 @@ func handleRenderBlender(p map[string]interface{}) (map[string]interface{}, erro
 			}
 			lastSentProgress = pct
 			lastSentPhase = phase
+			runtimeState.UpdateJob(jobID, "rendering", pct, fmt.Sprintf("Blender (%s) %.0f%%", phase, pct))
 		}
 
 		for {
@@ -2232,6 +2306,8 @@ func handleRenderRemotion(p map[string]interface{}) (map[string]interface{}, err
 		outputName = jobID + ".mp4"
 	}
 	outputName = filepath.Base(outputName)
+	runtimeState.StartJob(jobID, compositionID+" · "+outputName, "remotion", "เตรียมเรนเดอร์ Remotion...", false)
+	defer runtimeState.FinishJob(jobID, "failed", "งาน Remotion จบลงก่อนกำหนด")
 	concurrency := getInt(p, "concurrency", 4)
 	if concurrency <= 0 {
 		concurrency = 4
@@ -2737,6 +2813,7 @@ func reportJobFinal(jobID string, status string, exitCode int, errMsg string, du
 		"durationMs": durationMs,
 		"reportedAt": time.Now().UTC().Format(time.RFC3339),
 	}
+	runtimeState.FinishJob(jobID, status, msg)
 	if errMsg != "" {
 		payload["error"] = errMsg
 	}
@@ -3445,6 +3522,12 @@ func handleJobRun(p map[string]interface{}) (map[string]interface{}, error) {
 		jobID = fmt.Sprintf("job-%d", time.Now().Unix())
 	}
 	jobName := strings.TrimSpace(getString(p, "name", ""))
+	displayJobName := jobName
+	if displayJobName == "" {
+		displayJobName = jobID
+	}
+	runtimeState.StartJob(jobID, displayJobName, "generic", "กำลังเตรียมงาน...", true)
+	defer runtimeState.FinishJob(jobID, "failed", "งานจบลงก่อนกำหนด")
 	inputURL := strings.TrimSpace(getString(p, "inputUrl", ""))
 	cacheKey := sanitizeCacheKey(getString(p, "cacheKey", ""))
 	timeoutSec := getInt(p, "timeoutSec", 1800)
@@ -3702,6 +3785,7 @@ func handleSelfUpdate(p map[string]interface{}) (map[string]interface{}, error) 
 	sum := sha256.Sum256(newBin)
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
+		stopSystemTray()
 		_ = spawnBackgroundDaemon(exePath, installDir)
 		os.Exit(0)
 	}()
@@ -3753,11 +3837,22 @@ func main() {
 		flagToken      = flag.String("token", "", "Agent authentication token")
 		flagNodeID     = flag.String("node-id", "", "Custom node ID (defaults to hostname)")
 		flagOnce       = flag.Bool("once", false, "Send one heartbeat and exit (for self-test)")
+		flagNoTray     = flag.Bool("no-tray", false, "Disable native system tray icon")
+		flagUIPort     = flag.Int("ui-port", 18470, "Local status web app port on 127.0.0.1")
+		flagOpenUI     = flag.Bool("ui", false, "Open the local status app window")
 	)
 	flag.Parse()
 
 	initHTTPClients()
 	initPlatformTimer()
+
+	// If --ui is passed without --service/--foreground/--install/--once and an agent is already running, open its UI immediately.
+	if *flagOpenUI && !*flagService && !*flagForeground && !*flagInstall && !*flagOnce {
+		if existingURL := checkExistingLocalUI(*flagUIPort); existingURL != "" {
+			openLocalStatusApp(existingURL)
+			return
+		}
+	}
 
 	targetDir := getDefaultInstallDir()
 	exeName := "homelab-agent"
@@ -3774,13 +3869,14 @@ func main() {
 	_ = os.Remove(targetExeAbs + ".old")
 
 	// When user double-clicks homelab-agent.exe on Windows (no flags) or passes --install:
-	isAutoInstall := (!*flagService && !*flagForeground && !*flagOnce && runtime.GOOS == "windows") || *flagInstall
+	isAutoInstall := (!*flagService && !*flagForeground && !*flagOnce && !*flagOpenUI && runtime.GOOS == "windows") || *flagInstall
 	if isAutoInstall {
 		fmt.Println("============================================================")
 		fmt.Printf("  Homelab Worker Agent v%s — Zero-Config Installer\n", AgentVersion)
 		fmt.Println("============================================================")
 		_ = os.MkdirAll(targetDir, 0755)
 		agentCfg = loadOrInitConfig(targetDir, *flagHub, *flagToken, *flagNodeID)
+		runtimeState.SetInstallDir(targetDir)
 
 		killExistingAgentOnWindows(targetExeAbs)
 
@@ -3809,11 +3905,11 @@ func main() {
 			fmt.Printf("      Connected to Homelab Hub via %s (Node ID: %s)\n", ep, agentCfg.NodeID)
 		}
 
-		fmt.Println("[4/4] Starting silent background service...")
+		fmt.Println("[4/4] Starting silent background service with System Tray icon...")
 		if err := spawnBackgroundDaemon(targetExeAbs, targetDir); err != nil {
 			fmt.Printf("      Error spawning background daemon: %v\n", err)
 		} else {
-			fmt.Println("      Homelab Agent is now running silently in the background!")
+			fmt.Println("      Homelab Agent is now running in background with System Tray icon!")
 		}
 		fmt.Println("============================================================")
 		return
@@ -3824,6 +3920,7 @@ func main() {
 		installDir = targetDir
 	}
 	agentCfg = loadOrInitConfig(installDir, *flagHub, *flagToken, *flagNodeID)
+	runtimeState.SetInstallDir(installDir)
 	refreshStaticSpecs(installDir)
 
 	if *flagOnce {
@@ -3847,12 +3944,35 @@ func main() {
 		}
 	}
 
-	fmt.Printf("[%s] Homelab Agent v%s starting (node=%s, os=%s/%s)\n",
-		time.Now().Format(time.RFC3339), AgentVersion, agentCfg.NodeID, runtime.GOOS, runtime.GOARCH)
+	stopCh := make(chan struct{})
+	var stopOnce sync.Once
+	requestShutdown := func() {
+		stopOnce.Do(func() {
+			close(stopCh)
+		})
+	}
+
+	uiSrv, uiErr := startLocalUIServer(*flagUIPort, requestShutdown)
+	if uiErr != nil {
+		fmt.Printf("[%s] Warning: local status UI failed to start: %v\n", time.Now().Format(time.RFC3339), uiErr)
+	} else {
+		defer uiSrv.Close()
+		runtimeState.RecordEvent("info", "เปิด Local Status App ที่ "+uiSrv.url)
+	}
+
+	if !*flagNoTray {
+		startSystemTray(stopCh, requestShutdown)
+	}
+	if *flagOpenUI && uiSrv != nil {
+		go openLocalStatusApp(uiSrv.url)
+	}
+
+	fmt.Printf("[%s] Homelab Agent v%s starting (node=%s, os=%s/%s, ui=%s)\n",
+		time.Now().Format(time.RFC3339), AgentVersion, agentCfg.NodeID, runtime.GOOS, runtime.GOARCH, runtimeState.LocalUIURL())
+	runtimeState.RecordEvent("info", fmt.Sprintf("เริ่มต้น Homelab Agent v%s (%s)", AgentVersion, agentCfg.NodeID))
 
 	_ = sendHeartbeat()
 
-	stopCh := make(chan struct{})
 	go pollLoop(stopCh)
 
 	hbTicker := time.NewTicker(5 * time.Second)
@@ -3864,6 +3984,14 @@ func main() {
 
 	for {
 		select {
+		case <-stopCh:
+			fmt.Printf("[%s] Homelab Agent shutting down...\n", time.Now().Format(time.RFC3339))
+			stopSystemTray()
+			if uiSrv != nil {
+				uiSrv.Close()
+			}
+			time.Sleep(150 * time.Millisecond)
+			return
 		case <-hbTicker.C:
 			_ = sendHeartbeat()
 		case <-specTicker.C:

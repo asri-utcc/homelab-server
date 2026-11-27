@@ -40,7 +40,9 @@ const NODES_PATH = path.join(HUB_ROOT, 'nodes.json');
 const JOBS_PATH = path.join(HUB_ROOT, 'jobs.json');
 
 const AGENT_SRC_DIR = '/home/dev/projects/homelab-agent';
-const GO_BIN = '/home/dev/.local/bin/go';
+const GO_BIN = fs.existsSync('/home/dev/.local/bin/go')
+    ? '/home/dev/.local/bin/go'
+    : '/home/dev/.local/go/bin/go';
 
 const DEFAULT_TOKEN = 'hlag_7f8e9a2b4c6d1e3f5a7b9c0d2e4f6a8b';
 const DEFAULT_HUB_URLS = [
@@ -75,7 +77,7 @@ let jobWatchdogTimer = null;
 let hubConfig = {
     token: DEFAULT_TOKEN,
     hubUrls: DEFAULT_HUB_URLS,
-    agentVersion: '1.1.0',
+    agentVersion: '1.2.0',
     createdAt: new Date().toISOString(),
 };
 
@@ -361,6 +363,43 @@ function countNodeActiveJobs(nodeId) {
     return count;
 }
 
+function getNodeCurrentJobs(nodeId) {
+    const targetId = String(nodeId || '').trim().toLowerCase();
+    if (!targetId) return [];
+    const list = [];
+    for (const j of renderJobs.values()) {
+        if (j && String(j.nodeId || '').trim().toLowerCase() === targetId && ACTIVE_DISPATCHED_STATUSES.has(j.status)) {
+            list.push({
+                jobId: j.jobId,
+                name: j.name || j.compositionId || j.outputName || j.jobId,
+                kind: j.kind || 'ffmpeg',
+                status: j.status,
+                progress: typeof j.progress === 'number' ? j.progress : 0,
+                message: j.message || '',
+                phase: j.phase || '',
+                startedAt: j.startedAt || j.dispatchedAt || j.createdAt || null,
+                updatedAt: j.updatedAt || null,
+            });
+        }
+    }
+    list.sort((a, b) => (Date.parse(b.updatedAt || b.startedAt || '') || 0) - (Date.parse(a.updatedAt || a.startedAt || '') || 0));
+    return list;
+}
+
+function getNodeRecentJobs(nodeId, limit = 15) {
+    const targetId = String(nodeId || '').trim().toLowerCase();
+    if (!targetId) return [];
+    const lim = Math.min(50, Math.max(1, Number(limit) || 15));
+    const items = [];
+    for (const j of renderJobs.values()) {
+        if (j && String(j.nodeId || '').trim().toLowerCase() === targetId) {
+            items.push(j);
+        }
+    }
+    items.sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
+    return items.slice(0, lim).map(sanitizeJobForList);
+}
+
 function getNodeAlias(nodeId, fallbackAlias = '') {
     const key = String(nodeId || '').trim().toLowerCase();
     const rec = key ? nodes.get(key) : null;
@@ -381,16 +420,51 @@ function decorateNode(n) {
     const notes = String(n.notes || '').trim();
     const hostname = String((n.specs && n.specs.hostname) || n.nodeId || '').trim();
     const maxJobs = getNodeMaxJobs(n);
-    const activeJobs = countNodeActiveJobs(n.nodeId);
+    const hubCurrentJobs = getNodeCurrentJobs(n.nodeId);
+    const currentJobs = [...hubCurrentJobs];
+    if (online && n.metrics && Array.isArray(n.metrics.currentJobs)) {
+        const seenIds = new Set(currentJobs.map((j) => j.jobId));
+        for (const aj of n.metrics.currentJobs) {
+            if (!aj || !aj.jobId || seenIds.has(aj.jobId)) continue;
+            seenIds.add(aj.jobId);
+            currentJobs.push({
+                jobId: String(aj.jobId),
+                name: String(aj.name || aj.jobId),
+                kind: String(aj.kind || 'generic'),
+                status: String(aj.status || 'running'),
+                progress: Number.isFinite(Number(aj.progress)) ? Number(aj.progress) : 0,
+                message: String(aj.message || ''),
+                phase: '',
+                startedAt: aj.startedAt || null,
+                updatedAt: aj.updatedAt || null,
+            });
+        }
+    }
+    const agentActiveJobs = online && n.metrics ? (Number(n.metrics.activeJobs) || 0) : 0;
+    const activeJobs = Math.max(hubCurrentJobs.length, currentJobs.length, agentActiveJobs);
+    const paused = Boolean(n.metrics && n.metrics.paused);
+    let workerState = 'offline';
+    if (online) {
+        if (paused) {
+            workerState = 'paused';
+        } else if (activeJobs > 0) {
+            workerState = 'running';
+        } else {
+            workerState = 'idle';
+        }
+    }
     return {
         ...n,
         alias,
         notes,
         displayName: alias || hostname,
         online,
+        paused,
+        workerState,
         ageMs,
         maxJobs,
         activeJobs,
+        currentJobs,
         longPollConnected: Boolean(waiters && waiters.size > 0),
         queuedCommands: q.length,
     };
@@ -511,12 +585,83 @@ function handleHeartbeat(body, clientIp) {
     // Dispatch any pending generic jobs if this node is ready with free capacity
     pumpGenericQueue();
 
+    const dec = decorateNode(record);
+    const allDecorated = [...nodes.values()].map(decorateNode);
+    const totalNodes = allDecorated.length;
+    const onlineNodes = allDecorated.filter((n) => n.online).length;
+
     const queued = drainPendingCommands(nodeId);
     return {
         ok: true,
         nodeId,
+        displayName: dec.displayName,
+        alias: dec.alias,
+        workerState: dec.workerState,
+        paused: dec.paused,
+        agentVersion: hubConfig.agentVersion,
+        totalNodes,
+        onlineNodes,
         serverTime: nowIso,
         commands: queued,
+    };
+}
+
+function buildSelfStatus(nodeIdRaw) {
+    const nodeId = String(nodeIdRaw || '').trim().toLowerCase();
+    const nowIso = new Date().toISOString();
+    const allDecorated = [...nodes.values()].map(decorateNode);
+    const totalNodes = allDecorated.length;
+    const onlineNodes = allDecorated.filter((n) => n.online).length;
+    const hubMeta = {
+        serverTime: nowIso,
+        agentVersion: hubConfig.agentVersion,
+        totalNodes,
+        onlineNodes,
+        onlineThresholdMs: ONLINE_THRESHOLD_MS,
+    };
+
+    const raw = nodeId ? nodes.get(nodeId) : null;
+    if (!raw) {
+        return {
+            ok: true,
+            registered: false,
+            nodeId,
+            online: false,
+            paused: false,
+            workerState: 'offline',
+            alias: '',
+            displayName: nodeId,
+            lastSeenAt: null,
+            ageMs: null,
+            longPollConnected: false,
+            activeJobs: 0,
+            maxJobs: 1,
+            currentJobs: [],
+            recentJobs: [],
+            serverTime: nowIso,
+            hub: hubMeta,
+        };
+    }
+
+    const dec = decorateNode(raw);
+    return {
+        ok: true,
+        registered: true,
+        nodeId: dec.nodeId,
+        online: Boolean(dec.online),
+        paused: Boolean(dec.paused),
+        workerState: dec.workerState,
+        alias: dec.alias || '',
+        displayName: dec.displayName || dec.nodeId,
+        lastSeenAt: dec.lastSeenAt || null,
+        ageMs: dec.ageMs,
+        longPollConnected: Boolean(dec.longPollConnected),
+        activeJobs: dec.activeJobs,
+        maxJobs: dec.maxJobs,
+        currentJobs: dec.currentJobs,
+        recentJobs: getNodeRecentJobs(dec.nodeId, 15),
+        serverTime: nowIso,
+        hub: hubMeta,
     };
 }
 
@@ -725,9 +870,12 @@ function handleCommandResult(body) {
     return { ok: true, commandId: cmdId };
 }
 
-function selectBestRenderNode(preferredNodeId = '') {
+function selectBestRenderNode(preferredNodeId = '', opts = {}) {
     const pref = String(preferredNodeId || '').trim().toLowerCase();
-    const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+    const allowPaused = Boolean(opts && opts.allowPaused);
+    const allOnline = [...nodes.values()]
+        .map(decorateNode)
+        .filter((n) => n.online && (allowPaused || !n.paused));
     if (pref && pref !== 'auto') {
         const res = resolveNodeRef(pref, allOnline);
         if (res.node) return res.node;
@@ -816,9 +964,12 @@ async function createRenderJob(opts = {}) {
     return job;
 }
 
-function selectBestBlenderNode(preferredNodeId = '', preferGpu = false) {
+function selectBestBlenderNode(preferredNodeId = '', preferGpu = false, opts = {}) {
     const pref = String(preferredNodeId || '').trim().toLowerCase();
-    const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+    const allowPaused = Boolean(opts && opts.allowPaused);
+    const allOnline = [...nodes.values()]
+        .map(decorateNode)
+        .filter((n) => n.online && (allowPaused || !n.paused));
     if (pref && pref !== 'auto') {
         const res = resolveNodeRef(pref, allOnline);
         if (res.node) return res.node;
@@ -906,9 +1057,12 @@ const ACTIVE_RENDER_STATUSES = new Set(['queued', 'downloading', 'installing', '
 let motionBundleCache = { hash: '', filePath: '', expiresAt: 0 };
 let motionBundleInFlight = null;
 
-function selectBestRemotionNode(preferredNodeId = '') {
+function selectBestRemotionNode(preferredNodeId = '', opts = {}) {
     const pref = String(preferredNodeId || '').trim().toLowerCase();
-    const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+    const allowPaused = Boolean(opts && opts.allowPaused);
+    const allOnline = [...nodes.values()]
+        .map(decorateNode)
+        .filter((n) => n.online && (allowPaused || !n.paused));
     if (pref && pref !== 'auto') {
         const res = resolveNodeRef(pref, allOnline);
         return res.node || null;
@@ -1162,7 +1316,10 @@ function findMatchingGenericNodes(opts = {}) {
     const requires = Array.isArray(opts.requires) ? opts.requires.filter(Boolean) : [];
     const osReq = String(opts.os || 'any').trim().toLowerCase() || 'any';
     const command = opts.command;
-    const allOnline = [...nodes.values()].map(decorateNode).filter((n) => n.online);
+    const allowPaused = Boolean(opts.allowPaused);
+    const allOnline = [...nodes.values()]
+        .map(decorateNode)
+        .filter((n) => n.online && (allowPaused || !n.paused));
 
     let candidates = allOnline;
     if (pref && pref.toLowerCase() !== 'auto') {
@@ -2349,6 +2506,17 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
             return true;
         }
 
+        if (req.method === 'GET' && p === '/api/agent-hub/agent/self-status') {
+            const nodeId = String(url.searchParams.get('nodeId') || req.headers['x-agent-node'] || '').trim().toLowerCase();
+            if (!nodeId) {
+                sendJson(res, 400, { ok: false, error: 'Missing nodeId' });
+                return true;
+            }
+            res.setHeader('Cache-Control', 'no-store');
+            sendJson(res, 200, buildSelfStatus(nodeId));
+            return true;
+        }
+
         if (req.method === 'POST' && p === '/api/agent-hub/agent/heartbeat') {
             const body = await readJsonBody(req, 512 * 1024);
             const ip = typeof clientIp === 'function' ? clientIp(req) : (req.socket && req.socket.remoteAddress) || '';
@@ -2654,6 +2822,10 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, clientIp }) {
                 hostname: specs.hostname || n.nodeId,
                 os: specs.os || specs.osCaption || '',
                 online: !!n.online,
+                paused: !!n.paused,
+                workerState: n.workerState || (n.online ? 'idle' : 'offline'),
+                activeJobs: n.activeJobs || 0,
+                currentJobs: Array.isArray(n.currentJobs) ? n.currentJobs : [],
                 ageMs: n.ageMs,
                 cpuThreads: specs.cpuThreads || 0,
                 hasNvenc: !!specs.hasNvenc,
@@ -2793,6 +2965,7 @@ module.exports = {
     selectBestBlenderNode,
     createRemotionJob,
     selectBestRemotionNode,
+    findMatchingGenericNodes,
     selectBestGenericNode,
     createGenericJob,
     packJobInputs,
@@ -2802,4 +2975,7 @@ module.exports = {
     listJobs,
     resolveNodeRef,
     updateNodeMeta,
+    decorateNode,
+    handleHeartbeat,
+    buildSelfStatus,
 };

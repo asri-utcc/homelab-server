@@ -420,10 +420,39 @@
     color: #34d399;
     border: 1px solid rgba(16, 185, 129, 0.4);
   }
+  .status-pill--running {
+    background: rgba(14, 165, 233, 0.18);
+    color: #38bdf8;
+    border: 1px solid rgba(14, 165, 233, 0.48);
+  }
+  .status-pill--paused {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.48);
+  }
   .status-pill--offline {
     background: rgba(148, 163, 184, 0.14);
     color: #94a3b8;
     border: 1px solid rgba(148, 163, 184, 0.3);
+  }
+  .node-active-jobs {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .node-job-pill {
+    font-size: 0.74rem;
+    font-family: var(--mono);
+    color: #7dd3fc;
+    background: rgba(14, 165, 233, 0.1);
+    border: 1px solid rgba(14, 165, 233, 0.32);
+    border-radius: 8px;
+    padding: 5px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
   .node-meta {
     font-size: 0.78rem;
@@ -709,7 +738,7 @@
       <h2>🚀 ติดตั้ง Homelab Worker Agent (`homelab-agent.exe`) แบบคลิกเดียวจบ</h2>
       <p>
         ไฟล์เดียวจบ (คอมไพล์ด้วยภาษา Go ขนาด ~7 MB กิน RAM ไม่ถึง 15 MB) ฝังรหัสเชื่อมต่อของเครื่อง Homelab ไว้ให้แล้ว
-        แค่ดาวน์โหลดไป<strong>ดับเบิลคลิกบนเครื่อง Windows (`asridaytrade`)</strong> ตัวโปรแกรมจะติดตั้งตัวเองลงเครื่อง ตั้งค่าเปิดอัตโนมัติพร้อม Windows และออนไลน์ขึ้นหน้านี้ทันทีโดยไม่ต้องเปิดพอร์ตหรือตั้งค่าไฟร์วอลล์ค่ะ
+        แค่ดาวน์โหลดไป<strong>ดับเบิลคลิกบนเครื่อง Windows (`asridaytrade`)</strong> ตัวโปรแกรมจะติดตั้งตัวเองลงเครื่อง แสดง<strong>ไอคอนบน System Tray</strong> (เปลี่ยนสีตามสถานะ ว่าง/กำลังรันงาน/พักรับงาน/ออฟไลน์) พร้อม<strong>แอปหน้าต่างเช็กสถานะเครื่องแม่ในตัว</strong> ตั้งค่าเปิดอัตโนมัติพร้อม Windows และออนไลน์ขึ้นหน้านี้ทันทีค่ะ
       </p>
       <div class="dl-buttons">
         <a href="/api/agent-hub/download/homelab-agent.exe" class="btn btn--primary" download>
@@ -756,6 +785,7 @@
       <div class="panel__head">
         <div class="panel__title" id="ws-header-title">🎛️ ศูนย์สั่งการระยะไกล (เลือกเครื่องทางซ้ายเพื่อควบคุม)</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn--sm" id="btn-node-pause">⏸️ พักรับงาน</button>
           <button type="button" class="btn btn--sm" id="btn-node-rename">🏷️ ตั้งชื่อเครื่อง</button>
           <button type="button" class="btn btn--sm" id="btn-node-ping">📡 Ping ทดสอบ</button>
           <button type="button" class="btn btn--sm" id="btn-node-update">⬆️ สั่ง Self-Update (.exe)</button>
@@ -1028,6 +1058,14 @@ function renderNodesList() {
     const alias = String(n.alias || '').trim();
     const notes = String(n.notes || '').trim();
     const hostLabel = sp.hostname || n.nodeId;
+    const workerState = n.workerState || (n.online ? (n.paused ? 'paused' : ((n.activeJobs || 0) > 0 ? 'running' : 'idle')) : 'offline');
+    const currentJobs = Array.isArray(n.currentJobs) ? n.currentJobs : [];
+    const pillClass = workerState === 'running'
+      ? 'status-pill--running'
+      : (workerState === 'paused' ? 'status-pill--paused' : (n.online ? 'status-pill--online' : 'status-pill--offline'));
+    const pillText = workerState === 'running'
+      ? `● RUNNING (${n.activeJobs || currentJobs.length || 1})`
+      : (workerState === 'paused' ? '⏸ PAUSED' : (n.online ? '● IDLE' : '● OFFLINE'));
 
     return `
       <div class="node-card ${isSel ? 'is-selected' : ''}" data-node-id="${esc(n.nodeId)}">
@@ -1038,13 +1076,14 @@ function renderNodesList() {
           </div>
           <div class="node-card__actions">
             <button type="button" class="btn node-edit-btn" data-edit-node="${esc(n.nodeId)}" title="ตั้งชื่อเรียกและโน้ตโปรเจค">✏️</button>
-            <span class="status-pill ${n.online ? 'status-pill--online' : 'status-pill--offline'}">
-              ● ${n.online ? 'ONLINE' : 'OFFLINE'}
+            <span class="status-pill ${pillClass}">
+              ${pillText}
             </span>
           </div>
         </div>
         ${alias ? `<div class="node-alias-sub"><span>ID: ${esc(n.nodeId)}</span><span>· Host: ${esc(hostLabel)}</span></div>` : ''}
         ${notes ? `<div class="node-notes-box">📌 ${esc(notes)}</div>` : ''}
+        ${currentJobs.length ? `<div class="node-active-jobs">${currentJobs.map((j) => `<div class="node-job-pill"><span>⚙️ ${esc(j.name || j.jobId)} (${esc(j.kind || 'job')})</span><span>${esc(Math.round(Number(j.progress) || 0))}%</span></div>`).join('')}</div>` : ''}
 
         <div class="node-meta">
           <div><strong>OS:</strong> ${esc(sp.osCaption || `${sp.os || ''}/${sp.arch || ''}`)} · <strong>Uptime:</strong> ${fmtDur(mt.uptimeSec)}</div>
@@ -1075,7 +1114,16 @@ function renderNodesList() {
   if (selNode) {
     const sp = selNode.specs || {};
     const label = selNode.alias ? `${selNode.alias} (${selNode.nodeId})` : (sp.hostname || selNode.nodeId);
-    $('#ws-header-title').textContent = `🎛️ กำลังควบคุมเครื่อง: ${label} (${selNode.online ? '🟢 ออนไลน์' : '⚪ ออฟไลน์'})`;
+    const st = selNode.workerState || (selNode.online ? 'idle' : 'offline');
+    const stBadge = st === 'running'
+      ? `🔵 กำลังรันงาน (${selNode.activeJobs || 1})`
+      : (st === 'paused' ? '🟠 พักรับงาน' : (selNode.online ? '🟢 ออนไลน์ (ว่าง)' : '⚪ ออฟไลน์'));
+    $('#ws-header-title').textContent = `🎛️ กำลังควบคุมเครื่อง: ${label} (${stBadge})`;
+    const pauseBtn = $('#btn-node-pause');
+    if (pauseBtn) {
+      pauseBtn.textContent = selNode.paused ? '▶️ รับงานต่อ' : '⏸️ พักรับงาน';
+      pauseBtn.disabled = !selNode.online;
+    }
   }
 }
 
@@ -1323,6 +1371,22 @@ $('#btn-rebuild-bin').addEventListener('click', async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = '🔨 คอมไพล์ Binary ใหม่';
+  }
+});
+
+$('#btn-node-pause').addEventListener('click', async () => {
+  const selNode = hubState.nodes.find((n) => n.nodeId === hubState.selectedNodeId);
+  if (!selNode) {
+    showToast('กรุณาเลือกเครื่องลูกข่ายทางซ้ายก่อนค่ะ');
+    return;
+  }
+  const nextPaused = !selNode.paused;
+  try {
+    await runNodeCommand('agent.set-pause', { paused: nextPaused }, 15000);
+    showToast(nextPaused ? `⏸️ สั่งพักรับงานบน ${selNode.displayName || selNode.nodeId} แล้ว` : `▶️ สั่งรับงานต่อบน ${selNode.displayName || selNode.nodeId} แล้ว`);
+    await loadStatus();
+  } catch (err) {
+    showToast('เปลี่ยนสถานะไม่สำเร็จ: ' + err.message);
   }
 });
 

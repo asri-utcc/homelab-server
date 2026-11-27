@@ -7,7 +7,7 @@
 <title>Home-lab Control Panel</title>
 <link rel="stylesheet" href="/styles.css?v=20261121-bgstar">
 <link rel="stylesheet" href="/launcher-bar.css?v=20261124-launcher">
-<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov2">
+<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov3">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -348,150 +348,181 @@
   <div class="lab-view is-active" id="view-overview" data-view-id="overview">
     <div class="lab-launcher" id="lab-launcher" aria-label="App Launcher"></div>
 
-    <div class="ov2" id="ov2-root">
-      <!-- Top Summary & Quick Actions -->
-      <div class="ov2-topbar">
-        <div class="ov2-status-lead">
-          <span class="ov2-status-dot" id="ov2-status-dot" aria-hidden="true"></span>
-          <div>
+    <div class="ov2 ov3" id="ov2-root">
+      <!-- Band 0: Executive Greeting, Status Pill & Freshness -->
+      <header class="ov3-header ov3-span-12">
+        <div class="ov3-header__left">
+          <div class="ov3-header__title-row">
+            <h1 class="ov3-greet" id="ov3-greet">สวัสดี, บังยี</h1>
+            <span class="ov3-date" id="ov3-date"></span>
+          </div>
+          <div class="ov3-status-pill" id="ov3-status-pill" data-tone="ok" role="status" aria-live="polite">
+            <span class="ov2-status-dot" id="ov2-status-dot" aria-hidden="true"></span>
             <span class="ov2-status-summary" id="ov2-status-summary">กำลังโหลดภาพรวมระบบ…</span>
-            <span class="ov2-status-meta" id="ov2-status-meta"></span>
           </div>
         </div>
-        <div class="ov2-topbar-actions">
-          <button type="button" class="ov2-btn ov2-btn--primary" id="ov2-btn-new-chat">+ แชท AI ใหม่</button>
-          <a class="ov2-btn" href="/video-studio">+ สร้างคลิป</a>
-          <button type="button" class="ov2-btn" id="ov2-btn-refresh" title="อัปเดตข้อมูลทันที">รีเฟรช</button>
+        <div class="ov3-header__right">
+          <span class="ov3-fresh" id="ov3-fresh" title="เวลาที่ดึงข้อมูลล่าสุดจากเซิร์ฟเวอร์">
+            <span class="ov3-fresh__dot" aria-hidden="true"></span>
+            <span class="ov2-status-meta" id="ov2-status-meta">กำลังโหลด…</span>
+          </span>
+          <div class="ov3-header__actions">
+            <button type="button" class="ov2-btn ov2-btn--primary" id="ov2-btn-new-chat">+ แชท AI ใหม่</button>
+            <a class="ov2-btn ov2-btn--ghost" href="/video-studio">+ สร้างคลิป</a>
+            <button type="button" class="ov2-btn ov2-btn--ghost" id="ov2-btn-refresh" title="อัปเดตข้อมูลทันที">รีเฟรช</button>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <!-- Band 1: Attention Rail -->
-      <section class="ov2-rail" id="ov2-rail" aria-label="สิ่งที่ต้องดู"></section>
-
-      <!-- Band 2: AI Chats + Videos & Renders -->
-      <section class="ov2-grid-2" aria-label="งาน AI และวิดีโอ">
-        <!-- Card A: AI Chats -->
-        <article class="ov2-panel" id="ov2-panel-ai">
-          <header class="ov2-panel-head">
-            <div class="ov2-panel-title-group">
-              <h2 class="ov2-panel-title">งาน AI และแชท</h2>
-              <span class="ov2-panel-sub" id="ov2-ai-sub"></span>
-            </div>
-            <div class="ov2-panel-actions">
-              <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-ai-mark-all" style="display:none">อ่านแล้วทั้งหมด</button>
-              <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/gemini">เปิดทั้งหมด</a>
-            </div>
-          </header>
-          <div class="ov2-tabs" id="ov2-ai-tabs" role="tablist"></div>
-          <div class="ov2-panel-body" id="ov2-ai-body">
-            <div class="ov2-empty">กำลังโหลดรายการแชท AI…</div>
-          </div>
-        </article>
-
-        <!-- Card B: Videos & Active Renders -->
-        <article class="ov2-panel" id="ov2-panel-videos">
-          <header class="ov2-panel-head">
-            <div class="ov2-panel-title-group">
-              <h2 class="ov2-panel-title">วิดีโอและงานเรนเดอร์</h2>
-              <span class="ov2-panel-sub" id="ov2-vid-sub"></span>
-            </div>
-            <div class="ov2-panel-actions">
-              <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-vid-mark-all" style="display:none">ดูทั้งหมดแล้ว</button>
-              <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">เปิดสตูดิโอ</a>
-            </div>
-          </header>
-          <div class="ov2-tabs" id="ov2-vid-tabs" role="tablist"></div>
-          <div class="ov2-panel-body" id="ov2-vid-body">
-            <div class="ov2-empty">กำลังโหลดรายการวิดีโอ…</div>
-          </div>
-        </article>
+      <!-- Band 1: 6-Card KPI Strip (with CPU / RAM / Watts Sparklines) -->
+      <section class="ov3-kpis ov3-span-12" id="ov3-kpis" aria-label="ตัวชี้วัดหลัก">
+        <div class="ov3-kpi" data-tone="neutral" aria-hidden="true"><span class="ov3-skel" style="width:52%;height:12px"></span><span class="ov3-skel" style="width:40%;height:26px"></span><span class="ov3-skel" style="width:78%;height:12px"></span></div>
+        <div class="ov3-kpi" data-tone="neutral" aria-hidden="true"><span class="ov3-skel" style="width:56%;height:12px"></span><span class="ov3-skel" style="width:38%;height:26px"></span><span class="ov3-skel" style="width:74%;height:12px"></span></div>
+        <div class="ov3-kpi" data-tone="neutral" aria-hidden="true"><span class="ov3-skel" style="width:54%;height:12px"></span><span class="ov3-skel" style="width:44%;height:26px"></span><span class="ov3-skel" style="width:70%;height:12px"></span></div>
+        <div class="ov3-kpi" data-tone="neutral" aria-hidden="true"><span class="ov3-skel" style="width:48%;height:12px"></span><span class="ov3-skel" style="width:42%;height:26px"></span><span class="ov3-skel" style="width:76%;height:12px"></span></div>
+        <div class="ov3-kpi" data-tone="neutral" aria-hidden="true"><span class="ov3-skel" style="width:48%;height:12px"></span><span class="ov3-skel" style="width:42%;height:26px"></span><span class="ov3-skel" style="width:72%;height:12px"></span></div>
+        <div class="ov3-kpi" data-tone="neutral" aria-hidden="true"><span class="ov3-skel" style="width:54%;height:12px"></span><span class="ov3-skel" style="width:50%;height:26px"></span><span class="ov3-skel" style="width:80%;height:12px"></span></div>
       </section>
 
-      <!-- Band 3: Compute Resources (homelab + Agent Hub nodes) -->
-      <section class="ov2-panel" id="ov2-panel-nodes" aria-label="ทรัพยากรเครื่องและ Agent">
-        <header class="ov2-panel-head">
+      <!-- Band 2: Needs Attention Feed (7 cols) + AI & Video Activity Tabs (5 cols) -->
+      <article class="ov3-card ov3-attn ov3-span-7" id="ov3-attn" aria-label="สิ่งที่ต้องดูแลตอนนี้">
+        <header class="ov3-card__head">
           <div class="ov2-panel-title-group">
-            <h2 class="ov2-panel-title">ทรัพยากรเครื่องและ Agent</h2>
-            <span class="ov2-panel-sub" id="ov2-nodes-sub"></span>
-          </div>
-          <div class="ov2-panel-actions">
-            <a class="ov2-btn ov2-btn--xs" href="/agent-hub">จัดการ Agent Hub</a>
+            <h2 class="ov3-card__title">สิ่งที่ต้องดูแลตอนนี้</h2>
+            <span class="ov3-card__sub" id="ov3-attn-sub"></span>
           </div>
         </header>
-        <div class="ov2-table-wrap">
-          <table class="ov2-matrix">
-            <thead>
-              <tr>
-                <th scope="col">เครื่อง</th>
-                <th scope="col">CPU</th>
-                <th scope="col">RAM</th>
-                <th scope="col">GPU / ดิสก์ &amp; ความร้อน</th>
-                <th scope="col">งานที่ทำอยู่ / ล่าสุด</th>
-              </tr>
-            </thead>
-            <tbody id="ov2-matrix-body">
-              <tr><td colspan="5" style="text-align:center;color:var(--ov-ink-3);padding:18px;">กำลังโหลดข้อมูลเครื่อง…</td></tr>
-            </tbody>
-          </table>
+        <div class="ov3-card__body" id="ov3-attn-body">
+          <div class="ov3-attn__row" aria-hidden="true">
+            <span class="ov3-attn__ico"><span class="ov3-skel" style="width:20px;height:20px;border-radius:6px"></span></span>
+            <div class="ov3-attn__main"><span class="ov3-skel" style="width:64%;height:13px"></span><span class="ov3-skel" style="width:42%;height:11px"></span></div>
+            <div class="ov3-attn__act"><span class="ov3-skel" style="width:58px;height:26px;border-radius:6px"></span></div>
+          </div>
+          <div class="ov3-attn__row" aria-hidden="true">
+            <span class="ov3-attn__ico"><span class="ov3-skel" style="width:20px;height:20px;border-radius:6px"></span></span>
+            <div class="ov3-attn__main"><span class="ov3-skel" style="width:58%;height:13px"></span><span class="ov3-skel" style="width:48%;height:11px"></span></div>
+            <div class="ov3-attn__act"><span class="ov3-skel" style="width:58px;height:26px;border-radius:6px"></span></div>
+          </div>
+          <div class="ov3-attn__row" aria-hidden="true">
+            <span class="ov3-attn__ico"><span class="ov3-skel" style="width:20px;height:20px;border-radius:6px"></span></span>
+            <div class="ov3-attn__main"><span class="ov3-skel" style="width:52%;height:13px"></span><span class="ov3-skel" style="width:36%;height:11px"></span></div>
+            <div class="ov3-attn__act"><span class="ov3-skel" style="width:58px;height:26px;border-radius:6px"></span></div>
+          </div>
         </div>
-        <div class="ov2-nodes-mobile" id="ov2-nodes-mobile"></div>
+      </article>
+
+      <article class="ov3-card ov3-span-5" id="ov3-activity" aria-label="กิจกรรม AI และวิดีโอ">
+        <header class="ov3-card__head">
+          <div class="ov2-panel-title-group">
+            <h2 class="ov3-card__title">กิจกรรม AI และวิดีโอ</h2>
+            <span class="ov3-card__sub" id="ov3-activity-sub"></span>
+          </div>
+          <div class="ov2-panel-actions">
+            <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-ai-mark-all" style="display:none">อ่านแล้วทั้งหมด</button>
+            <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-vid-mark-all" style="display:none">ดูทั้งหมดแล้ว</button>
+            <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" id="ov3-activity-open-ai" href="/gemini">เปิดทั้งหมด</a>
+            <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" id="ov3-activity-open-vid" href="/video-studio" style="display:none">เปิดสตูดิโอ</a>
+          </div>
+        </header>
+        <div class="ov3-tabs" id="ov3-activity-tabs" role="tablist" aria-label="ประเภทกิจกรรม"></div>
+        <div class="ov3-activity-pane" id="ov2-panel-ai" role="tabpanel">
+          <div class="ov3-tabs ov3-tabs--sub" id="ov2-ai-tabs" role="tablist"></div>
+          <div class="ov3-card__body ov2-panel-body" id="ov2-ai-body">
+            <div class="ov3-empty">กำลังโหลดรายการแชท AI…</div>
+          </div>
+        </div>
+        <div class="ov3-activity-pane" id="ov2-panel-videos" role="tabpanel" hidden>
+          <div class="ov3-tabs ov3-tabs--sub" id="ov2-vid-tabs" role="tablist"></div>
+          <div class="ov3-card__body ov2-panel-body" id="ov2-vid-body">
+            <div class="ov3-empty">กำลังโหลดรายการวิดีโอ…</div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Band 3: Compute Resources Table (homelab always first + Agent Hub nodes) -->
+      <section class="ov3-card ov3-span-12" id="ov2-panel-nodes" aria-label="ทรัพยากรเครื่องและ Agent">
+        <header class="ov3-card__head">
+          <div class="ov2-panel-title-group">
+            <h2 class="ov3-card__title">ทรัพยากรเครื่องและ Agent</h2>
+            <span class="ov3-card__sub" id="ov2-nodes-sub"></span>
+          </div>
+          <div class="ov2-panel-actions">
+            <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/agent-hub">จัดการ Agent Hub</a>
+          </div>
+        </header>
+        <div class="ov3-card__body ov3-card__body--flush">
+          <div class="ov2-table-wrap">
+            <table class="ov3-table ov2-matrix">
+              <thead>
+                <tr>
+                  <th scope="col">เครื่อง</th>
+                  <th scope="col">CPU</th>
+                  <th scope="col">RAM</th>
+                  <th scope="col">GPU / ดิสก์ &amp; ความร้อน</th>
+                  <th scope="col">สถานะ / งานที่ทำอยู่</th>
+                </tr>
+              </thead>
+              <tbody id="ov2-matrix-body">
+                <tr><td colspan="5" style="text-align:center;color:var(--ov-ink-3);padding:18px;">กำลังโหลดข้อมูลเครื่อง…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="ov2-nodes-mobile" id="ov2-nodes-mobile"></div>
+        </div>
       </section>
 
-      <!-- Band 4: PM2 & Docker + Energy & Prayer Times -->
-      <section class="ov2-grid-bottom" aria-label="บริการ พลังงาน และเวลาละหมาด">
-        <!-- Infrastructure Panel -->
-        <article class="ov2-panel" id="ov2-panel-infra">
-          <header class="ov2-panel-head">
-            <div class="ov2-panel-title-group">
-              <h2 class="ov2-panel-title">บริการ PM2 และ Docker</h2>
-            </div>
-            <div class="ov2-panel-actions">
-              <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-btn-goto-services">จัดการทั้งหมด</button>
-            </div>
-          </header>
-          <div class="ov2-tabs" id="ov2-infra-tabs" role="tablist"></div>
-          <div class="ov2-panel-body" id="ov2-infra-body">
-            <div class="ov2-empty">กำลังโหลดสถานะบริการ…</div>
+      <!-- Band 4: Infrastructure (6 cols) + Energy (3 cols) + Prayer Times (3 cols) -->
+      <article class="ov3-card ov3-span-6" id="ov2-panel-infra" aria-label="บริการ PM2 และ Docker">
+        <header class="ov3-card__head">
+          <div class="ov2-panel-title-group">
+            <h2 class="ov3-card__title">บริการ PM2 และ Docker</h2>
+            <span class="ov3-card__sub" id="ov3-infra-sub"></span>
           </div>
-        </article>
+          <div class="ov2-panel-actions">
+            <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" id="ov2-btn-goto-services">จัดการทั้งหมด</button>
+          </div>
+        </header>
+        <div class="ov3-tabs" id="ov2-infra-tabs" role="tablist"></div>
+        <div class="ov3-card__body ov2-panel-body" id="ov2-infra-body">
+          <div class="ov3-empty">กำลังโหลดสถานะบริการ…</div>
+        </div>
+      </article>
 
-        <!-- Right Utility Column: Energy + Prayer -->
-        <div class="ov2-side-stack">
-          <article class="ov2-panel" id="ov2-panel-energy">
-            <header class="ov2-panel-head">
-              <div class="ov2-panel-title-group">
-                <h2 class="ov2-panel-title">ไฟฟ้าบ้าน (PZEM-01)</h2>
-              </div>
-              <div class="ov2-panel-actions">
-                <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-btn-goto-energy">ดูกราฟ</button>
-              </div>
-            </header>
-            <div class="ov2-energy-body">
-              <div class="ov2-energy-hero">
-                <div class="ov2-energy-watts" id="ov2-en-watts">— <small>W</small></div>
-                <div class="ov2-energy-ac" id="ov2-en-ac">— V · — A</div>
-              </div>
-              <div class="ov2-energy-stats">
-                <div class="ov2-energy-stat">
-                  <span>วันนี้</span>
-                  <strong id="ov2-en-today">—</strong>
-                  <small id="ov2-en-today-kwh">— kWh</small>
-                </div>
-                <div class="ov2-energy-stat">
-                  <span>เดือนนี้</span>
-                  <strong id="ov2-en-month">—</strong>
-                  <small id="ov2-en-month-kwh">— kWh</small>
-                </div>
-                <div class="ov2-energy-stat">
-                  <span>คาดการณ์เดือนนี้</span>
-                  <strong id="ov2-en-proj">—</strong>
-                  <small id="ov2-en-proj-kwh">— kWh</small>
-                </div>
-              </div>
+      <article class="ov3-card ov3-span-3" id="ov2-panel-energy" aria-label="ไฟฟ้าบ้าน (PZEM-01)">
+        <header class="ov3-card__head">
+          <div class="ov2-panel-title-group">
+            <h2 class="ov3-card__title">ไฟฟ้าบ้าน (PZEM-01)</h2>
+          </div>
+          <div class="ov2-panel-actions">
+            <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" id="ov2-btn-goto-energy">ดูกราฟ</button>
+          </div>
+        </header>
+        <div class="ov3-card__body ov2-energy-body">
+          <div class="ov2-energy-hero">
+            <div class="ov2-energy-watts" id="ov2-en-watts">— <small>W</small></div>
+            <div class="ov2-energy-ac" id="ov2-en-ac">— V · — A</div>
+          </div>
+          <div class="ov2-energy-stats">
+            <div class="ov2-energy-stat">
+              <span>วันนี้</span>
+              <strong id="ov2-en-today">—</strong>
+              <small id="ov2-en-today-kwh">— kWh</small>
             </div>
-          </article>
+            <div class="ov2-energy-stat">
+              <span>เดือนนี้</span>
+              <strong id="ov2-en-month">—</strong>
+              <small id="ov2-en-month-kwh">— kWh</small>
+            </div>
+            <div class="ov2-energy-stat">
+              <span>คาดการณ์เดือนนี้</span>
+              <strong id="ov2-en-proj">—</strong>
+              <small id="ov2-en-proj-kwh">— kWh</small>
+            </div>
+          </div>
+        </div>
+      </article>
 
-          <article class="ov2-panel" id="ov-prayer-card" aria-label="เวลาละหมาดประจำวัน">
+      <article class="ov3-card ov2-panel ov3-span-3" id="ov-prayer-card" aria-label="เวลาละหมาดประจำวัน">
             <header class="ov2-panel-head">
               <div class="ov2-panel-title-group">
                 <h2 class="ov2-panel-title">เวลาละหมาด</h2>
@@ -526,9 +557,7 @@
                 <div class="ov2-prayer-pill" data-prayer="Isha"><span>อิชาอ์</span><strong>--:--</strong></div>
               </div>
             </div>
-          </article>
-        </div>
-      </section>
+      </article>
     </div>
 
     <!-- Built-in Video Quick-Preview Modal -->
@@ -1797,7 +1826,7 @@
   </button>
 </nav>
 
-<script src="/overview-v2.js?v=20261127-ov2"></script>
+<script src="/overview-v2.js?v=20261127-ov3"></script>
 <script src="/launcher-bar.js?v=20261124-3dwow"></script>
 <script src="/model-alerts.js" defer></script>
 </body>

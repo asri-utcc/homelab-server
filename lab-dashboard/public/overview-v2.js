@@ -16,6 +16,9 @@
     const POLL_MS = 6000;
     const API_RETRY_MS = 60000;
     const SEEN_STORAGE_KEY = 'ov2_seen_videos_v1';
+    const HIST_STORAGE_KEY = 'ov2.hist.v1';
+    const HIST_MAX = 60;
+    const ATTN_COLLAPSED_LIMIT = 6;
     const TERMINAL_STATUSES = new Set(['completed', 'done', 'failed', 'error', 'cancelled', 'canceled', 'aborted']);
     const ACTIVE_VIDEO_STATUSES = new Set([
         'queued', 'researching', 'scripting', 'tts', 'rendering', 'mixing',
@@ -23,18 +26,27 @@
     ]);
 
     const ui = {
+        activityTab: 'ai',       // 'ai' | 'videos'
         aiTab: 'attention',      // 'attention' | 'unread' | 'recent'
         videoTab: 'unseen',      // 'unseen' | 'all' | 'active'
         infraTab: 'auto',        // 'auto' | 'problems' | 'pm2' | 'docker' | 'services'
+        attnExpanded: false,
         apiMode: 'unknown',      // 'unknown' | 'unified' | 'fallback'
         apiDisabledUntil: 0,
         lastSummary: null,
         lastRate: { rx: 0, tx: 0 },
         lastData: null,
         lastUpdatedAt: 0,
+        lastHistPushAt: 0,
+        hist: { cpu: [], ram: [], watts: [] },
+        prevKpiVals: {},
+        kpiFlashTimers: {},
+        freshTimer: null,
         inFlight: false,
         restartingKey: null,
     };
+
+    const flashTimers = new WeakMap();
 
     // ── Utilities ───────────────────────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
@@ -95,29 +107,29 @@
         return `${m}m`;
     }
 
+    function relTime(ms) {
+        const n = Number(ms);
+        if (!Number.isFinite(n) || n < 0) return 'ไม่ทราบเวลา';
+        const sec = Math.floor(n / 1000);
+        if (sec < 45) return sec < 5 ? 'เมื่อสักครู่' : `${sec} วินาทีที่แล้ว`;
+        const min = Math.floor(sec / 60);
+        if (min < 60) return `${min} นาทีที่แล้ว`;
+        const hr = Math.floor(min / 60);
+        if (hr < 24) return `${hr} ชั่วโมงที่แล้ว`;
+        const day = Math.floor(hr / 24);
+        return `${day} วันที่แล้ว`;
+    }
+
     function fmtRelTime(ts) {
         const ms = typeof ts === 'number' ? ts : Date.parse(ts || '');
         if (!Number.isFinite(ms) || ms <= 0) return '';
-        const diffSec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-        if (diffSec < 45) return 'เมื่อสักครู่';
-        const min = Math.floor(diffSec / 60);
-        if (min < 60) return `${min} นาทีที่แล้ว`;
-        const hr = Math.floor(min / 60);
-        if (hr < 24) return `${hr} ชม.ที่แล้ว`;
-        const day = Math.floor(hr / 24);
-        return `${day} วันที่แล้ว`;
+        return relTime(Math.max(0, Date.now() - ms));
     }
 
     function fmtAge(ageMs) {
         const ms = Number(ageMs);
         if (!Number.isFinite(ms) || ms < 0) return 'ออฟไลน์';
-        const sec = Math.floor(ms / 1000);
-        if (sec < 60) return `${sec} วิที่แล้ว`;
-        const min = Math.floor(sec / 60);
-        if (min < 60) return `${min} นาทีที่แล้ว`;
-        const hr = Math.floor(min / 60);
-        if (hr < 24) return `${hr} ชม.ที่แล้ว`;
-        return `${Math.floor(hr / 24)} วันที่แล้ว`;
+        return relTime(ms);
     }
 
     function fmtThb(v) {
@@ -137,6 +149,116 @@
         if (pct >= 88) return 'is-hot';
         if (pct >= 75) return 'is-warn';
         return baseClass || '';
+    }
+
+    function barToneV3(pct) {
+        if (pct >= 88) return 'err';
+        if (pct >= 75) return 'warn';
+        return 'ok';
+    }
+
+    // ── Telemetry History Ring Buffer (60 points in sessionStorage) ─────────
+    function loadHist() {
+        try {
+            const raw = sessionStorage.getItem(HIST_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return;
+            const cleanArr = (arr) => (Array.isArray(arr) ? arr.map(Number).filter(Number.isFinite).slice(-HIST_MAX) : []);
+            ui.hist = {
+                cpu: cleanArr(parsed.cpu),
+                ram: cleanArr(parsed.ram),
+                watts: cleanArr(parsed.watts),
+            };
+        } catch (_) {
+            ui.hist = { cpu: [], ram: [], watts: [] };
+        }
+    }
+
+    function saveHist() {
+        try {
+            sessionStorage.setItem(HIST_STORAGE_KEY, JSON.stringify(ui.hist));
+        } catch (_) {}
+    }
+
+    function pushHist(data) {
+        if (!data || typeof data !== 'object') return;
+        const host = data.host || {};
+        const cpuRaw = host.cpu && host.cpu.pct;
+        const ramRaw = host.mem && host.mem.pct;
+        const wattsRaw = data.infra && data.infra.energy && data.infra.energy.realtime && data.infra.energy.realtime.power_watts;
+
+        const pushPoint = (key, val) => {
+            const arr = ui.hist[key];
+            if (!Array.isArray(arr)) return;
+            arr.push(val);
+            if (arr.length > HIST_MAX) arr.splice(0, arr.length - HIST_MAX);
+        };
+
+        let changed = false;
+        if (cpuRaw != null && Number.isFinite(Number(cpuRaw))) {
+            pushPoint('cpu', Math.round(clampPct(cpuRaw) * 10) / 10);
+            changed = true;
+        }
+        if (ramRaw != null && Number.isFinite(Number(ramRaw))) {
+            pushPoint('ram', Math.round(clampPct(ramRaw) * 10) / 10);
+            changed = true;
+        }
+        if (wattsRaw != null && Number.isFinite(Number(wattsRaw)) && Number(wattsRaw) >= 0) {
+            pushPoint('watts', Math.round(Number(wattsRaw)));
+            changed = true;
+        }
+        if (changed) {
+            ui.lastHistPushAt = Date.now();
+            saveHist();
+        }
+    }
+
+    function sparkline(values, opts) {
+        const w = (opts && Number(opts.w)) || 120;
+        const h = (opts && Number(opts.h)) || 28;
+        const pts = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+        if (pts.length < 2) return '';
+
+        let min = Math.min(...pts);
+        let max = Math.max(...pts);
+        if (max - min < 1e-6) {
+            min -= 1;
+            max += 1;
+        }
+        const pad = 2;
+        const spanY = Math.max(1, h - pad * 2);
+        const coords = pts.map((val, idx) => {
+            const x = (idx / (pts.length - 1)) * w;
+            const y = pad + (1 - (val - min) / (max - min)) * spanY;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        });
+        const linePoints = coords.join(' ');
+        const areaPoints = `0,${h} ${linePoints} ${w},${h}`;
+
+        return `<svg class="ov3-spark-svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none" aria-hidden="true">`
+            + `<polygon class="ov3-spark-area" points="${areaPoints}" fill="currentColor" fill-opacity="0.14"></polygon>`
+            + `<polyline class="ov3-spark-line" points="${linePoints}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>`
+            + `</svg>`;
+    }
+
+    function jumpToPanel(selector) {
+        if (!selector) return;
+        const id = selector.startsWith('#') ? selector.slice(1) : selector;
+        const el = $(id);
+        if (!el) return;
+        const reduced = typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+        el.classList.remove('is-flash');
+        void el.offsetWidth;
+        el.classList.add('is-flash');
+        const prev = flashTimers.get(el);
+        if (prev) clearTimeout(prev);
+        flashTimers.set(el, setTimeout(() => {
+            el.classList.remove('is-flash');
+            flashTimers.delete(el);
+        }, 1200));
     }
 
     function normalizeVideoKey(input) {
@@ -645,113 +767,497 @@
     }
 
     // ── Renderers ───────────────────────────────────────────────────────────
-    function renderTopbarAndRail(data) {
+    function renderInitialSkeletons() {
+        if (ui.lastData) return;
+        const kpisEl = $('ov3-kpis');
+        if (kpisEl && !kpisEl.querySelector('.ov3-kpi')) {
+            kpisEl.innerHTML = Array.from({ length: 6 }, () => `
+                <div class="ov3-kpi" data-tone="neutral" aria-hidden="true">
+                    <span class="ov3-skel" style="width:54%;height:12px"></span>
+                    <span class="ov3-skel" style="width:42%;height:26px"></span>
+                    <span class="ov3-skel" style="width:76%;height:12px"></span>
+                </div>
+            `).join('');
+        }
+        const attnBody = $('ov3-attn-body');
+        if (attnBody && !attnBody.querySelector('.ov3-attn__row')) {
+            attnBody.innerHTML = Array.from({ length: 3 }, () => `
+                <div class="ov3-attn__row" aria-hidden="true">
+                    <span class="ov3-attn__ico"><span class="ov3-skel" style="width:20px;height:20px;border-radius:6px"></span></span>
+                    <div class="ov3-attn__main">
+                        <span class="ov3-skel" style="width:62%;height:13px"></span>
+                        <span class="ov3-skel" style="width:40%;height:11px"></span>
+                    </div>
+                    <div class="ov3-attn__act"><span class="ov3-skel" style="width:58px;height:26px;border-radius:6px"></span></div>
+                </div>
+            `).join('');
+        }
+    }
+
+    function getGreetingByHour(h) {
+        if (h >= 5 && h <= 11) return 'อรุณสวัสดิ์, บังยี';
+        if (h >= 12 && h <= 16) return 'สวัสดีตอนบ่าย, บังยี';
+        if (h >= 17 && h <= 21) return 'สวัสดีตอนเย็น, บังยี';
+        return 'ดึกแล้วนะคะ, บังยี';
+    }
+
+    function updateFreshness() {
+        const now = new Date();
+        const greetEl = $('ov3-greet');
+        if (greetEl) {
+            const nextGreet = getGreetingByHour(now.getHours());
+            if (greetEl.textContent !== nextGreet) greetEl.textContent = nextGreet;
+        }
+        const dateEl = $('ov3-date');
+        if (dateEl) {
+            const nextDate = now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' });
+            if (dateEl.textContent !== nextDate) dateEl.textContent = nextDate;
+        }
+
+        const freshEl = $('ov3-fresh');
+        const metaEl = $('ov2-status-meta');
+        if (!metaEl) return;
+
+        if (!ui.lastUpdatedAt) {
+            if (freshEl) freshEl.removeAttribute('data-stale');
+            metaEl.textContent = 'กำลังเชื่อมต่อ…';
+            return;
+        }
+
+        const diffMs = Math.max(0, Date.now() - ui.lastUpdatedAt);
+        const sec = Math.floor(diffMs / 1000);
+        if (sec > 60) {
+            if (freshEl) freshEl.setAttribute('data-stale', '1');
+            metaEl.textContent = `ข้อมูลอาจไม่สด · ${relTime(diffMs)}`;
+        } else {
+            if (freshEl) freshEl.removeAttribute('data-stale');
+            metaEl.textContent = sec < 2 ? 'อัปเดตล่าสุดเมื่อสักครู่' : `อัปเดตล่าสุด ${sec} วินาทีที่แล้ว`;
+        }
+    }
+
+    function renderHeader(data) {
+        updateFreshness();
+        if (!data) return;
+
         const att = data.attention || {};
+        const pillEl = $('ov3-status-pill');
         const dotEl = $('ov2-status-dot');
         const sumEl = $('ov2-status-summary');
-        const metaEl = $('ov2-status-meta');
 
         const parts = [];
+        if (att.servicesDown > 0) parts.push(`บริการมีปัญหา ${att.servicesDown}`);
         if (att.aiRunning > 0) parts.push(`AI กำลังทำ ${att.aiRunning} แชท`);
         if (att.aiUnread > 0) parts.push(`ยังไม่อ่าน ${att.aiUnread}`);
         if (att.videosUnseen > 0) parts.push(`วิดีโอยังไม่ดู ${att.videosUnseen}`);
         if (att.rendersActive > 0) parts.push(`กำลังเรนเดอร์ ${att.rendersActive}`);
-        if (att.servicesDown > 0) parts.push(`บริการมีปัญหา ${att.servicesDown}`);
 
+        const tone = att.servicesDown > 0 ? 'err' : (parts.length > 0 ? 'warn' : 'ok');
+
+        if (pillEl) pillEl.setAttribute('data-tone', tone);
         if (dotEl) {
-            dotEl.className = 'ov2-status-dot' + (att.servicesDown > 0 ? ' is-err' : (parts.length ? ' is-warn' : ''));
+            dotEl.className = 'ov2-status-dot' + (tone === 'err' ? ' is-err' : (tone === 'warn' ? ' is-warn' : ''));
         }
         if (sumEl) {
             sumEl.textContent = parts.length ? parts.join(' · ') : 'ทุกระบบปกติ ไม่มีงานค้างที่ต้องดู';
         }
-        if (metaEl) {
-            const t = ui.lastUpdatedAt
-                ? new Date(ui.lastUpdatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                : '--:--:--';
-            metaEl.textContent = `อัปเดต ${t}`;
+    }
+
+    function attnIcon(kind) {
+        if (kind === 'problem') {
+            return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+        }
+        if (kind === 'chat') {
+            return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+        }
+        if (kind === 'video') {
+            return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+        }
+        return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>';
+    }
+
+    function buildAttentionItems(data) {
+        const items = [];
+        const infra = (data && data.infra) || {};
+        const ai = (data && data.ai) || {};
+        const vids = (data && data.videos) || {};
+        const agents = (data && data.agents) || {};
+
+        // 1. Infrastructure problems & failed renders (highest priority)
+        for (const p of (infra.problems || [])) {
+            const canRestartPm2 = p.kind === 'pm2' && ['pm2-ui', 'onepercentbot'].includes(p.name);
+            const canRestartDocker = p.kind === 'docker' && String(p.name || '').startsWith('lab-');
+            const busy = ui.restartingKey === `${p.kind}:${p.name}`;
+            let actionsHtml = '';
+            if (canRestartPm2 || canRestartDocker) {
+                actionsHtml = `<button type="button" class="ov2-btn ov2-btn--xs" data-restart-kind="${esc(p.kind)}" data-restart-name="${esc(p.name)}" ${busy ? 'disabled' : ''}>${busy ? '…' : 'รีสตาร์ท'}</button>`;
+            } else if (p.url) {
+                actionsHtml = `<a class="ov2-btn ov2-btn--xs" href="${esc(p.url)}" target="_blank" rel="noopener">ตรวจสอบ</a>`;
+            } else {
+                actionsHtml = `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-jump-infra="problems">ดูบริการ</button>`;
+            }
+            items.push({
+                kind: 'problem',
+                title: p.name || 'บริการมีปัญหา',
+                badge: { text: p.kind || 'problem', tone: 'err' },
+                meta: [p.status, p.detail].filter(Boolean).join(' · '),
+                actionsHtml,
+            });
         }
 
-        const rail = $('ov2-rail');
-        if (!rail) return;
+        for (const f of (vids.failedRecent || [])) {
+            items.push({
+                kind: 'problem',
+                title: f.topic || f.id || 'งานเรนเดอร์ล้มเหลว',
+                badge: { text: 'เรนเดอร์ล้มเหลว', tone: 'err' },
+                meta: [f.message || f.status, f.updatedAt ? fmtRelTime(f.updatedAt) : ''].filter(Boolean).join(' · '),
+                actionsHtml: '<a class="ov2-btn ov2-btn--xs" href="/video-studio">ตรวจสอบ</a>',
+            });
+        }
 
-        const cells = [
+        // 2. Active video renders & non-overlapping Agent Hub jobs
+        const activeVidJobs = vids.activeJobs || [];
+        for (const j of activeVidJobs) {
+            const pct = Math.round(clampPct(j.progress));
+            items.push({
+                kind: 'job',
+                title: j.topic || j.id || 'งานสร้างวิดีโอ',
+                badge: { text: `เรนเดอร์ ${pct}%`, tone: 'ok' },
+                meta: ['Video Studio', j.stage || j.status, j.message || '', j.updatedAt ? fmtRelTime(j.updatedAt) : ''].filter(Boolean).join(' · '),
+                actionsHtml: '<a class="ov2-btn ov2-btn--xs" href="/video-studio">เปิดสตูดิโอ</a>',
+            });
+        }
+
+        for (const aj of (agents.activeJobs || [])) {
+            if (activeVidJobs.length > 0 && (aj.kind === 'remotion' || aj.name === 'motion-mix' || aj.name === 'motion-preview')) {
+                continue;
+            }
+            const pct = Math.round(clampPct(aj.progress));
+            items.push({
+                kind: 'job',
+                title: aj.name || aj.kind || 'งานลูกข่าย',
+                badge: { text: `${pct}%`, tone: 'ok' },
+                meta: [aj.nodeName || aj.nodeId || 'Agent', aj.kind, aj.message || aj.status].filter(Boolean).join(' · '),
+                actionsHtml: '<a class="ov2-btn ov2-btn--xs" href="/agent-hub">ดูงาน</a>',
+            });
+        }
+
+        // 3. Running & unread AI chats
+        for (const s of (ai.running || [])) {
+            const snip = cleanStepText(s.stepText) || s.lastMessage || '';
+            items.push({
+                kind: 'chat',
+                title: s.title || 'แชท AI',
+                badge: { text: s.elapsedMs ? `กำลังทำ ${fmtElapsed(s.elapsedMs)}` : 'กำลังทำ', tone: 'ok' },
+                meta: [s.model || 'auto', snip].filter(Boolean).join(' · '),
+                actionsHtml: `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-open-chat="${esc(s.id)}">ติดตาม</button>`,
+            });
+        }
+
+        for (const s of (ai.unread || [])) {
+            const timeText = fmtRelTime(s.lastCompletedAt || s.updatedAt);
+            items.push({
+                kind: 'chat',
+                title: s.title || 'แชท AI',
+                badge: { text: 'ยังไม่อ่าน', tone: 'warn' },
+                meta: [s.model || 'auto', s.lastMessage || '', timeText].filter(Boolean).join(' · '),
+                actionsHtml: `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-mark-chat-read="${esc(s.id)}" title="ทำเครื่องหมายว่าอ่านแล้ว">อ่านแล้ว</button><button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-open-chat="${esc(s.id)}">เปิดอ่าน</button>`,
+            });
+        }
+
+        // 4. Unseen completed videos
+        for (const v of (vids.unseen || [])) {
+            const metaParts = [];
+            if (v.durationSec) metaParts.push(fmtDuration(v.durationSec));
+            if (v.sizeBytes) metaParts.push(fmtMb(v.sizeBytes));
+            if (v.costThb != null) metaParts.push(fmtThb(v.costThb));
+            if (v.renderNode) metaParts.push(v.renderNode);
+            if (v.createdAtMs) metaParts.push(fmtRelTime(v.createdAtMs));
+            items.push({
+                kind: 'video',
+                title: v.title || v.key || 'วิดีโอใหม่',
+                badge: { text: 'ยังไม่ดู', tone: 'warn' },
+                meta: metaParts.join(' · '),
+                actionsHtml: `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-toggle-video-seen="${esc(v.key)}" data-next-seen="1" title="ทำเครื่องหมายว่าดูแล้ว">ดูแล้ว</button><button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-play-video="${esc(v.key)}">ดูคลิป</button>`,
+            });
+        }
+
+        return items;
+    }
+
+    function renderAttention(data) {
+        const subEl = $('ov3-attn-sub');
+        const bodyEl = $('ov3-attn-body');
+        if (!bodyEl) return;
+
+        const items = buildAttentionItems(data);
+        if (subEl) {
+            subEl.textContent = items.length > 0 ? `${items.length} รายการที่ต้องดูแล` : 'ทุกอย่างเรียบร้อย';
+        }
+
+        if (items.length === 0) {
+            ui.attnExpanded = false;
+            bodyEl.innerHTML = `
+                <div class="ov3-empty">
+                    <div class="ov3-empty__title">ทุกระบบปกติ ไม่มีรายการรอบังยีอยู่</div>
+                    <div class="ov3-empty__sub">แชท AI อ่านครบแล้ว · วิดีโอดูครบแล้ว · บริการทั้งหมดออนไลน์</div>
+                </div>
+            `;
+            return;
+        }
+
+        const visible = ui.attnExpanded ? items : items.slice(0, ATTN_COLLAPSED_LIMIT);
+        const rowsHtml = visible.map((item) => `
+            <div class="ov3-attn__row" data-kind="${esc(item.kind)}">
+                <span class="ov3-attn__ico" aria-hidden="true">${attnIcon(item.kind)}</span>
+                <div class="ov3-attn__main">
+                    <div class="ov3-attn__title">
+                        <span>${esc(item.title)}</span>
+                        ${item.badge ? `<span class="ov3-badge" data-tone="${esc(item.badge.tone)}">${esc(item.badge.text)}</span>` : ''}
+                    </div>
+                    ${item.meta ? `<div class="ov3-attn__meta">${esc(item.meta)}</div>` : ''}
+                </div>
+                <div class="ov3-attn__act">${item.actionsHtml}</div>
+            </div>
+        `).join('');
+
+        const toggleHtml = items.length > ATTN_COLLAPSED_LIMIT
+            ? `<div class="ov3-attn__footer"><button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-attn-toggle="${ui.attnExpanded ? '0' : '1'}">${ui.attnExpanded ? 'แสดงน้อยลง' : `ดูทั้งหมด (${items.length})`}</button></div>`
+            : '';
+
+        bodyEl.innerHTML = rowsHtml + toggleHtml;
+    }
+
+    function renderKpis(data) {
+        const kpisEl = $('ov3-kpis');
+        if (!kpisEl) return;
+
+        const att = data.attention || {};
+        const ai = data.ai || {};
+        const vids = data.videos || {};
+        const agents = data.agents || {};
+        const host = data.host || {};
+        const infra = data.infra || {};
+        const pm2 = infra.pm2 || { online: 0, total: 0 };
+        const docker = infra.docker || { running: 0, total: 0 };
+        const en = infra.energy || {};
+        const rt = en.realtime || {};
+        const td = en.today || {};
+        const mo = en.this_month || {};
+
+        const attnCount = buildAttentionItems(data).length;
+        const activityPending = (att.aiRunning || 0) + (att.aiUnread || 0) + (att.videosUnseen || 0) + (att.rendersActive || 0);
+
+        const actParts = [];
+        if (att.aiRunning > 0) actParts.push(`AI ทำ ${att.aiRunning}`);
+        if (att.aiUnread > 0) actParts.push(`รออ่าน ${att.aiUnread}`);
+        if (att.videosUnseen > 0) actParts.push(`ยังไม่ดู ${att.videosUnseen}`);
+        if (att.rendersActive > 0) actParts.push(`เรนเดอร์ ${att.rendersActive}`);
+
+        const hostCpu = host.cpu && host.cpu.pct != null ? clampPct(host.cpu.pct) : null;
+        const hostCores = (host.cpu && host.cpu.count) || 0;
+        const load1m = (host.load && host.load[0] != null) ? Number(host.load[0]).toFixed(2) : '—';
+
+        const hostMemPct = host.mem && host.mem.pct != null ? clampPct(host.mem.pct) : null;
+        const hostMemUsed = (host.mem && host.mem.used) || 0;
+        const hostMemTotal = (host.mem && host.mem.total) || 0;
+
+        const wattsVal = rt.power_watts != null && Number.isFinite(Number(rt.power_watts))
+            ? Math.round(Number(rt.power_watts))
+            : null;
+
+        const cards = [
             {
-                key: 'ai-running',
-                label: 'AI กำลังทำงาน',
-                val: String(att.aiRunning || 0),
-                sub: att.aiRunning > 0 ? ((data.ai.running[0] && data.ai.running[0].title) || 'กำลังประมวลผล') : 'ว่างอยู่',
-                tone: att.aiRunning > 0 ? 'tone-sky' : 'is-calm',
+                key: 'attention',
+                label: 'ต้องดูแลตอนนี้',
+                val: String(attnCount),
+                ctx: att.servicesDown > 0
+                    ? `บริการมีปัญหา ${att.servicesDown} รายการ`
+                    : (attnCount > 0
+                        ? `รอตรวจ ${attnCount} รายการ`
+                        : `PM2 ${pm2.online}/${pm2.total} · Docker ${docker.running}/${docker.total}`),
+                tone: att.servicesDown > 0 ? 'err' : (attnCount > 0 ? 'warn' : 'ok'),
+                jump: '#ov3-attn',
+                spark: '',
             },
             {
-                key: 'ai-unread',
-                label: 'แชทเสร็จยังไม่อ่าน',
-                val: String(att.aiUnread || 0),
-                sub: att.aiUnread > 0 ? 'คลิกเพื่อเปิดอ่าน' : 'อ่านครบแล้ว',
-                tone: att.aiUnread > 0 ? 'tone-amber' : 'is-calm',
+                key: 'activity',
+                label: 'AI & วิดีโอ',
+                val: String(activityPending),
+                ctx: actParts.length > 0
+                    ? actParts.slice(0, 2).join(' · ')
+                    : `${ai.totalSessions || 0} แชท · ${vids.totalCompleted || 0} คลิป`,
+                tone: (att.aiUnread > 0 || att.videosUnseen > 0) ? 'warn' : ((att.aiRunning > 0 || att.rendersActive > 0) ? 'ok' : 'neutral'),
+                jump: '#ov3-activity',
+                spark: '',
             },
             {
-                key: 'videos-unseen',
-                label: 'วิดีโอยังไม่ได้ดู',
-                val: String(att.videosUnseen || 0),
-                sub: att.videosUnseen > 0 ? `จากทั้งหมด ${data.videos.totalCompleted || 0} คลิป` : 'ดูครบทุกคลิปแล้ว',
-                tone: att.videosUnseen > 0 ? 'tone-amber' : 'is-calm',
-            },
-            {
-                key: 'renders-active',
-                label: 'กำลังเรนเดอร์ / งานหนัก',
-                val: String(att.rendersActive || 0),
-                sub: att.rendersActive > 0 ? 'กำลังทำงานบนคลัสเตอร์' : 'ไม่มีคิวเรนเดอร์',
-                tone: att.rendersActive > 0 ? 'tone-violet' : 'is-calm',
-            },
-            {
-                key: 'agents-online',
+                key: 'agents',
                 label: 'Agent ออนไลน์',
                 val: `${att.agentsOnline || 0}/${att.agentsTotal || 0}`,
-                sub: data.agents && data.agents.onlineNodes > 0
-                    ? `${data.agents.totalThreads || 0} เธรด · ${fmtGb(data.agents.totalRamBytes)} GB`
+                ctx: agents.onlineNodes > 0
+                    ? `${agents.totalThreads || 0} เธรด · ${fmtGb(agents.totalRamBytes)} GB`
                     : 'ไม่มีเครื่องลูกออนไลน์',
-                tone: att.agentsOnline > 0 ? 'tone-green' : 'tone-amber',
+                tone: att.agentsOnline > 0 ? 'ok' : (att.agentsTotal > 0 ? 'warn' : 'neutral'),
+                jump: '#ov2-panel-nodes',
+                spark: '',
             },
             {
-                key: 'services-down',
-                label: 'บริการมีปัญหา',
-                val: String(att.servicesDown || 0),
-                sub: att.servicesDown > 0
-                    ? ((data.infra.problems[0] && data.infra.problems[0].name) || 'ตรวจสอบด้านล่าง')
-                    : `PM2 ${data.infra.pm2.online}/${data.infra.pm2.total} · Docker ${data.infra.docker.running}/${data.infra.docker.total}`,
-                tone: att.servicesDown > 0 ? 'tone-red' : 'tone-green',
+                key: 'cpu',
+                label: 'CPU หลัก',
+                val: hostCpu != null ? `${hostCpu.toFixed(0)}%` : '—',
+                ctx: `${hostCores} คอร์ · load ${load1m}${host.peakTempC != null ? ` · ${host.peakTempC.toFixed(0)}°C` : ''}`,
+                tone: hostCpu == null ? 'neutral' : (hostCpu >= 88 ? 'err' : (hostCpu >= 75 ? 'warn' : 'neutral')),
+                jump: '#ov2-panel-nodes',
+                spark: sparkline(ui.hist.cpu, { w: 120, h: 28 }),
+            },
+            {
+                key: 'ram',
+                label: 'RAM หลัก',
+                val: hostMemPct != null ? `${hostMemPct.toFixed(0)}%` : '—',
+                ctx: hostMemTotal > 0 ? `${fmtGb(hostMemUsed)} / ${fmtGb(hostMemTotal)} GB` : '—',
+                tone: hostMemPct == null ? 'neutral' : (hostMemPct >= 88 ? 'err' : (hostMemPct >= 75 ? 'warn' : 'neutral')),
+                jump: '#ov2-panel-nodes',
+                spark: sparkline(ui.hist.ram, { w: 120, h: 28 }),
+            },
+            {
+                key: 'watts',
+                label: 'ไฟฟ้าบ้าน',
+                val: wattsVal != null ? `${wattsVal.toLocaleString('th-TH')} W` : '—',
+                ctx: td.cost_thb != null
+                    ? `วันนี้ ${fmtThb(td.cost_thb)}${mo.cost_thb != null ? ` · เดือน ${fmtThb(mo.cost_thb)}` : ''}`
+                    : 'กำลังรอข้อมูล PZEM-01',
+                tone: wattsVal == null ? 'neutral' : (wattsVal >= 3000 ? 'err' : (wattsVal >= 2000 ? 'warn' : 'neutral')),
+                jump: '#ov2-panel-energy',
+                spark: sparkline(ui.hist.watts, { w: 120, h: 28 }),
             },
         ];
 
-        rail.innerHTML = cells.map((c) => `
-            <button type="button" class="ov2-rail-cell ${c.tone}" data-rail-jump="${c.key}">
-                <span class="ov2-rail-lbl">${esc(c.label)}</span>
-                <div class="ov2-rail-val-row"><span class="ov2-rail-val">${esc(c.val)}</span></div>
-                <span class="ov2-rail-sub">${esc(c.sub)}</span>
-            </button>
-        `).join('');
+        // Replace skeleton markup with real KPI buttons on first data arrival, then patch in place
+        const hasRealButtons = kpisEl.querySelectorAll('button.ov3-kpi[data-kpi-key]').length === cards.length;
+        if (!hasRealButtons) {
+            kpisEl.innerHTML = cards.map((c) => `
+                <button type="button" class="ov3-kpi" data-kpi-key="${esc(c.key)}" data-tone="${esc(c.tone)}" data-jump="${esc(c.jump)}">
+                    <span class="ov3-kpi__label">${esc(c.label)}</span>
+                    <span class="ov3-kpi__value">${esc(c.val)}</span>
+                    <span class="ov3-kpi__ctx">${esc(c.ctx)}</span>
+                    ${c.spark ? `<span class="ov3-kpi__spark" aria-hidden="true">${c.spark}</span>` : ''}
+                </button>
+            `).join('');
+            for (const c of cards) ui.prevKpiVals[c.key] = c.val;
+            return;
+        }
+
+        for (const c of cards) {
+            const cardEl = kpisEl.querySelector(`button.ov3-kpi[data-kpi-key="${c.key}"]`);
+            if (!cardEl) continue;
+            cardEl.setAttribute('data-tone', c.tone);
+            cardEl.setAttribute('data-jump', c.jump);
+            const lblEl = cardEl.querySelector('.ov3-kpi__label');
+            const valEl = cardEl.querySelector('.ov3-kpi__value');
+            const ctxEl = cardEl.querySelector('.ov3-kpi__ctx');
+            if (lblEl && lblEl.textContent !== c.label) lblEl.textContent = c.label;
+            if (valEl && valEl.textContent !== c.val) valEl.textContent = c.val;
+            if (ctxEl && ctxEl.textContent !== c.ctx) ctxEl.textContent = c.ctx;
+
+            let sparkEl = cardEl.querySelector('.ov3-kpi__spark');
+            if (c.spark) {
+                if (!sparkEl) {
+                    sparkEl = document.createElement('span');
+                    sparkEl.className = 'ov3-kpi__spark';
+                    sparkEl.setAttribute('aria-hidden', 'true');
+                    cardEl.appendChild(sparkEl);
+                }
+                sparkEl.innerHTML = c.spark;
+            } else if (sparkEl) {
+                sparkEl.remove();
+            }
+
+            const prevVal = ui.prevKpiVals[c.key];
+            if (prevVal !== undefined && prevVal !== c.val) {
+                cardEl.classList.remove('is-changed');
+                void cardEl.offsetWidth;
+                cardEl.classList.add('is-changed');
+                if (ui.kpiFlashTimers[c.key]) clearTimeout(ui.kpiFlashTimers[c.key]);
+                ui.kpiFlashTimers[c.key] = setTimeout(() => {
+                    cardEl.classList.remove('is-changed');
+                    delete ui.kpiFlashTimers[c.key];
+                }, 600);
+            }
+            ui.prevKpiVals[c.key] = c.val;
+        }
+    }
+
+    function renderActivityTabs(data) {
+        const ai = (data && data.ai) || { runningCount: 0, unreadCount: 0, totalSessions: 0 };
+        const vids = (data && data.videos) || { activeCount: 0, unseenCount: 0, totalCompleted: 0 };
+        const agentActiveCount = (data && data.agents && data.agents.activeJobs) ? data.agents.activeJobs.length : 0;
+        const aiAttn = (ai.runningCount || 0) + (ai.unreadCount || 0);
+        const vidAttn = (vids.unseenCount || 0) + (vids.activeCount || 0) + agentActiveCount;
+
+        const tabsEl = $('ov3-activity-tabs');
+        if (tabsEl) {
+            const tabs = [
+                {
+                    id: 'ai',
+                    label: 'แชท AI',
+                    count: aiAttn > 0 ? aiAttn : (ai.totalSessions || 0),
+                    tone: ai.runningCount > 0 ? 'ok' : (ai.unreadCount > 0 ? 'warn' : 'neutral'),
+                },
+                {
+                    id: 'videos',
+                    label: 'วิดีโอ & เรนเดอร์',
+                    count: vidAttn > 0 ? vidAttn : (vids.totalCompleted || 0),
+                    tone: (vids.activeCount > 0 || agentActiveCount > 0) ? 'ok' : (vids.unseenCount > 0 ? 'warn' : 'neutral'),
+                },
+            ];
+            tabsEl.innerHTML = tabs.map((t) => `
+                <button type="button" class="ov3-tab" role="tab" aria-selected="${ui.activityTab === t.id ? 'true' : 'false'}" data-activity-tab="${t.id}">
+                    <span>${esc(t.label)}</span>
+                    <span class="ov3-badge" data-tone="${esc(t.tone)}">${esc(t.count)}</span>
+                </button>
+            `).join('');
+        }
+
+        const isAi = ui.activityTab !== 'videos';
+        const aiPane = $('ov2-panel-ai');
+        const vidPane = $('ov2-panel-videos');
+        const subEl = $('ov3-activity-sub');
+        const aiMarkAll = $('ov2-ai-mark-all');
+        const vidMarkAll = $('ov2-vid-mark-all');
+        const openAiLink = $('ov3-activity-open-ai');
+        const openVidLink = $('ov3-activity-open-vid');
+
+        if (aiPane) aiPane.hidden = !isAi;
+        if (vidPane) vidPane.hidden = isAi;
+        if (subEl) {
+            subEl.textContent = isAi
+                ? `${ai.totalSessions || 0} แชททั้งหมด`
+                : `${vids.totalCompleted || 0} คลิปที่เสร็จแล้ว`;
+        }
+        if (aiMarkAll) aiMarkAll.style.display = (isAi && ai.unreadCount > 0) ? 'inline-flex' : 'none';
+        if (vidMarkAll) vidMarkAll.style.display = (!isAi && vids.unseenCount > 0) ? 'inline-flex' : 'none';
+        if (openAiLink) openAiLink.style.display = isAi ? 'inline-flex' : 'none';
+        if (openVidLink) openVidLink.style.display = !isAi ? 'inline-flex' : 'none';
     }
 
     function renderAiPanel(data) {
         const ai = data.ai || { running: [], unread: [], recent: [], runningCount: 0, unreadCount: 0, totalSessions: 0 };
-        const subEl = $('ov2-ai-sub');
         const tabsEl = $('ov2-ai-tabs');
         const bodyEl = $('ov2-ai-body');
         const markAllBtn = $('ov2-ai-mark-all');
 
-        if (subEl) subEl.textContent = `${ai.totalSessions || 0} แชททั้งหมด`;
-        if (markAllBtn) markAllBtn.style.display = ai.unreadCount > 0 ? 'inline-flex' : 'none';
+        if (markAllBtn) markAllBtn.style.display = (ui.activityTab !== 'videos' && ai.unreadCount > 0) ? 'inline-flex' : 'none';
 
         const attentionCount = (ai.runningCount || 0) + (ai.unreadCount || 0);
         if (tabsEl) {
             tabsEl.innerHTML = [
-                { id: 'attention', label: 'ต้องดู', count: attentionCount, cls: ai.runningCount > 0 ? 'is-live' : (ai.unreadCount > 0 ? 'is-alert' : '') },
-                { id: 'unread', label: 'ยังไม่อ่าน', count: ai.unreadCount || 0, cls: ai.unreadCount > 0 ? 'is-alert' : '' },
-                { id: 'recent', label: 'แชทล่าสุด', count: (ai.recent || []).length, cls: '' },
+                { id: 'attention', label: 'ต้องดู', count: attentionCount, tone: ai.runningCount > 0 ? 'ok' : (ai.unreadCount > 0 ? 'warn' : 'neutral') },
+                { id: 'unread', label: 'ยังไม่อ่าน', count: ai.unreadCount || 0, tone: ai.unreadCount > 0 ? 'warn' : 'neutral' },
+                { id: 'recent', label: 'แชทล่าสุด', count: (ai.recent || []).length, tone: 'neutral' },
             ].map((t) => `
-                <button type="button" class="ov2-tab${ui.aiTab === t.id ? ' is-active' : ''}" data-ai-tab="${t.id}">
-                    <span>${t.label}</span>
-                    <span class="ov2-tab-cnt ${t.cls}">${t.count}</span>
+                <button type="button" class="ov3-tab" role="tab" aria-selected="${ui.aiTab === t.id ? 'true' : 'false'}" data-ai-tab="${t.id}">
+                    <span>${esc(t.label)}</span>
+                    <span class="ov3-badge" data-tone="${esc(t.tone)}">${esc(t.count)}</span>
                 </button>
             `).join('');
         }
@@ -761,8 +1267,8 @@
         const renderChatRow = (s) => {
             const cls = s.running ? ' is-running' : (s.unread ? ' is-unread' : '');
             const statusBadge = s.running
-                ? `<span class="ov2-pill ov2-pill--sky">กำลังทำ${s.elapsedMs ? ` ${fmtElapsed(s.elapsedMs)}` : ''}</span>`
-                : (s.unread ? `<span class="ov2-pill ov2-pill--amber">เสร็จแล้ว · ยังไม่อ่าน</span>` : '');
+                ? `<span class="ov3-badge" data-tone="ok">กำลังทำ${s.elapsedMs ? ` ${esc(fmtElapsed(s.elapsedMs))}` : ''}</span>`
+                : (s.unread ? '<span class="ov3-badge" data-tone="warn">ยังไม่อ่าน</span>' : '');
             const stepClean = s.running ? cleanStepText(s.stepText) : '';
             const snip = stepClean || s.lastMessage || '';
             const timeText = fmtRelTime(s.lastCompletedAt || s.updatedAt);
@@ -770,19 +1276,18 @@
                 <div class="ov2-chat-row${cls}">
                     <a class="ov2-chat-main" href="/gemini" data-open-chat="${esc(s.id)}">
                         <div class="ov2-chat-title-row">
-                            ${s.running ? '<span class="ov2-live-dot" aria-hidden="true"></span>' : ''}
                             <span class="ov2-chat-title">${esc(s.title)}</span>
                             ${statusBadge}
                         </div>
                         ${snip ? `<div class="ov2-chat-snip">${esc(snip)}</div>` : ''}
                         <div class="ov2-chat-meta">
                             <span class="ov2-mono">${esc(s.model || 'auto')}</span>
-                            ${s.messageCount ? `<span>${s.messageCount} ข้อความ</span>` : ''}
+                            ${s.messageCount ? `<span>${esc(s.messageCount)} ข้อความ</span>` : ''}
                             ${timeText ? `<span>${esc(timeText)}</span>` : ''}
                         </div>
                     </a>
                     <div class="ov2-chat-actions">
-                        ${s.unread ? `<button type="button" class="ov2-btn ov2-btn--xs" data-mark-chat-read="${esc(s.id)}" title="ทำเครื่องหมายว่าอ่านแล้ว">อ่านแล้ว</button>` : ''}
+                        ${s.unread ? `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-mark-chat-read="${esc(s.id)}" title="ทำเครื่องหมายว่าอ่านแล้ว">อ่านแล้ว</button>` : ''}
                         <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-open-chat="${esc(s.id)}">เปิด</button>
                     </div>
                 </div>
@@ -794,7 +1299,7 @@
             const primaryIds = new Set(primary.map((x) => x.id));
             const filler = (ai.recent || []).filter((x) => !primaryIds.has(x.id)).slice(0, Math.max(0, 6 - primary.length));
             if (primary.length === 0 && filler.length === 0) {
-                bodyEl.innerHTML = '<div class="ov2-empty">ยังไม่มีประวัติแชท AI</div>';
+                bodyEl.innerHTML = '<div class="ov3-empty">ยังไม่มีประวัติแชท AI</div>';
                 return;
             }
             const blocks = [];
@@ -805,7 +1310,7 @@
                     blocks.push(`<div class="ov2-list">${filler.map(renderChatRow).join('')}</div>`);
                 }
             } else {
-                blocks.push('<div class="ov2-panel-sub" style="padding:2px 4px 4px;">ไม่มีแชทกำลังทำหรือยังไม่อ่าน — แสดงแชทล่าสุด</div>');
+                blocks.push('<div class="ov3-card__sub" style="padding:2px 4px 4px;">ไม่มีแชทกำลังทำหรือยังไม่อ่าน — แสดงแชทล่าสุด</div>');
                 blocks.push(`<div class="ov2-list">${filler.map(renderChatRow).join('')}</div>`);
             }
             bodyEl.innerHTML = blocks.join('');
@@ -814,7 +1319,7 @@
 
         const items = ui.aiTab === 'unread' ? (ai.unread || []) : (ai.recent || []).slice(0, 8);
         if (items.length === 0) {
-            bodyEl.innerHTML = `<div class="ov2-empty">${ui.aiTab === 'unread' ? 'อ่านแชท AI ครบทุกรายการแล้ว' : 'ยังไม่มีประวัติแชท AI'}</div>`;
+            bodyEl.innerHTML = `<div class="ov3-empty">${ui.aiTab === 'unread' ? 'อ่านแชท AI ครบทุกรายการแล้ว' : 'ยังไม่มีประวัติแชท AI'}</div>`;
             return;
         }
         bodyEl.innerHTML = `<div class="ov2-list">${items.map(renderChatRow).join('')}</div>`;
@@ -823,24 +1328,22 @@
     function renderVideosPanel(data) {
         const vids = data.videos || { activeJobs: [], unseen: [], recent: [], activeCount: 0, unseenCount: 0, totalCompleted: 0 };
         const agentActive = (data.agents && data.agents.activeJobs) || [];
-        const subEl = $('ov2-vid-sub');
         const tabsEl = $('ov2-vid-tabs');
         const bodyEl = $('ov2-vid-body');
         const markAllBtn = $('ov2-vid-mark-all');
 
-        if (subEl) subEl.textContent = `${vids.totalCompleted || 0} คลิปที่เสร็จแล้ว`;
-        if (markAllBtn) markAllBtn.style.display = vids.unseenCount > 0 ? 'inline-flex' : 'none';
+        if (markAllBtn) markAllBtn.style.display = (ui.activityTab === 'videos' && vids.unseenCount > 0) ? 'inline-flex' : 'none';
 
         const activeTotal = (vids.activeCount || 0) + agentActive.length;
         if (tabsEl) {
             tabsEl.innerHTML = [
-                { id: 'unseen', label: 'ยังไม่ดู', count: vids.unseenCount || 0, cls: vids.unseenCount > 0 ? 'is-alert' : '' },
-                { id: 'all', label: 'ทั้งหมด', count: vids.totalCompleted || 0, cls: '' },
-                { id: 'active', label: 'กำลังเรนเดอร์', count: activeTotal, cls: activeTotal > 0 ? 'is-live' : '' },
+                { id: 'unseen', label: 'ยังไม่ดู', count: vids.unseenCount || 0, tone: vids.unseenCount > 0 ? 'warn' : 'neutral' },
+                { id: 'all', label: 'ทั้งหมด', count: vids.totalCompleted || 0, tone: 'neutral' },
+                { id: 'active', label: 'กำลังเรนเดอร์', count: activeTotal, tone: activeTotal > 0 ? 'ok' : 'neutral' },
             ].map((t) => `
-                <button type="button" class="ov2-tab${ui.videoTab === t.id ? ' is-active' : ''}" data-vid-tab="${t.id}">
-                    <span>${t.label}</span>
-                    <span class="ov2-tab-cnt ${t.cls}">${t.count}</span>
+                <button type="button" class="ov3-tab" role="tab" aria-selected="${ui.videoTab === t.id ? 'true' : 'false'}" data-vid-tab="${t.id}">
+                    <span>${esc(t.label)}</span>
+                    <span class="ov3-badge" data-tone="${esc(t.tone)}">${esc(t.count)}</span>
                 </button>
             `).join('');
         }
@@ -857,7 +1360,7 @@
                         <span>${esc(j.topic || j.id)}</span>
                         <span class="ov2-mono">${Math.round(pct)}%</span>
                     </div>
-                    <div class="ov2-bar"><i class="is-gpu" style="width:${pct.toFixed(0)}%"></i></div>
+                    <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="ok" style="width:${pct.toFixed(0)}%"></span></div>
                     <div class="ov2-render-sub">Video Studio · ขั้นตอน: ${esc(j.stage || j.status)}${j.message ? ` — ${esc(j.message)}` : ''}</div>
                 </div>
             `);
@@ -870,7 +1373,7 @@
                         <span>${esc(aj.name || aj.kind)} (${esc(aj.nodeName || aj.nodeId || 'Agent')})</span>
                         <span class="ov2-mono">${Math.round(pct)}%</span>
                     </div>
-                    <div class="ov2-bar"><i class="is-gpu" style="width:${pct.toFixed(0)}%"></i></div>
+                    <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="ok" style="width:${pct.toFixed(0)}%"></span></div>
                     <div class="ov2-render-sub">${esc(aj.kind)} · ${esc(aj.status)}${aj.message ? ` — ${esc(aj.message)}` : ''}</div>
                 </div>
             `);
@@ -879,7 +1382,7 @@
         if (ui.videoTab === 'active') {
             bodyEl.innerHTML = activeCards.length
                 ? activeCards.join('')
-                : '<div class="ov2-empty">ขณะนี้ไม่มีงานเรนเดอร์หรือสร้างวิดีโอที่กำลังทำงาน</div>';
+                : '<div class="ov3-empty">ขณะนี้ไม่มีงานเรนเดอร์หรือสร้างวิดีโอที่กำลังทำงาน</div>';
             return;
         }
 
@@ -892,11 +1395,11 @@
 
         const listSlice = list.slice(0, 7);
         if (listSlice.length === 0 && activeCards.length === 0) {
-            bodyEl.innerHTML = '<div class="ov2-empty">ยังไม่มีวิดีโอที่สร้างเสร็จ — กด "สร้างคลิป" เพื่อเริ่มงานใหม่</div>';
+            bodyEl.innerHTML = '<div class="ov3-empty">ยังไม่มีวิดีโอที่สร้างเสร็จ — กด "สร้างคลิป" เพื่อเริ่มงานใหม่</div>';
             return;
         }
 
-        const noteHtml = fallbackNote ? `<div class="ov2-panel-sub" style="padding:2px 4px 4px;">${esc(fallbackNote)}</div>` : '';
+        const noteHtml = fallbackNote ? `<div class="ov3-card__sub" style="padding:2px 4px 4px;">${esc(fallbackNote)}</div>` : '';
         const rowsHtml = listSlice.map((v) => {
             const meta = [];
             if (v.durationSec) meta.push(fmtDuration(v.durationSec));
@@ -911,13 +1414,13 @@
                     </div>
                     <div class="ov2-video-info">
                         <div class="ov2-video-title" title="${esc(v.title)}">
-                            ${!v.seen ? '<span class="ov2-pill ov2-pill--amber" style="margin-right:6px;">ใหม่</span>' : ''}${esc(v.title)}
+                            ${!v.seen ? '<span class="ov3-badge" data-tone="warn" style="margin-right:6px;">ใหม่</span>' : ''}${esc(v.title)}
                         </div>
                         <div class="ov2-video-meta">${meta.map((m) => `<span>${esc(m)}</span>`).join('<span>·</span>')}</div>
                     </div>
                     <div class="ov2-video-actions">
                         <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-play-video="${esc(v.key)}">ดู</button>
-                        <button type="button" class="ov2-btn ov2-btn--xs" data-toggle-video-seen="${esc(v.key)}" data-next-seen="${v.seen ? '0' : '1'}" title="${v.seen ? 'ทำเป็นยังไม่ได้ดู' : 'ทำเครื่องหมายว่าดูแล้ว'}">${v.seen ? 'ยังไม่ดู' : 'ดูแล้ว'}</button>
+                        <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-toggle-video-seen="${esc(v.key)}" data-next-seen="${v.seen ? '0' : '1'}" title="${v.seen ? 'ทำเป็นยังไม่ได้ดู' : 'ทำเครื่องหมายว่าดูแล้ว'}">${v.seen ? 'ยังไม่ดู' : 'ดูแล้ว'}</button>
                     </div>
                 </div>
             `;
@@ -929,6 +1432,9 @@
     function renderResourceMatrix(data) {
         const host = data.host || {};
         const agents = data.agents || { nodes: [], onlineNodes: 0, totalNodes: 0 };
+        const infra = data.infra || {};
+        const pm2 = infra.pm2 || { online: 0, total: 0 };
+        const docker = infra.docker || { running: 0, total: 0 };
         const subEl = $('ov2-nodes-sub');
         const tbody = $('ov2-matrix-body');
         const mobEl = $('ov2-nodes-mobile');
@@ -939,6 +1445,9 @@
         const hostMemUsed = (host.mem && host.mem.used) || 0;
         const hostMemPct = clampPct(host.mem && host.mem.pct);
         const rootDisk = (host.disks || []).find((d) => d && d.mount === '/') || (host.disks || [])[0] || null;
+
+        // homelab host is always row 1, followed by online agents, then offline agents
+        const sortedAgents = [...(agents.nodes || [])].sort((a, b) => Number(Boolean(b.online)) - Number(Boolean(a.online)));
 
         const allMachines = [
             {
@@ -957,37 +1466,47 @@
                     `↓ ${fmtRate(ui.lastRate.rx)} ↑ ${fmtRate(ui.lastRate.tx)}`,
                 ].filter(Boolean).join(' · '),
                 gpuPct: null,
-                jobMain: `PM2 ${data.infra.pm2.online}/${data.infra.pm2.total} · Docker ${data.infra.docker.running}/${data.infra.docker.total}`,
+                jobMain: `PM2 ${pm2.online}/${pm2.total} · Docker ${docker.running}/${docker.total}`,
                 jobSub: data.ai && data.ai.runningCount > 0 ? `AI กำลังทำงาน ${data.ai.runningCount} แชท` : 'ทำงานปกติ',
                 busy: Boolean(data.ai && data.ai.runningCount > 0),
+                ageMs: null,
             },
-            ...(agents.nodes || []).map((n) => {
-                const jobMain = n.currentJob
-                    ? `${n.currentJob.name} (${Math.round(clampPct(n.currentJob.progress))}%)`
-                    : (n.online ? 'ว่างพร้อมรับงาน' : `ออฟไลน์ · ${fmtAge(n.ageMs)}`);
-                const jobSub = n.currentJob
-                    ? `${n.currentJob.kind} · ${n.currentJob.message || n.currentJob.status}`
-                    : (n.lastJob ? `ล่าสุด: ${n.lastJob.name} · ${fmtRelTime(n.lastJob.finishedAt || n.lastJob.updatedAt)}` : (n.online ? 'รอรับคำสั่ง offload' : 'ไม่ได้เชื่อมต่อ'));
+            ...sortedAgents.map((n) => {
+                const isOnline = Boolean(n.online);
+                const offlineStatus = n.ageMs != null && Number.isFinite(Number(n.ageMs))
+                    ? `ออฟไลน์ · เห็นล่าสุด ${relTime(n.ageMs)}`
+                    : 'ออฟไลน์';
+                const jobMain = !isOnline
+                    ? offlineStatus
+                    : (n.currentJob
+                        ? `${n.currentJob.name} (${Math.round(clampPct(n.currentJob.progress))}%)`
+                        : 'ว่างพร้อมรับงาน');
+                const jobSub = !isOnline
+                    ? (n.lastJob ? `งานล่าสุด: ${n.lastJob.name}` : 'ไม่ได้เชื่อมต่อ')
+                    : (n.currentJob
+                        ? `${n.currentJob.kind} · ${n.currentJob.message || n.currentJob.status}`
+                        : (n.lastJob ? `ล่าสุด: ${n.lastJob.name} · ${fmtRelTime(n.lastJob.finishedAt || n.lastJob.updatedAt)}` : 'รอรับคำสั่ง offload'));
                 return {
                     isHost: false,
-                    online: n.online,
+                    online: isOnline,
                     displayName: n.displayName || n.hostname || n.nodeId,
                     sub: `${n.hostname || n.nodeId}${n.os ? ` · ${n.os}` : ''}`,
-                    cpuPct: n.cpuPct != null ? clampPct(n.cpuPct) : null,
-                    cpuMeta: n.cpuThreads ? `${n.cpuThreads} เธรด` : '—',
-                    memUsed: n.memUsed || 0,
-                    memTotal: n.memTotal || 0,
-                    memPct: n.memPct != null ? clampPct(n.memPct) : null,
-                    gpuPrimary: n.gpuModel || 'ไม่มีข้อมูล GPU',
-                    gpuSecondary: !n.online
-                        ? 'ออฟไลน์'
+                    cpuPct: isOnline && n.cpuPct != null ? clampPct(n.cpuPct) : null,
+                    cpuMeta: isOnline ? (n.cpuThreads ? `${n.cpuThreads} เธรด` : '') : '',
+                    memUsed: isOnline ? (n.memUsed || 0) : 0,
+                    memTotal: isOnline ? (n.memTotal || 0) : 0,
+                    memPct: isOnline && n.memPct != null ? clampPct(n.memPct) : null,
+                    gpuPrimary: isOnline ? (n.gpuModel || 'ไม่มีข้อมูล GPU') : '—',
+                    gpuSecondary: !isOnline
+                        ? ''
                         : (n.gpuUtilPct != null
                             ? `${n.gpuUtilPct}%${n.gpuTempC ? ` · ${n.gpuTempC}°C` : ''}${n.hasNvenc ? ' · NVENC' : ''}`
                             : (n.hasNvenc ? 'NVENC พร้อมใช้' : '—')),
-                    gpuPct: n.online && n.gpuUtilPct != null ? clampPct(n.gpuUtilPct) : null,
+                    gpuPct: isOnline && n.gpuUtilPct != null ? clampPct(n.gpuUtilPct) : null,
                     jobMain,
                     jobSub,
-                    busy: Boolean(n.currentJob),
+                    busy: isOnline && Boolean(n.currentJob),
+                    ageMs: n.ageMs,
                 };
             }),
         ];
@@ -1002,16 +1521,39 @@
 
         if (tbody) {
             tbody.innerHTML = allMachines.map((m) => {
-                const cpuValText = m.online && m.cpuPct != null ? `${m.cpuPct.toFixed(0)}%` : '—';
-                const cpuW = m.online && m.cpuPct != null ? m.cpuPct : 0;
+                if (!m.online) {
+                    return `
+                        <tr class="ov3-node is-offline">
+                            <td>
+                                <div class="ov2-node-cell">
+                                    <span class="ov2-node-dot" aria-hidden="true"></span>
+                                    <div>
+                                        <div class="ov2-node-name">${esc(m.displayName)}</div>
+                                        <div class="ov2-node-sub">${esc(m.sub)}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="ov2-meter-cell"><span class="ov2-meter-val">—</span></td>
+                            <td class="ov2-meter-cell"><span class="ov2-meter-val">—</span></td>
+                            <td class="ov2-gpu-cell"><span class="ov2-meter-val">—</span></td>
+                            <td class="ov2-job-cell">
+                                <div class="ov2-job-main"><span class="ov3-badge" data-tone="neutral" style="margin-right:6px;">ออฟไลน์</span>${esc(m.jobMain)}</div>
+                                <div class="ov2-job-sub" title="${esc(m.jobSub)}">${esc(m.jobSub)}</div>
+                            </td>
+                        </tr>
+                    `;
+                }
+
+                const cpuValText = m.cpuPct != null ? `${m.cpuPct.toFixed(0)}%` : '—';
+                const cpuW = m.cpuPct != null ? m.cpuPct : 0;
                 const ramValText = m.memTotal > 0 ? `${fmtGb(m.memUsed)} / ${fmtGb(m.memTotal)} GB` : '—';
                 const ramPctText = m.memTotal > 0 && m.memPct != null ? `${m.memPct.toFixed(0)}%` : '';
                 const ramW = m.memTotal > 0 && m.memPct != null ? m.memPct : 0;
                 return `
-                    <tr class="${m.online ? '' : 'is-offline'}">
+                    <tr class="ov3-node">
                         <td>
                             <div class="ov2-node-cell">
-                                <span class="ov2-node-dot${m.online ? ' is-online' : ''}" aria-hidden="true"></span>
+                                <span class="ov2-node-dot is-online" aria-hidden="true"></span>
                                 <div>
                                     <div class="ov2-node-name">${esc(m.displayName)}</div>
                                     <div class="ov2-node-sub">${esc(m.sub)}</div>
@@ -1023,22 +1565,22 @@
                                 <span class="ov2-meter-val">${cpuValText}</span>
                                 <span class="ov2-meter-sub">${esc(m.cpuMeta)}</span>
                             </div>
-                            <div class="ov2-bar"><i class="${barTone(cpuW, '')}" style="width:${cpuW.toFixed(1)}%"></i></div>
+                            <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${barToneV3(cpuW)}" style="width:${cpuW.toFixed(1)}%"></span></div>
                         </td>
                         <td class="ov2-meter-cell">
                             <div class="ov2-meter-top">
                                 <span class="ov2-meter-val">${ramValText}</span>
                                 <span class="ov2-meter-sub">${ramPctText}</span>
                             </div>
-                            <div class="ov2-bar"><i class="${barTone(ramW, 'is-ram')}" style="width:${ramW.toFixed(1)}%"></i></div>
+                            <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${barToneV3(ramW)}" style="width:${ramW.toFixed(1)}%"></span></div>
                         </td>
                         <td class="ov2-gpu-cell">
                             <div class="ov2-gpu-name" title="${esc(m.gpuPrimary)}">${esc(m.gpuPrimary)}</div>
                             <div class="ov2-meter-sub">${esc(m.gpuSecondary)}</div>
-                            ${m.online && m.gpuPct != null ? `<div class="ov2-bar" style="margin-top:4px;"><i class="${barTone(m.gpuPct, 'is-gpu')}" style="width:${m.gpuPct.toFixed(0)}%"></i></div>` : ''}
+                            ${m.gpuPct != null ? `<div class="ov3-bar" style="margin-top:4px;"><span class="ov3-bar__fill" data-tone="${barToneV3(m.gpuPct)}" style="width:${m.gpuPct.toFixed(0)}%"></span></div>` : ''}
                         </td>
                         <td class="ov2-job-cell">
-                            <div class="ov2-job-main">${m.busy ? '<span class="ov2-pill ov2-pill--sky" style="margin-right:5px;">ทำงาน</span>' : ''}${esc(m.jobMain)}</div>
+                            <div class="ov2-job-main">${m.busy ? '<span class="ov3-badge" data-tone="ok" style="margin-right:5px;">ทำงาน</span>' : ''}${esc(m.jobMain)}</div>
                             <div class="ov2-job-sub" title="${esc(m.jobSub)}">${esc(m.jobSub)}</div>
                         </td>
                     </tr>
@@ -1048,31 +1590,54 @@
 
         if (mobEl) {
             mobEl.innerHTML = allMachines.map((m) => {
-                const cpuW = m.online && m.cpuPct != null ? m.cpuPct : 0;
+                if (!m.online) {
+                    return `
+                        <div class="ov3-node ov2-node-card is-offline">
+                            <div class="ov2-node-card-top">
+                                <div class="ov2-node-cell" style="min-width:0;">
+                                    <span class="ov2-node-dot"></span>
+                                    <div style="min-width:0;">
+                                        <div class="ov2-node-name">${esc(m.displayName)}</div>
+                                        <div class="ov2-node-sub">${esc(m.sub)}</div>
+                                    </div>
+                                </div>
+                                <span class="ov3-badge" data-tone="neutral">ออฟไลน์</span>
+                            </div>
+                            <div class="ov2-node-card-meters">
+                                <div><div class="ov2-meter-top"><span class="ov2-meter-val">CPU —</span></div></div>
+                                <div><div class="ov2-meter-top"><span class="ov2-meter-val">RAM —</span></div></div>
+                            </div>
+                            <div class="ov2-job-sub">GPU —</div>
+                            <div class="ov2-job-main">${esc(m.jobMain)}</div>
+                        </div>
+                    `;
+                }
+
+                const cpuW = m.cpuPct != null ? m.cpuPct : 0;
                 const ramW = m.memTotal > 0 && m.memPct != null ? m.memPct : 0;
                 return `
-                    <div class="ov2-node-card${m.online ? '' : ' is-offline'}">
+                    <div class="ov3-node ov2-node-card">
                         <div class="ov2-node-card-top">
                             <div class="ov2-node-cell" style="min-width:0;">
-                                <span class="ov2-node-dot${m.online ? ' is-online' : ''}"></span>
+                                <span class="ov2-node-dot is-online"></span>
                                 <div style="min-width:0;">
                                     <div class="ov2-node-name">${esc(m.displayName)}</div>
                                     <div class="ov2-node-sub">${esc(m.sub)}</div>
                                 </div>
                             </div>
-                            <span class="ov2-pill ${m.online ? 'ov2-pill--green' : 'ov2-pill--muted'}">${m.online ? 'ออนไลน์' : 'ออฟไลน์'}</span>
+                            <span class="ov3-badge" data-tone="ok">ออนไลน์</span>
                         </div>
                         <div class="ov2-node-card-meters">
                             <div>
-                                <div class="ov2-meter-top"><span class="ov2-meter-val">CPU ${m.online && m.cpuPct != null ? `${m.cpuPct.toFixed(0)}%` : '—'}</span><span class="ov2-meter-sub">${esc(m.cpuMeta)}</span></div>
-                                <div class="ov2-bar"><i class="${barTone(cpuW, '')}" style="width:${cpuW.toFixed(0)}%"></i></div>
+                                <div class="ov2-meter-top"><span class="ov2-meter-val">CPU ${m.cpuPct != null ? `${m.cpuPct.toFixed(0)}%` : '—'}</span><span class="ov2-meter-sub">${esc(m.cpuMeta)}</span></div>
+                                <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${barToneV3(cpuW)}" style="width:${cpuW.toFixed(0)}%"></span></div>
                             </div>
                             <div>
                                 <div class="ov2-meter-top"><span class="ov2-meter-val">RAM ${m.memTotal > 0 ? `${ramW.toFixed(0)}%` : '—'}</span><span class="ov2-meter-sub">${m.memTotal > 0 ? `${fmtGb(m.memUsed)}/${fmtGb(m.memTotal)} GB` : '—'}</span></div>
-                                <div class="ov2-bar"><i class="${barTone(ramW, 'is-ram')}" style="width:${ramW.toFixed(0)}%"></i></div>
+                                <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${barToneV3(ramW)}" style="width:${ramW.toFixed(0)}%"></span></div>
                             </div>
                         </div>
-                        <div class="ov2-job-sub">${esc(m.gpuPrimary)} · ${esc(m.gpuSecondary)}</div>
+                        <div class="ov2-job-sub">${esc(m.gpuPrimary)}${m.gpuSecondary ? ` · ${esc(m.gpuSecondary)}` : ''}</div>
                         <div class="ov2-job-main">${esc(m.jobMain)}</div>
                     </div>
                 `;
@@ -1091,18 +1656,23 @@
             ui.infraTab = problems.length > 0 ? 'problems' : 'pm2';
         }
 
+        const subEl = $('ov3-infra-sub');
+        if (subEl) {
+            subEl.textContent = `PM2 ${pm2.online}/${pm2.total} · Docker ${docker.running}/${docker.total}`;
+        }
+
         const tabsEl = $('ov2-infra-tabs');
         const bodyEl = $('ov2-infra-body');
         if (tabsEl) {
             tabsEl.innerHTML = [
-                { id: 'problems', label: 'มีปัญหา', count: problems.length, cls: problems.length > 0 ? 'is-danger' : '' },
-                { id: 'pm2', label: 'PM2', count: `${pm2.online}/${pm2.total}`, cls: pm2.online < pm2.total ? 'is-danger' : '' },
-                { id: 'docker', label: 'Docker', count: `${docker.running}/${docker.total}`, cls: docker.running < docker.total ? 'is-danger' : '' },
-                { id: 'services', label: 'บริการเว็บ', count: `${svcs.up}/${svcs.total}`, cls: svcs.up < svcs.total ? 'is-danger' : '' },
+                { id: 'problems', label: 'มีปัญหา', count: problems.length, tone: problems.length > 0 ? 'err' : 'neutral' },
+                { id: 'pm2', label: 'PM2', count: `${pm2.online}/${pm2.total}`, tone: pm2.online < pm2.total ? 'err' : 'neutral' },
+                { id: 'docker', label: 'Docker', count: `${docker.running}/${docker.total}`, tone: docker.running < docker.total ? 'err' : 'neutral' },
+                { id: 'services', label: 'บริการเว็บ', count: `${svcs.up}/${svcs.total}`, tone: svcs.up < svcs.total ? 'err' : 'neutral' },
             ].map((t) => `
-                <button type="button" class="ov2-tab${ui.infraTab === t.id ? ' is-active' : ''}" data-infra-tab="${t.id}">
-                    <span>${t.label}</span>
-                    <span class="ov2-tab-cnt ${t.cls}">${t.count}</span>
+                <button type="button" class="ov3-tab" role="tab" aria-selected="${ui.infraTab === t.id ? 'true' : 'false'}" data-infra-tab="${t.id}">
+                    <span>${esc(t.label)}</span>
+                    <span class="ov3-badge" data-tone="${esc(t.tone)}">${esc(t.count)}</span>
                 </button>
             `).join('');
         }
@@ -1111,16 +1681,16 @@
             if (ui.infraTab === 'problems') {
                 const healthNote = `<div class="ov2-infra-summary"><span>PM2 ออนไลน์ ${pm2.online}/${pm2.total}</span><span>·</span><span>Docker ทำงาน ${docker.running}/${docker.total}</span><span>·</span><span>บริการเว็บปกติ ${svcs.up}/${svcs.total}</span></div>`;
                 if (problems.length === 0) {
-                    bodyEl.innerHTML = healthNote + '<div class="ov2-empty">ไม่มีบริการ PM2, Docker หรือเว็บที่ล่มอยู่ในขณะนี้</div>';
+                    bodyEl.innerHTML = healthNote + '<div class="ov3-empty">ไม่มีบริการ PM2, Docker หรือเว็บที่ล่มอยู่ในขณะนี้</div>';
                 } else {
                     bodyEl.innerHTML = `<div class="ov2-infra-list">${problems.map((p) => `
                         <div class="ov2-infra-row is-down">
                             <div class="ov2-infra-name-wrap">
-                                <span class="ov2-pill ov2-pill--red">${esc(p.kind)}</span>
+                                <span class="ov3-badge" data-tone="err">${esc(p.kind)}</span>
                                 <span class="ov2-infra-name">${esc(p.name)}</span>
                             </div>
                             <span class="ov2-infra-detail">${esc(p.detail || p.status)}</span>
-                            <span class="ov2-pill ov2-pill--red ov2-infra-stat--hide-sm">${esc(p.status)}</span>
+                            <span class="ov3-badge ov2-infra-stat--hide-sm" data-tone="err">${esc(p.status)}</span>
                             <span>${p.url ? `<a class="ov2-btn ov2-btn--xs" href="${esc(p.url)}" target="_blank" rel="noopener">เปิด</a>` : ''}</span>
                         </div>
                     `).join('')}</div>` + healthNote;
@@ -1138,10 +1708,10 @@
                             </div>
                             <span class="ov2-infra-stat">CPU ${Number(p.cpu || 0).toFixed(1)}%</span>
                             <span class="ov2-infra-stat ov2-infra-stat--hide-sm">${fmtMb(p.mem || 0)}</span>
-                            <span>${canRestart ? `<button type="button" class="ov2-btn ov2-btn--xs" data-restart-kind="pm2" data-restart-name="${esc(p.name)}" ${busy ? 'disabled' : ''}>${busy ? '...' : 'รีสตาร์ท'}</button>` : `<span class="ov2-pill ${ok ? 'ov2-pill--green' : 'ov2-pill--red'}">${ok ? 'online' : esc(p.status)}</span>`}</span>
+                            <span>${canRestart ? `<button type="button" class="ov2-btn ov2-btn--xs" data-restart-kind="pm2" data-restart-name="${esc(p.name)}" ${busy ? 'disabled' : ''}>${busy ? '...' : 'รีสตาร์ท'}</button>` : `<span class="ov3-badge" data-tone="${ok ? 'ok' : 'err'}">${ok ? 'online' : esc(p.status)}</span>`}</span>
                         </div>
                     `;
-                }).join('') || '<div class="ov2-empty">ไม่พบข้อมูล PM2</div>'}</div>`;
+                }).join('') || '<div class="ov3-empty">ไม่พบข้อมูล PM2</div>'}</div>`;
             } else if (ui.infraTab === 'docker') {
                 const sorted = [...(docker.items || [])].sort((a, b) => Number(a.state === 'running') - Number(b.state === 'running'));
                 bodyEl.innerHTML = `<div class="ov2-infra-list">${sorted.map((c) => {
@@ -1156,10 +1726,10 @@
                             </div>
                             <span class="ov2-infra-stat">${Number(c.cpu || 0).toFixed(1)}%</span>
                             <span class="ov2-infra-stat ov2-infra-stat--hide-sm">${esc((c.mem || '').split('/')[0].trim() || '—')}</span>
-                            <span>${canRestart ? `<button type="button" class="ov2-btn ov2-btn--xs" data-restart-kind="docker" data-restart-name="${esc(c.name)}" ${busy ? 'disabled' : ''}>${busy ? '...' : 'รีสตาร์ท'}</button>` : `<span class="ov2-pill ${ok ? 'ov2-pill--green' : 'ov2-pill--red'}">${esc(c.state)}</span>`}</span>
+                            <span>${canRestart ? `<button type="button" class="ov2-btn ov2-btn--xs" data-restart-kind="docker" data-restart-name="${esc(c.name)}" ${busy ? 'disabled' : ''}>${busy ? '...' : 'รีสตาร์ท'}</button>` : `<span class="ov3-badge" data-tone="${ok ? 'ok' : 'err'}">${esc(c.state)}</span>`}</span>
                         </div>
                     `;
-                }).join('') || '<div class="ov2-empty">ไม่พบข้อมูล Docker</div>'}</div>`;
+                }).join('') || '<div class="ov3-empty">ไม่พบข้อมูล Docker</div>'}</div>`;
             } else {
                 const sorted = [...(svcs.items || [])].sort((a, b) => Number(Boolean(a.up)) - Number(Boolean(b.up)));
                 bodyEl.innerHTML = `<div class="ov2-infra-list">${sorted.map((s) => `
@@ -1169,10 +1739,10 @@
                             <span class="ov2-infra-name">${esc(s.name)}</span>
                         </div>
                         <span class="ov2-infra-stat">${s.up && s.latencyMs != null ? `${s.latencyMs} ms` : esc(s.detail || 'down')}</span>
-                        <span class="ov2-pill ${s.up ? 'ov2-pill--green' : 'ov2-pill--red'}">${s.up ? 'ปกติ' : 'ล่ม'}</span>
+                        <span class="ov3-badge" data-tone="${s.up ? 'ok' : 'err'}">${s.up ? 'ปกติ' : 'ล่ม'}</span>
                         <span>${s.url ? `<a class="ov2-btn ov2-btn--xs" href="${esc(s.url)}" target="_blank" rel="noopener">เปิด</a>` : ''}</span>
                     </div>
-                `).join('') || '<div class="ov2-empty">ไม่พบข้อมูลบริการ</div>'}</div>`;
+                `).join('') || '<div class="ov3-empty">ไม่พบข้อมูลบริการ</div>'}</div>`;
             }
         }
 
@@ -1204,7 +1774,10 @@
 
     function renderAll(data) {
         if (!data) return;
-        renderTopbarAndRail(data);
+        renderHeader(data);
+        renderKpis(data);
+        renderAttention(data);
+        renderActivityTabs(data);
         renderAiPanel(data);
         renderVideosPanel(data);
         renderResourceMatrix(data);
@@ -1221,6 +1794,7 @@
             if (data && data.ok) {
                 ui.lastData = data;
                 ui.lastUpdatedAt = Date.now();
+                pushHist(data);
                 renderAll(data);
             }
         } catch (_) {
@@ -1242,7 +1816,10 @@
             ui.lastData.infra = infra;
             if (ui.lastData.attention) ui.lastData.attention.servicesDown = infra.problems.length;
             ui.lastUpdatedAt = Date.now();
-            renderTopbarAndRail(ui.lastData);
+            if (Date.now() - ui.lastHistPushAt >= 4500) pushHist(ui.lastData);
+            renderHeader(ui.lastData);
+            renderKpis(ui.lastData);
+            renderAttention(ui.lastData);
             renderResourceMatrix(ui.lastData);
             renderInfra(ui.lastData);
         }
@@ -1258,31 +1835,44 @@
         if (!root) return;
 
         root.addEventListener('click', (e) => {
-            const railBtn = e.target.closest('[data-rail-jump]');
-            if (railBtn) {
-                const target = railBtn.dataset.railJump;
-                if (target === 'ai-running') {
-                    ui.aiTab = 'attention';
-                    if (ui.lastData) renderAiPanel(ui.lastData);
-                    $('ov2-panel-ai')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } else if (target === 'ai-unread') {
-                    ui.aiTab = 'unread';
-                    if (ui.lastData) renderAiPanel(ui.lastData);
-                    $('ov2-panel-ai')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } else if (target === 'videos-unseen') {
-                    ui.videoTab = 'unseen';
-                    if (ui.lastData) renderVideosPanel(ui.lastData);
-                    $('ov2-panel-videos')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } else if (target === 'renders-active') {
-                    ui.videoTab = 'active';
-                    if (ui.lastData) renderVideosPanel(ui.lastData);
-                    $('ov2-panel-videos')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } else if (target === 'agents-online') {
-                    $('ov2-panel-nodes')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } else if (target === 'services-down') {
-                    ui.infraTab = (ui.lastData && ui.lastData.infra && ui.lastData.infra.problems.length > 0) ? 'problems' : 'pm2';
-                    if (ui.lastData) renderInfra(ui.lastData);
-                    $('ov2-panel-infra')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            const kpiBtn = e.target.closest('.ov3-kpi[data-jump]');
+            if (kpiBtn) {
+                const key = kpiBtn.dataset.kpiKey;
+                if (key === 'activity' && ui.lastData) {
+                    const att = ui.lastData.attention || {};
+                    if ((att.aiRunning || 0) + (att.aiUnread || 0) === 0 && (att.videosUnseen || 0) + (att.rendersActive || 0) > 0) {
+                        ui.activityTab = 'videos';
+                    } else {
+                        ui.activityTab = 'ai';
+                    }
+                    renderActivityTabs(ui.lastData);
+                }
+                jumpToPanel(kpiBtn.dataset.jump);
+                return;
+            }
+
+            const attnToggle = e.target.closest('[data-attn-toggle]');
+            if (attnToggle) {
+                ui.attnExpanded = attnToggle.dataset.attnToggle === '1';
+                if (ui.lastData) renderAttention(ui.lastData);
+                return;
+            }
+
+            const jumpInfraBtn = e.target.closest('[data-jump-infra]');
+            if (jumpInfraBtn) {
+                ui.infraTab = jumpInfraBtn.dataset.jumpInfra || 'problems';
+                if (ui.lastData) renderInfra(ui.lastData);
+                jumpToPanel('#ov2-panel-infra');
+                return;
+            }
+
+            const actTabBtn = e.target.closest('[data-activity-tab]');
+            if (actTabBtn) {
+                ui.activityTab = actTabBtn.dataset.activityTab;
+                if (ui.lastData) {
+                    renderActivityTabs(ui.lastData);
+                    if (ui.activityTab === 'videos') renderVideosPanel(ui.lastData);
+                    else renderAiPanel(ui.lastData);
                 }
                 return;
             }
@@ -1649,6 +2239,12 @@
     // ── Boot ────────────────────────────────────────────────────────────────
     function init() {
         if (!$('ov2-root')) return;
+        loadHist();
+        renderInitialSkeletons();
+        renderHeader(null);
+        if (!ui.freshTimer) {
+            ui.freshTimer = setInterval(updateFreshness, 1000);
+        }
         bindEvents();
         initPrayerWidget();
         tick(true);

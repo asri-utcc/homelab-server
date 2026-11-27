@@ -73,6 +73,7 @@ homelab-server/
 | `motion-studio/` | `~/.local/share/motion-studio` | `motion-studio` -> `bin/motion-studio` | `npm ci` (และ `python -m venv venv && pip install -r requirements.txt` ถ้ามี) |
 | `bg-remove/` | `~/.local/share/bg-remove` | `remove-bg` -> `remove_bg.py` | `python -m venv venv && pip install -r requirements.txt` |
 | `lab-browser/` | `~/.local/share/lab-browser` | `lab-browser` -> `bin/lab-browser.js` | `npm ci` |
+| `google-flow/` | `homelab-server/google-flow` (repo direct) | `google-flow` -> `google-flow.js` | ใช้ `playwright-core` ร่วมกับ `lab-browser` (ไม่ต้อง `npm install` เพิ่ม) |
 | `skills/` | `~/.gemini/antigravity-cli/skills` | - | - |
 
 ### ขั้นตอน Sync จาก Live -> Repo

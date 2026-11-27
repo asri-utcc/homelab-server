@@ -214,6 +214,8 @@ Persistent interactive session commands (keeps tabs/cookies/DOM open; auto-close
   lab-browser session scroll <down|up|top|bottom|px>
   lab-browser session wait <ms|sel>
   lab-browser session shot [opts]     Screenshot current session page
+  lab-browser session download <target> [-o <path>]   Click target and save triggered browser download
+  lab-browser session save-image <sel|url> [-o <path>] Save full-resolution image from element or URL
   lab-browser session text|html|links|errors|eval <js>|back|reload|tabs|tab <i>
   lab-browser session pause|resume|auth-sync|auth-clear
   lab-browser session status|list|close|kill-all

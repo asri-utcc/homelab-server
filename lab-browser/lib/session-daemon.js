@@ -23,11 +23,12 @@ const MUTATING_CMDS = new Set([
   'reload',
   'eval',
   'wait',
+  'download',
 ]);
 
 const OPEN_CMDS = new Set(['open', 'visit', 'navigate']);
 const SENSITIVE_CHECK_CMDS = new Set(['open', 'visit', 'navigate', 'click', 'press']);
-const AUTH_PULL_BEFORE_CMDS = new Set(['open', 'visit', 'navigate', 'click', 'eval']);
+const AUTH_PULL_BEFORE_CMDS = new Set(['open', 'visit', 'navigate', 'click', 'eval', 'download', 'save-image']);
 
 const MAX_FRAME_BACKPRESSURE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MIN_FRAME_INTERVAL_MS = 120; // ~8 fps max to protect CPU/RAM

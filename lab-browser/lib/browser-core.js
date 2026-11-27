@@ -9,7 +9,66 @@ const authStore = require('./auth-store');
 // Ensure Playwright always discovers the shared server browser cache regardless of $HOME
 process.env.PLAYWRIGHT_BROWSERS_PATH = config.BROWSERS_PATH;
 
-const { chromium } = require('playwright-core');
+let chromium;
+try {
+  ({ chromium } = require('playwright-core'));
+} catch (err) {
+  if (err && err.code === 'MODULE_NOT_FOUND') {
+    ({ chromium } = require(path.join(config.BASE_DIR, 'node_modules', 'playwright-core')));
+  } else {
+    throw err;
+  }
+}
+
+const SAFE_OUTPUT_ROOTS = [
+  '/home/dev/.gemini',
+  '/home/dev/projects',
+  '/tmp',
+];
+
+function validateSafeOutputPath(outPath) {
+  if (typeof outPath !== 'string' || !outPath.trim()) {
+    throw new Error('Output path must be a non-empty string');
+  }
+  if (outPath.includes('\0')) {
+    throw new Error('Output path contains null byte');
+  }
+  const resolved = path.resolve(outPath.trim());
+  const allowed = SAFE_OUTPUT_ROOTS.some((root) => {
+    const rel = path.relative(root, resolved);
+    return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
+  });
+  if (!allowed) {
+    throw new Error(
+      `Unsafe output path "${outPath}" (resolved: "${resolved}"). Allowed roots: ${SAFE_OUTPUT_ROOTS.join(', ')}`
+    );
+  }
+  return resolved;
+}
+
+function detectImageMagic(buf) {
+  if (!buf) return null;
+  const b = Buffer.isBuffer(buf) ? buf : (buf instanceof Uint8Array ? Buffer.from(buf) : null);
+  if (!b || b.length < 3) return null;
+
+  // PNG: 89 50 4E 47
+  if (b.length >= 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+    return { mime: 'image/png', ext: 'png' };
+  }
+  // JPEG: FF D8 FF
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) {
+    return { mime: 'image/jpeg', ext: 'jpg' };
+  }
+  // WEBP: RIFF....WEBP
+  if (b.length >= 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') {
+    return { mime: 'image/webp', ext: 'webp' };
+  }
+  // GIF: GIF8
+  if (b.length >= 4 && b.toString('ascii', 0, 4) === 'GIF8') {
+    return { mime: 'image/gif', ext: 'gif' };
+  }
+  return null;
+}
 
 const LAUNCH_ARGS = [
   '--disable-dev-shm-usage',
@@ -104,6 +163,7 @@ function buildContextOptions(opts = {}, browserVersion = null) {
     locale: opts.locale || 'th-TH',
     timezoneId: opts.timezone || 'Asia/Bangkok',
     ignoreHTTPSErrors: Boolean(opts.ignoreHttpsErrors),
+    acceptDownloads: true,
     extraHTTPHeaders: headers,
   };
 
@@ -520,4 +580,6 @@ module.exports = {
   extractSnapshot,
   captureScreenshot,
   capturePdf,
+  validateSafeOutputPath,
+  detectImageMagic,
 };

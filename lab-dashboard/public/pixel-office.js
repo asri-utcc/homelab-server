@@ -1,8 +1,10 @@
 /*
  * Homelab Pixel Company v2 — Architectural Campus 2D Pixel-Art Office Engine
- * 40x25 tile world (640x400 px, 16:10) with 8 asymmetric architectural zones,
+ * 40x30 tile world (640x480 px, 4:3) with 8 asymmetric architectural zones,
  * sunlit open atrium/plaza, glass walls, wooden terrace, garden wellness deck,
  * intra-room & cross-room handoffs, and 11 distinct Thai agents.
+ * v2.1 — a designed entrance forecourt (fountain plaza, lawns, driveway) fills the
+ *        bottom 5 tile rows so the 4:3 stage matches the dashboard card with no dead band.
  *
  * Classic IIFE using window.PixelOfficeArt (pure Canvas 2D, zero external assets).
  * Exports: window.HomelabPixelOffice = { LAYOUT, DEPTS, AGENT_SPECS, IDLE_ACTIVITIES, mount }
@@ -13,9 +15,10 @@
 
   var TILE = 16;
   var WORLD_W_TILES = 40;
-  var WORLD_H_TILES = 25;
+  var WORLD_H_TILES = 30; // 25 tiles campus + 5 tiles designed entrance forecourt → 4:3 stage
   var WORLD_W = WORLD_W_TILES * TILE; // 640
-  var WORLD_H = WORLD_H_TILES * TILE; // 400
+  var WORLD_H = WORLD_H_TILES * TILE; // 480
+  var CAMPUS_H = 25 * TILE;           // 400 — building footprint ends here
 
   // ---------------------------------------------------------------------------
   // 1. Departments & Asymmetric Architectural Campus Layout (40 x 25 tiles)
@@ -693,10 +696,12 @@
     var isLight = themeName === 'light';
 
     // Sky & exterior courtyard backdrop
+    // NOTE: stops are pixel-anchored (not fractions) so adding the forecourt rows
+    // below the campus does not stretch/shift the sky band.
     var grad = ctx.createLinearGradient(0, 0, 0, WORLD_H);
     grad.addColorStop(0, pal.skyTop);
-    grad.addColorStop(0.14, pal.skyBottom);
-    grad.addColorStop(0.20, isLight ? '#5c8f4b' : '#12192b');
+    grad.addColorStop(56 / WORLD_H, pal.skyBottom);
+    grad.addColorStop(80 / WORLD_H, isLight ? '#5c8f4b' : '#12192b');
     grad.addColorStop(1, isLight ? '#4b7a3d' : '#0f1422');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
@@ -809,6 +814,248 @@
     ctx.fillRect(23 * TILE, frontY, 2 * TILE, TILE - 2);
     ctx.fillStyle = '#c94a58';
     ctx.fillRect(23 * TILE + 2, frontY, 2 * TILE - 4, TILE - 4);
+
+    // Designed entrance forecourt — fills the 5 bottom tile rows (400..480)
+    drawForecourt(ctx, Art, themeName, pal, isLight);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6b. Entrance Forecourt (fountain plaza · lawns · driveway)
+  // ---------------------------------------------------------------------------
+  function fcEllipse(ctx, cx, cy, rx, ry, color) {
+    ctx.fillStyle = color;
+    for (var dy = -ry; dy <= ry; dy++) {
+      var t = 1 - (dy * dy) / (ry * ry + 0.0001);
+      if (t <= 0) continue;
+      var hw = Math.round(rx * Math.sqrt(t));
+      if (hw <= 0) continue;
+      ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2 + 1, 1);
+    }
+  }
+
+  function fcLawnBed(ctx, Art, themeName, pal, isLight, x, y, w, h) {
+    ctx.fillStyle = pal.outline;
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    Art.drawFloor(ctx, x, y, w, h, 'grass', { theme: themeName });
+
+    var hedgeCol = isLight ? '#3f8a3c' : '#1f5a30';
+    var leafCol = isLight ? '#63b957' : '#2c7a3f';
+    ctx.fillStyle = hedgeCol;
+    ctx.fillRect(x - 2, y - 2, w + 4, 3);
+    ctx.fillRect(x - 2, y + h - 1, w + 4, 3);
+    ctx.fillRect(x - 2, y - 2, 3, h + 4);
+    ctx.fillRect(x + w - 1, y - 2, 3, h + 4);
+    ctx.fillStyle = leafCol;
+    for (var lx = x; lx < x + w; lx += 5) {
+      ctx.fillRect(lx, y - 2, 3, 1);
+      ctx.fillRect(lx + 2, y + h + 1, 3, 1);
+    }
+    for (var ly = y; ly < y + h; ly += 5) {
+      ctx.fillRect(x - 2, ly, 1, 3);
+      ctx.fillRect(x + w + 1, ly, 1, 3);
+    }
+  }
+
+  function fcFlowers(ctx, isLight, x, y, w, h, seed, count) {
+    var cols = isLight
+      ? ['#ff7aa8', '#ffd166', '#ffffff', '#c084fc', '#ff9f68']
+      : ['#e8537f', '#ffc857', '#dfe9ff', '#a76bf0', '#ff8f52'];
+    for (var i = 0; i < count; i++) {
+      var fx = x + ((i * 37 + seed * 13) % (w - 4)) + 2;
+      var fy = y + ((i * 23 + seed * 7) % (h - 4)) + 2;
+      ctx.fillStyle = cols[(i + seed) % cols.length];
+      ctx.fillRect(fx, fy, 2, 2);
+      ctx.fillStyle = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)';
+      ctx.fillRect(fx, fy, 1, 1);
+    }
+  }
+
+  function fcParkLamp(ctx, isLight, pal, x, y) {
+    // warm light pool on the paving
+    if (isLight) {
+      ctx.fillStyle = 'rgba(255, 233, 168, 0.30)';
+      fcEllipse(ctx, x + 2, y + 24, 13, 5, 'rgba(255, 233, 168, 0.30)');
+    } else {
+      fcEllipse(ctx, x + 2, y + 24, 15, 6, 'rgba(255, 205, 110, 0.14)');
+    }
+    // cast-iron post
+    ctx.fillStyle = pal.outline;
+    ctx.fillRect(x, y + 3, 5, 21);
+    ctx.fillStyle = isLight ? '#7c8494' : '#76829f';
+    ctx.fillRect(x + 1, y + 4, 2, 19);
+    ctx.fillStyle = isLight ? '#a8b0bd' : '#9aa6c4';
+    ctx.fillRect(x + 1, y + 4, 1, 19);
+    // lantern head
+    ctx.fillStyle = pal.outline;
+    ctx.fillRect(x - 2, y, 9, 7);
+    ctx.fillStyle = isLight ? '#ffe9a8' : '#ffd777';
+    ctx.fillRect(x - 1, y + 1, 7, 5);
+    ctx.fillStyle = isLight ? '#fff8dd' : '#fff3c9';
+    ctx.fillRect(x, y + 2, 5, 3);
+    // base
+    ctx.fillStyle = pal.outline;
+    ctx.fillRect(x - 1, y + 23, 7, 2);
+  }
+
+  function fcFlag(ctx, isLight, pal, x, y, colA, colB) {
+    ctx.fillStyle = pal.outline;
+    ctx.fillRect(x, y + 2, 2, 22);
+    ctx.fillStyle = isLight ? '#cfd6e2' : '#8e9ab8';
+    ctx.fillRect(x, y + 2, 1, 22);
+    // cloth
+    ctx.fillStyle = pal.outline;
+    ctx.fillRect(x + 2, y, 12, 9);
+    ctx.fillStyle = colA;
+    ctx.fillRect(x + 3, y + 1, 10, 7);
+    ctx.fillStyle = colB;
+    ctx.fillRect(x + 3, y + 1, 10, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x + 3, y + 1, 10, 1);
+  }
+
+  function drawForecourt(ctx, Art, themeName, pal, isLight) {
+    var out = pal.outline;
+    var top = CAMPUS_H;            // 400
+    var driveTop = WORLD_H - 14;   // 466
+    var bottom = WORLD_H;          // 480
+
+    // ── 1. Stone plaza deck ───────────────────────────────────────────────
+    Art.drawFloor(ctx, 0, top, WORLD_W, driveTop - top, 'tile', {
+      theme: themeName,
+      color: isLight ? '#ece6d9' : '#3b4360',
+      tileSize: 16
+    });
+    // paving inlay bands (frame the plaza like a premium campus square)
+    ctx.fillStyle = isLight ? '#d5cdbb' : '#333a52';
+    ctx.fillRect(0, top + 1, WORLD_W, 2);
+    ctx.fillRect(0, driveTop - 5, WORLD_W, 2);
+    ctx.fillStyle = isLight ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.05)';
+    ctx.fillRect(0, top + 3, WORLD_W, 1);
+
+    // ── 2. Entrance axis: carpet → steps → lit runner ─────────────────────
+    var axL = 22 * TILE;   // 352
+    var axW = 4 * TILE;    // 64
+    ctx.fillStyle = out;
+    ctx.fillRect(axL - 1, top, axW + 2, driveTop - top);
+    ctx.fillStyle = isLight ? '#e2dbcb' : '#454e6b';
+    ctx.fillRect(axL, top, axW, driveTop - top);
+    ctx.fillStyle = isLight ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.05)';
+    ctx.fillRect(axL + 1, top, axW - 2, 1);
+
+    // red carpet right outside the glass doors (continues the sidewalk carpet)
+    ctx.fillStyle = '#9c2d3a';
+    ctx.fillRect(axL + 8, top, axW - 16, 10);
+    ctx.fillStyle = '#c94a58';
+    ctx.fillRect(axL + 10, top + 1, axW - 20, 7);
+    ctx.fillStyle = '#e07684';
+    ctx.fillRect(axL + 10, top + 1, axW - 20, 1);
+
+    // three stone steps
+    var stepTones = isLight
+      ? ['#f6f1e6', '#eae4d6', '#ddd6c6']
+      : ['#5f6a8d', '#555f80', '#4b5473'];
+    for (var st = 0; st < 3; st++) {
+      var sy = top + 10 + st * 4;
+      ctx.fillStyle = out;
+      ctx.fillRect(axL - 2, sy, axW + 4, 1);
+      ctx.fillStyle = stepTones[st];
+      ctx.fillRect(axL - 2, sy + 1, axW + 4, 3);
+    }
+
+    // warm light wash down the middle of the runner
+    ctx.fillStyle = isLight ? 'rgba(255, 247, 225, 0.55)' : 'rgba(255, 236, 190, 0.09)';
+    ctx.fillRect(axL + 13, top + 24, axW - 26, driveTop - top - 26);
+    ctx.fillStyle = isLight ? 'rgba(214, 205, 186, 0.9)' : 'rgba(70, 80, 108, 0.9)';
+    ctx.fillRect(axL + 13, top + 24, 1, driveTop - top - 26);
+    ctx.fillRect(axL + axW - 14, top + 24, 1, driveTop - top - 26);
+
+    // ── 3. Left garden court: lawn bed + fountain ─────────────────────────
+    fcLawnBed(ctx, Art, themeName, pal, isLight, 8, top + 6, 108, 54);
+    fcFlowers(ctx, isLight, 14, top + 12, 96, 42, 3, 22);
+    Art.drawFurniture(ctx, 'tree', 26, top + 16, { theme: themeName, frame: 0 });
+    Art.drawFurniture(ctx, 'tree', 74, top + 20, { theme: themeName, frame: 0 });
+
+    // fountain (stone basin + water + pedestal)
+    var fcx = 176, fcy = 436, frx = 40, fry = 23;
+    fcEllipse(ctx, fcx + 2, fcy + 4, frx + 2, fry + 1, 'rgba(0,0,0,0.20)');
+    fcEllipse(ctx, fcx, fcy, frx, fry, out);
+    fcEllipse(ctx, fcx, fcy - 1, frx - 2, fry - 2, isLight ? '#e3dccc' : '#4d5779');
+    fcEllipse(ctx, fcx, fcy - 1, frx - 6, fry - 5, isLight ? '#cdc5b2' : '#3f4867');
+    fcEllipse(ctx, fcx, fcy - 1, frx - 8, fry - 7, isLight ? '#57b6ea' : '#1d5b8f');
+    fcEllipse(ctx, fcx, fcy - 2, frx - 12, fry - 9, isLight ? '#7fd0f7' : '#2b78ad');
+    ctx.fillStyle = isLight ? 'rgba(255,255,255,0.8)' : 'rgba(190,235,255,0.5)';
+    ctx.fillRect(fcx - 16, fcy - 2, 9, 1);
+    ctx.fillRect(fcx + 7, fcy + 3, 10, 1);
+    ctx.fillRect(fcx - 3, fcy + 7, 7, 1);
+    // pedestal + top bowl
+    ctx.fillStyle = out;
+    ctx.fillRect(fcx - 8, fcy - 18, 16, 16);
+    ctx.fillStyle = isLight ? '#efe9dc' : '#5d688a';
+    ctx.fillRect(fcx - 7, fcy - 17, 14, 14);
+    ctx.fillStyle = isLight ? '#d3cbb8' : '#4b5474';
+    ctx.fillRect(fcx - 7, fcy - 8, 14, 4);
+    ctx.fillStyle = out;
+    ctx.fillRect(fcx - 11, fcy - 22, 22, 5);
+    ctx.fillStyle = isLight ? '#f6f1e4' : '#6a7699';
+    ctx.fillRect(fcx - 10, fcy - 21, 20, 3);
+    ctx.fillStyle = isLight ? '#8fd8f8' : '#3f9ad0';
+    ctx.fillRect(fcx - 8, fcy - 21, 16, 1);
+
+    // benches facing the fountain
+    Art.drawFurniture(ctx, 'bench', 230, 428, { theme: themeName });
+    Art.drawFurniture(ctx, 'bench', 288, 428, { theme: themeName });
+    // terracotta planters flanking the benches
+    Art.drawFurniture(ctx, 'plant', 240, top + 6, { theme: themeName });
+    Art.drawFurniture(ctx, 'plant', 298, top + 6, { theme: themeName });
+
+    // ── 4. Right block: flags + wide lawn ─────────────────────────────────
+    fcFlag(ctx, isLight, pal, 428, top + 12, '#3d6fb6', '#7fc4ff');
+    fcFlag(ctx, isLight, pal, 452, top + 12, '#d9667a', '#ffb3c0');
+    // low planter box under the flags
+    ctx.fillStyle = out;
+    ctx.fillRect(424, top + 40, 44, 12);
+    ctx.fillStyle = isLight ? '#b5804f' : '#6d4a2c';
+    ctx.fillRect(425, top + 41, 42, 10);
+    ctx.fillStyle = isLight ? '#6dbb5b' : '#2f7a42';
+    for (var pb = 0; pb < 9; pb++) {
+      ctx.fillRect(427 + pb * 4, top + 40, 2, 3 + (pb % 3));
+    }
+    fcFlowers(ctx, isLight, 426, top + 38, 40, 8, 7, 8);
+
+    fcLawnBed(ctx, Art, themeName, pal, isLight, 480, top + 6, 152, 54);
+    fcFlowers(ctx, isLight, 486, top + 12, 140, 42, 5, 26);
+    Art.drawFurniture(ctx, 'tree', 496, top + 18, { theme: themeName, frame: 0 });
+    Art.drawFurniture(ctx, 'tree', 596, top + 16, { theme: themeName, frame: 0 });
+    Art.drawFurniture(ctx, 'bench', 566, top + 38, { theme: themeName });
+
+    // ── 5. Park lamps along the plaza edge ────────────────────────────────
+    fcParkLamp(ctx, isLight, pal, 124, top + 4);
+    fcParkLamp(ctx, isLight, pal, 326, top + 4);
+    fcParkLamp(ctx, isLight, pal, 440, top + 2);
+    fcParkLamp(ctx, isLight, pal, 622, top + 4);
+    fcParkLamp(ctx, isLight, pal, 26, top + 62);
+
+    // ── 6. Driveway at the bottom edge ────────────────────────────────────
+    ctx.fillStyle = out;
+    ctx.fillRect(0, driveTop, WORLD_W, 1);
+    ctx.fillStyle = isLight ? '#cfc8b8' : '#4b5470';
+    ctx.fillRect(0, driveTop + 1, WORLD_W, 3);
+    ctx.fillStyle = isLight ? '#e6e0d2' : '#5b6580';
+    ctx.fillRect(0, driveTop + 1, WORLD_W, 1);
+    ctx.fillStyle = isLight ? '#555b66' : '#222839';
+    ctx.fillRect(0, driveTop + 4, WORLD_W, bottom - driveTop - 4);
+
+    // crosswalk on the entrance axis
+    ctx.fillStyle = isLight ? '#f1efe8' : '#d6dbe8';
+    for (var cw = 0; cw < 6; cw++) {
+      ctx.fillRect(axL + 4 + cw * 10, driveTop + 6, 6, bottom - driveTop - 9);
+    }
+    // dashed lane marking
+    for (var dl = 6; dl < WORLD_W - 8; dl += 26) {
+      if (dl > axL - 16 && dl < axL + axW + 16) continue;
+      ctx.fillStyle = isLight ? 'rgba(255,255,255,0.75)' : 'rgba(220,228,245,0.5)';
+      ctx.fillRect(dl, driveTop + 8, 11, 2);
+    }
   }
 
   function drawOpenArchJambs(ctx, xPx, yPx, wPx, hPx, isLight, outline) {
@@ -2151,11 +2398,34 @@
     // -----------------------------------------------------------------------
     // Coordinate Transform (Screen <-> World)
     // -----------------------------------------------------------------------
+    // Cover-with-clamp: fill the viewport edge-to-edge (no letterbox band) but never
+    // crop more than 6% of the world, so rooms, signs and the forecourt stay visible.
+    // Campus safety bounds (world px): rooms must always stay inside the frame.
+    var CAMPUS_TOP_SAFE = 20;
+    var CAMPUS_BOTTOM_SAFE = 404;
+
+    // Fill the frame edge-to-edge horizontally: the world is exactly WORLD_W wide,
+    // so a fill-width scale guarantees zero side gutters. Vertical overflow (extra
+    // sky above / forecourt road below) is cropped, campus itself never is.
+    function getFitScale() {
+      return viewW / WORLD_W;
+    }
+
+    // Keep the camera vertically inside the canvas so no blank band can appear.
+    function getClampedCamY(scale) {
+      var halfWin = (viewH / 2) / scale;
+      if (halfWin * 2 >= WORLD_H) return WORLD_H / 2;      // whole world fits
+      var lo = CAMPUS_BOTTOM_SAFE - halfWin;               // campus bottom visible
+      var hi = CAMPUS_TOP_SAFE + halfWin;                  // campus top visible
+      if (lo > hi) return (lo + hi) / 2;                   // frame taller than campus band
+      return Math.max(lo, Math.min(hi, cam.y));
+    }
+
     function getViewportTransform() {
-      var scaleBase = Math.min(viewW / WORLD_W, viewH / WORLD_H);
-      var scale = scaleBase * cam.zoom;
+      var scale = getFitScale() * cam.zoom;
+      var cy = cam.zoom === 1 ? getClampedCamY(scale) : cam.y;
       var offsetX = (viewW / 2) - cam.x * scale;
-      var offsetY = (viewH / 2) - cam.y * scale;
+      var offsetY = (viewH / 2) - cy * scale;
       return { scale: scale, offsetX: offsetX, offsetY: offsetY };
     }
 
@@ -2245,6 +2515,27 @@
 
       // 1) Blit cached static world layer (1 drawImage call!)
       ctx.drawImage(staticCanvas, 0, 0);
+
+      // 1b) Living forecourt fountain — spray droplets + expanding ripple
+      var fcLight = themeName === 'light';
+      var fcxL = 176, fcyL = 436;
+      for (var fi = 0; fi < 7; fi++) {
+        var fph = ((animTick * 0.05) + fi * 0.33) % 1;
+        var fsx = fcxL + Math.sin((fph * 3.1) + fi * 1.7) * (4 + fph * 15);
+        var fsy = fcyL - 30 - Math.sin(fph * Math.PI) * 14 + fph * 26;
+        ctx.globalAlpha = 0.85 - fph * 0.5;
+        ctx.fillStyle = fcLight ? '#ffffff' : '#bfeaff';
+        ctx.fillRect(fsx | 0, fsy | 0, 1, 2);
+      }
+      ctx.globalAlpha = 1;
+      var frp = (animTick * 0.018) % 1;
+      ctx.strokeStyle = fcLight
+        ? 'rgba(255,255,255,' + (0.45 * (1 - frp)).toFixed(2) + ')'
+        : 'rgba(170,225,255,' + (0.42 * (1 - frp)).toFixed(2) + ')';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(fcxL, fcyL - 1, 9 + frp * 25, 5 + frp * 14, 0, 0, Math.PI * 2);
+      ctx.stroke();
 
       // 2) Subtle glowing guidance trail ONLY when an agent is carrying a handoff!
       for (var ha = 0; ha < agents.length; ha++) {

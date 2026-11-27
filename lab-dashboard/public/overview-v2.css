@@ -2818,8 +2818,8 @@
 /* ── Center Hero Stage: 3D Digital Workshop HUD (#ov3-workshop-3d) ──────── */
 .ov3-ws3d {
     position: relative;
-    min-height: 580px;
-    height: clamp(560px, 68vh, 660px);
+    min-height: 0;
+    height: clamp(460px, calc(100dvh - 396px), 720px);
     display: flex;
     flex-direction: column;
     border-color: color-mix(in srgb, var(--ov-accent) 34%, var(--ov-border));
@@ -3068,7 +3068,7 @@
 .ov3-ws3d__viewport {
     position: relative;
     flex: 1 1 auto;
-    min-height: 390px;
+    min-height: 0;
     width: 100%;
     overflow: hidden;
 }
@@ -3608,9 +3608,10 @@
         order: -1;
         position: static;
     }
+
     .ov3-ws3d {
-        min-height: 480px;
-        height: 500px;
+        min-height: 0;
+        height: clamp(520px, 62vh, 600px);
     }
 }
 
@@ -3625,13 +3626,16 @@
     .ov3-workshop-stage {
         grid-template-columns: minmax(0, 1fr);
     }
+
     .ov3-ws3d {
-        min-height: 380px;
+        min-height: 0;
         height: auto;
     }
     .ov3-ws3d__viewport {
-        min-height: 270px;
-        height: 270px;
+        min-height: 0;
+        height: auto;
+        aspect-ratio: 4 / 3;
+        flex: 0 0 auto;
     }
     .ov3-ws3d__controls {
         width: 100%;
@@ -3958,10 +3962,11 @@
 }
 
 .ov3-po__host {
-    position: relative;
+    position: absolute;
+    inset: 0;
     width: 100%;
-    aspect-ratio: 16 / 10;
-    min-height: 430px;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
     border-radius: 0;
     image-rendering: pixelated;
@@ -4079,8 +4084,5 @@
         flex: 1 1 auto;
         min-width: 0;
     }
-    .ov3-po__host {
-        min-height: 270px;
-        aspect-ratio: 16 / 10;
-    }
+
 }

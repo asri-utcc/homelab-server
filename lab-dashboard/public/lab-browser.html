@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#080b11" />
+  <title>Lab Browser · เบราว์เซอร์เต็มรูปแบบ — Homelab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #080b11;
+      --bench: #0e141f;
+      --surface: #121a28;
+      --well: #162032;
+      --well-hover: #1e2c44;
+      --border: rgba(148, 163, 184, 0.16);
+      --border-strong: rgba(56, 189, 248, 0.34);
+      --ink: #eef2f6;
+      --ink-2: #b9c5d6;
+      --muted: #7f8fa6;
+      --cyan: #38bdf8;
+      --cyan-dim: rgba(56, 189, 248, 0.15);
+      --green: #34d399;
+      --green-dim: rgba(52, 211, 153, 0.16);
+      --amber: #f6c453;
+      --amber-dim: rgba(246, 196, 83, 0.16);
+      --orange: #fb923c;
+      --orange-dim: rgba(251, 146, 60, 0.18);
+      --coral: #fb7185;
+      --coral-dim: rgba(251, 113, 133, 0.16);
+      --sans: "Noto Sans Thai", "IBM Plex Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      width: 100%;
+      overflow: hidden;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 13.5px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, select {
+      font-family: inherit;
+      color: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 1px;
+    }
+
+    .lb-app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background:
+        radial-gradient(880px 360px at 12% -12%, rgba(56, 189, 248, 0.08), transparent 62%),
+        radial-gradient(760px 340px at 90% -8%, rgba(52, 211, 153, 0.06), transparent 60%),
+        var(--canvas);
+    }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────────── */
+    .lb-toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 12px;
+      padding-top: max(8px, env(safe-area-inset-top));
+      background: rgba(14, 20, 31, 0.96);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 30;
+    }
+
+    .lb-toolbar__row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex-wrap: nowrap;
+    }
+
+    .lb-toolbar__row--meta {
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+    }
+
+    .lb-toolbar__group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .lb-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--ink);
+      padding: 0 6px 0 2px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .lb-brand__icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(52, 211, 153, 0.22));
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      font-size: 13px;
+    }
+
+    .lb-btn,
+    .lb-link-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 30px;
+      min-width: 30px;
+      padding: 0 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--well);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.08s ease;
+    }
+
+    .lb-btn:hover:not(:disabled),
+    .lb-link-btn:hover {
+      background: var(--well-hover);
+      border-color: var(--border-strong);
+      color: #ffffff;
+    }
+
+    .lb-btn:active:not(:disabled),
+    .lb-link-btn:active {
+      transform: translateY(1px);
+    }
+
+    .lb-btn:disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+    }
+
+    .lb-btn--mono {
+      font-family: var(--mono);
+    }
+
+    .lb-btn.is-active {
+      border-color: var(--cyan);
+      background: var(--cyan-dim);
+      color: #e0f2fe;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.22);
+    }
+
+    .lb-btn--danger {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: var(--coral-dim);
+      color: #fecdd3;
+    }
+
+    .lb-btn--danger:hover:not(:disabled) {
+      border-color: var(--coral);
+      background: rgba(251, 113, 133, 0.28);
+      color: #ffffff;
+    }
+
+    .lb-btn--primary {
+      border-color: rgba(56, 189, 248, 0.6);
+      background: rgba(56, 189, 248, 0.2);
+      color: #e0f2fe;
+    }
+
+    .lb-btn--primary:hover:not(:disabled) {
+      background: rgba(56, 189, 248, 0.34);
+      border-color: var(--cyan);
+    }
+
+    .lb-btn--tab-close:hover:not(:disabled) {
+      border-color: rgba(251, 113, 133, 0.65);
+      background: rgba(251, 113, 133, 0.2);
+      color: #fecdd3;
+    }
+
+    .lb-url-wrap {
+      flex: 1 1 220px;
+      min-width: 120px;
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+
+    .lb-url-input {
+      width: 100%;
+      height: 30px;
+      padding: 0 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      background: rgba(8, 11, 17, 0.92);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+
+    .lb-url-input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+    }
+
+    .lb-url-input::placeholder {
+      color: var(--muted);
+    }
+
+    .lb-tab-select {
+      max-width: 210px;
+      min-width: 100px;
+      height: 30px;
+      padding: 0 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--well);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 11.5px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .lb-tab-select:focus {
+      border-color: var(--cyan);
+    }
+
+    .lb-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(22, 32, 50, 0.85);
+      color: var(--ink-2);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .lb-pill--online {
+      border-color: rgba(52, 211, 153, 0.45);
+      background: var(--green-dim);
+      color: #a7f3d0;
+    }
+
+    .lb-pill--connecting {
+      border-color: rgba(246, 196, 83, 0.5);
+      background: var(--amber-dim);
+      color: #fde68a;
+    }
+
+    .lb-pill--paused {
+      border-color: rgba(251, 146, 60, 0.6);
+      background: var(--orange-dim);
+      color: #fed7aa;
+    }
+
+    .lb-pill--offline {
+      border-color: rgba(148, 163, 184, 0.3);
+      color: var(--muted);
+    }
+
+    .lb-shared-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      color: #bae6fd;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      border-radius: 999px;
+      padding: 2px 10px;
+      white-space: nowrap;
+    }
+
+    /* ── Popover (Shared Login) ──────────────────────────────────────────── */
+    .lb-popover-anchor {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .lb-popover {
+      display: none;
+      position: absolute;
+      top: calc(100% + 7px);
+      right: 0;
+      width: 295px;
+      max-width: calc(100vw - 24px);
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-strong);
+      background: rgba(12, 18, 29, 0.98);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.68), 0 0 18px rgba(56, 189, 248, 0.14);
+      z-index: 60;
+      color: var(--ink);
+      font-size: 12px;
+    }
+
+    .lb-popover.is-open {
+      display: block;
+    }
+
+    .lb-popover__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .lb-popover__title {
+      font-weight: 700;
+      font-size: 12.5px;
+      color: var(--cyan);
+    }
+
+    .lb-popover__hint {
+      font-size: 11.5px;
+      color: #a7f3d0;
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.26);
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .lb-popover__meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-2);
+      margin-bottom: 8px;
+    }
+
+    .lb-auth-domains {
+      max-height: 160px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .lb-auth-domain {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      color: var(--ink);
+      word-break: break-all;
+    }
+
+    .lb-auth-empty {
+      font-size: 11.5px;
+      color: var(--muted);
+      padding: 6px 2px;
+    }
+
+    .lb-popover__clear {
+      width: 100%;
+      justify-content: center;
+    }
+
+    /* ── Pause Banner ────────────────────────────────────────────────────── */
+    .lb-pause-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px 12px;
+      background: linear-gradient(90deg, rgba(251, 146, 60, 0.2), rgba(246, 196, 83, 0.1));
+      border-bottom: 1px solid rgba(251, 146, 60, 0.5);
+      flex-shrink: 0;
+      z-index: 25;
+    }
+
+    .lb-pause-banner.is-visible {
+      display: flex;
+    }
+
+    .lb-pause-banner__info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .lb-pause-banner__text {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #ffedd5;
+    }
+
+    .lb-pause-banner__kind {
+      display: none;
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(251, 146, 60, 0.25);
+      border: 1px solid rgba(251, 146, 60, 0.65);
+      color: #fed7aa;
+    }
+
+    .lb-pause-banner__actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1 1 240px;
+      justify-content: flex-end;
+    }
+
+    .lb-resume-note {
+      flex: 1 1 160px;
+      max-width: 320px;
+      height: 30px;
+      padding: 0 9px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(251, 146, 60, 0.45);
+      background: rgba(8, 11, 17, 0.9);
+      color: var(--ink);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .lb-resume-note:focus {
+      border-color: var(--orange);
+    }
+
+    .lb-resume-btn {
+      height: 30px;
+      padding: 0 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--green);
+      background: rgba(52, 211, 153, 0.22);
+      color: #d1fae5;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      transition: all 0.14s ease;
+    }
+
+    .lb-resume-btn:hover {
+      background: var(--green);
+      color: #042016;
+    }
+
+    /* ── Stage (Full Screen Live Viewport) ───────────────────────────────── */
+    .lb-stage-wrap {
+      flex: 1 1 0%;
+      min-height: 0;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #04060a;
+      overflow: hidden;
+    }
+
+    .lb-stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      outline: none;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: default;
+    }
+
+    .lb-stage:focus {
+      box-shadow: inset 0 0 0 1.5px rgba(56, 189, 248, 0.42);
+    }
+
+    .lb-frame-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      pointer-events: none;
+      user-select: none;
+      opacity: 0;
+      transition: opacity 0.18s ease;
+    }
+
+    .lb-frame-img.has-frame {
+      opacity: 1;
+    }
+
+    .lb-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 24px;
+      text-align: center;
+      background: radial-gradient(circle at 50% 44%, rgba(56, 189, 248, 0.09), rgba(4, 6, 10, 0.94) 68%);
+      z-index: 6;
+    }
+
+    .lb-placeholder.is-hidden {
+      display: none;
+    }
+
+    .lb-placeholder__icon {
+      font-size: 38px;
+      filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.35));
+    }
+
+    .lb-placeholder__title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .lb-placeholder__sub {
+      font-size: 12.5px;
+      color: var(--ink-2);
+      max-width: 440px;
+      line-height: 1.55;
+    }
+
+    .lb-placeholder__actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* ── Mobile / IME Keyboard Bar ───────────────────────────────────────── */
+    .lb-kb-bar {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      padding-bottom: max(7px, env(safe-area-inset-bottom));
+      background: rgba(14, 22, 35, 0.98);
+      border-top: 1px solid rgba(56, 189, 248, 0.34);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      z-index: 28;
+    }
+
+    .lb-kb-bar.is-visible {
+      display: flex;
+    }
+
+    .lb-kb-bar__tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cyan);
+      background: var(--cyan-dim);
+      border: 1px solid rgba(56, 189, 248, 0.32);
+      border-radius: 999px;
+      padding: 3px 9px;
+      white-space: nowrap;
+    }
+
+    .lb-kb-bar__input {
+      flex: 1 1 160px;
+      min-width: 120px;
+      height: 36px;
+      padding: 0 10px;
+      border-radius: 7px;
+      border: 1px solid rgba(56, 189, 248, 0.42);
+      background: rgba(8, 11, 17, 0.95);
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.2;
+      outline: none;
+    }
+
+    .lb-kb-bar__input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+    }
+
+    .lb-kb-bar__input::placeholder {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .lb-kb-bar__actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .lb-kb-bar__btn {
+      height: 36px;
+      min-width: 36px;
+      padding: 0 10px;
+      border-radius: 7px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      background: var(--well);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .lb-kb-bar__btn:hover,
+    .lb-kb-bar__btn:active {
+      border-color: var(--cyan);
+      background: var(--cyan-dim);
+    }
+
+    .lb-kb-bar__btn--enter {
+      border-color: rgba(52, 211, 153, 0.52);
+      background: var(--green-dim);
+      color: #d1fae5;
+    }
+
+    .lb-kb-bar__btn--close:hover {
+      border-color: var(--coral);
+      background: var(--coral-dim);
+      color: #fecdd3;
+    }
+
+    /* ── Toast Stack ─────────────────────────────────────────────────────── */
+    .lb-toast-stack {
+      position: fixed;
+      right: 14px;
+      bottom: max(14px, env(safe-area-inset-bottom));
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 80;
+      pointer-events: none;
+      max-width: min(380px, calc(100vw - 28px));
+    }
+
+    .lb-toast {
+      pointer-events: auto;
+      padding: 10px 13px;
+      border-radius: 9px;
+      border: 1px solid var(--border-strong);
+      background: rgba(15, 23, 36, 0.96);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      color: var(--ink);
+      font-size: 12.5px;
+      line-height: 1.45;
+      animation: lbToastIn 0.18s ease-out;
+    }
+
+    .lb-toast--error {
+      border-color: rgba(251, 113, 133, 0.65);
+      background: rgba(38, 14, 22, 0.96);
+      color: #ffe4e6;
+    }
+
+    .lb-toast--success {
+      border-color: rgba(52, 211, 153, 0.55);
+      background: rgba(10, 34, 28, 0.96);
+      color: #d1fae5;
+    }
+
+    .lb-toast--warn {
+      border-color: rgba(246, 196, 83, 0.55);
+      background: rgba(36, 28, 12, 0.96);
+      color: #fef3c7;
+    }
+
+    @keyframes lbToastIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Responsive Adjustments ──────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .lb-brand__text {
+        display: none;
+      }
+      .lb-shared-note {
+        font-size: 11px;
+        padding: 2px 8px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .lb-toolbar {
+        padding: 6px 8px;
+        padding-top: max(6px, env(safe-area-inset-top));
+        gap: 5px;
+      }
+      .lb-toolbar__row {
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .lb-url-wrap {
+        flex: 1 1 150px;
+      }
+      .lb-url-input {
+        font-size: 16px;
+        height: 32px;
+      }
+      .lb-tab-select {
+        max-width: 130px;
+        min-width: 82px;
+      }
+      #lb-viewport-badge,
+      #lb-session-badge {
+        display: none;
+      }
+      .lb-btn-label-hide-sm {
+        display: none;
+      }
+      .lb-popover {
+        right: auto;
+        left: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="lb-app" id="lb-app">
+    <header class="lb-toolbar" id="lb-toolbar">
+      <!-- Row 1: Browser Navigation + URL + Tabs -->
+      <div class="lb-toolbar__row">
+        <div class="lb-brand" title="Lab Browser · เบราว์เซอร์เต็มรูปแบบ">
+          <span class="lb-brand__icon" aria-hidden="true">🌐</span>
+          <span class="lb-brand__text">Lab Browser</span>
+        </div>
+
+        <button type="button" class="lb-btn lb-btn--mono" id="lb-btn-back" title="ย้อนกลับ (Back)" aria-label="ย้อนกลับ">←</button>
+        <button type="button" class="lb-btn lb-btn--mono" id="lb-btn-forward" title="ไปข้างหน้า (Forward)" aria-label="ไปข้างหน้า">→</button>
+        <button type="button" class="lb-btn lb-btn--mono" id="lb-btn-reload" title="รีเฟรชหน้า (Reload)" aria-label="รีเฟรช">↻</button>
+
+        <div class="lb-url-wrap">
+          <input
+            type="text"
+            class="lb-url-input"
+            id="lb-url-input"
+            placeholder="พิมพ์ URL เช่น google.com แล้วกด Enter..."
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-label="URL เบราว์เซอร์"
+          />
+        </div>
+
+        <select class="lb-tab-select" id="lb-tab-select" title="เลือกแท็บเบราว์เซอร์" aria-label="แท็บเบราว์เซอร์">
+          <option value="0">1. แท็บใหม่</option>
+        </select>
+        <button type="button" class="lb-btn lb-btn--mono" id="lb-btn-new-tab" title="เปิดแท็บใหม่ (+)" aria-label="เปิดแท็บใหม่">+</button>
+        <button type="button" class="lb-btn lb-btn--mono lb-btn--tab-close" id="lb-btn-close-tab" title="ปิดแท็บปัจจุบัน (✕)" aria-label="ปิดแท็บปัจจุบัน">✕</button>
+      </div>
+
+      <!-- Row 2: Status, Shared Login Notice & Service Controls -->
+      <div class="lb-toolbar__row lb-toolbar__row--meta">
+        <div class="lb-toolbar__group">
+          <span class="lb-pill lb-pill--connecting" id="lb-status-pill">🟡 กำลังเชื่อม...</span>
+          <span class="lb-pill" id="lb-viewport-badge" title="ขนาดหน้าจอ Viewport ปัจจุบัน">1280×800</span>
+          <span class="lb-pill" id="lb-session-badge" title="ชื่อเซสชันเบราว์เซอร์ (AI สั่งงานร่วมได้ผ่าน --session)">bv_labweb_main</span>
+          <span class="lb-shared-note" title="คุกกี้และสถานะล็อกอินในหน้านี้ถูกซิงก์อัตโนมัติกับ Browser Vision ทุกห้องแชท">
+            🔗 Login ที่นี่แชร์ร่วมกับ Browser Vision ทุกห้องแชท
+          </span>
+        </div>
+
+        <div class="lb-toolbar__group">
+          <div class="lb-popover-anchor">
+            <button type="button" class="lb-btn" id="lb-auth-btn" title="ดูสถานะและจัดการ Shared Login (คุกกี้และเซสชันที่แชร์ร่วมกัน)">
+              🔑 <span class="lb-btn-label-hide-sm">Shared Login</span>
+            </button>
+            <div class="lb-popover" id="lb-auth-popover" role="dialog" aria-label="Shared Login">
+              <div class="lb-popover__head">
+                <span class="lb-popover__title">🔑 Shared Login (โปรไฟล์ shared)</span>
+                <button type="button" class="lb-btn lb-btn--mono" id="lb-auth-refresh" style="height:24px;min-width:24px;padding:0 6px;" title="รีเฟรชสถานะ">↻</button>
+              </div>
+              <div class="lb-popover__hint">
+                Login ที่นี่แชร์ร่วมกับ Browser Vision ทุกห้องแชท
+              </div>
+              <div class="lb-popover__meta" id="lb-auth-meta">กำลังโหลด...</div>
+              <div class="lb-auth-domains" id="lb-auth-domains"></div>
+              <button type="button" class="lb-btn lb-btn--danger lb-popover__clear" id="lb-auth-clear-btn">
+                🗑️ ล้าง Shared Login ทั้งหมด
+              </button>
+            </div>
+          </div>
+
+          <button type="button" class="lb-btn" id="lb-kb-btn" title="เปิด/ปิดแถบแป้นพิมพ์สำหรับมือถือและพิมพ์ภาษาไทย (IME)" aria-label="แถบแป้นพิมพ์">⌨️</button>
+          <button type="button" class="lb-btn" id="lb-fullscreen-btn" title="โหมดเต็มจอ (Fullscreen)" aria-label="เต็มจอ">⛶</button>
+          <button type="button" class="lb-btn" id="lb-reconnect-btn" title="เชื่อมต่อสตรีมเบราว์เซอร์ใหม่" aria-label="เชื่อมต่อใหม่">🔄</button>
+          <button type="button" class="lb-btn lb-btn--danger" id="lb-close-browser-btn" title="ปิดโปรเซสเบราว์เซอร์นี้ทันทีเพื่อคืน RAM ให้เซิร์ฟเวอร์">
+            🛑 <span class="lb-btn-label-hide-sm">ปิดเบราว์เซอร์</span>
+          </button>
+          <a href="/" class="lb-link-btn" id="lb-home-link" title="กลับหน้าหลัก Homelab Dashboard">
+            ⌂ <span class="lb-btn-label-hide-sm">Dashboard</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Pause / Handoff Banner -->
+    <div class="lb-pause-banner" id="lb-pause-banner" role="status">
+      <div class="lb-pause-banner__info">
+        <span class="lb-pause-banner__text">⏸️ เซสชันถูกหยุดชั่วคราว — คุณสามารถดำเนินการบนหน้าเว็บได้เต็มที่</span>
+        <span class="lb-pause-banner__kind" id="lb-pause-kind"></span>
+      </div>
+      <div class="lb-pause-banner__actions">
+        <input type="text" class="lb-resume-note" id="lb-resume-note" placeholder="โน้ตสั้นๆ (ไม่บังคับ)..." />
+        <button type="button" class="lb-resume-btn" id="lb-resume-btn">▶️ Resume · ดำเนินการต่อ</button>
+      </div>
+    </div>
+
+    <!-- Center Fullscreen Browser Stage -->
+    <main class="lb-stage-wrap" id="lb-stage-wrap">
+      <div class="lb-stage" id="lb-stage" tabindex="0" aria-label="หน้าจอเบราว์เซอร์สด (คลิกเพื่อโต้ตอบและพิมพ์)">
+        <img id="lb-frame-img" class="lb-frame-img" alt="Lab Browser Live Stream" draggable="false" />
+
+        <div class="lb-placeholder" id="lb-placeholder">
+          <div class="lb-placeholder__icon" id="lb-placeholder-icon">🌐</div>
+          <div class="lb-placeholder__title" id="lb-placeholder-title">กำลังเปิด Lab Browser...</div>
+          <div class="lb-placeholder__sub" id="lb-placeholder-sub">
+            กำลังเชื่อมต่อเซสชันเบราว์เซอร์ (Shared Login ร่วมกับ Browser Vision ทุกห้องแชท)
+          </div>
+          <div class="lb-placeholder__actions">
+            <button type="button" class="lb-btn lb-btn--primary" id="lb-placeholder-retry" style="display:none;">🔄 เชื่อมต่อ / เปิดเบราว์เซอร์ใหม่</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile / IME Keyboard Bar -->
+    <section class="lb-kb-bar" id="lb-kb-bar" role="region" aria-label="แถบแป้นพิมพ์สำหรับหน้าเว็บ">
+      <span class="lb-kb-bar__tag" id="lb-kb-tag">⌨️ พร้อมพิมพ์</span>
+      <input
+        type="text"
+        class="lb-kb-bar__input"
+        id="lb-kb-proxy"
+        placeholder="แตะพิมพ์ข้อความ (รองรับภาษาไทย / IME) เพื่อส่งเข้าหน้าเว็บ..."
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        enterkeyhint="send"
+        aria-label="ช่องพิมพ์ข้อความส่งเข้าเบราว์เซอร์"
+      />
+      <div class="lb-kb-bar__actions">
+        <button type="button" class="lb-kb-bar__btn" id="lb-kb-tab" title="ส่งปุ่ม Tab">Tab</button>
+        <button type="button" class="lb-kb-bar__btn lb-kb-bar__btn--enter" id="lb-kb-enter" title="ส่งปุ่ม Enter">↵</button>
+        <button type="button" class="lb-kb-bar__btn" id="lb-kb-backspace" title="ส่งปุ่ม Backspace">⌫</button>
+        <button type="button" class="lb-kb-bar__btn lb-kb-bar__btn--close" id="lb-kb-close" title="ซ่อนแถบแป้นพิมพ์">✕</button>
+      </div>
+    </section>
+
+    <div class="lb-toast-stack" id="lb-toast-stack" aria-live="polite"></div>
+  </div>
+
+  <script src="/lab-browser-app.js" defer></script>
+</body>
+</html>

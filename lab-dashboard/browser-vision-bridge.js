@@ -710,7 +710,9 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, isAuthorized }
             return true;
         }
         const session = toBrowserSessionName(chatId);
-        const startOpts = { authProfile: 'shared', idleTtlSec: 600 };
+        const reqTtl = Number(body && body.idleTtlSec);
+        const idleTtlSec = Number.isFinite(reqTtl) && reqTtl > 0 ? Math.max(600, Math.min(7200, Math.floor(reqTtl))) : 600;
+        const startOpts = { authProfile: 'shared', idleTtlSec };
         try {
             await sessionClient.ensureSessionDaemon(session, startOpts);
             let status = await sessionClient.sendSessionCommand(session, 'status', [], startOpts, true);

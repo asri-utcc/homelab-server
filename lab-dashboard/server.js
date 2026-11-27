@@ -1196,6 +1196,7 @@ const LINKS = [
     { id: 'bg-remove', label: 'BG Studio (ลบพื้นหลัง)', icon: 'auto', url: '/bg-remove' },
     { id: '3d-vault', label: '3D Vault (คลังโมเดล 3D)', icon: 'box', url: '/3d-vault' },
     { id: 'video-studio', label: 'Video Studio (สร้างวิดีโอ AI)', icon: 'auto', url: '/video-studio' },
+    { id: 'lab-browser', label: 'Lab Browser (เบราว์เซอร์เต็มรูปแบบ)', icon: 'globe', url: '/lab-browser' },
     { id: 'chat', label: 'AI Chat (แชท)', icon: 'auto', url: '/gemini' },
     { id: 'energy', label: 'Energy (ค่าไฟ)', icon: 'activity', url: '#energy' },
     { id: 'cron', label: 'Cron อัตโนมัติ', icon: 'activity', url: '/cron' },
@@ -1822,6 +1823,9 @@ const server = http.createServer(async (req, res) => {
         }
         if (await assetVaultManager.handleRequest(req, res, url, { readJsonBody, sendJson, serveStatic })) {
             return;
+        }
+        if (p === '/lab-browser' || p === '/lab-browser/') {
+            return await serveStatic(req, res, '/lab-browser.html');
         }
         if (p === '/bg-remove' || p === '/bg-remove/') {
             return await serveStatic(req, res, '/bg-remove.html');

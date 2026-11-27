@@ -1,9 +1,10 @@
 {
   "pinned": [
-    "agent-hub",
     "video-studio",
-    "chat",
-    "energy",
-    "terminal"
+    "agent-hub",
+    "quota",
+    "3d-vault",
+    "homeassistant",
+    "onepercentbot"
   ]
 }

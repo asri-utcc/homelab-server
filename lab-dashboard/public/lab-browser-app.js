@@ -592,9 +592,32 @@
       }
       if (typeof msg.url === 'string') updateUrlUI(msg.url);
       if (Array.isArray(msg.tabs)) updateTabsUI(msg.tabs, msg.activeTab);
+  function syncStandaloneBvAlert(isPaused, reason, urlStr) {
+    if (!window.HomelabBVAlerts) return;
+    const alertId = 'bv-web-' + CHAT_ID;
+    if (isPaused) {
+      const rLow = String(reason || '').toLowerCase();
+      const kind = /otp/.test(rLow) ? 'otp' : /captcha|turnstile|human/.test(rLow) ? 'captcha' : /pay|card|checkout/.test(rLow) ? 'payment' : /login|password|auth/.test(rLow) ? 'login' : 'paused';
+      const label = reason ? (SENSITIVE_LABELS.get(rLow) || String(reason)) : '⏸️ เบราว์เซอร์รอคุณดำเนินการ';
+      window.HomelabBVAlerts.raise({
+        id: alertId,
+        kind,
+        title: label,
+        detail: 'Lab Browser (' + CHAT_ID + ') รอการดำเนินการของคุณ',
+        sourceType: 'browser',
+        sessionName: CHAT_ID,
+        url: urlStr || (urlInput && urlInput.value ? urlInput.value.trim() : ''),
+        browserVisionUrl: location.pathname + location.search
+      });
+    } else {
+      window.HomelabBVAlerts.resolve(alertId);
+    }
+  }
+
       if (typeof msg.paused === 'boolean') {
         paused = msg.paused;
         pauseReason = msg.pauseReason || msg.reason || '';
+        syncStandaloneBvAlert(paused, pauseReason, msg.url);
       }
       updateStatusUI();
       scheduleStageResize();
@@ -614,6 +637,7 @@
       if (paused && /password|otp|login/i.test(pauseReason)) {
         kbDismissedByUser = false;
       }
+      syncStandaloneBvAlert(paused, pauseReason, msg.url);
       updateStatusUI();
     } else if (t === 'focus-state') {
       kbFieldInfo = msg.isEditable ? msg : null;
@@ -628,6 +652,7 @@
       if (typeof msg.paused === 'boolean') {
         paused = msg.paused;
         pauseReason = paused ? String(msg.pauseReason || msg.reason || '') : '';
+        syncStandaloneBvAlert(paused, pauseReason, msg.url);
       }
       if (typeof msg.url === 'string') updateUrlUI(msg.url);
       if (Array.isArray(msg.tabs)) updateTabsUI(msg.tabs, msg.activeTab);
@@ -908,6 +933,7 @@
     }
     paused = false;
     pauseReason = '';
+    window.HomelabBVAlerts?.resolve('bv-web-' + CHAT_ID);
     if (resumeNoteInput) resumeNoteInput.value = '';
     updateStatusUI();
     showToast('▶️ ดำเนินการต่อแล้ว', 'success');
@@ -917,6 +943,7 @@
     if (closingBrowser) return;
     closingBrowser = true;
     userClosed = true;
+    window.HomelabBVAlerts?.resolve('bv-web-' + CHAT_ID);
     closeAuthPopover();
     closeSocketOnly();
     updateStatusUI();

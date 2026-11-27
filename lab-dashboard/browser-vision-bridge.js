@@ -617,7 +617,160 @@ function isNotRunningError(err) {
     return /not running|ENOENT|ECONNREFUSED/i.test(msg);
 }
 
-async function handleApi(req, res, url, { sendJson, readJsonBody, isAuthorized } = {}) {
+// ── Sensitive URL & Alert Classification Helpers ─────────────────────────────
+const SENSITIVE_EXACT_HOSTS = new Set([
+    'accounts.google.com',
+    'login.microsoftonline.com',
+    'login.live.com',
+    'appleid.apple.com',
+    'idmsa.apple.com',
+]);
+
+const SENSITIVE_PATH_RE = /(^|[\/_\-.])(signin|sign-in|login|log-in|oauth|oauth2|challenge|2fa|two-factor|mfa|otp|captcha|verify|verification|checkpoint)([\/_\-.]|$)/i;
+
+function isSensitiveAlertUrl(rawUrl) {
+    if (typeof rawUrl !== 'string') return false;
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed === 'about:blank') return false;
+    let parsed;
+    try {
+        parsed = new URL(trimmed);
+    } catch (_) {
+        return false;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+
+    const host = parsed.hostname.toLowerCase();
+    const pathname = (parsed.pathname || '/').toLowerCase();
+
+    if (SENSITIVE_EXACT_HOSTS.has(host)) return true;
+    if ((host === 'tiktok.com' || host.endsWith('.tiktok.com')) && pathname.includes('/login')) return true;
+    if ((host === 'facebook.com' || host.endsWith('.facebook.com')) && (pathname.includes('/login') || pathname.includes('/checkpoint'))) return true;
+    if ((host === 'instagram.com' || host.endsWith('.instagram.com')) && (pathname.includes('/accounts/login') || pathname.includes('/challenge'))) return true;
+    if ((host === 'x.com' || host === 'twitter.com' || host.endsWith('.twitter.com')) && (pathname.includes('/i/flow/login') || pathname.includes('/login'))) return true;
+
+    return SENSITIVE_PATH_RE.test(pathname);
+}
+
+function stripUrlSecrets(rawUrl) {
+    if (typeof rawUrl !== 'string') return { safeUrl: '', domain: '' };
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed === 'about:blank') return { safeUrl: '', domain: '' };
+    try {
+        const u = new URL(trimmed);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            return { safeUrl: '', domain: '' };
+        }
+        return {
+            safeUrl: `${u.origin}${u.pathname}`,
+            domain: u.hostname.toLowerCase(),
+        };
+    } catch (_) {
+        const clean = trimmed.split(/[?#]/)[0];
+        return { safeUrl: clean, domain: '' };
+    }
+}
+
+function classifySessionAlert(s) {
+    if (!s || typeof s !== 'object' || s.alive === false) return null;
+    const sessionName = String(s.session || '').trim();
+    if (!sessionName) return null;
+
+    const paused = s.paused === true;
+    const rawUrl = typeof s.url === 'string' ? s.url : '';
+    const sensitiveUrl = isSensitiveAlertUrl(rawUrl);
+    const isSocialSession = /^bv_labweb_soc_/i.test(sessionName);
+
+    if (!paused && !sensitiveUrl && !isSocialSession) return null;
+
+    const reasonRaw = String(s.pauseReason || s.reason || '').trim();
+    const reason = reasonRaw.toLowerCase();
+    const { safeUrl, domain } = stripUrlSecrets(rawUrl);
+    const pathLower = safeUrl.toLowerCase();
+
+    let kind = 'paused';
+    if (/captcha/.test(reason) || /captcha|challenge/.test(pathLower)) {
+        kind = 'captcha';
+    } else if (/otp|2fa|mfa|two.?factor/.test(reason) || /[\/_\-.](otp|2fa|mfa)([\/_\-.]|$)/.test(pathLower)) {
+        kind = 'otp';
+    } else if (/payment|checkout|billing|card/.test(reason)) {
+        kind = 'payment';
+    } else if (/password|login|signin|sign-in|auth|oauth/.test(reason) || sensitiveUrl) {
+        kind = 'login';
+    } else if (isSocialSession) {
+        kind = 'social_upload';
+    } else if (paused) {
+        kind = 'paused';
+    }
+
+    const domainSuffix = domain ? ` (${domain})` : '';
+    let title;
+    let detail;
+    switch (kind) {
+        case 'captcha':
+            title = '🛡️ ติด CAPTCHA ต้องยืนยันตัวตน';
+            detail = `กรุณาแก้ CAPTCHA หรือยืนยันตัวตนใน Browser Vision${domainSuffix} แล้วกด "เสร็จแล้ว (ให้ AI ทำต่อ)"`;
+            break;
+        case 'otp':
+            title = '🔢 ต้องกรอกรหัส OTP/2FA';
+            detail = `กรุณากรอกรหัส OTP หรือยืนยัน 2FA ใน Browser Vision${domainSuffix} แล้วกด "เสร็จแล้ว (ให้ AI ทำต่อ)"`;
+            break;
+        case 'payment':
+            title = '💳 AI หยุดรอตรวจสอบหน้าชำระเงิน';
+            detail = `กรุณาตรวจสอบและดำเนินการในหน้าชำระเงินด้วยตนเอง${domainSuffix}`;
+            break;
+        case 'login':
+            title = '🔐 AI หยุดรอคุณล็อกอิน';
+            detail = `กรุณาเข้าสู่ระบบใน Browser Vision${domainSuffix} แล้วกด "เสร็จแล้ว (ให้ AI ทำต่อ)"`;
+            break;
+        case 'social_upload':
+            title = '📤 เซสชันอัปโหลดโซเชียลรอดำเนินการ';
+            detail = `มีหน้าต่าง Browser Vision สำหรับโพสต์โซเชียลเปิดอยู่${domainSuffix} กดเปิดเพื่อตรวจสอบหรือล็อกอิน`;
+            break;
+        default:
+            title = '⏸️ AI หยุดรอการดำเนินการใน Browser Vision';
+            detail = `Browser Vision หยุดรอคุณดำเนินการในหน้าเว็บ${domainSuffix} กดเปิดเพื่อดูหรือสั่งให้ AI ทำต่อ`;
+            break;
+    }
+
+    const isChatSession = sessionName.startsWith('bv_') && !sessionName.startsWith('bv_labweb_');
+    const chatId = isChatSession ? sessionName.slice(3) : null;
+    const isStandalone = sessionName.startsWith('bv_labweb_');
+    const profile = isStandalone ? sessionName.slice('bv_labweb_'.length) : null;
+    const platform = isSocialSession ? sessionName.replace(/^bv_labweb_soc_/i, '').toLowerCase() : null;
+
+    const sourceType = isSocialSession ? 'social' : (chatId ? 'chat' : 'browser');
+    let browserVisionUrl;
+    if (chatId) {
+        browserVisionUrl = `/gemini?session=${encodeURIComponent(chatId)}&bv=1`;
+    } else if (profile) {
+        browserVisionUrl = `/lab-browser?profile=${encodeURIComponent(profile)}`;
+    } else {
+        browserVisionUrl = `/lab-browser?session=${encodeURIComponent(sessionName)}`;
+    }
+
+    const tsParsed = Date.parse(s.lastActivityAt || s.startedAt || '');
+    const ts = Number.isFinite(tsParsed) ? tsParsed : Date.now();
+
+    return {
+        id: `srv:${sessionName}:${kind}`,
+        kind,
+        title,
+        detail,
+        sourceType,
+        chatId,
+        sessionName,
+        platform,
+        domain,
+        url: safeUrl,
+        browserVisionUrl,
+        paused,
+        pauseReason: reasonRaw || null,
+        ts,
+    };
+}
+
+async function handleApi(req, res, url, { sendJson, readJsonBody, isAuthorized, sessionClient: injectedSessionClient } = {}) {
     const p = url.pathname;
     if (!p.startsWith('/api/browser-vision/')) return false;
 
@@ -627,8 +780,33 @@ async function handleApi(req, res, url, { sendJson, readJsonBody, isAuthorized }
         return true;
     }
 
-    const sessionClient = getSessionClient();
+    const sessionClient = injectedSessionClient !== undefined ? injectedSessionClient : getSessionClient();
     const authStore = getAuthStore();
+
+    // GET /api/browser-vision/alerts
+    if (req.method === 'GET' && p === '/api/browser-vision/alerts') {
+        try {
+            const alerts = [];
+            if (sessionClient && typeof sessionClient.listSessions === 'function') {
+                const sessions = await sessionClient.listSessions().catch(() => []);
+                if (Array.isArray(sessions)) {
+                    for (const s of sessions) {
+                        const alert = classifySessionAlert(s);
+                        if (alert) alerts.push(alert);
+                    }
+                }
+            }
+            sendJson(res, 200, {
+                ok: true,
+                alerts,
+                count: alerts.length,
+                updatedAt: new Date().toISOString(),
+            });
+        } catch (err) {
+            sendJson(res, 500, { ok: false, error: err.message });
+        }
+        return true;
+    }
 
     // GET /api/browser-vision/auth/status
     if (req.method === 'GET' && p === '/api/browser-vision/auth/status') {
@@ -854,6 +1032,9 @@ module.exports = {
     LAB_BROWSER_BIN,
     ALLOWED_CLIENT_MSG_TYPES,
     toBrowserSessionName,
+    isSensitiveAlertUrl,
+    stripUrlSecrets,
+    classifySessionAlert,
     attachUpgrade,
     handleApi,
     closeChatBrowser,

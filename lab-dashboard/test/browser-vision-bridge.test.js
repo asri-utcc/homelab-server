@@ -303,3 +303,156 @@ test('WS attachUpgrade: 401 when unauthorized, 101 when authorized, closes with 
         try { if (fs.existsSync(mockSockPath)) fs.unlinkSync(mockSockPath); } catch (_) {}
     }
 });
+
+test('isSensitiveAlertUrl & stripUrlSecrets detect login/auth/captcha/otp URLs and strip secrets', () => {
+    const sensitiveCases = [
+        'https://accounts.google.com/v3/signin/identifier?client_id=abc&token=secret',
+        'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?code=123',
+        'https://login.live.com/login.srf?wa=wsignin1.0',
+        'https://appleid.apple.com/auth/authorize',
+        'https://www.tiktok.com/login/phone-or-email/email',
+        'https://www.facebook.com/login/?next=https%3A%2F%2Ffacebook.com',
+        'https://www.instagram.com/accounts/login/',
+        'https://example.org/oauth/authorize?state=xyz',
+        'https://example.org/security/2fa/verify',
+        'https://example.org/auth/otp',
+        'https://example.org/challenge/captcha',
+        'https://example.org/signin',
+    ];
+    for (const u of sensitiveCases) {
+        assert.equal(bridge.isSensitiveAlertUrl(u), true, `Expected sensitive: ${u}`);
+    }
+
+    const normalCases = [
+        'https://example.com/',
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        'https://github.com/openai/codex',
+        'https://www.tiktok.com/@creator',
+        'about:blank',
+        '',
+        null,
+        'not-a-url',
+    ];
+    for (const u of normalCases) {
+        assert.equal(bridge.isSensitiveAlertUrl(u), false, `Expected non-sensitive: ${u}`);
+    }
+
+    const stripped = bridge.stripUrlSecrets('https://accounts.google.com/v3/signin?access_token=TOPSECRET&session=999#hashsecret');
+    assert.equal(stripped.safeUrl, 'https://accounts.google.com/v3/signin');
+    assert.equal(stripped.domain, 'accounts.google.com');
+    assert.ok(!stripped.safeUrl.includes('TOPSECRET'));
+    assert.ok(!stripped.safeUrl.includes('hashsecret'));
+});
+
+test('GET /api/browser-vision/alerts requires auth, classifies sessions, and strips query secrets', async () => {
+    const callAlerts = async ({ authed = true, sessions = [] } = {}) => {
+        let statusCode = null;
+        let payload = null;
+        const handled = await bridge.handleApi(
+            { method: 'GET', headers: {} },
+            {},
+            new URL('http://localhost/api/browser-vision/alerts'),
+            {
+                isAuthorized: async () => authed,
+                sendJson: (_res, code, body) => { statusCode = code; payload = body; },
+                readJsonBody: async () => ({}),
+                sessionClient: {
+                    listSessions: async () => sessions,
+                },
+            }
+        );
+        return { handled, statusCode, payload };
+    };
+
+    // 1. Unauthorized -> 401
+    const unauth = await callAlerts({ authed: false });
+    assert.equal(unauth.handled, true);
+    assert.equal(unauth.statusCode, 401);
+    assert.equal(unauth.payload.ok, false);
+
+    // 2. Authorized -> classifies paused, sensitive URL, social upload, skips normal & dead sessions
+    const mockSessions = [
+        {
+            session: 'bv_sess_chat_captcha',
+            alive: true,
+            paused: true,
+            pauseReason: 'sensitive_captcha',
+            url: 'https://www.tiktok.com/login?token=LEAK_ME_NOT&code=42',
+            lastActivityAt: '2026-11-27T15:00:00.000Z',
+        },
+        {
+            session: 'bv_sess_chat_login',
+            alive: true,
+            paused: false,
+            url: 'https://accounts.google.com/v3/signin?client_secret=HIDE_THIS',
+            lastActivityAt: '2026-11-27T15:01:00.000Z',
+        },
+        {
+            session: 'bv_sess_chat_otp',
+            alive: true,
+            paused: true,
+            pauseReason: 'otp',
+            url: 'https://bank.example.com/confirm',
+            lastActivityAt: '2026-11-27T15:02:00.000Z',
+        },
+        {
+            session: 'bv_labweb_soc_tiktok',
+            alive: true,
+            paused: false,
+            url: 'https://www.tiktok.com/creator-center/upload?session_key=XYZ',
+            lastActivityAt: '2026-11-27T15:03:00.000Z',
+        },
+        {
+            session: 'bv_sess_normal',
+            alive: true,
+            paused: false,
+            url: 'https://example.com/article/123',
+        },
+        {
+            session: 'bv_sess_dead',
+            alive: false,
+            paused: true,
+            pauseReason: 'login',
+            url: 'https://accounts.google.com/signin',
+        },
+    ];
+
+    const res = await callAlerts({ authed: true, sessions: mockSessions });
+    assert.equal(res.handled, true);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.ok, true);
+    assert.equal(res.payload.count, 4);
+    assert.equal(res.payload.alerts.length, 4);
+    assert.ok(typeof res.payload.updatedAt === 'string' && res.payload.updatedAt.length > 0);
+
+    const bySession = Object.fromEntries(res.payload.alerts.map((a) => [a.sessionName, a]));
+
+    // Captcha chat session
+    assert.equal(bySession.bv_sess_chat_captcha.kind, 'captcha');
+    assert.equal(bySession.bv_sess_chat_captcha.chatId, 'sess_chat_captcha');
+    assert.equal(bySession.bv_sess_chat_captcha.browserVisionUrl, '/gemini?session=sess_chat_captcha&bv=1');
+    assert.equal(bySession.bv_sess_chat_captcha.url, 'https://www.tiktok.com/login');
+    assert.ok(!JSON.stringify(bySession.bv_sess_chat_captcha).includes('LEAK_ME_NOT'));
+
+    // Google login URL without explicit pause
+    assert.equal(bySession.bv_sess_chat_login.kind, 'login');
+    assert.equal(bySession.bv_sess_chat_login.chatId, 'sess_chat_login');
+    assert.equal(bySession.bv_sess_chat_login.domain, 'accounts.google.com');
+    assert.ok(!JSON.stringify(bySession.bv_sess_chat_login).includes('HIDE_THIS'));
+
+    // OTP pause
+    assert.equal(bySession.bv_sess_chat_otp.kind, 'otp');
+    assert.match(bySession.bv_sess_chat_otp.title, /OTP/);
+
+    // Social upload standalone session
+    assert.equal(bySession.bv_labweb_soc_tiktok.kind, 'social_upload');
+    assert.equal(bySession.bv_labweb_soc_tiktok.chatId, null);
+    assert.equal(bySession.bv_labweb_soc_tiktok.platform, 'tiktok');
+    assert.equal(bySession.bv_labweb_soc_tiktok.sourceType, 'social');
+    assert.equal(bySession.bv_labweb_soc_tiktok.browserVisionUrl, '/lab-browser?profile=soc_tiktok');
+    assert.ok(!JSON.stringify(bySession.bv_labweb_soc_tiktok).includes('session_key'));
+
+    // Normal & dead sessions excluded
+    assert.equal(bySession.bv_sess_normal, undefined);
+    assert.equal(bySession.bv_sess_dead, undefined);
+});

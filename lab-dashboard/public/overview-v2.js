@@ -14,6 +14,7 @@
     'use strict';
 
     const POLL_MS = 6000;
+    const FACTORY_POLL_MS = 8000;
     const QUOTA_POLL_MS = 60000;
     const API_RETRY_MS = 60000;
     const SEEN_STORAGE_KEY = 'ov2_seen_videos_v1';
@@ -50,6 +51,19 @@
         quotaUpdatedAt: 0,
         quotaModelsOpen: false,
         quotaTab: 'all',
+        factoryState: null,
+        socialQueue: null,
+        factoryInFlight: false,
+        factoryUpdatedAt: 0,
+        factoryBusyKey: null,
+        factoryFeedback: null,
+        factoryFeedbackTimer: null,
+        wsCtrl: null,
+        wsDemoMode: true,
+        wsUserDemoOverride: null,
+        wsHadLiveActive: false,
+        wsSelectedStation: 'overview',
+        wsInspectorOpen: false,
     };
 
     const flashTimers = new WeakMap();
@@ -713,9 +727,7 @@
     }
 
     // ── Video Player Dialog ─────────────────────────────────────────────────
-    function openVideoPlayer(videoKey) {
-        const recent = (ui.lastData && ui.lastData.videos && ui.lastData.videos.recent) || [];
-        const v = recent.find((item) => item.key === videoKey);
+    function openVideoDialogItem(v) {
         if (!v) return;
 
         const dlg = $('ov2-video-dialog');
@@ -726,17 +738,17 @@
         const edBtn = $('ov2-vd-editor');
         if (!dlg || !vidEl) {
             if (v.watchUrl) window.open(v.watchUrl, '_blank', 'noopener');
-            if (!v.seen) setVideoSeen({ id: v.key, seen: true });
+            if (v.key && !v.seen) setVideoSeen({ id: v.key, seen: true });
             return;
         }
 
-        titleEl.textContent = v.title || v.key;
+        titleEl.textContent = v.title || v.key || 'วิดีโอ';
         const parts = [];
         if (v.durationSec) parts.push(`ยาว ${fmtDuration(v.durationSec)}`);
         if (v.sizeBytes) parts.push(fmtMb(v.sizeBytes));
         if (v.costThb != null) parts.push(`ค่าใช้จ่าย ${fmtThb(v.costThb)}`);
         if (v.renderNode) parts.push(`เรนเดอร์บน ${v.renderNode}`);
-        metaEl.textContent = parts.join('  /  ') || v.key;
+        metaEl.textContent = parts.join('  /  ') || v.key || '';
 
         if (dlBtn) {
             dlBtn.href = v.downloadUrl || v.watchUrl || '#';
@@ -756,9 +768,58 @@
         }
         vidEl.play().catch(() => {});
 
-        if (!v.seen) {
+        if (v.key && !v.seen) {
             setVideoSeen({ id: v.key, seen: true });
         }
+    }
+
+    function openVideoPlayer(videoKey) {
+        const recent = (ui.lastData && ui.lastData.videos && ui.lastData.videos.recent) || [];
+        const v = recent.find((item) => item.key === videoKey);
+        if (!v) return;
+        openVideoDialogItem(v);
+    }
+
+    function openFactoryJobPreview(jobId) {
+        if (!jobId) return;
+        const recent = (ui.lastData && ui.lastData.videos && ui.lastData.videos.recent) || [];
+        const matched = recent.find((item) => item.jobId === jobId || item.key === jobId);
+        if (matched) {
+            openVideoDialogItem(matched);
+            return;
+        }
+        const jobs = (ui.factoryState && Array.isArray(ui.factoryState.jobs)) ? ui.factoryState.jobs : [];
+        const j = jobs.find((item) => item && item.id === jobId);
+        if (!j) {
+            window.open(`/video-studio#qc=${encodeURIComponent(jobId)}`, '_blank', 'noopener');
+            return;
+        }
+        const versions = Array.isArray(j.versions) ? j.versions : [];
+        const latest = versions.length ? versions[versions.length - 1] : null;
+        const out = j.outputs || {};
+        const videoPath = String(latest?.videoPath || out.videoPath || out.finalPath || '').trim();
+        const thumbPath = String(latest?.storyboardOutPath || latest?.gifOutPath || out.storyboardOutPath || out.gifOutPath || '').trim();
+        const watchUrl = videoPath
+            ? `/api/gemini/local-file?path=${encodeURIComponent(videoPath)}`
+            : (latest?.watchUrl || out.watchUrl || `/api/video-studio/jobs/${encodeURIComponent(j.id)}/file/final`);
+        const downloadUrl = videoPath
+            ? `/api/gemini/local-file?path=${encodeURIComponent(videoPath)}&download=1`
+            : (latest?.downloadUrl || out.downloadUrl || watchUrl);
+        openVideoDialogItem({
+            key: normalizeVideoKey(videoPath || j.id),
+            title: j.topic || j.id,
+            durationSec: Number(latest?.durationSec ?? out.durationSec ?? j.durationSec) || null,
+            sizeBytes: Number(latest?.sizeBytes ?? out.sizeBytes) || 0,
+            costThb: (out.costDetails?.clipTotalThb ?? latest?.costThb ?? out.costThb) != null
+                ? Number(out.costDetails?.clipTotalThb ?? latest?.costThb ?? out.costThb)
+                : null,
+            renderNode: String(latest?.renderNode || out.renderNode || j.renderNode || ''),
+            watchUrl,
+            downloadUrl,
+            thumbUrl: thumbPath ? `/api/gemini/local-image?path=${encodeURIComponent(thumbPath)}` : '',
+            editorUrl: `/video-editor.html?job=${encodeURIComponent(j.id)}`,
+            seen: true,
+        });
     }
 
     function closeVideoPlayer() {
@@ -842,23 +903,46 @@
         updateQuotaCountdowns();
     }
 
+    function getBvAlerts() {
+        try {
+            if (window.HomelabBVAlerts && typeof window.HomelabBVAlerts.list === 'function') {
+                const arr = window.HomelabBVAlerts.list();
+                return Array.isArray(arr) ? arr : [];
+            }
+        } catch (_) {}
+        return [];
+    }
+
+    function bvAlertBadgeLabel(kind) {
+        const k = String(kind || 'login').toLowerCase();
+        if (k === 'captcha') return '🛡️ CAPTCHA';
+        if (k === 'otp') return '🔢 รหัส OTP';
+        if (k === 'payment') return '💳 ชำระเงิน';
+        if (k === 'social_upload') return '📤 โซเชียล BV';
+        if (k === 'handoff') return '🤝 รอดำเนินการ';
+        if (k === 'paused') return '⏸️ หยุดรอ';
+        return '🔐 ล็อกอิน BV';
+    }
+
     function renderHeader(data) {
         updateFreshness();
         if (!data) return;
 
         const att = data.attention || {};
+        const bvCount = getBvAlerts().length;
         const pillEl = $('ov3-status-pill');
         const dotEl = $('ov2-status-dot');
         const sumEl = $('ov2-status-summary');
 
         const parts = [];
+        if (bvCount > 0) parts.push(`รอล็อกอิน BV ${bvCount}`);
         if (att.servicesDown > 0) parts.push(`บริการมีปัญหา ${att.servicesDown}`);
         if (att.aiRunning > 0) parts.push(`AI กำลังทำ ${att.aiRunning} แชท`);
         if (att.aiUnread > 0) parts.push(`ยังไม่อ่าน ${att.aiUnread}`);
         if (att.videosUnseen > 0) parts.push(`วิดีโอยังไม่ดู ${att.videosUnseen}`);
         if (att.rendersActive > 0) parts.push(`กำลังเรนเดอร์ ${att.rendersActive}`);
 
-        const tone = att.servicesDown > 0 ? 'err' : (parts.length > 0 ? 'warn' : 'ok');
+        const tone = (att.servicesDown > 0 || bvCount > 0) ? 'err' : (parts.length > 0 ? 'warn' : 'ok');
 
         if (pillEl) pillEl.setAttribute('data-tone', tone);
         if (dotEl) {
@@ -870,6 +954,9 @@
     }
 
     function attnIcon(kind) {
+        if (kind === 'bv') {
+            return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+        }
         if (kind === 'problem') {
             return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
         }
@@ -888,6 +975,28 @@
         const ai = (data && data.ai) || {};
         const vids = (data && data.videos) || {};
         const agents = (data && data.agents) || {};
+
+        // 0. Global Browser Vision Sticky Alerts (top priority — user action required)
+        for (const bv of getBvAlerts()) {
+            const metaParts = [
+                bv.roomTitle || '',
+                bv.platform ? bv.platform.toUpperCase() : '',
+                bv.domain || '',
+                bv.detail || '',
+                bv.ts ? fmtRelTime(bv.ts) : '',
+            ].filter(Boolean);
+            const canResume = Boolean(bv.chatId || bv.sessionName);
+            const actionsHtml = `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-bv-open="${esc(bv.id)}">เปิดล็อกอิน</button>`
+                + (canResume ? `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-bv-resume="${esc(bv.id)}" title="เสร็จแล้วให้ AI ทำต่อ">ทำต่อ</button>` : '');
+            items.push({
+                kind: 'bv',
+                rowKind: 'problem',
+                title: bv.title || 'ต้องล็อกอินใน Browser Vision',
+                badge: { text: bvAlertBadgeLabel(bv.kind), tone: 'err' },
+                meta: metaParts.join(' · '),
+                actionsHtml,
+            });
+        }
 
         // 1. Infrastructure problems & failed renders (highest priority)
         for (const p of (infra.problems || [])) {
@@ -1014,7 +1123,7 @@
 
         const visible = ui.attnExpanded ? items : items.slice(0, ATTN_COLLAPSED_LIMIT);
         const rowsHtml = visible.map((item) => `
-            <div class="ov3-attn__row" data-kind="${esc(item.kind)}">
+            <div class="ov3-attn__row" data-kind="${esc(item.rowKind || item.kind)}">
                 <span class="ov3-attn__ico" aria-hidden="true">${attnIcon(item.kind)}</span>
                 <div class="ov3-attn__main">
                     <div class="ov3-attn__title">
@@ -1844,21 +1953,24 @@
         let level = 1;
         let badgeTone = 'ok';
         let badgeLabel = '● ปกติ (On Pace)';
+        let shortBadge = '● On Pace';
         let summaryText = `อยู่ในเกณฑ์: เหลืออีก ${daysRemainingClamped.toFixed(1)} วัน | ใช้ได้เฉลี่ย ~${suggestedDailyBudget.toFixed(0)}%/วัน`;
 
         if (delta > 20 || (safePct >= 90 && daysRemainingClamped >= 1.5) || safePct >= 98) {
             level = 3;
             badgeTone = 'err';
             badgeLabel = '⚡ วิกฤติ (Critical)';
+            shortBadge = '⚡ Critical';
             summaryText = `วิกฤติ! ใช้ล้นเกินจุดวันนี้ไป ~${daysAhead} วัน (+${Math.max(0, Math.round(delta))}%) | เหลือ ${daysRemainingClamped.toFixed(1)} วัน (ควรชะลอการใช้)`;
         } else if (delta > 5 || (safePct >= 75 && daysRemainingClamped >= 2)) {
             level = 2;
             badgeTone = 'warn';
             badgeLabel = '▲ เร่งตัว (High Burn)';
+            shortBadge = '▲ High Burn';
             summaryText = `เร่งตัว: ใช้ล้นเกินจุดวันนี้ไป ~${daysAhead} วัน (+${Math.round(delta)}%) | เหลือ ${daysRemainingClamped.toFixed(1)} วัน (แนะชะลอเหลือ ~${suggestedDailyBudget.toFixed(0)}%/วัน)`;
         }
 
-        return { safePct, currentDayIndex, level, badgeTone, badgeLabel, summaryText, hasValidEpoch };
+        return { safePct, currentDayIndex, level, badgeTone, badgeLabel, shortBadge, summaryText, hasValidEpoch };
     }
 
     function build7SegmentRackHtml(usedPct, currentDayIndex) {
@@ -1900,6 +2012,99 @@
         }
     }
 
+    function shortAccountTag(acct, fallbackIdx = 0) {
+        const id = String((acct && acct.id) || '').trim();
+        if (/^g(\d+)$/i.test(id)) return `G#${id.slice(1)}`;
+        const lbl = String((acct && acct.label) || '').trim();
+        const m = lbl.match(/(\d+)/);
+        if (/google/i.test(lbl) && m) return `G#${m[1]}`;
+        return lbl ? lbl.slice(0, 8) : `G#${fallbackIdx + 1}`;
+    }
+
+    function buildGooglePoolCards(acct, opts = {}) {
+        const d = acct && acct.data;
+        const label = (acct && acct.label) || 'Google';
+        const tag = opts.accountTag || '';
+
+        if (!d || !d.ok) {
+            return `
+                <article class="ov3-qpool-card${opts.fullSpanOnError ? ' is-fullspan' : ''}">
+                    <div class="ov3-qpool-card__head">
+                        <div class="ov3-qpool-card__title">${tag ? `${esc(tag)} · ` : ''}${esc(label)}</div>
+                        <span class="ov3-badge" data-tone="warn">ข้ามอัตโนมัติ</span>
+                    </div>
+                    <div class="ov3-qmeta-row">${esc((d && d.error) || 'ไม่พบโทเค็นหรือติดต่อ API ไม่ได้')}</div>
+                </article>
+            `;
+        }
+
+        const pools = Array.isArray(d.pools) ? d.pools : [];
+        const weeklyPool = pools.find((x) =>
+            (x.weekly && x.weekly.resetTime) ||
+            (x.resetTime && (Date.parse(x.resetTime) - Date.now()) > 12 * 3600 * 1000)
+        );
+        const sharedWeeklyReset = (weeklyPool && weeklyPool.weekly && weeklyPool.weekly.resetTime)
+            || (weeklyPool && weeklyPool.resetTime)
+            || new Date(Date.now() + 7 * 86400000).toISOString();
+
+        return pools.map((p) => {
+            const rem = Math.round(clampPct(p.remainingPct));
+            const used = Math.round(clampPct(p.usedPct));
+            const isExhausted = rem <= 0;
+            const tone = quotaTone(rem);
+            const resetMs = p.resetTime ? (Date.parse(p.resetTime) - Date.now()) : 0;
+            const is5hWindow = resetMs > 0 && resetMs <= 12 * 3600 * 1000;
+            const weeklyResetForRack = (p.weekly && p.weekly.resetTime)
+                ? p.weekly.resetTime
+                : (is5hWindow ? sharedWeeklyReset : p.resetTime);
+            const rackUsedPct = p.weekly ? p.weekly.usedPct : p.usedPct;
+            const pace = calculateWeeklyPace(rackUsedPct, weeklyResetForRack);
+            const fiveHourOnly = p.id === 'gemini'; // กฎผู้ใช้: pool Gemini นับเฉพาะ 5 ชม. ไม่แสดง weekly rack/pace
+            const badgeTone = isExhausted ? 'err' : (fiveHourOnly ? tone : pace.badgeTone);
+            const badgeText = isExhausted ? '⚡ หมด (0%)' : (fiveHourOnly ? '5 ชม.' : pace.shortBadge);
+            const badgeTitle = isExhausted ? 'หมดโควตาแล้ว' : (fiveHourOnly ? 'นับเฉพาะรอบ 5 ชั่วโมง' : pace.badgeLabel);
+            const rackHtml = fiveHourOnly ? '' : build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
+            const familyAttr = p.id === 'claude' ? 'claude' : 'gemini';
+            const cardTitle = tag ? `${tag} · ${p.name || p.id}` : (p.name || p.id);
+
+            const splitHtml = (p.fiveHour && p.weekly) ? `
+                <div class="ov3-qmeta-row ov3-qmeta-row--split">
+                    <span>5h: <strong class="ov3-qval" data-tone="${quotaTone(p.fiveHour.remainingPct)}">${Math.round(clampPct(p.fiveHour.remainingPct))}%</strong></span>
+                    <span>Wk: <strong class="ov3-qval" data-tone="${quotaTone(p.weekly.remainingPct)}">${Math.round(clampPct(p.weekly.remainingPct))}%</strong> · <span data-quota-reset="${esc(p.weekly.resetTime || '')}">${esc(fmtQuotaCountdown(p.weekly.resetTime))}</span></span>
+                </div>
+            ` : '';
+
+            const exhaustedBox = isExhausted ? `
+                <div class="ov3-qcountdown-box">
+                    <div class="ov3-qcountdown-box__lbl">🔴 หมดโควตา — รีเซ็ตใน</div>
+                    <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(p.resetTime || '')}">${esc(fmtQuotaCountdown(p.resetTime))}</div>
+                </div>
+            ` : '';
+
+            return `
+                <article class="ov3-qpool-card${isExhausted ? ' is-exhausted' : ''}">
+                    <div class="ov3-qpool-card__head">
+                        <div class="ov3-qpool-card__title" data-family="${familyAttr}" title="${esc(cardTitle)}${d.email ? ` (${esc(d.email)})` : ''}">${esc(cardTitle)}</div>
+                        <span class="ov3-badge" data-tone="${badgeTone}" title="${esc(badgeTitle)}">${esc(badgeText)}</span>
+                    </div>
+                    <div class="ov3-qpool-card__metric-row">
+                        <div class="ov3-qpool-card__pct" data-tone="${tone}">${rem}%<span>คงเหลือ</span></div>
+                        <span class="ov3-qmeta-row">ใช้ ${used}% · ${esc(p.modelsCount || 0)} โมเดล</span>
+                    </div>
+                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${tone}" style="width:${rem}%"></span></div>
+                    <div class="ov3-qmeta-row">
+                        <span>${fiveHourOnly ? 'รอบ 5 ชม.' : `วัน D${pace.currentDayIndex}/7`}</span>
+                        <span data-quota-reset="${esc(p.resetTime || '')}">${esc(fmtQuotaCountdown(p.resetTime))}</span>
+                    </div>
+                    ${splitHtml}
+                    ${rackHtml}
+                    ${fiveHourOnly ? '' : `<div class="ov3-qpace" data-level="${pace.level}" title="${esc(pace.summaryText)}">${esc(pace.summaryText)}</div>`}
+                    ${exhaustedBox}
+                </article>
+            `;
+        }).join('');
+    }
+
     function renderGoogleQuotaSection(acct) {
         const d = acct && acct.data;
         const label = (acct && acct.label) || 'Google';
@@ -1917,13 +2122,7 @@
                         <span class="ov3-badge" data-tone="neutral">ข้ามอัตโนมัติ</span>
                     </div>
                     <div class="ov3-qpool-grid">
-                        <div class="ov3-qpool-card is-fullspan">
-                            <div class="ov3-qpool-card__head">
-                                <span class="ov3-qpool-card__title">${esc(label)} ไม่พร้อมใช้งาน</span>
-                                <span class="ov3-badge" data-tone="warn">ข้ามอัตโนมัติ</span>
-                            </div>
-                            <div class="ov3-qmeta-row">${esc((d && d.error) || 'ไม่พบโทเค็นหรือติดต่อ API ไม่ได้')} — ระบบ Auto Router ข้ามบัญชีนี้ให้อัตโนมัติ</div>
-                        </div>
+                        ${buildGooglePoolCards(acct, { fullSpanOnError: true })}
                     </div>
                 </section>
             `;
@@ -1939,66 +2138,6 @@
             ? 'ไม่มีข้อมูล'
             : (exhaustedCount > 0 ? `หมดโควตา ${exhaustedCount} พูล` : `${pools.length} พูลพร้อมใช้`);
 
-        const weeklyPool = pools.find((x) =>
-            (x.weekly && x.weekly.resetTime) ||
-            (x.resetTime && (Date.parse(x.resetTime) - Date.now()) > 12 * 3600 * 1000)
-        );
-        const sharedWeeklyReset = (weeklyPool && weeklyPool.weekly && weeklyPool.weekly.resetTime)
-            || (weeklyPool && weeklyPool.resetTime)
-            || new Date(Date.now() + 7 * 86400000).toISOString();
-
-        const cardsHtml = pools.map((p) => {
-            const rem = Math.round(clampPct(p.remainingPct));
-            const used = Math.round(clampPct(p.usedPct));
-            const isExhausted = rem <= 0;
-            const tone = quotaTone(rem);
-            const resetMs = p.resetTime ? (Date.parse(p.resetTime) - Date.now()) : 0;
-            const is5hWindow = resetMs > 0 && resetMs <= 12 * 3600 * 1000;
-            const weeklyResetForRack = (p.weekly && p.weekly.resetTime)
-                ? p.weekly.resetTime
-                : (is5hWindow ? sharedWeeklyReset : p.resetTime);
-            const rackUsedPct = p.weekly ? p.weekly.usedPct : p.usedPct;
-            const pace = calculateWeeklyPace(rackUsedPct, weeklyResetForRack);
-            const badgeTone = isExhausted ? 'err' : pace.badgeTone;
-            const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : (p.id === 'gemini' ? '5 ชม.' : pace.badgeLabel);
-            const fiveHourOnly = p.id === 'gemini'; // กฎผู้ใช้: pool Gemini นับเฉพาะ 5 ชม. ไม่แสดง weekly rack/pace
-            const rackHtml = fiveHourOnly ? '' : build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
-            const familyAttr = p.id === 'claude' ? 'claude' : 'gemini';
-
-            const splitHtml = (p.fiveHour && p.weekly) ? `
-                <div class="ov3-qmeta-row ov3-qmeta-row--split">
-                    <span>5h: <strong class="ov3-qval" data-tone="${quotaTone(p.fiveHour.remainingPct)}">${Math.round(clampPct(p.fiveHour.remainingPct))}%</strong></span>
-                    <span>Weekly: <strong class="ov3-qval" data-tone="${quotaTone(p.weekly.remainingPct)}">${Math.round(clampPct(p.weekly.remainingPct))}%</strong> (<span data-quota-reset="${esc(p.weekly.resetTime || '')}">${esc(fmtQuotaCountdown(p.weekly.resetTime))}</span>)</span>
-                </div>
-            ` : '';
-
-            const exhaustedBox = isExhausted ? `
-                <div class="ov3-qcountdown-box">
-                    <div class="ov3-qcountdown-box__lbl">🔴 หมดโควตาแล้ว — รอรีเซ็ตในอีก</div>
-                    <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(p.resetTime || '')}">${esc(fmtQuotaCountdown(p.resetTime))}</div>
-                </div>
-            ` : '';
-
-            return `
-                <article class="ov3-qpool-card${isExhausted ? ' is-exhausted' : ''}">
-                    <div class="ov3-qpool-card__head">
-                        <div class="ov3-qpool-card__title" data-family="${familyAttr}">${esc(p.name || p.id)}</div>
-                        <span class="ov3-badge" data-tone="${badgeTone}">${esc(badgeText)}</span>
-                    </div>
-                    <div class="ov3-qpool-card__pct" data-tone="${tone}">${rem}%<span>คงเหลือ</span></div>
-                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${tone}" style="width:${rem}%"></span></div>
-                    <div class="ov3-qmeta-row">
-                        <span>ใช้ไป ${used}% (${esc(p.modelsCount || 0)} โมเดล)</span>
-                        <span data-quota-reset="${esc(p.resetTime || '')}">${esc(fmtQuotaCountdown(p.resetTime))}</span>
-                    </div>
-                    ${splitHtml}
-                    ${rackHtml}
-                    ${fiveHourOnly ? '' : `<div class="ov3-qpace" data-level="${pace.level}">${esc(pace.summaryText)}</div>`}
-                    ${exhaustedBox}
-                </article>
-            `;
-        }).join('');
-
         return `
             <section class="ov3-qsec">
                 <div class="ov3-qsec__head">
@@ -2008,31 +2147,25 @@
                     </div>
                     <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
                 </div>
-                <div class="ov3-qpool-grid">${cardsHtml || '<div class="ov3-empty">ไม่มีข้อมูลพูล</div>'}</div>
+                <div class="ov3-qpool-grid">${buildGooglePoolCards(acct) || '<div class="ov3-empty">ไม่มีข้อมูลพูล</div>'}</div>
             </section>
         `;
     }
 
-    function renderClaudeQuotaSection(cw) {
+    function buildClaudeUnifiedCard(cw, opts = {}) {
+        const tag = opts.accountTag ? `${opts.accountTag} · ` : '';
         if (!cw || !cw.ok) {
             const note = cw && cw.error
-                ? `${cw.error} — ระบบ Auto Router ข้ามอัตโนมัติ`
-                : 'ไม่ได้ใช้งานหรือเชื่อมต่อไม่ได้ — ระบบ Auto Router ข้าม Claude Code CLI อัตโนมัติ';
+                ? `${cw.error} — ข้ามอัตโนมัติ`
+                : 'ไม่ได้ใช้งานหรือเชื่อมต่อไม่ได้ — ข้ามอัตโนมัติ';
             return `
-                <section class="ov3-qsec">
-                    <div class="ov3-qsec__head">
-                        <div class="ov3-qsec__title">
-                            <span class="ov3-qsec__name">Claude.ai (Anthropic)</span>
-                            <span class="ov3-qsec__sub">Rolling 5 ชม. &amp; รายสัปดาห์</span>
-                        </div>
+                <article class="ov3-qpool-card ov3-qpool-card--unified${opts.fullSpanOnError ? ' is-fullspan' : ''}">
+                    <div class="ov3-qpool-card__head">
+                        <div class="ov3-qpool-card__title" data-family="claude">${esc(tag)}Claude.ai (Pro)</div>
                         <span class="ov3-badge" data-tone="neutral">ไม่ได้ใช้</span>
                     </div>
-                    <div class="ov3-qpool-grid">
-                        <div class="ov3-qpool-card is-fullspan">
-                            <div class="ov3-qmeta-row">${esc(note)}</div>
-                        </div>
-                    </div>
-                </section>
+                    <div class="ov3-qmeta-row">${esc(note)}</div>
+                </article>
             `;
         }
 
@@ -2047,73 +2180,86 @@
         const wkPace = calculateWeeklyPace(wkUsed, wk.resetTime);
         const wkRack = build7SegmentRackHtml(wkUsed, wkPace.currentDayIndex);
         const isExhausted = fhRem <= 0 || wkRem <= 0;
-        const headTone = wkRem <= 0 ? 'err' : (fhRem <= 0 ? 'warn' : 'ok');
-        const headText = isExhausted
-            ? (wkRem <= 0 ? 'หมดโควตาสัปดาห์' : 'รอบ 5 ชม. หมด')
-            : `พร้อมใช้ (${String(cw.plan || 'Pro').toUpperCase()})`;
+        const planUpper = String(cw.plan || 'Pro').toUpperCase();
+        const badgeTone = wkRem <= 0 ? 'err' : (fhRem <= 0 ? 'err' : wkPace.badgeTone);
+        const badgeText = wkRem <= 0 ? '⚡ หมดสัปดาห์' : (fhRem <= 0 ? '⚡ หมด 5h' : wkPace.shortBadge);
+        const badgeTitle = wkRem <= 0 ? 'หมดโควตาสัปดาห์' : (fhRem <= 0 ? 'หมดรอบ 5 ชม.' : wkPace.badgeLabel);
+        const exhaustedIso = wkRem <= 0 ? (wk.resetTime || '') : (fh.resetTime || '');
+        const exhaustedLbl = wkRem <= 0 ? '🔴 หมดโควตาสัปดาห์ — รีเซ็ตใน' : '🔴 หมดรอบ 5 ชม. — รีเซ็ตใน';
+
+        return `
+            <article class="ov3-qpool-card ov3-qpool-card--unified${isExhausted ? ' is-exhausted' : ''}">
+                <div class="ov3-qpool-card__head">
+                    <div class="ov3-qpool-card__title" data-family="claude" title="Claude.ai (${esc(planUpper)}) · ${esc(cw.orgName || 'OAuth')}">${esc(tag)}Claude ${esc(planUpper)} · 5h + Wk</div>
+                    <span class="ov3-badge" data-tone="${badgeTone}" title="${esc(badgeTitle)}">${esc(badgeText)}</span>
+                </div>
+                <div class="ov3-qsub-block">
+                    <div class="ov3-qsub-row">
+                        <span class="ov3-qsub-row__lbl">5h Limit · ใช้ ${fhUsed}%</span>
+                        <span class="ov3-qsub-row__val" data-tone="${fhTone}">${fhRem}%</span>
+                    </div>
+                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${fhTone}" style="width:${fhRem}%"></span></div>
+                    <div class="ov3-qmeta-row">
+                        <span>รีเซ็ต 5 ชม.</span>
+                        <span data-quota-reset="${esc(fh.resetTime || '')}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>
+                    </div>
+                </div>
+                <div class="ov3-qsub-block">
+                    <div class="ov3-qsub-row">
+                        <span class="ov3-qsub-row__lbl">Weekly · ใช้ ${wkUsed}% (D${wkPace.currentDayIndex}/7)</span>
+                        <span class="ov3-qsub-row__val" data-tone="${wkTone}">${wkRem}%</span>
+                    </div>
+                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${wkTone}" style="width:${wkRem}%"></span></div>
+                    <div class="ov3-qmeta-row">
+                        <span>รีเซ็ตสัปดาห์</span>
+                        <span data-quota-reset="${esc(wk.resetTime || '')}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>
+                    </div>
+                    ${wkRack}
+                </div>
+                <div class="ov3-qpace" data-level="${wkPace.level}" title="${esc(wkPace.summaryText)}">${esc(wkPace.summaryText)}</div>
+                ${isExhausted ? `
+                    <div class="ov3-qcountdown-box">
+                        <div class="ov3-qcountdown-box__lbl">${exhaustedLbl}</div>
+                        <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(exhaustedIso)}">${esc(fmtQuotaCountdown(exhaustedIso))}</div>
+                    </div>
+                ` : ''}
+            </article>
+        `;
+    }
+
+    function renderClaudeQuotaSection(cw) {
+        const isOk = Boolean(cw && cw.ok);
+        const fhRem = isOk ? Math.round(clampPct(cw.fiveHour?.remainingPct ?? 100)) : 0;
+        const wkRem = isOk ? Math.round(clampPct(cw.weekly?.remainingPct ?? 100)) : 0;
+        const headTone = !isOk ? 'neutral' : (wkRem <= 0 ? 'err' : (fhRem <= 0 ? 'warn' : 'ok'));
+        const headText = !isOk
+            ? 'ไม่ได้ใช้'
+            : (wkRem <= 0 ? 'หมดโควตาสัปดาห์' : (fhRem <= 0 ? 'รอบ 5 ชม. หมด' : `พร้อมใช้ (${String(cw.plan || 'Pro').toUpperCase()})`));
 
         return `
             <section class="ov3-qsec">
                 <div class="ov3-qsec__head">
                     <div class="ov3-qsec__title">
-                        <span class="ov3-qsec__name">Claude.ai (${esc(String(cw.plan || 'Pro').toUpperCase())})</span>
-                        <span class="ov3-qsec__sub">${esc(cw.orgName || 'OAuth · Claude Code')} · Rolling 5 ชม. &amp; รายสัปดาห์</span>
+                        <span class="ov3-qsec__name">Claude.ai (${esc(String((cw && cw.plan) || 'Pro').toUpperCase())})</span>
+                        <span class="ov3-qsec__sub">${esc((cw && cw.orgName) || 'OAuth · Claude Code')} · รวม 5 ชม. &amp; รายสัปดาห์</span>
                     </div>
                     <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
                 </div>
                 <div class="ov3-qpool-grid">
-                    <article class="ov3-qpool-card${fhRem <= 0 ? ' is-exhausted' : ''}">
-                        <div class="ov3-qpool-card__head">
-                            <div class="ov3-qpool-card__title" data-family="claude">Rolling 5-Hour Limit</div>
-                            <span class="ov3-badge" data-tone="${fhRem <= 0 ? 'err' : (fhRem < 25 ? 'warn' : 'ok')}">${fhRem <= 0 ? '⚡ หมดรอบ 5 ชม.' : '● ปกติ'}</span>
-                        </div>
-                        <div class="ov3-qpool-card__pct" data-tone="${fhTone}">${fhRem}%<span>คงเหลือ</span></div>
-                        <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${fhTone}" style="width:${fhRem}%"></span></div>
-                        <div class="ov3-qmeta-row">
-                            <span>ใช้ไป ${fhUsed}%</span>
-                            <span data-quota-reset="${esc(fh.resetTime || '')}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>
-                        </div>
-                        <div class="ov3-qpace" data-level="${fhRem <= 0 ? 3 : 1}">${esc(cw.orgName || 'Claude.ai')} · รีเซ็ตทุก 5 ชั่วโมง</div>
-                        ${fhRem <= 0 ? `
-                            <div class="ov3-qcountdown-box">
-                                <div class="ov3-qcountdown-box__lbl">🔴 หมดรอบ 5 ชม. แล้ว — รอรีเซ็ตในอีก</div>
-                                <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(fh.resetTime || '')}">${esc(fmtQuotaCountdown(fh.resetTime))}</div>
-                            </div>
-                        ` : ''}
-                    </article>
-
-                    <article class="ov3-qpool-card${wkRem <= 0 ? ' is-exhausted' : ''}">
-                        <div class="ov3-qpool-card__head">
-                            <div class="ov3-qpool-card__title" data-family="claude">Weekly Limit (7-Day Pace)</div>
-                            <span class="ov3-badge" data-tone="${wkRem <= 0 ? 'err' : wkPace.badgeTone}">${wkRem <= 0 ? '⚡ หมดโควตาสัปดาห์' : esc(wkPace.badgeLabel)}</span>
-                        </div>
-                        <div class="ov3-qpool-card__pct" data-tone="${wkTone}">${wkRem}%<span>คงเหลือ</span></div>
-                        <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${wkTone}" style="width:${wkRem}%"></span></div>
-                        <div class="ov3-qmeta-row">
-                            <span>ใช้ไป ${wkUsed}%</span>
-                            <span data-quota-reset="${esc(wk.resetTime || '')}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>
-                        </div>
-                        ${wkRack}
-                        <div class="ov3-qpace" data-level="${wkPace.level}">${esc(wkPace.summaryText)}</div>
-                        ${wkRem <= 0 ? `
-                            <div class="ov3-qcountdown-box">
-                                <div class="ov3-qcountdown-box__lbl">🔴 หมดโควตาสัปดาห์แล้ว — รอรีเซ็ตในอีก</div>
-                                <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(wk.resetTime || '')}">${esc(fmtQuotaCountdown(wk.resetTime))}</div>
-                            </div>
-                        ` : ''}
-                    </article>
+                    ${buildClaudeUnifiedCard(cw, { fullSpanOnError: !isOk })}
                 </div>
             </section>
         `;
     }
 
-    function renderCreditsQuotaSection(ds, gc) {
+    function buildCreditsCards(ds, gc, opts = {}) {
         const dsTotal = ds && ds.ok ? parseFloat(ds.totalBalance || '0') : 0;
         const dsReady = Boolean(ds && ds.ok && ds.isAvailable && dsTotal > 0.1);
         const dsLow = Boolean(ds && ds.ok && ds.isAvailable && dsTotal <= 0.5 && dsTotal > 0.1);
         const dsTone = !ds || !ds.ok ? 'neutral' : (!dsReady ? 'err' : (dsLow ? 'warn' : 'ok'));
         const dsBadge = !ds || !ds.ok ? 'ไม่ได้ตั้งค่า' : (!dsReady ? 'เครดิตหมด' : (dsLow ? 'ใกล้หมด' : '● พร้อมใช้'));
         const dsModels = (ds && ds.ok && Array.isArray(ds.models)) ? ds.models : [];
+        const dsPaceText = dsReady ? 'Pay-As-You-Go · หักตาม Token จริง · ไม่มีวันหมดอายุ' : 'เครดิตหมด — สมองกลางข้าม DeepSeek อัตโนมัติ';
 
         const gcReady = Boolean(gc && gc.ok && !gc.isEmpty && Number(gc.remainingThb) > 0.5);
         const gcLow = Boolean(gc && gc.ok && Number(gc.remainingThb) < Number(gc.lowThb || 10));
@@ -2122,6 +2268,57 @@
         const gcPct = (gc && gc.ok)
             ? clampPct((Number(gc.remainingThb) / (Number(gc.topUpThb) || Number(gc.baselineThb) || 1)) * 100)
             : 0;
+        const gcPaceText = (gc && gc.ok)
+            ? `เสียงบรรยาย Gemini TTS · ใช้ไป ฿${Number(gc.spentThb || 0).toFixed(2)} (${gc.calls || 0} ครั้ง) · เรต ${gc.usdToThb || 34.5} ฿/$`
+            : 'ไม่มีข้อมูลเครดิต Gemini TTS';
+
+        const dsTitle = opts.compact ? 'DeepSeek · API' : 'DeepSeek API Credit';
+        const gcTitle = opts.compact ? 'TTS · Gemini Credit' : 'Gemini API Credit (TTS วิดีโอ)';
+
+        return `
+            <article class="ov3-qpool-card">
+                <div class="ov3-qpool-card__head">
+                    <div class="ov3-qpool-card__title" title="DeepSeek API Credit">${esc(dsTitle)}</div>
+                    <span class="ov3-badge" data-tone="${dsTone}">${esc(dsBadge)}</span>
+                </div>
+                ${ds && ds.ok ? `
+                    <div class="ov3-qpool-card__metric-row">
+                        <div class="ov3-qpool-card__pct" data-tone="${dsTone}">$${esc(ds.totalBalance)}<span>${esc(ds.currency || 'USD')}</span></div>
+                        <span class="ov3-qmeta-row">เติม $${esc(ds.toppedUpBalance || '0.00')} · โบนัส $${esc(ds.grantedBalance || '0.00')}</span>
+                    </div>
+                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${dsTone}" style="width:${dsReady ? 100 : 0}%"></span></div>
+                    ${dsModels.length ? `<div class="ov3-qpills">${dsModels.map((m) => `<span class="ov3-qpill">${esc(m.name || m.id)}</span>`).join('')}</div>` : ''}
+                    <div class="ov3-qpace" data-level="${dsReady ? 1 : 2}" title="${esc(dsPaceText)}">${esc(dsPaceText)}</div>
+                ` : `<div class="ov3-qmeta-row">ยังไม่ได้ตั้งค่า DEEPSEEK_API_KEY</div>`}
+            </article>
+
+            <article class="ov3-qpool-card">
+                <div class="ov3-qpool-card__head">
+                    <div class="ov3-qpool-card__title" data-family="credit" title="Gemini API Credit (TTS วิดีโอ)">${esc(gcTitle)}</div>
+                    <span class="ov3-badge" data-tone="${gcTone}">${esc(gcBadge)}</span>
+                </div>
+                ${gc && gc.ok ? `
+                    <div class="ov3-qpool-card__metric-row">
+                        <div class="ov3-qpool-card__pct" data-tone="${gcTone}">฿${Number(gc.remainingThb).toFixed(2)}<span>${esc(gc.currency || 'THB')}</span></div>
+                        <span class="ov3-qmeta-row">ตั้งต้น ฿${Number(gc.baselineThb).toFixed(0)} · ใช้ ฿${Number(gc.spentThb).toFixed(2)}</span>
+                    </div>
+                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${gcTone}" style="width:${gcPct.toFixed(0)}%"></span></div>
+                    <div class="ov3-qmeta-row ov3-qmeta-row--split">
+                        <span>In ${Number(gc.inputTokens || 0).toLocaleString('th-TH')}</span>
+                        <span>Out ${Number(gc.outputTokens || 0).toLocaleString('th-TH')}</span>
+                    </div>
+                    <div class="ov3-qpace" data-level="${gcLow ? 2 : 1}" title="${esc(gcPaceText)}">${esc(gcPaceText)}</div>
+                ` : `<div class="ov3-qmeta-row">ไม่มีข้อมูลเครดิต Gemini TTS</div>`}
+            </article>
+        `;
+    }
+
+    function renderCreditsQuotaSection(ds, gc) {
+        const dsTotal = ds && ds.ok ? parseFloat(ds.totalBalance || '0') : 0;
+        const dsReady = Boolean(ds && ds.ok && ds.isAvailable && dsTotal > 0.1);
+        const dsLow = Boolean(ds && ds.ok && ds.isAvailable && dsTotal <= 0.5 && dsTotal > 0.1);
+        const gcReady = Boolean(gc && gc.ok && !gc.isEmpty && Number(gc.remainingThb) > 0.5);
+        const gcLow = Boolean(gc && gc.ok && Number(gc.remainingThb) < Number(gc.lowThb || 10));
 
         const anyWarn = dsLow || gcLow;
         const anyReady = dsReady || gcReady;
@@ -2138,42 +2335,7 @@
                     <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
                 </div>
                 <div class="ov3-qpool-grid">
-                    <article class="ov3-qpool-card">
-                        <div class="ov3-qpool-card__head">
-                            <div class="ov3-qpool-card__title">DeepSeek API Credit</div>
-                            <span class="ov3-badge" data-tone="${dsTone}">${esc(dsBadge)}</span>
-                        </div>
-                        ${ds && ds.ok ? `
-                            <div class="ov3-qpool-card__pct" data-tone="${dsTone}">$${esc(ds.totalBalance)}<span>${esc(ds.currency || 'USD')} คงเหลือ</span></div>
-                            <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${dsTone}" style="width:${dsReady ? 100 : 0}%"></span></div>
-                            <div class="ov3-qmeta-row">
-                                <span>เติมเอง $${esc(ds.toppedUpBalance || '0.00')}</span>
-                                <span>โบนัส $${esc(ds.grantedBalance || '0.00')}</span>
-                            </div>
-                            ${dsModels.length ? `<div class="ov3-qpills">${dsModels.map((m) => `<span class="ov3-qpill">${esc(m.name || m.id)}</span>`).join('')}</div>` : ''}
-                            <div class="ov3-qpace" data-level="${dsReady ? 1 : 2}">${dsReady ? 'Pay-As-You-Go · หักตาม Token จริง · ไม่มีวันหมดอายุ' : 'เครดิตหมด — สมองกลางข้าม DeepSeek อัตโนมัติ'}</div>
-                        ` : `<div class="ov3-qmeta-row">ยังไม่ได้ตั้งค่า DEEPSEEK_API_KEY หรือติดต่อ API ไม่ได้</div>`}
-                    </article>
-
-                    <article class="ov3-qpool-card">
-                        <div class="ov3-qpool-card__head">
-                            <div class="ov3-qpool-card__title" data-family="credit">Gemini API Credit (TTS วิดีโอ)</div>
-                            <span class="ov3-badge" data-tone="${gcTone}">${esc(gcBadge)}</span>
-                        </div>
-                        ${gc && gc.ok ? `
-                            <div class="ov3-qpool-card__pct" data-tone="${gcTone}">฿${Number(gc.remainingThb).toFixed(2)}<span>${esc(gc.currency || 'THB')} คงเหลือ</span></div>
-                            <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${gcTone}" style="width:${gcPct.toFixed(0)}%"></span></div>
-                            <div class="ov3-qmeta-row">
-                                <span>ตั้งต้น ฿${Number(gc.baselineThb).toFixed(2)}</span>
-                                <span>ใช้ไป ฿${Number(gc.spentThb).toFixed(2)} (${esc(gc.calls || 0)} ครั้ง)</span>
-                            </div>
-                            <div class="ov3-qmeta-row ov3-qmeta-row--split">
-                                <span>Token เข้า ${Number(gc.inputTokens || 0).toLocaleString('th-TH')}</span>
-                                <span>ออก ${Number(gc.outputTokens || 0).toLocaleString('th-TH')}</span>
-                            </div>
-                            <div class="ov3-qpace" data-level="${gcLow ? 2 : 1}">ใช้เฉพาะเสียงบรรยายวิดีโอ (Gemini TTS) · เรต ${esc(gc.usdToThb || 34.5)} ฿/$</div>
-                        ` : `<div class="ov3-qmeta-row">ไม่มีข้อมูลเครดิต Gemini TTS</div>`}
-                    </article>
+                    ${buildCreditsCards(ds, gc, { compact: false })}
                 </div>
             </section>
         `;
@@ -2352,20 +2514,29 @@
             `).join('');
         }
 
-        const sections = [];
-        for (const a of accounts) {
-            if (ui.quotaTab === 'all' || ui.quotaTab === a.id) {
-                sections.push(renderGoogleQuotaSection(a));
+        if (ui.quotaTab === 'all') {
+            const flatCards = [];
+            accounts.forEach((a, idx) => {
+                flatCards.push(buildGooglePoolCards(a, { accountTag: shortAccountTag(a, idx) }));
+            });
+            flatCards.push(buildClaudeUnifiedCard(cw, { accountTag: '' }));
+            flatCards.push(buildCreditsCards(ds, gc, { compact: true }));
+            gridEl.innerHTML = `<div class="ov3-qpool-grid">${flatCards.join('')}</div>`;
+        } else {
+            const sections = [];
+            for (const a of accounts) {
+                if (ui.quotaTab === a.id) {
+                    sections.push(renderGoogleQuotaSection(a));
+                }
             }
+            if (ui.quotaTab === 'claude') {
+                sections.push(renderClaudeQuotaSection(cw));
+            }
+            if (ui.quotaTab === 'credits') {
+                sections.push(renderCreditsQuotaSection(ds, gc));
+            }
+            gridEl.innerHTML = sections.join('');
         }
-        if (ui.quotaTab === 'all' || ui.quotaTab === 'claude') {
-            sections.push(renderClaudeQuotaSection(cw));
-        }
-        if (ui.quotaTab === 'all' || ui.quotaTab === 'credits') {
-            sections.push(renderCreditsQuotaSection(ds, gc));
-        }
-
-        gridEl.innerHTML = sections.join('');
         renderQuotaModelsTable(q);
     }
 
@@ -2410,6 +2581,657 @@
         }
     }
 
+    // ── Video Factory Control Panel ─────────────────────────────────────────
+    const QUICK_STYLE_MAP = {
+        'documentary-cinematic': 'look-1',
+        'news-broadcast': 'look-32',
+        'explainer-tech': 'look-3',
+        'storytelling-dark': 'look-14',
+        'minimal-clean': 'look-20',
+    };
+
+    const QUICK_VOICE_MAP = {
+        'gemini-charon': 'gemini:Charon',
+        'gemini-kore': 'gemini:Kore',
+        'edge-niwat': 'edge:th-TH-NiwatNeural',
+        'edge-premwadee': 'edge:th-TH-PremwadeeNeural',
+    };
+
+    const STATION_FALLBACK_META = {
+        script:  { id: 'script',  emoji: '📝', name: 'น้องสคริปต์', dept: 'แผนกเขียนบท',       role: 'ค้นข้อมูล วางโครงเรื่อง และเขียนบทบรรยาย' },
+        art:     { id: 'art',     emoji: '🎨', name: 'น้องอาร์ต',    dept: 'แผนกภาพ & ฉาก',      role: 'ออกแบบภาพประกอบ ซีนกราฟิก และสตอรี่บอร์ด' },
+        voice:   { id: 'voice',   emoji: '🎙️', name: 'น้องพากย์',    dept: 'ห้องอัดเสียง TTS',    role: 'พากย์เสียงภาษาไทย ซิงก์จังหวะ และมิกซ์ BGM' },
+        edit:    { id: 'edit',    emoji: '🎬', name: 'น้องตัดต่อ',   dept: 'สถานีตัดต่อ & GPU',   role: 'ประกอบวิดีโอ Remotion และเรนเดอร์บนเครื่องลูก GPU' },
+        publish: { id: 'publish', emoji: '🚀', name: 'น้องโพสต์',    dept: 'ตรวจ QC & โซเชียล',   role: 'ตรวจสอบคุณภาพ QC และส่งโพสต์ TikTok/Reels/Shorts' },
+    };
+
+    function setFactoryFeedback(text, tone = 'ok', durationMs = 5500) {
+        if (ui.factoryFeedbackTimer) {
+            clearTimeout(ui.factoryFeedbackTimer);
+            ui.factoryFeedbackTimer = null;
+        }
+        if (!text) {
+            ui.factoryFeedback = null;
+            renderFactoryFeedback();
+            return;
+        }
+        ui.factoryFeedback = { text: String(text), tone, until: Date.now() + durationMs };
+        renderFactoryFeedback();
+        ui.factoryFeedbackTimer = setTimeout(() => {
+            ui.factoryFeedback = null;
+            ui.factoryFeedbackTimer = null;
+            renderFactoryFeedback();
+        }, durationMs);
+    }
+
+    function renderFactoryFeedback() {
+        const panel = $('ov3-panel-factory');
+        if (!panel) return;
+        const body = panel.querySelector('.ov3-fac-body');
+        if (!body) return;
+        let el = $('ov3-fac-feedback');
+        const fb = ui.factoryFeedback;
+        if (!fb || Date.now() >= fb.until) {
+            if (el) el.remove();
+            return;
+        }
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'ov3-fac-feedback';
+            el.className = 'ov3-qpace';
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-live', 'polite');
+            const pipeEl = $('ov3-fac-pipeline');
+            if (pipeEl && pipeEl.nextSibling) body.insertBefore(el, pipeEl.nextSibling);
+            else body.prepend(el);
+        }
+        el.setAttribute('data-level', fb.tone === 'err' ? '3' : (fb.tone === 'warn' ? '2' : '1'));
+        el.title = fb.text;
+        el.textContent = fb.text;
+    }
+
+    function resolveActiveStationFromJob(job) {
+        if (!job) return 'edit';
+        const combined = `${String(job.status || '').toLowerCase()} ${String(job.stage || job.currentStep || '').toLowerCase()}`;
+        if (/(publish|upload|social|telegram|post|qc)/.test(combined)) return 'publish';
+        if (/(render|mix|edit|remotion|ffmpeg|preview|compos|encode)/.test(combined)) return 'edit';
+        if (/(tts|voice|audio|narrat|speech)/.test(combined)) return 'voice';
+        if (/(art|image|visual|story|scene|draw|extract|download|asset)/.test(combined)) return 'art';
+        if (/(script|research|plan|draft|analyz|queue)/.test(combined)) return 'script';
+        const pct = Number(job.progress ?? job.pct ?? 0);
+        if (pct >= 88) return 'publish';
+        if (pct >= 58) return 'edit';
+        if (pct >= 38) return 'voice';
+        if (pct >= 18) return 'art';
+        return 'script';
+    }
+
+    function renderFactoryPanel() {
+        const panel = $('ov3-panel-factory');
+        if (!panel) return;
+
+        const fs = ui.factoryState;
+        const subEl = $('ov3-fac-sub');
+        const pipeEl = $('ov3-fac-pipeline');
+        const linesEl = $('ov3-fac-lines');
+        const qcEl = $('ov3-fac-qc');
+
+        const jobs = (fs && Array.isArray(fs.jobs)) ? fs.jobs : [];
+        const lines = (fs && Array.isArray(fs.lines)) ? fs.lines : [];
+        const analytics = (fs && fs.analytics) || {};
+        const socialItems = (ui.socialQueue && Array.isArray(ui.socialQueue.items)) ? ui.socialQueue.items : [];
+
+        const runningJobs = jobs.filter((j) => j && (j.factoryCol === 'running' || j.alive || ACTIVE_VIDEO_STATUSES.has(String(j.status || '').toLowerCase())));
+        const queuedCount = Number(analytics.queuedJobs ?? jobs.filter((j) => j && j.factoryCol === 'queued').length) || 0;
+        const scriptCount = Number(analytics.scriptJobs ?? jobs.filter((j) => j && j.factoryCol === 'script').length) || 0;
+        const activeCount = Number(analytics.runningJobs ?? runningJobs.length) || 0;
+        const qcJobs = jobs.filter((j) => j && (j.factoryCol === 'qc' || (j.status === 'done' && String(j.qcStatus || 'pending') === 'pending')));
+        const qcCount = Number(analytics.qcPendingJobs ?? qcJobs.length) || 0;
+        const readyCount = Number(analytics.qcApprovedJobs ?? jobs.filter((j) => j && j.factoryCol === 'ready').length) || 0;
+        const monthCost = Number(analytics.monthCostThb ?? 0) || 0;
+
+        if (subEl) {
+            if (!fs) {
+                subEl.textContent = 'กำลังเชื่อมต่อสถานะโรงงาน…';
+            } else {
+                subEl.textContent = `กำลังผลิต ${activeCount} · รอ QC ${qcCount} · พร้อมโพสต์ ${readyCount} · เดือนนี้ ${fmtThb(monthCost)}`;
+            }
+        }
+
+        if (pipeEl) {
+            const activeStation = runningJobs.length ? resolveActiveStationFromJob(runningJobs[0]) : 'edit';
+            const stages = [
+                { key: 'queued', label: 'รอคิว',      count: queuedCount, focus: 'script' },
+                { key: 'script', label: 'สคริปต์',     count: scriptCount, focus: 'script' },
+                { key: 'active', label: 'กำลังผลิต',   count: activeCount, focus: activeStation },
+                { key: 'qc',     label: 'รอ QC',       count: qcCount,     focus: 'publish' },
+                { key: 'social', label: 'พร้อมโพสต์',  count: readyCount,  focus: 'publish' },
+            ];
+            pipeEl.innerHTML = stages.map((st) => `
+                <div class="ov3-fac-stage${st.count > 0 ? ' has-items' : ''}" data-fac-stage="${esc(st.key)}" data-fac-focus="${esc(st.focus)}" role="button" tabindex="0" style="cursor:pointer" title="คลิกเพื่อโฟกัสแผนกนี้ในโมเดล 3D">
+                    <strong>${esc(st.count)}</strong>
+                    <span>${esc(st.label)}</span>
+                </div>
+            `).join('');
+        }
+
+        renderFactoryFeedback();
+
+        if (linesEl) {
+            if (!fs) {
+                linesEl.innerHTML = '<div class="ov3-fac-empty">กำลังโหลดสายการผลิต…</div>';
+            } else if (!lines.length) {
+                linesEl.innerHTML = '<div class="ov3-fac-empty">ยังไม่มีสายการผลิต — ตั้งค่าได้ที่หน้าโรงงานวิดีโอ</div>';
+            } else {
+                linesEl.innerHTML = lines.map((ln) => {
+                    const enabled = Boolean(ln.active);
+                    const busyToggle = ui.factoryBusyKey === `toggle:${ln.id}`;
+                    const busyRun = ui.factoryBusyKey === `run:${ln.id}`;
+                    const meta = [ln.schedule || 'Manual', ln.lastRunStatus || (enabled ? 'พร้อมใช้งาน' : 'พักชั่วคราว')].filter(Boolean).join(' · ');
+                    return `
+                        <div class="ov3-fac-line ${enabled ? 'is-enabled' : 'is-disabled'}">
+                            <div class="ov3-fac-line__info">
+                                <div class="ov3-fac-line__name" title="${esc(ln.description || ln.name)}">${enabled ? '🟢' : '⏸️'} ${esc(ln.name || ln.id)}</div>
+                                <div class="ov3-fac-line__meta" title="${esc(meta)}">${esc(meta)}</div>
+                            </div>
+                            <div class="ov3-fac-line__acts">
+                                <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-fac-toggle-line="${esc(ln.id)}" ${busyToggle ? 'disabled' : ''} title="${enabled ? 'ปิดสายการผลิตนี้ชั่วคราว' : 'เปิดใช้งานสายการผลิตนี้'}">${busyToggle ? '…' : (enabled ? 'เปิด' : 'ปิด')}</button>
+                                <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-fac-run-line="${esc(ln.id)}" ${busyRun ? 'disabled' : ''} title="สั่งรันสายการผลิตนี้ทันที">${busyRun ? '…' : '▶ รัน'}</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        if (qcEl) {
+            if (!fs) {
+                qcEl.innerHTML = '<div class="ov3-fac-empty">กำลังโหลดรายการตรวจ QC…</div>';
+            } else {
+                const sortedQc = [...qcJobs]
+                    .sort((a, b) => (Date.parse(b.updatedAt || b.createdAt || '') || 0) - (Date.parse(a.updatedAt || a.createdAt || '') || 0))
+                    .slice(0, 4);
+
+                const qcRowsHtml = sortedQc.length
+                    ? sortedQc.map((j) => {
+                        const out = j.outputs || {};
+                        const dur = Number(out.durationSec ?? j.durationSec) || 0;
+                        const cost = out.costDetails?.clipTotalThb ?? out.costThb;
+                        const rNode = out.renderNode || j.renderNode || '';
+                        const meta = [
+                            dur ? fmtDuration(dur) : '',
+                            cost != null && Number(cost) > 0 ? fmtThb(cost) : '',
+                            rNode,
+                            j.updatedAt || j.createdAt ? fmtRelTime(j.updatedAt || j.createdAt) : '',
+                        ].filter(Boolean).join(' · ');
+                        const busyQc = ui.factoryBusyKey === `qc:${j.id}`;
+                        return `
+                            <div class="ov3-fac-qc-row">
+                                <div class="ov3-fac-qc__info">
+                                    <div class="ov3-fac-qc__title" title="${esc(j.topic || j.id)}">${esc(j.topic || j.id)}</div>
+                                    <div class="ov3-fac-qc__meta">${esc(meta || j.styleId || 'รอตรวจคุณภาพ')}</div>
+                                </div>
+                                <div class="ov3-fac-qc__acts">
+                                    <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-fac-preview-job="${esc(j.id)}" title="ดูตัวอย่างคลิป">▶ ดู</button>
+                                    <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-fac-approve-qc="${esc(j.id)}" ${busyQc ? 'disabled' : ''} title="อนุมัติผ่าน QC">${busyQc ? '…' : '✅ ผ่าน QC'}</button>
+                                    <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio#qc=${encodeURIComponent(j.id)}" title="แก้/โพสต์ที่ Video Studio">↗</a>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')
+                    : '<div class="ov3-fac-empty">ไม่มีคลิปรอตรวจ QC — ทุกคลิปพร้อมโพสต์</div>';
+
+                const postedCount = socialItems.filter((it) => ['posted', 'published', 'done'].includes(String(it.status || '').toLowerCase())).length
+                    || Number(analytics.socialPublishedCount || 0);
+                const scheduledCount = socialItems.filter((it) => ['scheduled', 'queued', 'pending'].includes(String(it.status || '').toLowerCase())).length
+                    || Number(analytics.socialScheduledCount || 0);
+                const bvSocialCount = socialItems.filter((it) => {
+                    const st = String(it.status || '').toLowerCase();
+                    return (it.mode === 'browser_vision' && !['posted', 'published', 'done', 'completed', 'cancelled', 'failed'].includes(st))
+                        || /login|auth|captcha|waiting_user|browser_vision/.test(st);
+                }).length;
+
+                const socialSummary = `
+                    <div class="ov3-fac-qc-row" style="border-style:dashed;">
+                        <div class="ov3-fac-qc__info">
+                            <div class="ov3-fac-qc__title">📤 คิวโพสต์โซเชียล</div>
+                            <div class="ov3-fac-qc__meta">โพสต์แล้ว ${esc(postedCount)} · ตั้งเวลา ${esc(scheduledCount)}${bvSocialCount > 0 ? ` · 🔐 BV ${esc(bvSocialCount)}` : ''}</div>
+                        </div>
+                        <div class="ov3-fac-qc__acts">
+                            <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">โพสต์ ↗</a>
+                        </div>
+                    </div>
+                `;
+                qcEl.innerHTML = qcRowsHtml + socialSummary;
+            }
+        }
+    }
+
+    async function fetchFactoryState(force = false) {
+        if (ui.factoryInFlight) return;
+        if (!force && (document.hidden || !isOverviewActive())) return;
+        ui.factoryInFlight = true;
+        try {
+            const [facRes, socRes] = await Promise.all([
+                fetchJsonSafe('/api/video-studio/factory/state'),
+                fetchJsonSafe('/api/video-studio/social/queue'),
+            ]);
+            if (facRes && facRes.ok) {
+                ui.factoryState = facRes;
+                ui.factoryUpdatedAt = Date.now();
+            }
+            if (socRes && socRes.ok) {
+                ui.socialQueue = socRes;
+            }
+            renderFactoryPanel();
+            syncWorkshop3D();
+        } catch (_) {
+            // keep last rendered factory snapshot quietly
+        } finally {
+            ui.factoryInFlight = false;
+        }
+    }
+
+    async function postFactoryJson(url, bodyObj) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: bodyObj !== undefined ? JSON.stringify(bodyObj) : '{}',
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || (data && data.ok === false)) {
+            throw new Error((data && data.error) || `HTTP ${res.status}`);
+        }
+        return data || { ok: true };
+    }
+
+    async function submitQuickFactoryOrder(e) {
+        if (e) e.preventDefault();
+        const topicEl = $('ov3-fac-topic');
+        const styleEl = $('ov3-fac-style');
+        const voiceEl = $('ov3-fac-voice');
+        const durEl = $('ov3-fac-duration');
+        const submitBtn = $('ov3-fac-submit');
+        const form = $('ov3-fac-quick-form');
+        const toggleBtn = $('ov3-fac-quick-toggle');
+
+        const topic = String(topicEl?.value || '').trim();
+        if (topic.length < 2) {
+            setFactoryFeedback('กรุณาระบุหัวข้อคลิปอย่างน้อย 2 ตัวอักษร', 'warn');
+            topicEl?.focus();
+            return;
+        }
+
+        const rawStyle = String(styleEl?.value || 'documentary-cinematic').trim();
+        const styleId = QUICK_STYLE_MAP[rawStyle] || rawStyle || 'look-1';
+        const rawVoice = String(voiceEl?.value || 'gemini-charon').trim();
+        const voice = QUICK_VOICE_MAP[rawVoice] || rawVoice || 'gemini:Charon';
+        const durationSec = Math.max(15, Math.min(240, Number(durEl?.value || 60) || 60));
+        const contentMode = rawStyle === 'news-broadcast' ? 'news' : 'standard';
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'กำลังส่ง…';
+        }
+        try {
+            const res = await postFactoryJson('/api/video-studio/factory/orders', {
+                topic,
+                styleId,
+                voice,
+                bgm: 'warm_tech',
+                durationSec,
+                stopGate: 'qc',
+                contentMode,
+            });
+            setFactoryFeedback(`✅ ${res.message || 'ส่งออเดอร์เข้าสายพานผลิตแล้ว'}`, 'ok', 6500);
+            if (topicEl) topicEl.value = '';
+            if (form) form.hidden = true;
+            if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
+            await Promise.all([fetchFactoryState(true), tick(true)]);
+        } catch (err) {
+            setFactoryFeedback(`❌ ส่งออเดอร์ไม่สำเร็จ: ${err.message || err}`, 'err', 7000);
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 ส่งเข้าสายผลิต';
+            }
+        }
+    }
+
+    async function toggleFactoryLine(lineId) {
+        if (!lineId || ui.factoryBusyKey) return;
+        ui.factoryBusyKey = `toggle:${lineId}`;
+        renderFactoryPanel();
+        try {
+            const res = await postFactoryJson(`/api/video-studio/factory/lines/${encodeURIComponent(lineId)}/toggle`, {});
+            const active = Boolean(res.line && res.line.active);
+            setFactoryFeedback(`${active ? '🟢 เปิด' : '⏸️ พัก'}สายการผลิต "${(res.line && res.line.name) || lineId}" แล้ว`, 'ok');
+            await fetchFactoryState(true);
+        } catch (err) {
+            setFactoryFeedback(`❌ เปลี่ยนสถานะสายไม่สำเร็จ: ${err.message || err}`, 'err');
+        } finally {
+            ui.factoryBusyKey = null;
+            renderFactoryPanel();
+        }
+    }
+
+    async function runFactoryLine(lineId) {
+        if (!lineId || ui.factoryBusyKey) return;
+        ui.factoryBusyKey = `run:${lineId}`;
+        const newsBtn = lineId === 'line-news-v2' ? $('ov3-fac-run-news') : null;
+        if (newsBtn) newsBtn.disabled = true;
+        renderFactoryPanel();
+        try {
+            const res = await postFactoryJson(`/api/video-studio/factory/lines/${encodeURIComponent(lineId)}/run`, {});
+            const msg = (res.result && res.result.message) || `เริ่มรันสาย "${(res.line && res.line.name) || lineId}" แล้ว`;
+            setFactoryFeedback(`🚀 ${msg}`, 'ok', 6500);
+            await Promise.all([fetchFactoryState(true), tick(true)]);
+        } catch (err) {
+            setFactoryFeedback(`❌ สั่งรันสายไม่สำเร็จ: ${err.message || err}`, 'err', 7000);
+        } finally {
+            ui.factoryBusyKey = null;
+            if (newsBtn) newsBtn.disabled = false;
+            renderFactoryPanel();
+        }
+    }
+
+    async function pumpFactoryQueue() {
+        const pumpBtn = $('ov3-fac-pump');
+        if (ui.factoryBusyKey) return;
+        ui.factoryBusyKey = 'pump';
+        if (pumpBtn) pumpBtn.disabled = true;
+        try {
+            const res = await postFactoryJson('/api/video-studio/factory/pump', {});
+            if (res.started) {
+                setFactoryFeedback(`▶ ปั๊มคิวสำเร็จ — เริ่มผลิตงาน ${res.started}`, 'ok');
+            } else if (res.active > 0) {
+                setFactoryFeedback('⚡ มีงานกำลังผลิตอยู่บนสายพานแล้ว', 'ok');
+            } else {
+                setFactoryFeedback('✓ ไม่มีงานรอคิวในสายพานขณะนี้', 'ok');
+            }
+            await Promise.all([fetchFactoryState(true), tick(true)]);
+        } catch (err) {
+            setFactoryFeedback(`❌ ปั๊มคิวไม่สำเร็จ: ${err.message || err}`, 'err');
+        } finally {
+            ui.factoryBusyKey = null;
+            if (pumpBtn) pumpBtn.disabled = false;
+        }
+    }
+
+    async function approveFactoryQC(jobId) {
+        if (!jobId || ui.factoryBusyKey) return;
+        ui.factoryBusyKey = `qc:${jobId}`;
+        renderFactoryPanel();
+        try {
+            await postFactoryJson(`/api/video-studio/factory/jobs/${encodeURIComponent(jobId)}/qc`, {
+                qcStatus: 'approved',
+                status: 'approved',
+                note: 'อนุมัติผ่าน QC จากแดชบอร์ดภาพรวม',
+            });
+            setFactoryFeedback(`✅ อนุมัติผ่าน QC เรียบร้อย (${jobId})`, 'ok');
+            await fetchFactoryState(true);
+        } catch (err) {
+            setFactoryFeedback(`❌ อนุมัติ QC ไม่สำเร็จ: ${err.message || err}`, 'err');
+        } finally {
+            ui.factoryBusyKey = null;
+            renderFactoryPanel();
+        }
+    }
+
+    // ── 3D Digital Workshop Stage Controller ────────────────────────────────
+    function getCurrentTheme() {
+        const attr = document.documentElement.getAttribute('data-theme');
+        if (attr) return attr;
+        try {
+            const saved = localStorage.getItem('lab_theme');
+            if (saved) return saved;
+        } catch (_) {}
+        return 'dark';
+    }
+
+    function getLiveActiveVideoJob() {
+        const facJobs = (ui.factoryState && Array.isArray(ui.factoryState.jobs)) ? ui.factoryState.jobs : [];
+        const runningFac = facJobs.find((j) => j && (j.alive || j.factoryCol === 'running' || ACTIVE_VIDEO_STATUSES.has(String(j.status || '').toLowerCase())));
+        if (runningFac) return runningFac;
+        const ovJobs = (ui.lastData && ui.lastData.videos && Array.isArray(ui.lastData.videos.activeJobs)) ? ui.lastData.videos.activeJobs : [];
+        if (ovJobs.length) return ovJobs[0];
+        const socItems = (ui.socialQueue && Array.isArray(ui.socialQueue.items)) ? ui.socialQueue.items : [];
+        const uploadingSoc = socItems.find((it) => it && ['uploading', 'posting', 'running'].includes(String(it.status || '').toLowerCase()));
+        if (uploadingSoc) return { topic: uploadingSoc.title || `โพสต์ ${uploadingSoc.platform || 'Social'}`, status: 'uploading', progress: 92 };
+        return null;
+    }
+
+    function updateWorkshopCamAndDockHighlight() {
+        const camBar = $('ov3-ws-cam-bar');
+        if (camBar) {
+            camBar.querySelectorAll('[data-ws-cam]').forEach((btn) => {
+                btn.classList.toggle('is-active', btn.dataset.wsCam === ui.wsSelectedStation);
+            });
+        }
+        const dock = $('ov3-ws-dock');
+        if (dock) {
+            dock.querySelectorAll('[data-ws-station]').forEach((btn) => {
+                btn.classList.toggle('is-selected', btn.dataset.wsStation === ui.wsSelectedStation);
+            });
+        }
+    }
+
+    function renderWorkshopInspector(meta) {
+        const el = $('ov3-ws-inspector');
+        if (!el) return;
+        if (!meta || !meta.id || meta.id === 'overview') {
+            ui.wsInspectorOpen = false;
+            el.hidden = true;
+            return;
+        }
+
+        const fb = STATION_FALLBACK_META[meta.id] || {};
+        const name = meta.name || fb.name || meta.id;
+        const emoji = meta.emoji || fb.emoji || '🎬';
+        const dept = meta.dept || fb.dept || '';
+        const role = meta.role || fb.role || '';
+        const status = meta.status || 'idle';
+        const tone = status === 'active' ? 'ok' : (status === 'done' ? 'ok' : (status === 'pending' ? 'warn' : (status === 'error' ? 'err' : 'neutral')));
+        const statusText = meta.statusText || 'พร้อม';
+
+        const detailLines = [];
+        if (role) detailLines.push(`<div><strong>หน้าที่:</strong> ${esc(role)}</div>`);
+        if (meta.jobTitle) detailLines.push(`<div><strong>งานปัจจุบัน:</strong> ${esc(meta.jobTitle)}${meta.progress ? ` (${Math.round(clampPct(meta.progress))}%)` : ''}</div>`);
+        if (meta.detail) detailLines.push(`<div><strong>สถานะ:</strong> ${esc(meta.detail)}</div>`);
+        if (meta.renderNode) detailLines.push(`<div><strong>เครื่องเรนเดอร์:</strong> <span class="ov2-mono">${esc(meta.renderNode)}</span></div>`);
+
+        let quickActs = '';
+        if (meta.id === 'script') {
+            quickActs = `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-ws-action="quick-order">+ สั่งคลิปด่วน</button><a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">แก้บท ↗</a>`;
+        } else if (meta.id === 'art') {
+            quickActs = `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-ws-action="quick-order">+ สั่งคลิปด่วน</button><a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">เลือกสไตล์ ↗</a>`;
+        } else if (meta.id === 'voice') {
+            quickActs = `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-ws-action="pump">▶ ปั๊มคิว</button><a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">ตั้งค่าเสียง ↗</a>`;
+        } else if (meta.id === 'edit') {
+            quickActs = `<a class="ov2-btn ov2-btn--xs ov2-btn--primary" href="/agent-hub">ดูเครื่อง GPU ↗</a><a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">เปิดตัดต่อ ↗</a>`;
+        } else if (meta.id === 'publish') {
+            quickActs = `<button type="button" class="ov2-btn ov2-btn--xs ov2-btn--primary" data-ws-action="jump-qc">🔍 ตรวจ QC</button><a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">Social Hub ↗</a>`;
+        }
+
+        el.innerHTML = `
+            <div class="ov3-ws-insp__head">
+                <div class="ov3-ws-insp__title">${esc(emoji)} ${esc(name)} <span class="ov3-badge" data-tone="${tone}" style="margin-left:4px;">${esc(statusText)}</span></div>
+                <button type="button" class="ov3-ws-insp__close" data-ws-insp-close="1" aria-label="ปิดรายละเอียด">✕</button>
+            </div>
+            ${dept ? `<div class="ov3-ws-insp__meta" style="opacity:0.85;">${esc(dept)}</div>` : ''}
+            <div class="ov3-ws-insp__meta">${detailLines.join('')}</div>
+            <div class="ov3-ws-insp__actions">
+                ${quickActs}
+                <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" data-ws-cam="overview">🌐 ภาพรวม</button>
+            </div>
+        `;
+        el.hidden = false;
+        ui.wsInspectorOpen = true;
+    }
+
+    function selectWorkshopStation(stationId, { showInspector = true } = {}) {
+        const id = stationId && STATION_FALLBACK_META[stationId] ? stationId : 'overview';
+        ui.wsSelectedStation = id;
+        let meta = null;
+        if (ui.wsCtrl && typeof ui.wsCtrl.focusStation === 'function') {
+            meta = ui.wsCtrl.focusStation(id);
+        }
+        updateWorkshopCamAndDockHighlight();
+        if (id === 'overview' || !showInspector) {
+            renderWorkshopInspector(null);
+        } else {
+            const st = ui.wsCtrl && typeof ui.wsCtrl.getState === 'function' ? ui.wsCtrl.getState() : null;
+            renderWorkshopInspector((st && st.stations && st.stations[id]) || meta || STATION_FALLBACK_META[id]);
+        }
+    }
+
+    function syncWorkshopActive() {
+        if (!ui.wsCtrl || typeof ui.wsCtrl.setActive !== 'function') return;
+        const active = isOverviewActive() && !document.hidden;
+        ui.wsCtrl.setActive(active);
+    }
+
+    function syncWorkshop3D() {
+        const liveJob = getLiveActiveVideoJob();
+        const hasLive = Boolean(liveJob);
+
+        // Auto-switch to Live mode the instant a real video production job starts;
+        // auto-enable Demo Showcase when idle unless user explicitly toggled it off.
+        if (hasLive) {
+            if (!ui.wsHadLiveActive || ui.wsUserDemoOverride === null) {
+                ui.wsDemoMode = false;
+            }
+        } else if (ui.wsUserDemoOverride === null) {
+            ui.wsDemoMode = true;
+        }
+        ui.wsHadLiveActive = hasLive;
+
+        if (ui.wsCtrl) {
+            try {
+                const prevSt = typeof ui.wsCtrl.getState === 'function' ? ui.wsCtrl.getState() : null;
+                if (!prevSt || Boolean(prevSt.demoMode) !== Boolean(ui.wsDemoMode)) {
+                    ui.wsCtrl.setDemoMode(Boolean(ui.wsDemoMode));
+                }
+                ui.wsCtrl.updateState({
+                    factoryState: ui.factoryState,
+                    overviewData: ui.lastData,
+                    socialQueue: ui.socialQueue,
+                });
+            } catch (_) {}
+        }
+
+        const wsState = (ui.wsCtrl && typeof ui.wsCtrl.getState === 'function') ? ui.wsCtrl.getState() : null;
+        const badgeEl = $('ov3-ws-live-badge');
+        const jobEl = $('ov3-ws-active-job');
+        const demoBtn = $('ov3-ws-demo-btn');
+
+        if (badgeEl) {
+            if (hasLive && !ui.wsDemoMode) {
+                badgeEl.setAttribute('data-mode', 'live');
+                badgeEl.innerHTML = '<i></i><span>🟢 LIVE</span>';
+            } else if (ui.wsDemoMode) {
+                badgeEl.setAttribute('data-mode', 'demo');
+                badgeEl.innerHTML = '<i></i><span>🎬 DEMO SHOWCASE</span>';
+            } else {
+                badgeEl.setAttribute('data-mode', 'idle');
+                badgeEl.innerHTML = '<i></i><span>✨ STUDIO STANDBY</span>';
+            }
+        }
+
+        if (jobEl) {
+            if (hasLive && !ui.wsDemoMode) {
+                const title = String(liveJob.topic || liveJob.title || liveJob.id || 'กำลังผลิตวิดีโอ');
+                const pct = Math.round(clampPct(liveJob.progress ?? liveJob.pct));
+                jobEl.textContent = `กำลังผลิต ${title}${pct > 0 ? ` (${pct}%)` : ''}`;
+            } else if (ui.wsDemoMode) {
+                jobEl.textContent = (wsState && wsState.summary && wsState.summary.headline)
+                    || '🎬 โหมดสาธิต · พนักงานการ์ตูน 5 แผนกกำลังผลิตวิดีโอครบสายพาน';
+            } else {
+                jobEl.textContent = (wsState && wsState.summary && wsState.summary.headline)
+                    || '✨ พร้อมรับออเดอร์ผลิตวิดีโอ';
+            }
+        }
+
+        if (demoBtn) {
+            demoBtn.classList.toggle('is-active', Boolean(ui.wsDemoMode));
+            demoBtn.setAttribute('aria-pressed', ui.wsDemoMode ? 'true' : 'false');
+            demoBtn.textContent = ui.wsDemoMode ? '🎬 โหมดสาธิต (เปิด)' : '🎬 สาธิตการทำงาน';
+        }
+
+        const dockEl = $('ov3-ws-dock');
+        if (dockEl) {
+            const stations = (wsState && wsState.stations) || {};
+            dockEl.querySelectorAll('[data-ws-station]').forEach((btn) => {
+                const sid = btn.dataset.wsStation;
+                const st = stations[sid];
+                btn.classList.remove('is-active', 'is-done', 'is-pending', 'is-idle', 'is-error');
+                const status = (st && st.status) || (ui.wsDemoMode ? 'active' : 'idle');
+                btn.classList.add(`is-${status}`);
+                btn.classList.toggle('is-selected', ui.wsSelectedStation === sid);
+                const stateEl = btn.querySelector('.ov3-ws-node__state');
+                if (stateEl) {
+                    if (st && st.status === 'active' && st.progress > 0) {
+                        stateEl.textContent = `⚡ ${Math.round(clampPct(st.progress))}%`;
+                    } else if (st && st.statusText) {
+                        stateEl.textContent = st.statusText;
+                    } else {
+                        stateEl.textContent = ui.wsDemoMode ? '⚡ กำลังทำ' : 'พร้อม';
+                    }
+                }
+            });
+        }
+
+        updateWorkshopCamAndDockHighlight();
+
+        if (ui.wsInspectorOpen && ui.wsSelectedStation !== 'overview' && wsState && wsState.stations && wsState.stations[ui.wsSelectedStation]) {
+            renderWorkshopInspector(wsState.stations[ui.wsSelectedStation]);
+        }
+    }
+
+    function initWorkshop3D() {
+        const hostEl = $('ov3-ws-canvas-host');
+        if (!hostEl) return;
+
+        const doMount = () => {
+            if (ui.wsCtrl || !window.HomelabWorkshop3D || typeof window.HomelabWorkshop3D.mount !== 'function') return;
+            const labelsEl = $('ov3-ws-labels');
+            try {
+                ui.wsCtrl = window.HomelabWorkshop3D.mount(hostEl, {
+                    labelsEl,
+                    theme: getCurrentTheme(),
+                    demoMode: ui.wsDemoMode,
+                    onSelectStation: (meta) => {
+                        const id = (meta && meta.id) || 'overview';
+                        ui.wsSelectedStation = id;
+                        updateWorkshopCamAndDockHighlight();
+                        renderWorkshopInspector(id === 'overview' ? null : meta);
+                    },
+                });
+                syncWorkshop3D();
+                syncWorkshopActive();
+            } catch (err) {
+                const jobEl = $('ov3-ws-active-job');
+                if (jobEl) jobEl.textContent = 'ไม่สามารถเริ่มต้นฉาก 3D ได้ชั่วคราว';
+            }
+        };
+
+        if (window.HomelabWorkshop3D && typeof window.HomelabWorkshop3D.mount === 'function') {
+            doMount();
+        } else {
+            window.addEventListener('homelab:workshop3d-ready', doMount, { once: true });
+            syncWorkshop3D();
+        }
+
+        if (typeof MutationObserver !== 'undefined') {
+            const themeObs = new MutationObserver(() => {
+                if (ui.wsCtrl && typeof ui.wsCtrl.setTheme === 'function') {
+                    ui.wsCtrl.setTheme(getCurrentTheme());
+                }
+            });
+            themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        }
+    }
+
     // ── Polling & Hook from app.js ──────────────────────────────────────────
     async function tick(force = false) {
         if (ui.inFlight) return;
@@ -2423,6 +3245,7 @@
                 ui.lastUpdatedAt = Date.now();
                 pushHist(data);
                 renderAll(data);
+                syncWorkshop3D();
             }
         } catch (_) {
             // keep last rendered snapshot quietly
@@ -2563,6 +3386,99 @@
                 restartService(restartBtn.dataset.restartKind, restartBtn.dataset.restartName);
                 return;
             }
+
+            // Global Sticky Browser Vision Alerts inside #ov3-attn
+            const bvOpenBtn = e.target.closest('[data-bv-open]');
+            if (bvOpenBtn) {
+                e.preventDefault();
+                window.HomelabBVAlerts?.openTarget?.(bvOpenBtn.dataset.bvOpen);
+                return;
+            }
+
+            const bvResumeBtn = e.target.closest('[data-bv-resume]');
+            if (bvResumeBtn) {
+                e.preventDefault();
+                window.HomelabBVAlerts?.resumeTarget?.(bvResumeBtn.dataset.bvResume);
+                return;
+            }
+
+            // Video Factory Control Panel delegated actions
+            const facStage = e.target.closest('.ov3-fac-stage[data-fac-focus]');
+            if (facStage) {
+                e.preventDefault();
+                selectWorkshopStation(facStage.dataset.facFocus, { showInspector: true });
+                return;
+            }
+
+            const facToggleLine = e.target.closest('[data-fac-toggle-line]');
+            if (facToggleLine) {
+                e.preventDefault();
+                toggleFactoryLine(facToggleLine.dataset.facToggleLine);
+                return;
+            }
+
+            const facRunLine = e.target.closest('[data-fac-run-line]');
+            if (facRunLine) {
+                e.preventDefault();
+                runFactoryLine(facRunLine.dataset.facRunLine);
+                return;
+            }
+
+            const facPreviewJob = e.target.closest('[data-fac-preview-job]');
+            if (facPreviewJob) {
+                e.preventDefault();
+                openFactoryJobPreview(facPreviewJob.dataset.facPreviewJob);
+                return;
+            }
+
+            const facApproveQc = e.target.closest('[data-fac-approve-qc]');
+            if (facApproveQc) {
+                e.preventDefault();
+                approveFactoryQC(facApproveQc.dataset.facApproveQc);
+                return;
+            }
+
+            // 3D Workshop HUD controls (Camera bar, Dock, Inspector)
+            const wsCamBtn = e.target.closest('[data-ws-cam]');
+            if (wsCamBtn) {
+                e.preventDefault();
+                const camId = wsCamBtn.dataset.wsCam || 'overview';
+                selectWorkshopStation(camId, { showInspector: camId !== 'overview' });
+                return;
+            }
+
+            const wsDockBtn = e.target.closest('[data-ws-station]');
+            if (wsDockBtn) {
+                e.preventDefault();
+                selectWorkshopStation(wsDockBtn.dataset.wsStation, { showInspector: true });
+                return;
+            }
+
+            const wsInspClose = e.target.closest('[data-ws-insp-close]');
+            if (wsInspClose) {
+                e.preventDefault();
+                renderWorkshopInspector(null);
+                return;
+            }
+
+            const wsActionBtn = e.target.closest('[data-ws-action]');
+            if (wsActionBtn) {
+                e.preventDefault();
+                const act = wsActionBtn.dataset.wsAction;
+                if (act === 'quick-order') {
+                    const form = $('ov3-fac-quick-form');
+                    const toggleBtn = $('ov3-fac-quick-toggle');
+                    if (form) form.hidden = false;
+                    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
+                    jumpToPanel('#ov3-panel-factory');
+                    setTimeout(() => $('ov3-fac-topic')?.focus(), 180);
+                } else if (act === 'pump') {
+                    pumpFactoryQueue();
+                } else if (act === 'jump-qc') {
+                    jumpToPanel('#ov3-panel-factory');
+                }
+                return;
+            }
         });
 
         root.addEventListener('keydown', (e) => {
@@ -2571,6 +3487,12 @@
                 if (thumb) {
                     e.preventDefault();
                     openVideoPlayer(thumb.dataset.playVideo);
+                    return;
+                }
+                const facStage = e.target.closest('.ov3-fac-stage[data-fac-focus]');
+                if (facStage) {
+                    e.preventDefault();
+                    selectWorkshopStation(facStage.dataset.facFocus, { showInspector: true });
                 }
             }
         });
@@ -2578,6 +3500,7 @@
         $('ov2-btn-refresh')?.addEventListener('click', () => {
             tick(true);
             fetchQuotaData(true);
+            fetchFactoryState(true);
         });
         $('ov3-quota-refresh')?.addEventListener('click', () => fetchQuotaData(true));
         $('ov3-quota-tabs')?.addEventListener('click', (e) => {
@@ -2589,6 +3512,29 @@
         $('ov3-quota-toggle-models')?.addEventListener('click', () => {
             ui.quotaModelsOpen = !ui.quotaModelsOpen;
             if (ui.quota) renderQuotaModelsTable(ui.quota);
+        });
+        $('ov3-fac-quick-toggle')?.addEventListener('click', () => {
+            const form = $('ov3-fac-quick-form');
+            const btn = $('ov3-fac-quick-toggle');
+            if (!form) return;
+            const willOpen = form.hidden;
+            form.hidden = !willOpen;
+            if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            if (willOpen) $('ov3-fac-topic')?.focus();
+        });
+        $('ov3-fac-quick-form')?.addEventListener('submit', submitQuickFactoryOrder);
+        $('ov3-fac-run-news')?.addEventListener('click', () => runFactoryLine('line-news-v2'));
+        $('ov3-fac-pump')?.addEventListener('click', pumpFactoryQueue);
+        $('ov3-ws-demo-btn')?.addEventListener('click', () => {
+            ui.wsDemoMode = !ui.wsDemoMode;
+            ui.wsUserDemoOverride = ui.wsDemoMode;
+            syncWorkshop3D();
+        });
+        $('ov3-ws-reset-btn')?.addEventListener('click', () => {
+            ui.wsSelectedStation = 'overview';
+            ui.wsCtrl?.resetCamera?.();
+            updateWorkshopCamAndDockHighlight();
+            renderWorkshopInspector(null);
         });
         $('ov2-btn-new-chat')?.addEventListener('click', createAndOpenNewChat);
         $('ov2-ai-mark-all')?.addEventListener('click', markAllChatsRead);
@@ -3095,16 +4041,31 @@
             ui.freshTimer = setInterval(updateFreshness, 1000);
         }
         bindEvents();
+        initWorkshop3D();
         initPrayerWidget();
         initWeatherWidget();
         tick(true);
         fetchQuotaData(true);
+        fetchFactoryState(true);
         setInterval(() => tick(false), POLL_MS);
+        setInterval(() => fetchFactoryState(false), FACTORY_POLL_MS);
         setInterval(() => fetchQuotaData(false), QUOTA_POLL_MS);
 
+        window.addEventListener('homelab:bv-alerts-updated', () => {
+            if (ui.lastData) {
+                renderHeader(ui.lastData);
+                renderKpis(ui.lastData);
+                renderAttention(ui.lastData);
+            } else {
+                renderAttention({});
+            }
+        });
+
         document.addEventListener('visibilitychange', () => {
+            syncWorkshopActive();
             if (!document.hidden && isOverviewActive()) {
                 tick(false);
+                if (Date.now() - ui.factoryUpdatedAt > FACTORY_POLL_MS) fetchFactoryState(false);
                 if (Date.now() - ui.quotaUpdatedAt > QUOTA_POLL_MS) fetchQuotaData(false);
             }
         });
@@ -3112,8 +4073,10 @@
         const view = $('view-overview');
         if (view && typeof MutationObserver !== 'undefined') {
             const obs = new MutationObserver(() => {
+                syncWorkshopActive();
                 if (isOverviewActive() && !document.hidden) {
                     tick(false);
+                    if (Date.now() - ui.factoryUpdatedAt > FACTORY_POLL_MS) fetchFactoryState(false);
                     if (Date.now() - ui.quotaUpdatedAt > QUOTA_POLL_MS) fetchQuotaData(false);
                 }
             });

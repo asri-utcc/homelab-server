@@ -9603,6 +9603,10 @@ body::before {
       }
 
       markAssistantMessageDone(responseBody, Date.now());
+      try {
+        const roomTitle = document.getElementById('room-title')?.textContent?.trim() || '';
+        window.HomelabBVAlerts?.detectChatMessage?.(fullOutput, currentSessionId, roomTitle);
+      } catch (_) {}
       finalizeThinkingBar();
       persistHistory();
 
@@ -11204,6 +11208,30 @@ body::before {
     updateKbBarUI();
   }
 
+  function syncBvAlertState(chatId, isPaused, reason, urlStr) {
+    if (!chatId || !window.HomelabBVAlerts) return;
+    const alertId = 'bv-chat-' + chatId;
+    if (isPaused) {
+      const rLow = String(reason || '').toLowerCase();
+      const kind = /otp/.test(rLow) ? 'otp' : /captcha|turnstile|human/.test(rLow) ? 'captcha' : /pay|card|checkout/.test(rLow) ? 'payment' : /login|password|auth/.test(rLow) ? 'login' : 'paused';
+      const label = reason ? (SENSITIVE_LABELS[rLow] || String(reason)) : '⏸️ เบราว์เซอร์รอคุณดำเนินการ';
+      const roomTitle = document.getElementById('room-title')?.textContent?.trim() || '';
+      window.HomelabBVAlerts.raise({
+        id: alertId,
+        kind,
+        title: label,
+        detail: (roomTitle ? roomTitle + ' — ' : '') + 'กรุณาเปิด Browser Vision เพื่อดำเนินการต่อแล้วกด Resume',
+        sourceType: 'chat',
+        chatId,
+        roomTitle,
+        url: urlStr || (urlInput && urlInput.value ? urlInput.value.trim() : '')
+      });
+    } else {
+      window.HomelabBVAlerts.resolve(alertId);
+      window.HomelabBVAlerts.resolve(chatId);
+    }
+  }
+
   function handleServerMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
     const t = msg.type;
@@ -11220,6 +11248,7 @@ body::before {
       if (typeof msg.paused === 'boolean') {
         paused = msg.paused;
         pauseReason = msg.pauseReason || msg.reason || '';
+        syncBvAlertState(getActiveChatId(), paused, pauseReason, msg.url);
       }
       if (typeof msg.aiBusy === 'boolean') aiBusy = msg.aiBusy;
       updateStatusUI();
@@ -11235,6 +11264,7 @@ body::before {
       if (paused && /password|otp|login/i.test(pauseReason)) {
         kbDismissedByUser = false;
       }
+      syncBvAlertState(getActiveChatId(), paused, pauseReason, msg.url);
       updateStatusUI();
     } else if (t === 'focus-state') {
       kbFieldInfo = msg.isEditable ? msg : null;
@@ -11259,6 +11289,7 @@ body::before {
       if (typeof msg.paused === 'boolean') {
         paused = msg.paused;
         pauseReason = paused ? String(msg.pauseReason || msg.reason || '') : '';
+        syncBvAlertState(getActiveChatId(), paused, pauseReason, msg.url);
       }
       if (typeof msg.url === 'string') updateUrlUI(msg.url);
       if (Array.isArray(msg.tabs)) updateTabsUI(msg.tabs, msg.activeTab);
@@ -11457,6 +11488,8 @@ body::before {
     closeSocketOnly();
     if (id) {
       writeForceClosedRoom(id, true);
+      window.HomelabBVAlerts?.resolve('bv-chat-' + id);
+      window.HomelabBVAlerts?.resolve(id);
     }
     updateStatusUI();
     if (id) {
@@ -11742,6 +11775,10 @@ body::before {
     }
     paused = false;
     pauseReason = '';
+    if (id) {
+      window.HomelabBVAlerts?.resolve('bv-chat-' + id);
+      window.HomelabBVAlerts?.resolve(id);
+    }
     if (resumeNoteInput) resumeNoteInput.value = '';
     updateStatusUI();
 
@@ -13334,6 +13371,32 @@ body::before {
     redraw();
   });
 
+  // ── Deep-Link & Iframe Message Receiver for Sticky BV Alerts ──────────────
+  window.__homelabOpenBvSession = async (chatId, openBv = true) => {
+    try {
+      if (chatId && typeof switchToSession === 'function') {
+        await switchToSession(chatId);
+      }
+      if (openBv && window.BrowserVision && typeof window.BrowserVision.open === 'function') {
+        window.BrowserVision.open(chatId || currentSessionId);
+      }
+    } catch (_) {}
+  };
+  window.addEventListener('message', (ev) => {
+    if (ev.origin !== location.origin) return;
+    if (ev.data && ev.data.type === 'homelab:open-bv-session') {
+      window.__homelabOpenBvSession(ev.data.chatId, ev.data.openBrowserVision !== false);
+    }
+  });
+  try {
+    const _bvParams = new URLSearchParams(location.search);
+    const _bvSid = _bvParams.get('session');
+    const _bvOpen = _bvParams.get('bv') === '1';
+    if (_bvSid || _bvOpen) {
+      setTimeout(() => window.__homelabOpenBvSession(_bvSid, _bvOpen), 600);
+    }
+  } catch (_) {}
+
   // Expose annotation helper on window.BrowserVision for diagnostics & testing
   bv.annotation = {
     setExpanded,
@@ -13356,5 +13419,6 @@ body::before {
 </script>
 <script src="/audit-explorer.js"></script>
 <script src="/model-alerts.js" defer></script>
+  <script src="/global-bv-alerts.js?v=1" defer></script>
 </body>
 </html>

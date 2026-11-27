@@ -14,6 +14,8 @@ const PRECACHE_ASSETS = [
   '/hub-workspace.js',
   '/overview-v2.css',
   '/overview-v2.js',
+  '/workshop-3d.js',
+  '/global-bv-alerts.js',
   '/app.js',
   '/manifest.json',
   '/gemini.html',

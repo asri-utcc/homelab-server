@@ -1981,6 +1981,9 @@ const server = http.createServer(async (req, res) => {
                 if (parts.length === 2 && action === 'build' && req.method === 'POST') {
                     return sendJson(res, 200, await videoStudioManager.buildJob(jobId));
                 }
+                if (parts.length === 2 && action === 'resume' && req.method === 'POST') {
+                    return sendJson(res, 200, await videoStudioManager.resumeJob(jobId));
+                }
                 if (parts.length === 2 && action === 'edit-scene' && req.method === 'POST') {
                     const body = await readJsonBody(req, 256 * 1024);
                     return sendJson(res, 200, await videoStudioManager.editScene(jobId, body.sceneId || body.scene));

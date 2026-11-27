@@ -149,9 +149,14 @@ function isProcessAlive(pid) {
     if (!Number.isInteger(n) || n <= 1) return false;
     try {
         process.kill(n, 0);
-        return true;
     } catch (err) {
-        return err && err.code === 'EPERM';
+        return Boolean(err && err.code === 'EPERM');
+    }
+    // After a reboot the pid may belong to an unrelated process -> require it to be our runner.
+    try {
+        return fs.readFileSync(`/proc/${n}/cmdline`, 'utf8').includes('studio_job.py');
+    } catch (_) {
+        return true;
     }
 }
 
@@ -166,6 +171,25 @@ function isJobActivelyRunning(job) {
         if (Number.isFinite(ageMs) && ageMs < 15000) return true;
     }
     return false;
+}
+
+// A job still marked as running whose runner process is gone (crash, reboot, kill -9)
+// is persisted as an error so the UI stops showing it as in-progress and offers Resume.
+async function reconcileStaleJob(jobPath, job) {
+    if (!job || !RUNNING_STATUSES.has(String(job.status || '')) || !job.pid) return job;
+    if (isJobActivelyRunning(job)) return job;
+    const stage = String(job.stage || job.status);
+    const fixed = {
+        ...job,
+        status: 'error',
+        stage: 'error',
+        interruptedStage: stage,
+        error: `งานถูกขัดจังหวะระหว่างขั้น ${stage} (โปรเซสหยุดทำงาน เช่น เครื่องค้าง/รีบูต)`,
+        message: `งานถูกขัดจังหวะระหว่างขั้น ${stage} · กด "ทำงานต่อ" เพื่อทำต่อจากเดิม`,
+        updatedAt: new Date().toISOString(),
+    };
+    await atomicWriteJson(jobPath, fixed).catch(() => {});
+    return fixed;
 }
 
 async function readJsonSafe(filePath, fallback = null) {
@@ -374,8 +398,9 @@ async function listJobs(limit = 50) {
     for (const ent of entries) {
         if (!ent.isDirectory() || !ID_RE.test(ent.name)) continue;
         const jobPath = path.join(JOBS_DIR, ent.name, 'job.json');
-        const data = await readJsonSafe(jobPath, null);
-        if (!data || typeof data !== 'object') continue;
+        const raw = await readJsonSafe(jobPath, null);
+        if (!raw || typeof raw !== 'object') continue;
+        const data = await reconcileStaleJob(jobPath, raw);
         const alive = isJobActivelyRunning(data);
         jobs.push({
             ...data,
@@ -582,10 +607,12 @@ async function readLogTail(jobDir, maxLines = 40) {
 async function getJob(id) {
     const cleanId = validateId(id, 'Job ID');
     const jobDir = path.join(JOBS_DIR, cleanId);
-    const job = await readJsonSafe(path.join(jobDir, 'job.json'), null);
-    if (!job) {
+    const jobPath = path.join(jobDir, 'job.json');
+    const rawJob = await readJsonSafe(jobPath, null);
+    if (!rawJob) {
         throw httpError('ไม่พบงานที่ระบุ', 404);
     }
+    const job = await reconcileStaleJob(jobPath, rawJob);
     const script = await readJsonSafe(path.join(jobDir, 'script.json'), null);
     const alive = isJobActivelyRunning(job);
     const logTail = await readLogTail(jobDir, 40);
@@ -672,6 +699,28 @@ async function buildJob(id) {
 
     await spawnRunner(cleanId, 'build');
     return { ok: true, id: cleanId, status: 'queued' };
+}
+
+// Continue a failed/aborted/interrupted job without starting over: studio_job.py resume
+// drafts only if script.json is missing, reuses cached TTS/art and skips render/mix/preview
+// whose outputs are still valid.
+async function resumeJob(id) {
+    const { cleanId, jobPath, job } = await ensureJobReadyForAction(id);
+    if (!['error', 'aborted'].includes(String(job.status || ''))) {
+        throw httpError('ทำงานต่อได้เฉพาะงานที่ล้มเหลว ถูกยกเลิก หรือถูกขัดจังหวะเท่านั้น', 409);
+    }
+    const resumedFrom = job.interruptedStage || job.stage || job.status;
+    job.status = 'queued';
+    job.stage = 'resume';
+    job.error = null;
+    job.resumedFrom = resumedFrom;
+    delete job.interruptedStage;
+    job.message = `เข้าคิวทำงานต่อจากเดิม (หยุดไว้ที่ขั้น ${resumedFrom})...`;
+    job.updatedAt = new Date().toISOString();
+    await atomicWriteJson(jobPath, job);
+
+    await spawnRunner(cleanId, 'resume');
+    return { ok: true, id: cleanId, status: 'queued', resumedFrom };
 }
 
 async function editScene(id, sceneId) {
@@ -1829,6 +1878,7 @@ module.exports = {
     listJobs,
     saveScript,
     buildJob,
+    resumeJob,
     editScene,
     trimJob,
     cutJob,

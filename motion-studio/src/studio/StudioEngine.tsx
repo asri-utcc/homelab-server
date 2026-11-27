@@ -11,6 +11,7 @@ import { SubtitleBar, SubtitleCue } from '../components/SubtitleBar';
 import { THAI_FONT_FAMILY, ThaiFontLoader } from '../components/ThaiFontLoader';
 import { StudioBackground } from './backgrounds';
 import { FamilySceneRenderer } from './families';
+import { NewsMediaScene } from './NewsMediaScene';
 import { StyleSignature, hasHeroSignature } from './signatures';
 import { isIllustratedStyle } from './director/doodleKit';
 import { hasStyleDirector } from './styleDirector/registry';
@@ -517,17 +518,28 @@ export const StudioEngine: React.FC<StudioProps> = (props) => {
             pointerEvents: 'none',
           }}
         >
-          <FamilySceneRenderer
-            scene={prevScene}
-            sceneIndex={activeIdx - 1}
-            totalScenes={scenes.length}
-            tokens={prevTokens}
-            localFrame={Math.max(0, frame - prevScene.startFrame)}
-            durationFrames={Math.max(1, prevScene.endFrame - prevScene.startFrame)}
-            styleId={resolvedStyleId}
-            hasHero={prevHasHero}
-            allScenes={scenes}
-          />
+          {prevScene.media?.src ? (
+            <NewsMediaScene
+              scene={prevScene}
+              sceneIndex={activeIdx - 1}
+              totalScenes={scenes.length}
+              tokens={prevTokens}
+              localFrame={Math.max(0, frame - prevScene.startFrame)}
+              durationFrames={Math.max(1, prevScene.endFrame - prevScene.startFrame)}
+            />
+          ) : (
+            <FamilySceneRenderer
+              scene={prevScene}
+              sceneIndex={activeIdx - 1}
+              totalScenes={scenes.length}
+              tokens={prevTokens}
+              localFrame={Math.max(0, frame - prevScene.startFrame)}
+              durationFrames={Math.max(1, prevScene.endFrame - prevScene.startFrame)}
+              styleId={resolvedStyleId}
+              hasHero={prevHasHero}
+              allScenes={scenes}
+            />
+          )}
         </AbsoluteFill>
       )}
 
@@ -544,17 +556,28 @@ export const StudioEngine: React.FC<StudioProps> = (props) => {
             : undefined
         }
       >
-        <FamilySceneRenderer
-          scene={activeScene}
-          sceneIndex={activeIdx}
-          totalScenes={scenes.length}
-          tokens={activeTokens}
-          localFrame={localFrame}
-          durationFrames={activeDur}
-          styleId={resolvedStyleId}
-          hasHero={hasHero}
-          allScenes={scenes}
-        />
+        {activeScene.media?.src ? (
+          <NewsMediaScene
+            scene={activeScene}
+            sceneIndex={activeIdx}
+            totalScenes={scenes.length}
+            tokens={activeTokens}
+            localFrame={localFrame}
+            durationFrames={activeDur}
+          />
+        ) : (
+          <FamilySceneRenderer
+            scene={activeScene}
+            sceneIndex={activeIdx}
+            totalScenes={scenes.length}
+            tokens={activeTokens}
+            localFrame={localFrame}
+            durationFrames={activeDur}
+            styleId={resolvedStyleId}
+            hasHero={hasHero}
+            allScenes={scenes}
+          />
+        )}
       </AbsoluteFill>
 
       {/* Layer 1.5: Style Signature Overlay (non-hero styles only; above scene, below subtitles) */}

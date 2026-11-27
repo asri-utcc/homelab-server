@@ -288,6 +288,15 @@ export interface StudioScene {
     hero?: string;
   };
   vector?: StudioVectorSpec;
+  // Real news media (photo / short clip) shown by NewsMediaScene; src relative to public/
+  media?: {
+    type: 'image' | 'video';
+    src: string;
+    poster?: string;
+    credit?: string;
+    label?: string;
+    durationSec?: number;
+  };
 }
 
 export type StudioProps = {

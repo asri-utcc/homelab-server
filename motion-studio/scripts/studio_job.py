@@ -5,6 +5,8 @@ Handles:
   - oneshot    : research -> script -> tts -> render -> mix -> preview -> copy -> telegram
   - draft      : research -> script -> draft_ready
   - build      : lock -> tts (cached) -> props -> render -> mix -> preview -> copy -> telegram
+  - resume     : continue an interrupted/failed job: draft if script.json is missing, then build that
+                 skips render/mix/preview when their outputs are still valid (newer than their inputs)
   - edit-scene : lock -> tts (cached) -> props -> render -> mix -> final_v{N}.mp4
   - rebuild    : lock -> tts (cached) -> props -> render -> mix -> final_v{N}.mp4 (all scenes)
   - remix      : lock -> mix latest render_v{N}/render.mp4 + work/timeline.json -> final_v{N}.mp4
@@ -1061,6 +1063,11 @@ def normalize_script(
                 scene_obj[opt_key] = val
         if scene_obj.get("highlightWord") and not scene_obj.get("highlight"):
             scene_obj["highlight"] = scene_obj["highlightWord"]
+        for news_key in ("sourceUrl", "mediaQuery", "mediaLabel"):
+            if isinstance(sc.get(news_key), str) and sc[news_key].strip():
+                scene_obj[news_key] = sc[news_key].strip()[:400]
+        if isinstance(sc.get("media"), dict) and sc["media"].get("src"):
+            scene_obj["media"] = sc["media"]
         if sc.get("ttsPrompt"):
             raw_scene_prompt = str(sc.get("ttsPrompt") or "").strip()
             if raw_scene_prompt in (RELIGIOUS_TTS_PROMPT, DEFAULT_TTS_PROMPT):
@@ -1075,6 +1082,70 @@ def normalize_script(
             scene_obj["direction"] = direction
         out["scenes"].append(scene_obj)
     return out
+
+
+def is_news_request(request: dict[str, Any] | None) -> bool:
+    return str((request or {}).get("contentMode") or "").strip().lower() == "news"
+
+
+def build_news_research_prompt(
+    topic: str, duration_sec: int, notes: str = "", story_date: str = "", stale: list[str] | None = None
+) -> str:
+    extra = f"\nรายละเอียดเพิ่มเติมจากผู้ใช้: {notes}\n" if notes else ""
+    if story_date:
+        extra += (
+            f"\nวันที่ของข่าวคือ {story_date} (ปี ค.ศ. {story_date[:4]} = พ.ศ. {int(story_date[:4]) + 543}) "
+            f"ทุกข่าวต้องเกิดหรือรายงานในวันนั้นจริง ตรวจวันที่เผยแพร่ของบทความทุกลิงก์ "
+            f"ห้ามใช้ข่าวปีก่อนๆ ที่บังเอิญตรงวันเดือนเดียวกัน\n"
+        )
+    if stale:
+        extra += (
+            "\n⚠️ รอบก่อนได้ข่าวเก่า (ตรวจวันที่บทความแล้วไม่ใช่ปีนี้) ห้ามใช้ข่าวเหล่านี้อีก ให้หาข่าวใหม่แทน:\n"
+            + "\n".join(f"- {x}" for x in stale)
+            + "\n"
+        )
+    return (
+        f'ค้นหาข่าวจริงล่าสุดจากเว็บสำนักข่าวสำหรับหัวข้อ: "{topic}"{extra}\n'
+        f"เตรียมข้อมูลสำหรับรายการข่าวสรุปความยาวประมาณ {duration_sec} วินาที ให้คนดูเข้าใจเรื่องจริง ไม่ใช่สรุปให้ท่องจำ\n"
+        "สำหรับแต่ละข่าว ให้เขียนเป็นหัวข้อ Markdown แยกกัน และมีครบทุกข้อ:\n"
+        "- พาดหัว และหมวด (ข่าวในประเทศ / ข่าวต่างประเทศ)\n"
+        "- เกิดอะไรขึ้น ที่ไหน เมื่อไร ใครเกี่ยวข้อง (ชื่อคน/หน่วยงานจริง)\n"
+        "- รายละเอียดและตัวเลขสำคัญจากแหล่งข่าว (ห้ามแต่งเอง)\n"
+        "- ที่มาที่ไป/เบื้องหลังของเรื่อง และผลกระทบต่อคนทั่วไปหรือต่อประเทศ\n"
+        "- ขั้นต่อไป หรือสิ่งที่ต้องติดตาม\n"
+        "- URL บทความต้นฉบับ 1-2 ลิงก์ (ต้องเป็น URL จริงของหน้าข่าวนั้นโดยตรง ไม่ใช่หน้าแรกเว็บ)\n"
+        "- คำค้นหาวิดีโอข่าวบน YouTube 1 วลี (ข่าวไทยใช้ภาษาไทย ข่าวต่างประเทศใช้ภาษาอังกฤษ) ที่น่าจะเจอคลิปรายงานข่าวนี้\n"
+        "ห้ามใส่ส่วน 'ประเด็นจำง่าย' หรือ 'สรุปให้ท่องจำ' ตอบเป็น Markdown ภาษาไทยโดยตรง ไม่ต้องอธิบายขั้นตอนการทำงาน"
+    )
+
+
+def ensure_fresh_news(job_dir: Path, research_md: str, topic: str, duration_sec: int, notes: str, story_date: str) -> str:
+    """Verify article publish dates; re-research once if stories are from another year; fail if too few fresh."""
+    import news_media
+    from datetime import date as _date
+
+    target = _date.fromisoformat(story_date)
+    log = lambda m: append_log(job_dir, m)  # noqa: E731
+    write_status(job_dir, status="researching", stage="researching", progress=10, message="กำลังตรวจวันที่ของแหล่งข่าว...")
+    stale, ok = news_media.check_research_freshness(research_md, target, log)
+    if not stale:
+        return research_md
+    (job_dir / "research_stale.md").write_text(research_md + "\n", encoding="utf-8")
+    append_log(job_dir, f"[news-fresh] {len(stale)} stale stories; re-researching once")
+    write_status(job_dir, status="researching", stage="researching", progress=12, message="พบข่าวเก่าปนมา กำลังค้นข่าวใหม่...")
+    prompt = build_news_research_prompt(topic, duration_sec, notes, story_date, stale)
+    research_md, model = run_agy_with_fallback(job_dir, prompt, timeout=420)
+    append_log(job_dir, f"Re-research done ({len(research_md)} chars, model={model})")
+    stale2, ok2 = news_media.check_research_freshness(research_md, target, log)
+    if stale2 and ok2 < 4:
+        raise RuntimeError(f"AI หาข่าวของวันที่ {story_date} ได้ไม่พอ (ข่าวเก่าปนมา {len(stale2)} ข่าว, ข่าวใช้ได้ {ok2} ข่าว)")
+    if stale2:
+        research_md += (
+            "\n\n## ⚠️ ห้ามใช้ข่าวต่อไปนี้ (ตรวจแล้วเป็นข่าวเก่า ไม่ใช่ของวันนี้)\n"
+            + "\n".join(f"- {x}" for x in stale2)
+            + "\n"
+        )
+    return research_md
 
 
 def build_research_prompt(topic: str, duration_sec: int, notes: str = "") -> str:
@@ -1109,6 +1180,7 @@ def build_script_prompt(
     notes: str = "",
     retry_errors: list[str] | None = None,
     previous_output: str | None = None,
+    news: bool = False,
 ) -> str:
     tokens = preset.get("tokens") or {}
     family = tokens.get("family", "glow-world")
@@ -1123,7 +1195,8 @@ def build_script_prompt(
     max_per_scene_chars = max(per_scene_chars + 5, int(round(max_total_chars / max(1, scene_count))))
     extra = f"\nคำสั่งเพิ่มเติมจากผู้ใช้: {notes}\n" if notes else ""
     religious = is_religious_topic(topic, notes)
-    example_tts_style = "religious" if religious else "storytelling"
+    example_tts_style = "religious" if religious else ("gravitas" if news else "storytelling")
+    min_news_chars = int(round(total_chars * 0.80))
 
     clarity_rules = (
         "\n=== กติกาความชัดเจนของเนื้อหา ===\n"
@@ -1134,6 +1207,22 @@ def build_script_prompt(
         "- ข้อความหัวข้อบนจอ (title) ต้องตรงกับสิ่งที่กำลังพูดในซีนนั้น\n"
         "- ห้ามใส่ตัวเลขหรือสถิติใดๆ ที่ไม่มีอยู่ในข้อมูลจากการค้นคว้า (research.md)\n"
     )
+    if news:
+        clarity_rules = (
+            "\n=== กติกาสำหรับรายการข่าว (สำคัญกว่ากติกาทั่วไป) ===\n"
+            "- นี่คือรายการข่าวทีวีที่อธิบายให้ผู้ชมเข้าใจรายละเอียดของข่าวในระดับหนึ่ง ไม่ใช่สไลด์สรุปผู้บริหาร และไม่ใช่สรุปให้นักเรียนท่องจำ: ห้ามมีซีน 'จำง่าย', 'สรุป 3 คำ', takeaway หรือคำคมเด็ดขาด\n"
+            "- โครงเรื่อง: ซีนเปิด (ทักทาย บอกวันที่และเกริ่นหัวข้อเด่น) → ข่าวละ 2 ซีนติดกัน → ซีนปิดสั้นๆ\n"
+            f"- ความละเอียดของเนื้อหาสำคัญมาก: ความยาว narration รวมทั้งคลิปต้องไม่ต่ำกว่า {min_news_chars} ตัวอักษร และแต่ละซีนของตัวข่าวต้องยาวประมาณ {max(120, per_scene_chars - 15)}–{max_per_scene_chars} ตัวอักษร (พูดต่อเนื่อง 3–4 ประโยคสมบูรณ์ ไม่ตัดสั้นห้วน)\n"
+            "- ซีนแรกของแต่ละข่าว: เล่าให้เห็นภาพชัดเจนว่าเกิดอะไรขึ้น ที่ไหน เมื่อไร ใครหรือหน่วยงานใดเกี่ยวข้อง ลำดับเหตุการณ์และตัวเลขสำคัญเป็นอย่างไร\n"
+            "- ซีนที่สองของข่าวเดียวกัน: ขยายความเบื้องหลังที่มาที่ไป สาเหตุ ผลกระทบต่อประชาชน เศรษฐกิจ หรือสังคม ท่าทีการรับมือของหน่วยงาน และสิ่งที่ต้องจับตาต่อ\n"
+            "- narration เป็นภาษาพูดแบบผู้ประกาศข่าวมืออาชีพ ประโยคสมบูรณ์ลื่นไหลต่อเนื่องเป็นเรื่องราวเดียวกัน ห้ามเขียนเป็นวลีสั้นห้วนหรือรายการหัวข้อ\n"
+            "- ใช้คำเชื่อมระหว่างข่าวอย่างเป็นธรรมชาติ เช่น 'ไปต่อกันที่ข่าวเศรษฐกิจครับ', 'ข้ามไปดูสถานการณ์ต่างประเทศกันบ้าง'\n"
+            "- ทุกซีนข่าวต้องมี field เพิ่ม: \"sourceUrl\" (URL หน้าข่าวจริงจาก research), \"mediaQuery\" (คำค้นวิดีโอข่าวบน YouTube จาก research — ซีนที่ 1 และ 2 ของข่าวเดียวกันต้องใช้ค่าเดียวกันทุกตัวอักษร), \"mediaLabel\" (\"ข่าวในประเทศ\" หรือ \"ข่าวต่างประเทศ\")\n"
+            "- ซีนข่าวต้องมี bullets 3 ข้อ เป็นข้อเท็จจริงสำคัญสั้นๆ (ไม่เกิน 42 ตัวอักษรต่อข้อ) ที่สอดคล้องกับเนื้อข่าว เพื่อแสดงประกอบใต้ภาพ/คลิปข่าว\n"
+            "- title คือพาดหัวข่าวที่สื่อความชัดเจน (ไม่เกิน 38 ตัวอักษร) subtitle คือคำโปรยขยายความ 1 บรรทัด\n"
+            "- ซับไตเติล (subtitles) แต่ละท่อนไม่เกิน 18 ตัวอักษร ตัดแบ่งที่ขอบคำให้อ่านง่าย และครอบคลุมเนื้อหาที่พูดครบถ้วน\n"
+            "- ห้ามใส่ตัวเลขหรือข้อเท็จจริงที่ไม่มีอยู่ใน research.md\n"
+        )
     if religious:
         clarity_rules += (
             "- [เฉพาะเนื้อหาศาสนา] ระบุแหล่งอ้างอิงให้ชัดเจนตามที่มีในข้อมูลค้นคว้า (เช่น \"บันทึกโดยบุคอรี หมายเลข ...\") ห้ามแต่งหรือเดาหมายเลขหะดีษหรืออายะฮ์เองเด็ดขาด หากไม่แน่ใจหมายเลขให้เขียนว่า \"มีรายงานในหะดีษ\" โดยไม่ต้องใส่ตัวเลข\n"
@@ -1161,10 +1250,14 @@ def build_script_prompt(
         f"งบความยาวบทพากย์ (narration) — กฎเหล็กห้ามเกินเด็ดขาด:\n"
         f"- อัตราพูดจริงของ TTS ภาษาไทยที่ speed 1.12 อยู่ที่ประมาณ {NARRATION_CHARS_PER_SEC} ตัวอักษร/วินาที (วัดจริง ~808 ตัวอักษร = ~78 วินาที)\n"
         f"- เป้าหมาย narration รวมทุกซีน: ประมาณ {total_chars} ตัวอักษร (ขีดจำกัดสูงสุดเด็ดขาด: ห้ามเกิน {max_total_chars} ตัวอักษร — เกินถือว่าไม่ผ่าน)\n"
-        f"- ความยาวต่อซีน: เฉลี่ยซีนละ ~{per_scene_chars} ตัวอักษร (ขีดจำกัดสูงสุดต่อซีน: ห้ามเกิน {max_per_scene_chars} ตัวอักษร หรือประมาณ 1-2 ประโยคสั้นกระชับ)\n"
-        f"- เขียนให้สั้น คม กระชับ ไม่เกริ่นเยิ่นเย้อ และเขียน narrationPhonetic ให้สั้นกระชับใกล้เคียงกับ narration\n"
-        f"{extra}"
-        f"\n=== ข้อมูลจากการค้นคว้า (research.md) ===\n{research_md[:6000]}\n"
+        f"- ความยาวต่อซีน: เฉลี่ยซีนละ ~{per_scene_chars} ตัวอักษร (ขีดจำกัดสูงสุดต่อซีน: ห้ามเกิน {max_per_scene_chars} ตัวอักษร{'' if news else ' หรือประมาณ 1-2 ประโยคสั้นกระชับ'})\n"
+        + (
+            "- ใช้งบตัวอักษรให้เต็ม เล่ารายละเอียดข่าวให้คนดูเข้าใจเรื่องจริง และเขียน narrationPhonetic ให้ตรงกับ narration\n"
+            if news
+            else "- เขียนให้สั้น คม กระชับ ไม่เกริ่นเยิ่นเย้อ และเขียน narrationPhonetic ให้สั้นกระชับใกล้เคียงกับ narration\n"
+        )
+        + f"{extra}"
+        f"\n=== ข้อมูลจากการค้นคว้า (research.md) ===\n{research_md[:20000 if news else 6000]}\n"
         f"{retry_block}\n"
         "=== กติการูปแบบ JSON ที่ต้องตอบ ===\n"
         "ตอบเป็น JSON object เดียวเท่านั้น (ใส่ใน ```json ... ``` ได้) ห้ามมีข้อความอธิบายอื่น โครงสร้าง:\n"
@@ -1266,14 +1359,17 @@ def stage_draft(job_dir: Path) -> dict[str, Any]:
 
     topic = str(request["topic"]).strip()
     style_id = str(request.get("styleId") or "look-1").strip()
+    news = is_news_request(request)
+    max_dur_allowed = 300 if news else 180
     try:
-        duration_sec = clamp(int(round(float(request.get("durationSec") or 30))), 12, 180)
+        duration_sec = clamp(int(round(float(request.get("durationSec") or 30))), 12, max_dur_allowed)
     except (TypeError, ValueError):
         duration_sec = 30
     notes = str(request.get("notes") or "").strip()
 
     preset = get_style_preset(style_id)
-    scene_count = clamp(round(duration_sec / 4.5), 3, 14)
+    # News: keep 14 scenes (intro + 6 stories * 2 scenes + outro) so each story gets ~30-35s of rich detail
+    scene_count = (14 if duration_sec >= 140 else clamp(round(duration_sec / 11.0), 6, 14)) if news else clamp(round(duration_sec / 4.5), 3, 14)
 
     # (a) Researching
     append_log(job_dir, f"Stage draft: researching topic='{topic}' styleId='{style_id}' durationSec={duration_sec}")
@@ -1289,15 +1385,24 @@ def stage_draft(job_dir: Path) -> dict[str, Any]:
         error=None,
     )
 
-    research_prompt = build_research_prompt(topic, duration_sec, notes)
-    research_md, research_model = run_agy_with_fallback(job_dir, research_prompt, timeout=180)
+    story_date = str(request.get("storyDate") or "").strip() if news else ""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", story_date):
+        story_date = ""
+    research_prompt = (
+        build_news_research_prompt(topic, duration_sec, notes, story_date)
+        if news
+        else build_research_prompt(topic, duration_sec, notes)
+    )
+    research_md, research_model = run_agy_with_fallback(job_dir, research_prompt, timeout=420 if news else 180)
+    if news and story_date:
+        research_md = ensure_fresh_news(job_dir, research_md, topic, duration_sec, notes, story_date)
     (job_dir / "research.md").write_text(research_md + "\n", encoding="utf-8")
     append_log(job_dir, f"Research saved to research.md ({len(research_md)} chars, model={research_model})")
 
     # (b) Scripting
     write_status(job_dir, status="scripting", stage="scripting", progress=15, researchModel=research_model)
-    script_prompt = build_script_prompt(topic, research_md, preset, duration_sec, scene_count, notes)
-    raw_script_text, script_model = run_agy_with_fallback(job_dir, script_prompt, timeout=180)
+    script_prompt = build_script_prompt(topic, research_md, preset, duration_sec, scene_count, notes, news=news)
+    raw_script_text, script_model = run_agy_with_fallback(job_dir, script_prompt, timeout=300 if news else 180)
 
     parsed: dict[str, Any] | None = None
     struct_ok = False
@@ -1310,6 +1415,10 @@ def stage_draft(job_dir: Path) -> dict[str, Any]:
         struct_ok, struct_errors = validate_script(parsed)
         len_errors = check_script_length(parsed, duration_sec)
         cur_chars, _ = count_narration_chars(parsed)
+        if news and not len_errors and cur_chars < int(round(budget_chars * 0.72)):
+            len_errors = [
+                f"บทพากย์สั้นเกินไปสำหรับรายการข่าว: รวม {cur_chars} ตัวอักษร (ต้องมีอย่างน้อย {int(round(budget_chars * 0.80))} ตัวอักษร เป้าหมาย ~{budget_chars} ตัวอักษร) — กรุณาขยายรายละเอียดแต่ละข่าวให้ครบถ้วนเข้าใจง่ายขึ้น ทั้งที่มาที่ไป ตัวเลข และผลกระทบ"
+            ]
         val_errors = [*struct_errors, *len_errors]
         ok = struct_ok and not len_errors
         append_log(
@@ -1344,8 +1453,9 @@ def stage_draft(job_dir: Path) -> dict[str, Any]:
             notes,
             retry_errors=val_errors,
             previous_output=prev_for_repair,
+            news=news,
         )
-        repaired_text, script_model = run_agy_with_fallback(job_dir, repair_prompt, timeout=180)
+        repaired_text, script_model = run_agy_with_fallback(job_dir, repair_prompt, timeout=300 if news else 180)
         try:
             repaired_parsed = extract_json_object(repaired_text)
             rep_struct_ok, rep_struct_errs = validate_script(repaired_parsed)
@@ -1590,8 +1700,9 @@ def maybe_shorten_after_tts(
     if dur_raw is None:
         job_meta = read_json(job_dir / "job.json", {}) or {}
         dur_raw = job_meta.get("durationSec")
+    max_dur_allowed = 300 if is_news_request(request) else 180
     try:
-        target_duration_sec = clamp(int(round(float(dur_raw))), 12, 180) if dur_raw is not None else 0
+        target_duration_sec = clamp(int(round(float(dur_raw))), 12, max_dur_allowed) if dur_raw is not None else 0
     except (TypeError, ValueError):
         target_duration_sec = 0
 
@@ -1713,6 +1824,23 @@ def maybe_shorten_after_tts(
         f"(target={target_duration_sec}s, limit={max_allowed_sec:.2f}s)",
     )
     return updated_script, new_timeline
+
+
+def run_news_media_step(job_dir: Path, script: dict[str, Any], request: dict[str, Any]) -> None:
+    """Attach real news photos / short clips to news scenes (non-fatal)."""
+    try:
+        write_status(job_dir, status="rendering", stage="news-media", progress=34, message="กำลังดึงภาพและคลิปข่าวจริงประกอบแต่ละข่าว...")
+        import news_media  # local module in scripts/
+        from datetime import date as _date
+
+        story_date = None
+        raw_date = str(request.get("storyDate") or "").strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_date):
+            story_date = _date.fromisoformat(raw_date)
+        count = news_media.attach_news_media(job_dir, script, story_date, lambda m: append_log(job_dir, m))
+        append_log(job_dir, f"[news-media] attached media to {count} scene(s)")
+    except Exception as exc:  # never block the video on optional media
+        append_log(job_dir, f"[news-media] skipped: {exc}")
 
 
 def run_scene_art_step(job_dir: Path, script: dict[str, Any], request: dict[str, Any]) -> None:
@@ -1877,6 +2005,7 @@ def build_props(
             "highlightWord",
             "highlight",
             "direction",
+            "media",
         ):
             if k in sc_src and sc_src[k] is not None:
                 merged[k] = sc_src[k]
@@ -2121,7 +2250,7 @@ def run_mix_stage(
     rc, stdout, stderr = _run_subprocess(
         cmd,
         cwd=BASE_DIR,
-        timeout=390,
+        timeout=600,
     )
     mix_node = _extract_tag_value(stderr, "[mix-node]")
     if not mix_node and stdout.strip():
@@ -2166,7 +2295,7 @@ def run_preview_stage(job_dir: Path, video_mp4: Path, timeline_path: Path | None
     rc, stdout, stderr = _run_subprocess(
         cmd,
         cwd=BASE_DIR,
-        timeout=390,
+        timeout=600,
     )
     preview_node = _extract_tag_value(stderr, "[preview-node]")
     if not preview_node and stdout.strip():
@@ -2221,12 +2350,27 @@ def probe_duration(video_path: Path) -> float:
 
 
 def copy_to_videos_dir(src_mp4: Path, dest_name: str) -> Path:
-    OUTPUT_VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
-    dest = OUTPUT_VIDEOS_DIR / dest_name
-    tmp = OUTPUT_VIDEOS_DIR / f".{dest_name}.tmp.{os.getpid()}"
-    shutil.copy2(src_mp4, tmp)
-    os.replace(tmp, dest)
-    return dest
+    last_err: Exception | None = None
+    for attempt in range(4):
+        try:
+            target_dir = OUTPUT_VIDEOS_DIR.resolve() if OUTPUT_VIDEOS_DIR.is_symlink() else OUTPUT_VIDEOS_DIR
+            os.makedirs(target_dir, exist_ok=True)
+            dest_real = target_dir / dest_name
+            tmp_real = target_dir / f".{dest_name}.tmp.{os.getpid()}"
+            try:
+                shutil.copyfile(src_mp4, tmp_real)
+                os.replace(tmp_real, dest_real)
+            finally:
+                try:
+                    tmp_real.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            return OUTPUT_VIDEOS_DIR / dest_name
+        except OSError as exc:
+            last_err = exc
+            time.sleep(2.0 * (attempt + 1))
+    assert last_err is not None
+    raise last_err
 
 
 def copy_preview_to_videos_dir(
@@ -2315,9 +2459,60 @@ def _latest_render_path(job_dir: Path) -> Path:
     raise RuntimeError("ไม่พบไฟล์วิดีโอที่เรนเดอร์ไว้ (render.mp4) กรุณาสร้างวิดีโอก่อนผสมเสียงใหม่")
 
 
-def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: str | None = None) -> dict[str, Any]:
-    """Run build pipeline (or edit-scene rebuild as final_v{N}.mp4)."""
+def _resume_output_ok(out: Path, *, newer_than: float, video: bool = False) -> bool:
+    """True when out exists, is at least as new as its input and (for videos) ffprobe can read it."""
+    try:
+        st = out.stat()
+    except OSError:
+        return False
+    if st.st_size <= 0 or st.st_mtime + 1 < newer_than:
+        return False
+    return not video or probe_duration(out) > 0
+
+
+def _resume_preview_info(job_dir: Path, final_mp4: Path, job: dict[str, Any]) -> dict[str, str] | None:
+    sb = job_dir / "preview" / "preview_storyboard.png"
+    gif = job_dir / "preview" / "preview_preview.gif"
+    final_mtime = final_mp4.stat().st_mtime
+    if not (_resume_output_ok(sb, newer_than=final_mtime) and _resume_output_ok(gif, newer_than=final_mtime)):
+        return None
+    info = {
+        "storyboardFile": "preview/preview_storyboard.png",
+        "storyboardPath": str(sb),
+        "gifFile": "preview/preview_preview.gif",
+        "gifPath": str(gif),
+    }
+    if job.get("previewNode"):
+        info["previewNode"] = str(job["previewNode"])
+    return info
+
+
+def stage_resume(job_dir: Path) -> dict[str, Any]:
+    """Continue a failed/interrupted job from the first stage whose output is missing or stale."""
     request = read_json(job_dir / "request.json", {}) or {}
+    if not (job_dir / "script.json").exists():
+        append_log(job_dir, "[resume] script.json missing -> restarting from draft (research + script)")
+        result = stage_draft(job_dir)
+        if str(request.get("mode") or "oneshot") == "draft":
+            return result
+    return stage_build(job_dir, resume=True)
+
+
+def stage_build(
+    job_dir: Path,
+    *,
+    as_new_version: bool = False,
+    edit_scene_id: str | None = None,
+    resume: bool = False,
+) -> dict[str, Any]:
+    """Run build pipeline (or edit-scene rebuild as final_v{N}.mp4).
+
+    resume=True reuses render.mp4 / final.mp4 / preview from a previous run when each is newer than its
+    input (script.json as of job start -> render -> final -> preview); a script edit forces a re-render.
+    """
+    request = read_json(job_dir / "request.json", {}) or {}
+    # Captured before news-media may rewrite script.json during this run.
+    script_mtime = (job_dir / "script.json").stat().st_mtime if (job_dir / "script.json").exists() else 0.0
     script = read_json(job_dir / "script.json")
     if not isinstance(script, dict):
         raise FileNotFoundError("ไม่พบไฟล์ script.json กรุณาร่างบทก่อนสั่งสร้างวิดีโอ")
@@ -2337,8 +2532,11 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
         if not as_new_version:
             script, timeline = maybe_shorten_after_tts(job_dir, script, timeline, request)
         timeline_path = job_dir / "work" / "timeline.json"
-        run_scene_art_step(job_dir, script, request)
-        run_scene_vector_step(job_dir, script, request)
+        if request.get("newsMedia") and not as_new_version:
+            run_news_media_step(job_dir, script, request)
+        art_script = {**script, "scenes": [s for s in script.get("scenes") or [] if not (isinstance(s, dict) and s.get("media"))]}
+        run_scene_art_step(job_dir, art_script, request)
+        run_scene_vector_step(job_dir, art_script, request)
         props_path = build_props(job_dir, script, timeline, request)
 
         delta = credit_ledger.summarize_ledger_slice(ledger_start)
@@ -2391,9 +2589,22 @@ def stage_build(job_dir: Path, *, as_new_version: bool = False, edit_scene_id: s
             dest_name = f"{slug}.mp4"
             kind = "build"
 
-        render_node = run_render_stage(job_dir, props_path, render_mp4)
-        mix_node = run_mix_stage(job_dir, render_mp4, timeline_path, final_mp4, bgm)
-        preview_info = run_preview_stage(job_dir, final_mp4, timeline_path)
+        prev_job = (read_json(job_dir / "job.json", {}) or {}) if resume else {}
+        if resume and _resume_output_ok(render_mp4, newer_than=script_mtime, video=True):
+            render_node = str(prev_job.get("renderNode") or "")
+            append_log(job_dir, f"[resume] reuse {render_mp4.name} (skip render)")
+        else:
+            render_node = run_render_stage(job_dir, props_path, render_mp4)
+        if resume and _resume_output_ok(final_mp4, newer_than=render_mp4.stat().st_mtime, video=True):
+            mix_node = str(prev_job.get("mixNode") or "")
+            append_log(job_dir, f"[resume] reuse {final_mp4.name} (skip mix)")
+        else:
+            mix_node = run_mix_stage(job_dir, render_mp4, timeline_path, final_mp4, bgm)
+        preview_info = _resume_preview_info(job_dir, final_mp4, prev_job) if resume else None
+        if preview_info is not None:
+            append_log(job_dir, "[resume] reuse preview storyboard/GIF (skip preview)")
+        else:
+            preview_info = run_preview_stage(job_dir, final_mp4, timeline_path)
         preview_node = preview_info.get("previewNode") or ""
         preview_out = copy_preview_to_videos_dir(job_dir, preview_info, Path(dest_name).stem)
 
@@ -3937,7 +4148,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Video Studio Job Runner")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    for name in ("oneshot", "draft", "build", "rebuild"):
+    for name in ("oneshot", "draft", "build", "rebuild", "resume"):
         p = sub.add_parser(name)
         p.add_argument("--job", required=True, help="Job directory path")
 
@@ -3996,6 +4207,8 @@ def main(argv: list[str] | None = None) -> int:
             stage_draft(job_dir)
         elif args.cmd == "build":
             stage_build(job_dir, as_new_version=False)
+        elif args.cmd == "resume":
+            stage_resume(job_dir)
         elif args.cmd == "oneshot":
             stage_draft(job_dir)
             stage_build(job_dir, as_new_version=False)
@@ -4022,10 +4235,12 @@ def main(argv: list[str] | None = None) -> int:
         if len(short_err) > 300:
             short_err = short_err[:297] + "..."
         append_log(job_dir, f"ERROR ({args.cmd}): {short_err}")
+        failed_stage = str((read_json(job_dir / "job.json", {}) or {}).get("stage") or "")
         write_status(
             job_dir,
             status="error",
             stage="error",
+            interruptedStage=failed_stage if failed_stage not in ("", "error") else None,
             error=short_err,
             message=f"เกิดข้อผิดพลาด: {short_err}",
         )

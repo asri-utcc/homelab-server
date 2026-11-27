@@ -30,3 +30,6 @@ out/
 *.mp4
 *.wav
 *.pre-g2ui
+
+# daily news clip downloaded media (copyrighted, regenerated per run)
+motion-studio/public/news-media/

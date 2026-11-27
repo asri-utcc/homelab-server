@@ -37,7 +37,7 @@ JOBS_DIR = Path("/home/dev/.gemini/outputs/video-studio/jobs")
 LOCK_PATH = "/tmp/daily-news-clip.lock"
 DASHBOARD_ORIGIN = "https://homelab.tail285279.ts.net"
 
-DEFAULT_DURATION = 80
+DEFAULT_DURATION = 150
 DEFAULT_STYLE = "look-32"
 DEFAULT_BGM = "warm_tech"
 ALLOWED_BGM = {"warm_tech", "story_cinematic", "dawn_ambient", "none"}
@@ -105,14 +105,15 @@ def build_notes(target_date: date) -> str:
     thai_date = format_thai_date(target_date)
     iso_date = target_date.isoformat()
     notes = (
-        f"คัดข่าวเด่นที่เกิดขึ้นเมื่อวาน วันที่ {thai_date} ({iso_date}) จำนวน 5-10 ข่าว "
+        f"รายการข่าวสรุปข่าวเด่นที่เกิดขึ้นเมื่อวาน วันที่ {thai_date} ({iso_date}) จำนวน 6 ข่าว "
         "ผสมข่าวในประเทศไทยกับข่าวต่างประเทศ (อย่างละอย่างน้อย 2 ข่าว) "
-        "เลือกเฉพาะหัวข้อที่แรงหรือคนพูดถึงมาก เช่น การเมือง เศรษฐกิจ เหตุการณ์ใหญ่ "
-        "เทคโนโลยี กีฬา บันเทิง "
-        f"ห้ามใช้ข่าวเก่ากว่าวันที่ {iso_date} ห้ามแต่งตัวเลขหรือสถิติเอง ต้องอ้างอิงแหล่งข่าวจริง "
-        "มีซีนเปิด Hook 'ข่าวเด็ดเมื่อวาน' "
-        "จากนั้นแต่ละซีนเป็น 1 ข่าว ขึ้นพาดหัวสั้นๆ แล้วตามด้วยใจความสำคัญ 1-2 ประโยค "
-        "และมีซีนปิดสั้นๆ น้ำเสียงกระชับ ชัดเจน แบบผู้ประกาศข่าว"
+        "เลือกเฉพาะเรื่องที่ใหญ่หรือคนพูดถึงมาก เช่น การเมือง เศรษฐกิจ เหตุการณ์ใหญ่ เทคโนโลยี กีฬา บันเทิง "
+        f"ห้ามใช้ข่าวเก่ากว่าวันที่ {iso_date} ห้ามแต่งตัวเลขหรือสถิติเอง ต้องอ้างอิงแหล่งข่าวจริงพร้อม URL หน้าข่าว "
+        "เล่าแบบผู้ประกาศข่าวเล่าข่าวให้คนดูเข้าใจรายละเอียดระดับหนึ่ง ข่าวละ 2 ซีน: "
+        "ซีนแรกเล่าว่าเกิดอะไร ที่ไหน เมื่อไร ใครเกี่ยวข้อง ตัวเลขสำคัญ "
+        "ซีนสองเล่าที่มาที่ไป ผลกระทบ และสิ่งที่ต้องติดตามต่อ "
+        "ไม่ต้องสรุปให้ท่องจำ ไม่ต้องมีคำคมหรือ takeaway "
+        "มีซีนเปิดทักทายบอกวันที่ และซีนปิดสั้นๆ น้ำเสียงผู้ประกาศข่าว ชัดเจน เป็นกันเอง"
     )
     if len(notes) > MAX_NOTES_LEN:
         notes = notes[:MAX_NOTES_LEN]
@@ -647,6 +648,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[skip] มีโปรเซส daily-news-clip กำลังทำงานอยู่แล้ว ({LOCK_PATH})")
             return 0
 
+    resume_existing = False
     try:
         # Idempotency & retry archive handling
         if job_dir.exists():
@@ -656,13 +658,20 @@ def main(argv: list[str] | None = None) -> int:
                 if isinstance(existing_job, dict)
                 else ""
             )
-            if existing_job is not None and existing_status not in FAILED_STATUSES:
+            # We hold the run lock, so any non-done status (failed/aborted/stuck) is a dead run -> retry
+            if existing_job is not None and existing_status == "done":
                 print(
                     f"[skip] งาน {job_id} มีอยู่แล้ว (status={existing_status or 'unknown'}) ที่ {job_dir}"
                 )
                 return 0
-            retry_dir = archive_failed_job(job_dir, job_id)
-            print(f"[retry] ย้ายงานเดิมที่ไม่สำเร็จ (status={existing_status or 'missing'}) ไปยัง {retry_dir}")
+            # A failed/interrupted run that already has a script resumes in place (studio_job.py resume
+            # reuses script, cached TTS and any valid render/mix) instead of researching from scratch.
+            if existing_job is not None and (job_dir / "script.json").exists() and not args.dry_run:
+                resume_existing = True
+                print(f"[resume] ทำงานเดิมต่อ (status={existing_status or 'unknown'}) ที่ {job_dir}")
+            else:
+                retry_dir = archive_failed_job(job_dir, job_id)
+                print(f"[retry] ย้ายงานเดิมที่ไม่สำเร็จ (status={existing_status or 'missing'}) ไปยัง {retry_dir}")
 
         # Atomic creation of request.json and job.json matching createJob() schema
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -677,6 +686,9 @@ def main(argv: list[str] | None = None) -> int:
             "bgm": bgm,
             "sendTelegram": send_telegram,
             "notes": notes,
+            "contentMode": "news",
+            "newsMedia": True,
+            "storyDate": target_date.isoformat(),
             "createdAt": created_at,
         }
         initial_job: dict[str, Any] = {
@@ -696,8 +708,9 @@ def main(argv: list[str] | None = None) -> int:
             "updatedAt": created_at,
         }
 
-        atomic_write_json(job_dir / "request.json", request_payload)
-        atomic_write_json(job_dir / "job.json", initial_job)
+        if not resume_existing:
+            atomic_write_json(job_dir / "request.json", request_payload)
+            atomic_write_json(job_dir / "job.json", initial_job)
 
         if args.dry_run:
             print(f"[dry-run] สร้างงาน {job_id} เรียบร้อยที่ {job_dir}")
@@ -723,8 +736,9 @@ def main(argv: list[str] | None = None) -> int:
                 send_telegram_html(html_err, env)
             return 1
 
-        cmd = [str(VENV_PY), str(STUDIO_JOB), "oneshot", "--job", str(job_dir)]
-        append_log_line(job_dir, f"Starting oneshot job {job_id} for {target_date.isoformat()} (style={style_id}, duration={duration_sec}s)")
+        run_cmd = "resume" if resume_existing else "oneshot"
+        cmd = [str(VENV_PY), str(STUDIO_JOB), run_cmd, "--job", str(job_dir)]
+        append_log_line(job_dir, f"Starting {run_cmd} job {job_id} for {target_date.isoformat()} (style={style_id}, duration={duration_sec}s)")
         print(f"[run] เริ่มสร้างคลิป {job_id} ({topic}) -> {job_dir}")
 
         returncode = 1

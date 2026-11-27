@@ -1457,7 +1457,10 @@
           <div class="glass-card hidden" id="job-panel">
             <div class="section-title">
               <span>🚀 สถานะงาน: <span class="mono" id="job-id-label">—</span></span>
-              <button type="button" class="btn btn-danger btn-sm" id="btn-abort">ยกเลิกงาน</button>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-primary btn-sm hidden" id="btn-resume" title="ทำต่อจากขั้นที่ค้าง/ล้ม โดยใช้บท เสียงพากย์ และไฟล์เรนเดอร์ที่ทำเสร็จแล้วซ้ำ">▶️ ทำงานต่อ</button>
+                <button type="button" class="btn btn-danger btn-sm" id="btn-abort">ยกเลิกงาน</button>
+              </div>
             </div>
             <div class="stepper" id="job-stepper"></div>
             <div class="progress-track"><div class="progress-fill" id="job-progress"></div></div>
@@ -1641,6 +1644,10 @@
         script: 1,
         draft_ready: 1,
         tts: 2,
+        resume: 2,
+        'news-media': 3,
+        'scene-art': 3,
+        'scene-vector': 3,
         rendering: 3,
         render: 3,
         build: 3,
@@ -2261,7 +2268,8 @@
       }
 
       function mapStageToStep(job) {
-        const raw = String(job.stage || job.status || '').toLowerCase();
+        const failed = job.status === 'error' || job.status === 'aborted';
+        const raw = String((failed && job.interruptedStage) || job.stage || job.status || '').toLowerCase();
         if (Object.prototype.hasOwnProperty.call(STAGE_TO_STEP, raw)) {
           return STAGE_TO_STEP[raw];
         }
@@ -2288,6 +2296,8 @@
         $('job-msg').textContent = job.message || job.status || 'กำลังทำงาน...';
         $('job-log').textContent = Array.isArray(job.logTail) && job.logTail.length ? job.logTail.join('\n') : (job.logTail || '—');
         $('btn-abort').disabled = isTerminal;
+        const canResume = (job.status === 'error' || job.status === 'aborted') && !job.alive;
+        $('btn-resume').classList.toggle('hidden', !canResume);
 
         const nodeBar = $('job-node-bar');
         if (nodeBar) {
@@ -2318,6 +2328,18 @@
           toast('ส่งคำสั่งยกเลิกงานแล้ว', 'ok');
           pollJob();
         } catch (e) { toast(`ยกเลิกไม่สำเร็จ: ${e.message}`, 'error'); }
+      });
+
+      $('btn-resume').addEventListener('click', async () => {
+        if (!state.activeJobId) return;
+        const btn = $('btn-resume');
+        btn.disabled = true;
+        try {
+          const r = await apiFetch(`/api/video-studio/jobs/${encodeURIComponent(state.activeJobId)}/resume`, { method: 'POST' });
+          toast(`เริ่มทำงานต่อจากขั้น ${r.resumedFrom || 'เดิม'} แล้วค่ะ`, 'ok');
+          openJob(state.activeJobId);
+        } catch (e) { toast(`ทำงานต่อไม่สำเร็จ: ${e.message}`, 'error'); }
+        finally { btn.disabled = false; }
       });
 
       // Draft Editor

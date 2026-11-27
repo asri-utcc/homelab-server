@@ -64,6 +64,22 @@
         wsHadLiveActive: false,
         wsSelectedStation: 'overview',
         wsInspectorOpen: false,
+        wsView: (() => {
+            try {
+                return localStorage.getItem('ov3.wsView') === '3d' ? '3d' : 'pixel';
+            } catch (_) {
+                return 'pixel';
+            }
+        })(),
+        poCtrl: null,
+        poDemoMode: true,
+        poUserDemoOverride: null,
+        poHadLiveActive: false,
+        poSelectedDept: 'all',
+        cronJobs: null,
+        cronFetchedAt: 0,
+        cronInFlight: false,
+        officeThemeObsInit: false,
     };
 
     const flashTimers = new WeakMap();
@@ -2824,7 +2840,8 @@
                 ui.socialQueue = socRes;
             }
             renderFactoryPanel();
-            syncWorkshop3D();
+            if (ui.wsView === '3d') syncWorkshop3D();
+            else syncPixelOffice();
         } catch (_) {
             // keep last rendered factory snapshot quietly
         } finally {
@@ -3086,9 +3103,13 @@
     }
 
     function syncWorkshopActive() {
-        if (!ui.wsCtrl || typeof ui.wsCtrl.setActive !== 'function') return;
-        const active = isOverviewActive() && !document.hidden;
-        ui.wsCtrl.setActive(active);
+        const ovActive = isOverviewActive() && !document.hidden;
+        if (ui.poCtrl && typeof ui.poCtrl.setActive === 'function') {
+            ui.poCtrl.setActive(ovActive && ui.wsView === 'pixel');
+        }
+        if (ui.wsCtrl && typeof ui.wsCtrl.setActive === 'function') {
+            ui.wsCtrl.setActive(ovActive && ui.wsView === '3d');
+        }
     }
 
     function syncWorkshop3D() {
@@ -3119,6 +3140,8 @@
                 });
             } catch (_) {}
         }
+
+        if (ui.wsView !== '3d') return;
 
         const wsState = (ui.wsCtrl && typeof ui.wsCtrl.getState === 'function') ? ui.wsCtrl.getState() : null;
         const badgeEl = $('ov3-ws-live-badge');
@@ -3221,15 +3244,239 @@
             window.addEventListener('homelab:workshop3d-ready', doMount, { once: true });
             syncWorkshop3D();
         }
+    }
 
-        if (typeof MutationObserver !== 'undefined') {
-            const themeObs = new MutationObserver(() => {
-                if (ui.wsCtrl && typeof ui.wsCtrl.setTheme === 'function') {
-                    ui.wsCtrl.setTheme(getCurrentTheme());
-                }
-            });
-            themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    function initOfficeThemeObserver() {
+        if (ui.officeThemeObsInit || typeof MutationObserver === 'undefined') return;
+        ui.officeThemeObsInit = true;
+        const themeObs = new MutationObserver(() => {
+            const theme = getCurrentTheme();
+            if (ui.wsCtrl && typeof ui.wsCtrl.setTheme === 'function') {
+                ui.wsCtrl.setTheme(theme);
+            }
+            if (ui.poCtrl && typeof ui.poCtrl.setTheme === 'function') {
+                ui.poCtrl.setTheme(theme);
+            }
+        });
+        themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+
+    async function fetchCronForOffice(force = false) {
+        if (ui.cronInFlight) return;
+        if (!force && (document.hidden || !isOverviewActive())) return;
+        if (!force && (Date.now() - ui.cronFetchedAt < 30000)) return;
+        ui.cronInFlight = true;
+        try {
+            const res = await fetchJsonSafe('/api/cron');
+            if (res && res.ok && Array.isArray(res.jobs)) {
+                ui.cronJobs = res.jobs;
+                ui.cronFetchedAt = Date.now();
+                if (ui.wsView === 'pixel') syncPixelOffice();
+            } else if (Array.isArray(res)) {
+                ui.cronJobs = res;
+                ui.cronFetchedAt = Date.now();
+                if (ui.wsView === 'pixel') syncPixelOffice();
+            }
+        } catch (_) {
+            // keep last cron snapshot quietly
+        } finally {
+            ui.cronInFlight = false;
         }
+    }
+
+    function updatePixelDeptHighlight() {
+        const bar = $('ov3-po-dept-bar');
+        if (!bar) return;
+        bar.querySelectorAll('[data-po-dept]').forEach((btn) => {
+            btn.classList.toggle('is-active', btn.dataset.poDept === ui.poSelectedDept);
+        });
+    }
+
+    function syncPixelOffice() {
+        const liveVideo = getLiveActiveVideoJob();
+        const aiRunning = Number(ui.lastData?.ai?.runningCount || 0) > 0;
+        const agentsActive = Number(ui.lastData?.agents?.activeJobCount || 0) > 0;
+        const now = Date.now();
+        const cronActive = Array.isArray(ui.cronJobs) && ui.cronJobs.some((j) => {
+            if (!j || !j.lastRunAt) return false;
+            const ms = Number(j.lastRunAt);
+            return Number.isFinite(ms) && (now - ms) >= 0 && (now - ms) < 180000;
+        });
+        const hasLive = Boolean(liveVideo || aiRunning || agentsActive || cronActive);
+
+        if (hasLive) {
+            if (!ui.poHadLiveActive || ui.poUserDemoOverride === null) {
+                ui.poDemoMode = false;
+            }
+        } else if (ui.poUserDemoOverride === null) {
+            ui.poDemoMode = true;
+        }
+        ui.poHadLiveActive = hasLive;
+
+        let poSummary = null;
+        if (ui.poCtrl) {
+            try {
+                if (typeof ui.poCtrl.setDemoMode === 'function') {
+                    ui.poCtrl.setDemoMode(Boolean(ui.poDemoMode));
+                }
+                if (typeof ui.poCtrl.updateState === 'function') {
+                    poSummary = ui.poCtrl.updateState({
+                        overviewData: ui.lastData,
+                        factoryState: ui.factoryState,
+                        socialQueue: ui.socialQueue,
+                        cronJobs: ui.cronJobs,
+                    });
+                }
+                if (!poSummary && typeof ui.poCtrl.getState === 'function') {
+                    poSummary = ui.poCtrl.getState();
+                }
+            } catch (_) {}
+        }
+
+        if (ui.wsView !== 'pixel') return;
+
+        const badgeEl = $('ov3-ws-live-badge');
+        const jobEl = $('ov3-ws-active-job');
+        const demoBtn = $('ov3-po-demo-btn');
+        const legendEl = $('ov3-po-legend');
+
+        if (badgeEl) {
+            if (hasLive && !ui.poDemoMode) {
+                badgeEl.setAttribute('data-mode', 'live');
+                badgeEl.innerHTML = '<i></i><span>🟢 LIVE OFFICE</span>';
+            } else if (ui.poDemoMode) {
+                badgeEl.setAttribute('data-mode', 'demo');
+                badgeEl.innerHTML = '<i></i><span>🎮 SIMULATION</span>';
+            } else {
+                badgeEl.setAttribute('data-mode', 'idle');
+                badgeEl.innerHTML = '<i></i><span>☕ CHILL MODE</span>';
+            }
+        }
+
+        if (jobEl) {
+            if (poSummary && poSummary.headline) {
+                jobEl.textContent = poSummary.headline;
+            } else if (hasLive && !ui.poDemoMode) {
+                const parts = [];
+                if (aiRunning) parts.push(`AI ${ui.lastData.ai.runningCount}`);
+                if (liveVideo) parts.push('วิดีโอ');
+                if (agentsActive) parts.push(`Hub ${ui.lastData.agents.activeJobCount}`);
+                if (cronActive) parts.push('Cron');
+                jobEl.textContent = `⚡ กำลังทำงานจริง: ${parts.join(' · ') || 'Homelab Pixel Company'}`;
+            } else if (ui.poDemoMode) {
+                jobEl.textContent = '🎮 โหมดจำลอง · เอเจนต์ 6 ฝ่ายกำลังทำงานและเดินพักผ่อนในออฟฟิศ';
+            } else {
+                jobEl.textContent = '☕ ออฟฟิศสงบ · เอเจนต์กำลังพักผ่อนรอรับงานใหม่';
+            }
+        }
+
+        if (demoBtn) {
+            demoBtn.classList.toggle('is-active', Boolean(ui.poDemoMode));
+            demoBtn.setAttribute('aria-pressed', ui.poDemoMode ? 'true' : 'false');
+            demoBtn.textContent = ui.poDemoMode ? '🎮 โหมดจำลอง (เปิด)' : '🎮 โหมดจำลอง';
+        }
+
+        if (legendEl) {
+            if (poSummary && typeof poSummary === 'object') {
+                const total = Number(poSummary.total ?? poSummary.agentCount ?? 0);
+                const working = Number(poSummary.working ?? poSummary.busy ?? 0);
+                const resting = Number(poSummary.resting ?? poSummary.idle ?? Math.max(0, total - working));
+                const handoff = Number(poSummary.handoff ?? poSummary.delivering ?? 0);
+                legendEl.innerHTML = `
+                    <div class="ov3-po__legend-group">
+                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--work"></i>กำลังทำงาน <strong>${working}</strong></span>
+                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--idle"></i>พักผ่อน/เดินเล่น <strong>${resting}</strong></span>
+                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--handoff"></i>เดินส่งงาน <strong>${handoff}</strong></span>
+                    </div>
+                    <span class="ov3-po__legend-item">👥 เอเจนต์ทั้งหมด <strong>${total || 18}</strong> ตัว · คลิกห้องเพื่อซูม</span>
+                `;
+            } else {
+                legendEl.innerHTML = `
+                    <div class="ov3-po__legend-group">
+                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--work"></i>AI / วิดีโอ / Cron / IT / Ops</span>
+                        <span class="ov3-po__legend-item"><i class="ov3-po__legend-dot ov3-po__legend-dot--idle"></i>โถงพักผ่อน 6 ฝ่าย</span>
+                    </div>
+                    <span class="ov3-po__legend-item">${window.HomelabPixelOffice ? '👾 พร้อมแสดงผลพิกเซลออฟฟิศ' : '⏳ กำลังรอโมดูลพิกเซลออฟฟิศ…'}</span>
+                `;
+            }
+        }
+        updatePixelDeptHighlight();
+    }
+
+    function initPixelOffice() {
+        const hostEl = $('ov3-po-host');
+        if (!hostEl) return;
+
+        const doMount = () => {
+            if (ui.poCtrl || !window.HomelabPixelOffice || typeof window.HomelabPixelOffice.mount !== 'function') return;
+            try {
+                ui.poCtrl = window.HomelabPixelOffice.mount(hostEl, {
+                    tooltipEl: $('ov3-po-tip'),
+                    theme: getCurrentTheme(),
+                    demoMode: ui.poDemoMode,
+                    onSelect: (meta) => {
+                        if (meta && meta.dept) {
+                            ui.poSelectedDept = meta.dept;
+                            updatePixelDeptHighlight();
+                        }
+                    },
+                });
+                syncPixelOffice();
+                syncWorkshopActive();
+            } catch (_) {
+                const jobEl = $('ov3-ws-active-job');
+                if (jobEl && ui.wsView === 'pixel') {
+                    jobEl.textContent = 'ไม่สามารถเริ่มต้นพิกเซลออฟฟิศได้ชั่วคราว';
+                }
+            }
+        };
+
+        if (window.HomelabPixelOffice && typeof window.HomelabPixelOffice.mount === 'function') {
+            doMount();
+        } else {
+            window.addEventListener('homelab:pixeloffice-ready', doMount, { once: true });
+            syncPixelOffice();
+        }
+    }
+
+    function setWorkshopView(view) {
+        const next = view === '3d' ? '3d' : 'pixel';
+        ui.wsView = next;
+        try {
+            localStorage.setItem('ov3.wsView', next);
+        } catch (_) {}
+
+        const card = $('ov3-workshop-3d');
+        if (card) card.setAttribute('data-view', next);
+
+        document.querySelectorAll('.ov3-ws3d__view-tab[data-ws-view]').forEach((btn) => {
+            const active = btn.dataset.wsView === next;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+
+        const poHost = $('ov3-po-host');
+        const poTip = $('ov3-po-tip');
+        const poLegend = $('ov3-po-legend');
+        const wsHost = $('ov3-ws-canvas-host');
+        const wsLabels = $('ov3-ws-labels');
+        const wsInsp = $('ov3-ws-inspector');
+
+        if (poHost) poHost.hidden = (next !== 'pixel');
+        if (poLegend) poLegend.hidden = (next !== 'pixel');
+        if (poTip && next !== 'pixel') poTip.hidden = true;
+        if (wsHost) wsHost.hidden = (next !== '3d');
+        if (wsLabels) wsLabels.hidden = (next !== '3d');
+        if (wsInsp && next !== '3d') wsInsp.hidden = true;
+
+        if (next === '3d') {
+            if (!ui.wsCtrl) initWorkshop3D();
+            syncWorkshop3D();
+        } else {
+            if (!ui.poCtrl) initPixelOffice();
+            syncPixelOffice();
+        }
+        syncWorkshopActive();
     }
 
     // ── Polling & Hook from app.js ──────────────────────────────────────────
@@ -3245,12 +3492,16 @@
                 ui.lastUpdatedAt = Date.now();
                 pushHist(data);
                 renderAll(data);
-                syncWorkshop3D();
+                if (ui.wsView === '3d') syncWorkshop3D();
+                else syncPixelOffice();
             }
         } catch (_) {
             // keep last rendered snapshot quietly
         } finally {
             ui.inFlight = false;
+        }
+        if (isOverviewActive() && !document.hidden) {
+            fetchCronForOffice(force);
         }
     }
 
@@ -3529,6 +3780,28 @@
             ui.wsDemoMode = !ui.wsDemoMode;
             ui.wsUserDemoOverride = ui.wsDemoMode;
             syncWorkshop3D();
+        });
+        $('ov3-po-demo-btn')?.addEventListener('click', () => {
+            ui.poDemoMode = !ui.poDemoMode;
+            ui.poUserDemoOverride = ui.poDemoMode;
+            syncPixelOffice();
+        });
+        $('ov3-workshop-3d')?.addEventListener('click', (e) => {
+            const viewTab = e.target.closest('.ov3-ws3d__view-tab[data-ws-view]');
+            if (viewTab) {
+                e.preventDefault();
+                setWorkshopView(viewTab.dataset.wsView);
+                return;
+            }
+            const deptBtn = e.target.closest('#ov3-po-dept-bar [data-po-dept]');
+            if (deptBtn) {
+                e.preventDefault();
+                ui.poSelectedDept = deptBtn.dataset.poDept || 'all';
+                updatePixelDeptHighlight();
+                if (ui.poCtrl && typeof ui.poCtrl.focusDept === 'function') {
+                    ui.poCtrl.focusDept(ui.poSelectedDept);
+                }
+            }
         });
         $('ov3-ws-reset-btn')?.addEventListener('click', () => {
             ui.wsSelectedStation = 'overview';
@@ -4041,15 +4314,18 @@
             ui.freshTimer = setInterval(updateFreshness, 1000);
         }
         bindEvents();
-        initWorkshop3D();
+        initOfficeThemeObserver();
+        setWorkshopView(ui.wsView);
         initPrayerWidget();
         initWeatherWidget();
         tick(true);
         fetchQuotaData(true);
         fetchFactoryState(true);
+        fetchCronForOffice(true);
         setInterval(() => tick(false), POLL_MS);
         setInterval(() => fetchFactoryState(false), FACTORY_POLL_MS);
         setInterval(() => fetchQuotaData(false), QUOTA_POLL_MS);
+        setInterval(() => fetchCronForOffice(false), 30000);
 
         window.addEventListener('homelab:bv-alerts-updated', () => {
             if (ui.lastData) {

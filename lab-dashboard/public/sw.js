@@ -3,7 +3,7 @@
  * Supports offline asset caching & Web Push Notifications
  */
 
-const CACHE_NAME = 'homelab-pwa-v53';
+const CACHE_NAME = 'homelab-pwa-v54';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -14,6 +14,8 @@ const PRECACHE_ASSETS = [
   '/hub-workspace.js',
   '/overview-v2.css',
   '/overview-v2.js',
+  '/pixel-office-art.js',
+  '/pixel-office.js',
   '/workshop-3d.js',
   '/global-bv-alerts.js',
   '/app.js',

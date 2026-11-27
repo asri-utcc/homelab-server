@@ -3852,3 +3852,235 @@
         background-image: none;
     }
 }
+
+/* ── Homelab Pixel Company (2D Pixel Office + 3D Studio Switcher) ───────── */
+#ov3-workshop-3d[data-view="pixel"] .ov3-ws3d--only3d {
+    display: none !important;
+}
+
+#ov3-workshop-3d[data-view="3d"] .ov3-po--onlypixel {
+    display: none !important;
+}
+
+.ov3-ws3d__view-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px;
+    border-radius: 9px;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid var(--ov-border-str);
+    flex-shrink: 0;
+}
+
+:root[data-theme="light"] #view-overview .ov3-ws3d__view-tabs {
+    background: #e2e8f0;
+    border-color: rgba(15, 23, 42, 0.12);
+}
+
+.ov3-ws3d__view-tab {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ov-ink-2);
+    font: 700 11px/1.2 "Noto Sans Thai", system-ui, sans-serif;
+    padding: 5px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.ov3-ws3d__view-tab:hover {
+    color: var(--ov-ink-1);
+    background: rgba(56, 189, 248, 0.12);
+}
+
+.ov3-ws3d__view-tab.is-active {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(16, 185, 129, 0.18));
+    border-color: color-mix(in srgb, var(--ov-accent) 60%, transparent);
+    color: var(--ov-ink-1);
+    box-shadow: 0 2px 8px rgba(14, 165, 233, 0.22);
+}
+
+:root[data-theme="light"] #view-overview .ov3-ws3d__view-tab.is-active {
+    background: #ffffff;
+    border-color: rgba(2, 132, 199, 0.45);
+    color: #0369a1;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.10);
+}
+
+.ov3-po__dept-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid var(--ov-border);
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.ov3-po__dept-bar::-webkit-scrollbar {
+    display: none;
+}
+
+:root[data-theme="light"] #view-overview .ov3-po__dept-bar {
+    background: #eef3f9;
+    border-color: rgba(15, 23, 42, 0.10);
+}
+
+.ov3-po__dept-btn {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ov-ink-2);
+    font: 600 11px/1.2 "Noto Sans Thai", system-ui, sans-serif;
+    padding: 5px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.ov3-po__dept-btn:hover {
+    color: var(--ov-ink-1);
+    background: rgba(56, 189, 248, 0.12);
+}
+
+.ov3-po__dept-btn.is-active {
+    background: var(--ov-accent-bg);
+    border-color: color-mix(in srgb, var(--ov-accent) 55%, transparent);
+    color: var(--ov-accent);
+}
+
+.ov3-po__host {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    min-height: 390px;
+    overflow: hidden;
+    border-radius: 0;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: linear-gradient(180deg, #07111f 0%, #0d1b2e 55%, #13233a 100%);
+}
+
+.ov3-po__host[hidden] {
+    display: none;
+}
+
+:root[data-theme="light"] #view-overview .ov3-po__host {
+    background: linear-gradient(180deg, #dbeafe 0%, #e0f2fe 58%, #f1f5f9 100%);
+}
+
+.ov3-po__host canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+.ov3-po__tooltip {
+    position: absolute;
+    z-index: 15;
+    pointer-events: none;
+    max-width: 240px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    background: rgba(7, 16, 28, 0.92);
+    border: 1px solid color-mix(in srgb, var(--ov-accent) 45%, var(--ov-border));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+    color: var(--ov-ink-1);
+    font: 500 11.5px/1.4 "Noto Sans Thai", system-ui, sans-serif;
+}
+
+.ov3-po__tooltip[hidden] {
+    display: none;
+}
+
+:root[data-theme="light"] #view-overview .ov3-po__tooltip {
+    background: rgba(255, 255, 255, 0.96);
+    border-color: rgba(2, 132, 199, 0.35);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+}
+
+.ov3-po__legend {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    padding: 8px 12px;
+    background: rgba(7, 16, 28, 0.84);
+    border-top: 1px solid rgba(56, 189, 248, 0.16);
+    font: 600 11.5px/1.3 "Noto Sans Thai", system-ui, sans-serif;
+    color: var(--ov-ink-2);
+}
+
+.ov3-po__legend[hidden] {
+    display: none;
+}
+
+:root[data-theme="light"] #view-overview .ov3-po__legend {
+    background: rgba(248, 250, 252, 0.95);
+    border-top-color: rgba(15, 23, 42, 0.08);
+}
+
+.ov3-po__legend-group {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.ov3-po__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.ov3-po__legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.ov3-po__legend-dot--work { background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.6); }
+.ov3-po__legend-dot--idle { background: #38bdf8; box-shadow: 0 0 6px rgba(56, 189, 248, 0.5); }
+.ov3-po__legend-dot--handoff { background: #f59e0b; box-shadow: 0 0 6px rgba(245, 158, 11, 0.6); }
+
+@media (max-width: 640px) {
+    .ov3-ws3d__view-tabs {
+        order: 2;
+        width: 100%;
+        justify-content: stretch;
+    }
+    .ov3-ws3d__view-tab {
+        flex: 1 1 0;
+        text-align: center;
+    }
+    .ov3-ws3d__controls {
+        order: 3;
+        width: 100%;
+    }
+    .ov3-po__dept-bar {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .ov3-po__host {
+        min-height: 260px;
+        aspect-ratio: 4 / 3;
+    }
+}

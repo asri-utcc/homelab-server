@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/styles.css?v=20261121-bgstar">
 <link rel="stylesheet" href="/launcher-bar.css?v=20261127-hub1">
 <link rel="stylesheet" href="/hub-workspace.css?v=20261127-hub1">
-<link rel="stylesheet" href="/overview-v2.css?v=20261127-dw1">
+<link rel="stylesheet" href="/overview-v2.css?v=20261128-po1">
 <link rel="manifest" href="/manifest.json">
 <script type="importmap">
 {
@@ -485,9 +485,9 @@
           </article>
         </div>
 
-        <!-- Center Hero Stage: Interactive 3D Video Production Office -->
+        <!-- Center Hero Stage: Homelab Pixel Company & 3D Studio -->
         <div class="ov3-center-stage">
-          <section class="ov3-card ov3-ws3d ov3-hud-card" id="ov3-workshop-3d" aria-label="ห้องปฏิบัติการผลิตวิดีโอ 3 มิติ">
+          <section class="ov3-card ov3-ws3d ov3-hud-card" id="ov3-workshop-3d" data-view="pixel" aria-label="บริษัท Homelab — ออฟฟิศเอเจนต์">
             <span class="ov3-ws3d__corner ov3-ws3d__corner--tl" aria-hidden="true"></span>
             <span class="ov3-ws3d__corner ov3-ws3d__corner--tr" aria-hidden="true"></span>
             <span class="ov3-ws3d__corner ov3-ws3d__corner--bl" aria-hidden="true"></span>
@@ -496,10 +496,23 @@
             <header class="ov3-ws3d__hud-top">
               <div class="ov3-ws3d__status">
                 <span class="ov3-ws3d__live" id="ov3-ws-live-badge" data-mode="idle"><i></i><span>STANDBY</span></span>
-                <span class="ov3-ws3d__job" id="ov3-ws-active-job">กำลังโหลดออฟฟิศโรงงานวิดีโอ 3 มิติ…</span>
+                <span class="ov3-ws3d__job" id="ov3-ws-active-job">กำลังโหลดบริษัท Homelab — ออฟฟิศเอเจนต์…</span>
+              </div>
+              <div class="ov3-ws3d__view-tabs" role="tablist" aria-label="สลับมุมมองออฟฟิศ">
+                <button type="button" class="ov3-ws3d__view-tab is-active" role="tab" aria-selected="true" data-ws-view="pixel">👾 พิกเซลออฟฟิศ</button>
+                <button type="button" class="ov3-ws3d__view-tab" role="tab" aria-selected="false" data-ws-view="3d">🧊 3D สตูดิโอ</button>
               </div>
               <div class="ov3-ws3d__controls">
-                <div class="ov3-ws3d__cam-bar" id="ov3-ws-cam-bar" role="group" aria-label="มุมกล้องแผนก 3D">
+                <div class="ov3-po__dept-bar ov3-po--onlypixel" id="ov3-po-dept-bar" role="group" aria-label="เลือกฝ่ายในพิกเซลออฟฟิศ">
+                  <button type="button" class="ov3-po__dept-btn is-active" data-po-dept="all">🏢 ทั้งหมด</button>
+                  <button type="button" class="ov3-po__dept-btn" data-po-dept="ai">🤖 AI Chat</button>
+                  <button type="button" class="ov3-po__dept-btn" data-po-dept="video">🎬 วิดีโอ</button>
+                  <button type="button" class="ov3-po__dept-btn" data-po-dept="cron">⏰ งานตั้งเวลา</button>
+                  <button type="button" class="ov3-po__dept-btn" data-po-dept="hub">🖥️ IT / Hub</button>
+                  <button type="button" class="ov3-po__dept-btn" data-po-dept="ops">🛡️ ปฏิบัติการ</button>
+                  <button type="button" class="ov3-po__dept-btn" data-po-dept="lounge">☕ โถงพักผ่อน</button>
+                </div>
+                <div class="ov3-ws3d__cam-bar ov3-ws3d--only3d" id="ov3-ws-cam-bar" role="group" aria-label="มุมกล้องแผนก 3D">
                   <button type="button" class="ov3-ws3d__cam-btn is-active" data-ws-cam="overview">🌐 ภาพรวม</button>
                   <button type="button" class="ov3-ws3d__cam-btn" data-ws-cam="script">📝 สคริปต์</button>
                   <button type="button" class="ov3-ws3d__cam-btn" data-ws-cam="art">🎨 วาดภาพ</button>
@@ -508,19 +521,26 @@
                   <button type="button" class="ov3-ws3d__cam-btn" data-ws-cam="publish">🚀 โพสต์</button>
                 </div>
                 <div class="ov3-ws3d__util-btns">
-                  <button type="button" class="ov3-ws3d__demo-btn" id="ov3-ws-demo-btn" aria-pressed="false" title="สลับโหมดสาธิตการทำงานครบ 5 แผนก">🎬 สาธิตการทำงาน</button>
-                  <button type="button" class="ov3-ws3d__reset-btn" id="ov3-ws-reset-btn" title="รีเซ็ตมุมกล้อง 3D" aria-label="รีเซ็ตมุมกล้อง">↺</button>
+                  <button type="button" class="ov3-ws3d__demo-btn ov3-po--onlypixel" id="ov3-po-demo-btn" aria-pressed="false" title="สลับโหมดจำลองกิจกรรมในพิกเซลออฟฟิศ">🎮 โหมดจำลอง</button>
+                  <button type="button" class="ov3-ws3d__demo-btn ov3-ws3d--only3d" id="ov3-ws-demo-btn" aria-pressed="false" title="สลับโหมดสาธิตการทำงานครบ 5 แผนก">🎬 สาธิตการทำงาน</button>
+                  <button type="button" class="ov3-ws3d__reset-btn ov3-ws3d--only3d" id="ov3-ws-reset-btn" title="รีเซ็ตมุมกล้อง 3D" aria-label="รีเซ็ตมุมกล้อง">↺</button>
                 </div>
               </div>
             </header>
 
             <div class="ov3-ws3d__viewport">
-              <div class="ov3-ws3d__canvas-host" id="ov3-ws-canvas-host" aria-label="โมเดล 3D ออฟฟิศโรงงานผลิตวิดีโอ"></div>
-              <div class="ov3-ws3d__labels" id="ov3-ws-labels" aria-hidden="false"></div>
+              <div class="ov3-po__host" id="ov3-po-host" aria-label="พิกเซลออฟฟิศบริษัท Homelab"></div>
+              <div class="ov3-po__tooltip" id="ov3-po-tip" hidden role="tooltip"></div>
+              <div class="ov3-ws3d__canvas-host" id="ov3-ws-canvas-host" hidden aria-label="โมเดล 3D ออฟฟิศโรงงานผลิตวิดีโอ"></div>
+              <div class="ov3-ws3d__labels" id="ov3-ws-labels" hidden aria-hidden="false"></div>
               <aside class="ov3-ws3d__inspector" id="ov3-ws-inspector" hidden aria-live="polite"></aside>
             </div>
 
-            <footer class="ov3-ws3d__dock" id="ov3-ws-dock" aria-label="สายพาน 5 แผนกผลิตวิดีโอ">
+            <footer class="ov3-po__legend" id="ov3-po-legend" aria-label="สรุปสถานะเอเจนต์ในพิกเซลออฟฟิศ">
+              <span class="ov3-po__legend-item">👾 กำลังเตรียมออฟฟิศเอเจนต์…</span>
+            </footer>
+
+            <footer class="ov3-ws3d__dock ov3-ws3d--only3d" id="ov3-ws-dock" aria-label="สายพาน 5 แผนกผลิตวิดีโอ">
               <button type="button" class="ov3-ws-node is-idle" data-ws-station="script">
                 <span class="ov3-ws-node__head"><span class="ov3-ws-node__dot" aria-hidden="true"></span><strong>1. สคริปต์</strong></span>
                 <span class="ov3-ws-node__state">พร้อม</span>
@@ -2080,7 +2100,9 @@
   </button>
 </nav>
 
-<script src="/overview-v2.js?v=20261127-dw1"></script>
+<script src="/pixel-office-art.js?v=20261128-po1"></script>
+<script src="/pixel-office.js?v=20261128-po1"></script>
+<script src="/overview-v2.js?v=20261128-po1"></script>
 <script src="/launcher-bar.js?v=20261127-hub1"></script>
 <script src="/hub-workspace.js?v=20261127-hub1"></script>
 <script type="module" src="/workshop-3d.js?v=1"></script>

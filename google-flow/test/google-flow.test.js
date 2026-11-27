@@ -525,3 +525,156 @@ test('inspectSharedAuth never exposes cookie values or tokens', () => {
   assert.deepEqual(info.googleDomains, ['accounts.google.com', 'google.com']);
   assert.equal(JSON.stringify(info).includes('cookieValue'), false);
 });
+
+test('saveImageViaSession Method 1 renames .png to .webp when WEBP bytes are saved and preserveExplicitExt is false', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gflow-m1-webp-'));
+  const proposedPng = path.join(tmpDir, '20261128-020500_kitten.png');
+  const expectedWebp = path.join(tmpDir, '20261128-020500_kitten.webp');
+  const explicitPng = path.join(tmpDir, 'keep-me.png');
+  const webpBuf = makeWebpVp8xBuffer(2400, 3200);
+
+  const mockRunLabBrowser = async (args) => {
+    assert.equal(args[1], 'save-image');
+    const outIdx = args.indexOf('-o');
+    const outTarget = args[outIdx + 1];
+    fs.writeFileSync(outTarget, webpBuf);
+    return {
+      ok: true,
+      path: outTarget,
+      width: 2400,
+      height: 3200,
+      mime: 'image/webp',
+    };
+  };
+
+  try {
+    // Case 1: default extension -> renamed safely to .webp
+    const res = await driver._internal.saveImageViaSession(
+      'bv_test',
+      { src: 'https://flow.google.com/asb/CAT=s3200-rw', naturalWidth: 2400, naturalHeight: 3200 },
+      proposedPng,
+      { runLabBrowser: mockRunLabBrowser, preserveExplicitExt: false }
+    );
+
+    assert.equal(res.ok, true);
+    assert.equal(res.method, 'session_save_image');
+    assert.equal(res.path, expectedWebp);
+    assert.equal(res.validation.mime, 'image/webp');
+    assert.equal(res.validation.ext, 'webp');
+    assert.equal(fs.existsSync(expectedWebp), true);
+    assert.equal(fs.existsSync(proposedPng), false);
+
+    // Case 2: preserveExplicitExt: true -> keeps explicit .png path
+    const resKeep = await driver._internal.saveImageViaSession(
+      'bv_test',
+      { src: 'https://flow.google.com/asb/CAT=s3200-rw', naturalWidth: 2400, naturalHeight: 3200 },
+      explicitPng,
+      { runLabBrowser: mockRunLabBrowser, preserveExplicitExt: true }
+    );
+
+    assert.equal(resKeep.ok, true);
+    assert.equal(resKeep.method, 'session_save_image');
+    assert.equal(resKeep.path, explicitPng);
+    assert.equal(fs.existsSync(explicitPng), true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('Session mode generate uses language-agnostic selectors with fallbacks, supports --model, and renames WEBP output via Method 1', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gflow-sess-model-'));
+  const webpBuf = makeWebpVp8xBuffer(2400, 3200);
+  const clickedSelectors = [];
+  let modelEvalCalled = false;
+  let collectCount = 0;
+
+  const mockRunLabBrowser = async (args) => {
+    const sub = args[1];
+    if (sub === 'status') return { ok: true, running: true, url: 'https://flow.google.com/project/en-demo' };
+    if (sub === 'click') {
+      const selector = args[2];
+      clickedSelectors.push(selector);
+      // Simulate first model selector failing so fallback selector is verified
+      if (selector === '.cdk-overlay-container button[aria-haspopup="listbox"]') {
+        return { ok: false, error: 'Timeout waiting for selector' };
+      }
+      return { ok: true, url: 'https://flow.google.com/project/en-demo' };
+    }
+    if (sub === 'press') return { ok: true };
+    if (sub === 'eval') {
+      const expr = args[2] || '';
+      if (expr.includes('hasWorkspaceControls')) {
+        return {
+          ok: true,
+          result: {
+            url: 'https://flow.google.com/project/en-demo',
+            title: 'Google Flow',
+            text: 'What do you want to create',
+            hasWorkspaceControls: true,
+            hasPromptTextbox: true,
+            visibleCaptcha: false,
+          },
+        };
+      }
+      if (expr.includes('mat-dialog-container')) return { ok: true, result: { dismissed: false } };
+      if (expr.includes('role="radio"')) return { ok: true, result: { selected: '1:1' } };
+      if (expr.includes('role="option"') && expr.includes('nano banana')) {
+        modelEvalCalled = true;
+        return { ok: true, result: { selected: 'nano banana' } };
+      }
+      if (expr.includes('insertText')) return { ok: true, result: { ok: true, tag: 'div', length: 16 } };
+      if (expr.includes('isGenerating')) {
+        collectCount++;
+        if (collectCount === 1) {
+          return { ok: true, result: { url: 'https://flow.google.com/project/en-demo', isGenerating: false, images: [] } };
+        }
+        return {
+          ok: true,
+          result: {
+            url: 'https://flow.google.com/project/en-demo',
+            isGenerating: false,
+            images: [
+              { src: 'https://flow.google.com/asb/EN_CAT=s3200-rw', naturalWidth: 2400, naturalHeight: 3200, complete: true, inImageTile: true },
+            ],
+          },
+        };
+      }
+    }
+    if (sub === 'save-image') {
+      const outIdx = args.indexOf('-o');
+      const outTarget = args[outIdx + 1];
+      fs.mkdirSync(path.dirname(outTarget), { recursive: true });
+      fs.writeFileSync(outTarget, webpBuf);
+      return { ok: true, path: outTarget, width: 2400, height: 3200 };
+    }
+    return { ok: true };
+  };
+
+  let out = '';
+  try {
+    const cliRes = await cli.runCli(
+      ['generate', '8-legged kitten', '--session', 'bv_en', '--aspect', '1:1', '--model', 'Nano Banana', '-o', `${tmpDir}/`],
+      {
+        runLabBrowser: mockRunLabBrowser,
+        pollIntervalMs: 10,
+        stdout: { write: (s) => { out += s; } },
+      }
+    );
+
+    assert.equal(cliRes.exitCode, 0);
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.model, 'Nano Banana');
+    assert.equal(modelEvalCalled, true);
+    assert.equal(clickedSelectors[0], 'button.settings-trigger-button');
+    assert.equal(clickedSelectors[1], '.cdk-overlay-container button[aria-haspopup="listbox"]');
+    assert.ok(clickedSelectors.includes('button.generate-icon-button'));
+    assert.equal(parsed.images.length, 1);
+    assert.equal(parsed.images[0].method, 'session_save_image');
+    assert.equal(parsed.images[0].mime, 'image/webp');
+    assert.match(parsed.images[0].path, /\.webp$/);
+    assert.equal(fs.existsSync(parsed.images[0].path), true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

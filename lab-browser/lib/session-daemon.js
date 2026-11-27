@@ -102,6 +102,30 @@ async function detectSensitive(page) {
   if (!page || page.isClosed()) return null;
   const check = async () => {
     const url = page.url() || '';
+    const metaByKind = {
+      CAPTCHA: {
+        pauseReason: 'SENSITIVE_CAPTCHA',
+        message: 'ตรวจพบหน้าตรวจสอบตัวตน (CAPTCHA) กรุณาดำเนินการด้วยตนเองแล้วกดทำต่อ',
+      },
+      OTP: {
+        pauseReason: 'SENSITIVE_OTP',
+        message: 'ตรวจพบช่องกรอกรหัส OTP กรุณากรอกรหัสแล้วกดทำต่อ',
+      },
+      PASSWORD: {
+        pauseReason: 'SENSITIVE_PASSWORD',
+        message: 'ตรวจพบช่องรหัสผ่าน (Login) กรุณากรอกข้อมูลเข้าสู่ระบบแล้วกดทำต่อ',
+      },
+      PAYMENT: {
+        pauseReason: 'SENSITIVE_PAYMENT',
+        message: 'ตรวจพบหน้าชำระเงิน (Payment/Checkout) กรุณาตรวจสอบและยืนยันด้วยตนเอง',
+      },
+    };
+
+    if (/\/sorry\/index/i.test(url)) {
+      const meta = metaByKind.CAPTCHA;
+      return { kind: 'CAPTCHA', pauseReason: meta.pauseReason, message: meta.message };
+    }
+
     const domHit = await page.evaluate(() => {
       const isVisible = (el) => {
         if (!el) return false;
@@ -111,13 +135,28 @@ async function detectSensitive(page) {
         return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
       };
 
-      // 1. CAPTCHA iframes / widgets
+      // 1. CAPTCHA iframes / widgets (ignore passive invisible reCAPTCHA badges & hidden frames)
       const iframes = document.querySelectorAll('iframe[src]');
       for (const fr of iframes) {
         const src = String(fr.getAttribute('src') || '');
-        if (/recaptcha|hcaptcha|turnstile|challenges\.cloudflare/i.test(src)) {
+        if (!/recaptcha|hcaptcha|turnstile|challenges\.cloudflare/i.test(src)) continue;
+        if (!isVisible(fr)) continue;
+
+        // (a) Active visible reCAPTCHA challenge frame (bframe)
+        if (/recaptcha\/(?:enterprise|api2)\/bframe/i.test(src)) {
           return { kind: 'CAPTCHA' };
         }
+
+        // Ignore passive invisible reCAPTCHA anchor badge iframe
+        if (/recaptcha\/(?:enterprise\/|api2\/)?anchor/i.test(src) && /[?&]size=invisible(?:&|$)/i.test(src)) {
+          continue;
+        }
+        if (/recaptcha/i.test(src) && /[?&]size=invisible(?:&|$)/i.test(src)) {
+          continue;
+        }
+
+        // (b) Visible interactive CAPTCHA widget (recaptcha checkbox, hcaptcha, turnstile, cloudflare)
+        return { kind: 'CAPTCHA' };
       }
 
       // 2. OTP input
@@ -141,24 +180,6 @@ async function detectSensitive(page) {
     }
     if (!kind) return null;
 
-    const metaByKind = {
-      CAPTCHA: {
-        pauseReason: 'SENSITIVE_CAPTCHA',
-        message: 'ตรวจพบหน้าตรวจสอบตัวตน (CAPTCHA) กรุณาดำเนินการด้วยตนเองแล้วกดทำต่อ',
-      },
-      OTP: {
-        pauseReason: 'SENSITIVE_OTP',
-        message: 'ตรวจพบช่องกรอกรหัส OTP กรุณากรอกรหัสแล้วกดทำต่อ',
-      },
-      PASSWORD: {
-        pauseReason: 'SENSITIVE_PASSWORD',
-        message: 'ตรวจพบช่องรหัสผ่าน (Login) กรุณากรอกข้อมูลเข้าสู่ระบบแล้วกดทำต่อ',
-      },
-      PAYMENT: {
-        pauseReason: 'SENSITIVE_PAYMENT',
-        message: 'ตรวจพบหน้าชำระเงิน (Payment/Checkout) กรุณาตรวจสอบและยืนยันด้วยตนเอง',
-      },
-    };
     const meta = metaByKind[kind];
     return { kind, pauseReason: meta.pauseReason, message: meta.message };
   };
@@ -1930,7 +1951,13 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write((err && err.stack ? err.stack : String(err)) + '\n');
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write((err && err.stack ? err.stack : String(err)) + '\n');
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  detectSensitive,
+};

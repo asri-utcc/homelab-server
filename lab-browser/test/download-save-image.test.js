@@ -8,6 +8,7 @@ const path = require('path');
 
 const core = require('../lib/browser-core');
 const { executeAction } = require('../lib/actions');
+const { detectSensitive } = require('../lib/session-daemon');
 
 // Minimal valid 1x1 PNG (67 bytes)
 const PNG_1X1_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
@@ -328,4 +329,178 @@ test('actions: save-image extracts image from element locator (img src and canva
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+function makeMockSensitiveElement({
+  src = '',
+  width = 300,
+  height = 80,
+  display = 'block',
+  visibility = 'visible',
+  opacity = '1',
+} = {}) {
+  return {
+    getAttribute(attr) {
+      return attr === 'src' ? src : null;
+    },
+    getBoundingClientRect() {
+      return { width, height };
+    },
+    _style: { display, visibility, opacity },
+  };
+}
+
+function makeMockSensitivePage({
+  url = 'https://flow.google.com/project/demo',
+  iframes = [],
+  otpInputs = [],
+  pwInputs = [],
+} = {}) {
+  return {
+    isClosed: () => false,
+    url: () => url,
+    async evaluate(fn) {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      global.document = {
+        querySelectorAll(selector) {
+          if (selector === 'iframe[src]') return iframes;
+          if (selector.includes('one-time-code')) return otpInputs;
+          if (selector.includes('password')) return pwInputs;
+          return [];
+        },
+      };
+      global.window = {
+        getComputedStyle(el) {
+          return (el && el._style) || { display: 'block', visibility: 'visible', opacity: '1' };
+        },
+      };
+      try {
+        return fn();
+      } finally {
+        if (prevDoc === undefined) delete global.document;
+        else global.document = prevDoc;
+        if (prevWin === undefined) delete global.window;
+        else global.window = prevWin;
+      }
+    },
+  };
+}
+
+test('session-daemon: detectSensitive ignores passive invisible reCAPTCHA anchor and hidden iframes', async () => {
+  // 1. Passive invisible reCAPTCHA Enterprise badge (visible badge box, size=invisible)
+  const invisibleEnterprisePage = makeMockSensitivePage({
+    iframes: [
+      makeMockSensitiveElement({
+        src: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LcTestKey&co=aHR0cHM6Ly9mbG93Lmdvb2dsZS5jb206NDQz&hl=th&size=invisible&cb=abc',
+        width: 256,
+        height: 60,
+      }),
+    ],
+  });
+  assert.equal(await detectSensitive(invisibleEnterprisePage), null);
+
+  // 2. Passive invisible standard reCAPTCHA anchor
+  const invisibleAnchorPage = makeMockSensitivePage({
+    iframes: [
+      makeMockSensitiveElement({
+        src: 'https://www.google.com/recaptcha/anchor?size=invisible&k=test',
+        width: 256,
+        height: 60,
+      }),
+    ],
+  });
+  assert.equal(await detectSensitive(invisibleAnchorPage), null);
+
+  // 3. Hidden bframe or hidden hCaptcha (not visible)
+  const hiddenFramesPage = makeMockSensitivePage({
+    iframes: [
+      makeMockSensitiveElement({
+        src: 'https://www.google.com/recaptcha/enterprise/bframe?hl=th&k=test',
+        width: 400,
+        height: 580,
+        visibility: 'hidden',
+      }),
+      makeMockSensitiveElement({
+        src: 'https://newassets.hcaptcha.com/captcha/v1/widget',
+        width: 0,
+        height: 0,
+      }),
+    ],
+  });
+  assert.equal(await detectSensitive(hiddenFramesPage), null);
+});
+
+test('session-daemon: detectSensitive detects visible bframe, visible CAPTCHA widgets, and /sorry/index URL', async () => {
+  // 1. Active visible reCAPTCHA enterprise bframe challenge
+  const bframePage = makeMockSensitivePage({
+    iframes: [
+      makeMockSensitiveElement({
+        src: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LcTest&size=invisible',
+        width: 256,
+        height: 60,
+      }),
+      makeMockSensitiveElement({
+        src: 'https://www.google.com/recaptcha/enterprise/bframe?hl=th&v=xyz&k=6LcTest',
+        width: 400,
+        height: 580,
+      }),
+    ],
+  });
+  const bframeHit = await detectSensitive(bframePage);
+  assert.ok(bframeHit);
+  assert.equal(bframeHit.kind, 'CAPTCHA');
+  assert.equal(bframeHit.pauseReason, 'SENSITIVE_CAPTCHA');
+
+  // 2. Active visible reCAPTCHA api2 bframe challenge
+  const api2BframePage = makeMockSensitivePage({
+    iframes: [
+      makeMockSensitiveElement({
+        src: 'https://www.google.com/recaptcha/api2/bframe?hl=en&k=6LcTest',
+        width: 400,
+        height: 500,
+      }),
+    ],
+  });
+  const api2Hit = await detectSensitive(api2BframePage);
+  assert.ok(api2Hit);
+  assert.equal(api2Hit.kind, 'CAPTCHA');
+
+  // 3. Visible interactive hCaptcha widget
+  const hcaptchaPage = makeMockSensitivePage({
+    iframes: [
+      makeMockSensitiveElement({
+        src: 'https://newassets.hcaptcha.com/captcha/v1/challenge/hcaptcha.html',
+        width: 304,
+        height: 78,
+      }),
+    ],
+  });
+  const hcaptchaHit = await detectSensitive(hcaptchaPage);
+  assert.ok(hcaptchaHit);
+  assert.equal(hcaptchaHit.kind, 'CAPTCHA');
+
+  // 4. Visible reCAPTCHA checkbox widget (no size=invisible)
+  const checkboxRecaptchaPage = makeMockSensitivePage({
+    iframes: [
+      makeMockSensitiveElement({
+        src: 'https://www.google.com/recaptcha/api2/anchor?ar=1&k=6LcTest&size=normal',
+        width: 304,
+        height: 78,
+      }),
+    ],
+  });
+  const checkboxHit = await detectSensitive(checkboxRecaptchaPage);
+  assert.ok(checkboxHit);
+  assert.equal(checkboxHit.kind, 'CAPTCHA');
+
+  // 5. Google /sorry/index anti-bot URL
+  const sorryPage = makeMockSensitivePage({
+    url: 'https://www.google.com/sorry/index?continue=https://flow.google.com/',
+    iframes: [],
+  });
+  const sorryHit = await detectSensitive(sorryPage);
+  assert.ok(sorryHit);
+  assert.equal(sorryHit.kind, 'CAPTCHA');
+  assert.equal(sorryHit.pauseReason, 'SENSITIVE_CAPTCHA');
 });

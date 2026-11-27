@@ -600,6 +600,45 @@ async function inspectViaSession(opts, deps = {}) {
   };
 }
 
+const NEW_PROJECT_SESSION_SELECTORS = Array.from(new Set([
+  'button.new-project-button',
+  ...sel.SELECTORS.newProjectButton,
+]));
+
+const SETTINGS_TRIGGER_SESSION_SELECTORS = Array.from(new Set([
+  'button.settings-trigger-button',
+  ...sel.SELECTORS.settingsTriggerButton,
+]));
+
+const MODEL_SELECTOR_SESSION_SELECTORS = Array.from(new Set([
+  '.cdk-overlay-container button[aria-haspopup="listbox"]',
+  ...sel.SELECTORS.modelSelectorButton,
+]));
+
+const GENERATE_BUTTON_SESSION_SELECTORS = Array.from(new Set([
+  'button.generate-icon-button',
+  ...sel.SELECTORS.generateButton,
+]));
+
+async function clickFirstMatchingViaSession(session, selectors, clickFlags = [], step = 'click', deps = {}) {
+  const hasTimeout = clickFlags.includes('--timeout');
+  const flags = hasTimeout ? clickFlags : ['--timeout', '3000', ...clickFlags];
+  let lastRes = { ok: false, error: `No matching selector for ${step}` };
+
+  for (const selector of selectors) {
+    const res = await callSessionCmd(session, 'click', [selector], flags, deps);
+    if (isPausedOrHandoffResponse(res)) {
+      return { pausedResponse: buildPausedResult(res, { mode: 'session', session, step }) };
+    }
+    if (res && res.ok) {
+      return { ok: true, selector, res };
+    }
+    lastRes = res || lastRes;
+  }
+
+  return { ok: false, res: lastRes };
+}
+
 async function saveImageViaSession(session, imgInfo, outPath, deps = {}) {
   const src = imgInfo.src;
   const targetOut = sel.validateSafeOutputPath(outPath);
@@ -611,10 +650,20 @@ async function saveImageViaSession(session, imgInfo, outPath, deps = {}) {
   }
 
   if (saveRes && saveRes.ok && saveRes.path && fs.existsSync(saveRes.path)) {
-    const buf = fs.readFileSync(saveRes.path);
+    const savedPath = sel.validateSafeOutputPath(saveRes.path);
+    const buf = fs.readFileSync(savedPath);
     const val = sel.validateImageBuffer(buf, { width: saveRes.width || imgInfo.naturalWidth, height: saveRes.height || imgInfo.naturalHeight });
     if (val.ok) {
-      return { ok: true, path: saveRes.path, validation: val, method: 'session_save_image' };
+      let finalPath = savedPath;
+      const parsed = path.parse(savedPath);
+      if (!deps.preserveExplicitExt && parsed.ext.toLowerCase() !== `.${val.ext}`) {
+        finalPath = sel.validateSafeOutputPath(path.join(parsed.dir, `${parsed.name}.${val.ext}`));
+        if (finalPath !== savedPath) {
+          fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+          fs.renameSync(savedPath, finalPath);
+        }
+      }
+      return { ok: true, path: finalPath, validation: val, method: 'session_save_image' };
     }
   }
 
@@ -703,12 +752,22 @@ async function generateViaSession(prompt, opts, deps = {}) {
 
   // 4. Open a project if we are on the dashboard
   if (!pageState.hasPromptTextbox && pageState.hasNewProjectButton) {
-    const clicked = await callSessionCmd(session, 'click', [sel.SELECTORS.newProjectButton[0]], ['--wait', '2500'], deps);
-    if (isPausedOrHandoffResponse(clicked)) {
-      return buildPausedResult(clicked, { mode: 'session', session, step: 'new_project' });
-    }
+    const clicked = await clickFirstMatchingViaSession(
+      session,
+      NEW_PROJECT_SESSION_SELECTORS,
+      ['--wait', '2500'],
+      'new_project',
+      deps
+    );
+    if (clicked.pausedResponse) return clicked.pausedResponse;
     if (!clicked.ok) {
-      return { ok: false, exitCode: 1, mode: 'session', session, error: clicked.error || 'Failed to click New Project' };
+      return {
+        ok: false,
+        exitCode: 1,
+        mode: 'session',
+        session,
+        error: (clicked.res && clicked.res.error) || 'Failed to click New Project',
+      };
     }
   }
 
@@ -728,11 +787,16 @@ async function generateViaSession(prompt, opts, deps = {}) {
 
   // 6. Optional aspect ratio / model settings
   if (opts.aspect || opts.model) {
-    const settingsRes = await callSessionCmd(session, 'click', [sel.SELECTORS.settingsTriggerButton[0]], ['--wait', '500'], deps);
-    if (isPausedOrHandoffResponse(settingsRes)) {
-      return buildPausedResult(settingsRes, { mode: 'session', session, step: 'open_settings' });
-    }
-    if (settingsRes.ok && opts.aspect) {
+    const settingsClick = await clickFirstMatchingViaSession(
+      session,
+      SETTINGS_TRIGGER_SESSION_SELECTORS,
+      ['--wait', '500'],
+      'open_settings',
+      deps
+    );
+    if (settingsClick.pausedResponse) return settingsClick.pausedResponse;
+
+    if (settingsClick.ok && opts.aspect) {
       const aspectExpr = `() => {
         const want = ${JSON.stringify(String(opts.aspect).trim())};
         const radios = Array.from(document.querySelectorAll('.cdk-overlay-container button[role="radio"], .cdk-overlay-container [role="radio"]'));
@@ -745,7 +809,38 @@ async function generateViaSession(prompt, opts, deps = {}) {
         return buildPausedResult(arRes, { mode: 'session', session, step: 'select_aspect' });
       }
     }
-    await callSessionCmd(session, 'press', ['Escape'], [], deps).catch(() => {});
+
+    if (settingsClick.ok && opts.model) {
+      const modelBtnClick = await clickFirstMatchingViaSession(
+        session,
+        MODEL_SELECTOR_SESSION_SELECTORS,
+        ['--wait', '300'],
+        'open_model_selector',
+        deps
+      );
+      if (modelBtnClick.pausedResponse) return modelBtnClick.pausedResponse;
+
+      if (modelBtnClick.ok) {
+        const modelExpr = `() => {
+          const want = ${JSON.stringify(String(opts.model).trim().toLowerCase())};
+          const items = Array.from(document.querySelectorAll('.cdk-overlay-container [role="option"], .cdk-overlay-container [role="menuitem"], .cdk-overlay-container button'));
+          const match = items.find((el) => (el.innerText || el.getAttribute('aria-label') || '').toLowerCase().includes(want));
+          if (match) { match.click(); return { selected: want }; }
+          return { selected: null };
+        }`;
+        const modelRes = await callSessionCmd(session, 'eval', [modelExpr], [], deps);
+        if (isPausedOrHandoffResponse(modelRes)) {
+          return buildPausedResult(modelRes, { mode: 'session', session, step: 'select_model' });
+        }
+      }
+    }
+
+    if (settingsClick.ok) {
+      const escRes = await callSessionCmd(session, 'press', ['Escape'], [], deps).catch(() => null);
+      if (isPausedOrHandoffResponse(escRes)) {
+        return buildPausedResult(escRes, { mode: 'session', session, step: 'close_settings' });
+      }
+    }
   }
 
   // 7. Snapshot existing images BEFORE generating
@@ -803,18 +898,28 @@ async function generateViaSession(prompt, opts, deps = {}) {
   }
 
   // 9. Click Generate button
-  const genClick = await callSessionCmd(session, 'click', [sel.SELECTORS.generateButton[0]], ['--wait', '1500'], deps);
-  if (isPausedOrHandoffResponse(genClick)) {
-    return buildPausedResult(genClick, { mode: 'session', session, step: 'click_generate' });
-  }
+  const genClick = await clickFirstMatchingViaSession(
+    session,
+    GENERATE_BUTTON_SESSION_SELECTORS,
+    ['--wait', '1500'],
+    'click_generate',
+    deps
+  );
+  if (genClick.pausedResponse) return genClick.pausedResponse;
   if (!genClick.ok) {
-    return { ok: false, exitCode: 1, mode: 'session', session, error: genClick.error || 'Failed to click Generate button' };
+    return {
+      ok: false,
+      exitCode: 1,
+      mode: 'session',
+      session,
+      error: (genClick.res && genClick.res.error) || 'Failed to click Generate button',
+    };
   }
 
   // 10. Poll for newly generated images
   const deadline = Date.now() + timeoutMs;
   let newImages = [];
-  let projectUrl = genClick.url || pageState.url || targetUrl;
+  let projectUrl = (genClick.res && genClick.res.url) || pageState.url || targetUrl;
   let firstFoundAt = null;
 
   while (Date.now() < deadline) {
@@ -942,7 +1047,7 @@ async function statusStandalone(opts, deps = {}) {
     await page.waitForLoadState('networkidle', { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(1200);
 
-    const state = await page.evaluate((expr) => { const fn = (0, eval)(`(${expr})`); return typeof fn === 'function' ? fn() : fn; }, EVAL_PAGE_STATE_EXPR).catch(() => ({
+    const state = await evalExprInPage(page, EVAL_PAGE_STATE_EXPR).catch(() => ({
       url: page.url(),
       title: '',
       text: '',
@@ -996,7 +1101,7 @@ async function inspectStandalone(opts, deps = {}) {
     await page.waitForLoadState('networkidle', { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(1500);
 
-    const dom = await page.evaluate((expr) => { const fn = (0, eval)(`(${expr})`); return typeof fn === 'function' ? fn() : fn; }, EVAL_INSPECT_DOM_EXPR);
+    const dom = await evalExprInPage(page, EVAL_INSPECT_DOM_EXPR);
     const shotPath = opts.out
       ? sel.validateSafeOutputPath(opts.out)
       : sel.buildOutputPath(null, 'inspect-flow', 0, 'png');
@@ -1117,7 +1222,7 @@ async function captureImageStandalone(page, context, imgInfo, networkCaptures, p
   // Tier 4: In-page fetch / <canvas> fallback
   if (!result) {
     const evalExpr = buildFetchImageEvalExpr(imgInfo.src);
-    const fetched = await page.evaluate((expr) => { const fn = (0, eval)(`(${expr})`); return typeof fn === 'function' ? fn() : fn; }, evalExpr).catch(() => null);
+    const fetched = await evalExprInPage(page, evalExpr).catch(() => null);
     if (fetched && fetched.ok && fetched.dataUrl) {
       const buf = decodeDataUrlToBuffer(fetched.dataUrl);
       const val = sel.validateImageBuffer(buf, {
@@ -1203,7 +1308,7 @@ async function generateStandalone(prompt, opts, deps = {}) {
     await page.waitForTimeout(1500);
 
     // 2. Check auth/gate
-    const pageState = await page.evaluate((expr) => { const fn = (0, eval)(`(${expr})`); return typeof fn === 'function' ? fn() : fn; }, EVAL_PAGE_STATE_EXPR).catch(() => ({
+    const pageState = await evalExprInPage(page, EVAL_PAGE_STATE_EXPR).catch(() => ({
       url: page.url(),
       text: '',
       hasWorkspaceControls: false,
@@ -1273,7 +1378,7 @@ async function generateStandalone(prompt, opts, deps = {}) {
     }
 
     // 6. Snapshot existing DOM image srcs BEFORE generating
-    const beforeData = await page.evaluate((expr) => { const fn = (0, eval)(`(${expr})`); return typeof fn === 'function' ? fn() : fn; }, EVAL_COLLECT_IMAGES_EXPR).catch(() => ({ images: [] }));
+    const beforeData = await evalExprInPage(page, EVAL_COLLECT_IMAGES_EXPR).catch(() => ({ images: [] }));
     const existingSrcs = new Set((beforeData.images || []).map((i) => i.src).filter(Boolean));
 
     // 7. Enter prompt
@@ -1309,7 +1414,7 @@ async function generateStandalone(prompt, opts, deps = {}) {
     let firstFoundAt = null;
 
     while (Date.now() < deadline) {
-      const snap = await page.evaluate((expr) => { const fn = (0, eval)(`(${expr})`); return typeof fn === 'function' ? fn() : fn; }, EVAL_COLLECT_IMAGES_EXPR).catch(() => ({ images: [] }));
+      const snap = await evalExprInPage(page, EVAL_COLLECT_IMAGES_EXPR).catch(() => ({ images: [] }));
       const candidates = (snap.images || []).filter(
         (img) => img.src && !existingSrcs.has(img.src) && img.complete && sel.isLikelyResultImage(img)
       );

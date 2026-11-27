@@ -47,7 +47,7 @@ function createFixtureDeps(tmpDir, overrides = {}) {
                 down: 1,
                 items: [
                     { id: 'ha', name: 'Home Assistant', up: true, latencyMs: 12 },
-                    { id: 'ddpm', name: 'DDPM LoRa', up: false, detail: 'ECONNREFUSED' },
+                    { id: 'mock-svc', name: 'Mock Service', up: false, detail: 'ECONNREFUSED' },
                     { id: 'kuma', name: 'Uptime Kuma', up: true, latencyMs: 8 },
                 ],
             },
@@ -280,7 +280,7 @@ test('getOverview aggregates AI, videos (deduped + excludes _telegram.mp4), agen
         assert.equal(ov.attention.rendersActive, 2);
         assert.equal(ov.attention.agentsOnline, 1);
         assert.equal(ov.attention.agentsTotal, 2);
-        // 1 down service (DDPM LoRa) + 1 stopped docker (lab-test) = 2
+        // 1 down service (Mock Service) + 1 stopped docker (lab-test) = 2
         assert.equal(ov.attention.servicesDown, 2);
 
         // AI enrichment from audit.liveRuns

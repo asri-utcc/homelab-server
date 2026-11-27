@@ -420,7 +420,6 @@ const SERVICE_TARGETS = [
     { id: 'homeassistant', name: 'Home Assistant', url: `https://${TAIL_HOST}:8124/`, probe: { host: '127.0.0.1', port: 8123, path: '/', ok: [200, 301, 302, 405] } },
     { id: 'zigbee2mqtt', name: 'Zigbee2MQTT (Zigbee Hub)', url: `https://${TAIL_HOST}:8099/`, probe: { host: '127.0.0.1', port: 8099, path: '/', ok: [200, 301, 302] } },
     { id: 'onepercentbot', name: 'OnePercent Trading Bot', url: `https://${TAIL_HOST}:6015/`, probe: { host: '127.0.0.1', port: 6015, path: '/', ok: [200, 301, 302] } },
-    { id: 'ddpm', name: 'DDPM LoRa (ปภ.)', url: `http://${TAIL_HOST}:3000/`, probe: { host: '127.0.0.1', port: 3000, path: '/', ok: [200, 304] } },
 ];
 
 function probe(target) {
@@ -1216,7 +1215,6 @@ const LINKS = [
     { id: 'homeassistant', label: 'Home Assistant', icon: 'home', url: `https://${TAIL_HOST}:8124/` },
     { id: 'zigbee2mqtt', label: 'Zigbee2MQTT', icon: 'box', url: `https://${TAIL_HOST}:8099/` },
     { id: 'onepercentbot', label: 'OnePercent Bot (Spot)', icon: 'trending-up', url: `https://${TAIL_HOST}:6015/` },
-    { id: 'ddpm', label: 'DDPM LoRa (ปภ.)', icon: 'activity', url: `http://${TAIL_HOST}:3000/` },
 ];
 
 const LAUNCHER_FILE = path.join(__dirname, 'launcher-config.json');

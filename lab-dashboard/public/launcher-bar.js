@@ -59,7 +59,6 @@
         'samba': '💾',
         'zigbee2mqtt': '💡',
         'onepercentbot': '💹',
-        'ddpm': '🛰️',
         'view-overview': '🌌',
         'view-energy': '⚡',
         'view-services': '📦',

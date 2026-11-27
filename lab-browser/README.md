@@ -35,3 +35,14 @@ Google may still reject automated browsers controlled via Playwright/CDP (e.g., 
    *(Run the command for each exported JSON file if you saved `google.com` and `accounts.google.com` separately.)*
 6. Delete the exported cookie JSON file(s) from both `/tmp/` on homelab and your local machine once imported.
 7. In `/lab-browser` (or Browser Vision), click **🛑 ปิดเบราว์เซอร์** to close the running browser session, then reopen it so the new session loads the imported cookies.
+
+## Memory watchdog
+
+`session-daemon.js` monitors the browser process tree every 30 seconds to protect `homelab` from OOM without prematurely killing active logins:
+
+- **PSS Measurement:** Sums `Pss:` from `/proc/<pid>/smaps_rollup` across all PIDs in the session process tree (falling back to RSS only if `smaps_rollup` is unreadable), avoiding double-counting shared Chromium pages.
+- **Configurable Limits:**
+  - `LAB_BROWSER_SESSION_MAX_MB` (default `2048`): Soft limit; only triggers shutdown when system `MemAvailable` is also below `1500 MB`.
+  - `LAB_BROWSER_SESSION_HARD_MAX_MB` (default `3072`): Hard limit; triggers shutdown regardless of `MemAvailable`.
+- **Login / Sensitive Grace Period:** Requires `2` consecutive over-limit checks normally, or `4` consecutive checks when the active page is on a login/sensitive page (e.g., `accounts.google.com`, `login.microsoftonline.com`, `appleid.apple.com`, or paths with `/signin`, `/login`, `/challenge`, `/2fa`, `/otp`). Resets to `0` if a check drops below the threshold.
+- **`session_closed` Notification:** Before shutting down, the daemon broadcasts `{ type: 'session_closed', reason: 'memory_limit_exceeded', mb, limitMb }` over WebSocket so `lab-browser.html` displays a clear Thai notice and prevents silent auto-reconnect.

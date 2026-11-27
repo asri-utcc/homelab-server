@@ -37,6 +37,8 @@ const modelRegistry = require('./model-registry');
 const bgRemoveManager = require('./bg-remove-manager');
 const assetVaultManager = require('./asset-vault-manager');
 const videoStudioManager = require('./video-studio-manager');
+const videoFactoryManager = require('./video-factory-manager');
+const socialPublishManager = require('./social-publish-manager');
 const agentHubManager = require('./agent-hub-manager');
 const { createOverviewManager } = require('./overview-manager');
 let browserVisionBridge = null;
@@ -1898,6 +1900,124 @@ const server = http.createServer(async (req, res) => {
         if (p === '/video-studio' || p === '/video-studio/') {
             return await serveStatic(req, res, '/video-studio.html');
         }
+        if (p === '/video-studio-legacy' || p === '/video-studio-legacy/') {
+            return await serveStatic(req, res, '/video-studio-legacy.html');
+        }
+        // ── Video Factory OS (/api/video-studio/factory/*) ────────────────────
+        if (p.startsWith('/api/video-studio/factory/')) {
+            const sub = p.slice('/api/video-studio/factory/'.length);
+            const parts = sub.split('/').filter(Boolean);
+            try {
+                if (req.method === 'GET' && sub === 'state') {
+                    const geminiCredit = await geminiManager.getGeminiCredit().catch(() => null);
+                    return sendJson(res, 200, await videoFactoryManager.getFactoryState({
+                        agentHubManager,
+                        socialPublishManager,
+                        geminiCredit,
+                    }));
+                }
+                if (req.method === 'GET' && sub === 'workers') {
+                    return sendJson(res, 200, await videoFactoryManager.getWorkersSummary(agentHubManager));
+                }
+                if (req.method === 'GET' && sub === 'analytics') {
+                    const geminiCredit = await geminiManager.getGeminiCredit().catch(() => null);
+                    return sendJson(res, 200, await videoFactoryManager.getAnalytics({
+                        socialPublishManager,
+                        geminiCredit,
+                    }));
+                }
+                if (req.method === 'GET' && sub === 'prefs') {
+                    return sendJson(res, 200, { ok: true, prefs: await videoFactoryManager.getPrefs() });
+                }
+                if (req.method === 'PUT' && sub === 'prefs') {
+                    const body = await readJsonBody(req, 64 * 1024);
+                    return sendJson(res, 200, await videoFactoryManager.updatePrefs(body || {}));
+                }
+                if (req.method === 'POST' && sub === 'favorites/toggle') {
+                    const body = await readJsonBody(req, 16 * 1024);
+                    return sendJson(res, 200, await videoFactoryManager.toggleFavoriteStyle(body?.styleId));
+                }
+                if (req.method === 'POST' && sub === 'orders') {
+                    const body = await readJsonBody(req, 512 * 1024);
+                    return sendJson(res, 200, await videoFactoryManager.submitOrder(body || {}));
+                }
+                if (req.method === 'POST' && sub === 'pump') {
+                    return sendJson(res, 200, await videoFactoryManager.pumpQueue());
+                }
+                if (req.method === 'GET' && sub === 'lines') {
+                    return sendJson(res, 200, await videoFactoryManager.listLines());
+                }
+                if (req.method === 'POST' && sub === 'lines') {
+                    const body = await readJsonBody(req, 64 * 1024);
+                    return sendJson(res, 200, await videoFactoryManager.saveLine(body || {}));
+                }
+                if (parts[0] === 'lines' && parts.length === 3 && parts[2] === 'toggle' && req.method === 'POST') {
+                    return sendJson(res, 200, await videoFactoryManager.toggleLine(parts[1]));
+                }
+                if (parts[0] === 'lines' && parts.length === 3 && parts[2] === 'run' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 64 * 1024).catch(() => ({}));
+                    return sendJson(res, 200, await videoFactoryManager.triggerLine(parts[1], body || {}));
+                }
+                if (parts[0] === 'lines' && parts.length === 2 && req.method === 'DELETE') {
+                    return sendJson(res, 200, await videoFactoryManager.deleteLine(parts[1]));
+                }
+                if (parts[0] === 'jobs' && parts.length === 3 && parts[2] === 'qc' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 32 * 1024);
+                    return sendJson(res, 200, await videoFactoryManager.setJobQC(parts[1], body || {}));
+                }
+                if (parts[0] === 'jobs' && parts.length === 3 && parts[2] === 'revise' && req.method === 'POST') {
+                    const body = await readJsonBody(req, 64 * 1024);
+                    return sendJson(res, 200, await videoFactoryManager.reviseJobWithAI(parts[1], body || {}));
+                }
+                return sendJson(res, 404, { ok: false, error: 'Video Factory route not found' });
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
+        // ── Social Publish Hub Option C (/api/video-studio/social/*) ──────────
+        if (p.startsWith('/api/video-studio/social/')) {
+            const sub = p.slice('/api/video-studio/social/'.length);
+            const parts = sub.split('/').filter(Boolean);
+            try {
+                if (req.method === 'GET' && sub === 'adapters') {
+                    return sendJson(res, 200, await socialPublishManager.listAdapters());
+                }
+                if (req.method === 'GET' && sub === 'queue') {
+                    const jobId = url.searchParams.get('jobId') || null;
+                    const limit = url.searchParams.get('limit') || 100;
+                    return sendJson(res, 200, await socialPublishManager.listQueue({ jobId, limit }));
+                }
+                if (req.method === 'GET' && sub === 'calendar') {
+                    const days = url.searchParams.get('days') || 7;
+                    return sendJson(res, 200, await socialPublishManager.getCalendar(days));
+                }
+                if (req.method === 'POST' && sub === 'caption-pack') {
+                    const body = await readJsonBody(req, 64 * 1024);
+                    return sendJson(res, 200, await socialPublishManager.generateCaptionPack(body?.jobId, body || {}));
+                }
+                if (req.method === 'POST' && sub === 'export-kit') {
+                    const body = await readJsonBody(req, 128 * 1024);
+                    return sendJson(res, 200, await socialPublishManager.buildExportKit(body?.jobId, body || {}));
+                }
+                if (req.method === 'POST' && sub === 'dispatch') {
+                    const body = await readJsonBody(req, 256 * 1024);
+                    return sendJson(res, 200, await socialPublishManager.enqueuePost(body || {}));
+                }
+                if (req.method === 'POST' && sub === 'browser-launch') {
+                    const body = await readJsonBody(req, 32 * 1024);
+                    return sendJson(res, 200, await socialPublishManager.launchBrowserSemiAuto(body?.platform, body?.jobId));
+                }
+                if (parts[0] === 'queue' && parts.length === 3 && parts[2] === 'retry' && req.method === 'POST') {
+                    return sendJson(res, 200, await socialPublishManager.retryQueueItem(parts[1]));
+                }
+                if (parts[0] === 'queue' && parts.length === 2 && req.method === 'DELETE') {
+                    return sendJson(res, 200, await socialPublishManager.cancelQueueItem(parts[1]));
+                }
+                return sendJson(res, 404, { ok: false, error: 'Social Publish route not found' });
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
+        }
         if (req.method === 'GET' && p === '/api/video-studio/styles') {
             try {
                 return sendJson(res, 200, await videoStudioManager.listStyles());
@@ -3121,6 +3241,16 @@ server.listen(PORT, HOST, () => {
     } catch (e) {
         log('Notice: modelRegistry watchdog skipped:', e.message);
     }
+    try {
+        if (videoFactoryManager && typeof videoFactoryManager.startQueuePump === 'function') {
+            videoFactoryManager.startQueuePump();
+        }
+        if (socialPublishManager && typeof socialPublishManager.startScheduler === 'function') {
+            socialPublishManager.startScheduler();
+        }
+    } catch (e) {
+        log('Notice: Video Factory pump/scheduler startup skipped:', e.message);
+    }
     // Sync initial WireGuard client policies with iptables
     (async () => {
         try {
@@ -3136,6 +3266,8 @@ server.listen(PORT, HOST, () => {
     })();
 });
 function gracefulExit() {
+    try { videoFactoryManager.stopQueuePump(); } catch (_) {}
+    try { socialPublishManager.stopScheduler(); } catch (_) {}
     const timer = setTimeout(() => process.exit(0), 800);
     timer.unref();
     if (typeof server.closeAllConnections === 'function') server.closeAllConnections();

@@ -164,6 +164,7 @@ function isJobActivelyRunning(job) {
     if (!job || typeof job !== 'object') return false;
     const status = String(job.status || '');
     if (!RUNNING_STATUSES.has(status)) return false;
+    if (job.deferredStart && !job.pid) return false;
     if (job.pid) return isProcessAlive(job.pid);
     // If queued very recently (< 15s) before pid is recorded, treat as active
     if (status === 'queued' && job.updatedAt) {
@@ -528,8 +529,8 @@ async function createJob(req = {}) {
     }
 
     const rawDuration = req.durationSec !== undefined ? Number(req.durationSec) : 30;
-    if (!Number.isFinite(rawDuration) || rawDuration < 15 || rawDuration > 120) {
-        throw httpError('ความยาววิดีโอ (durationSec) ต้องอยู่ระหว่าง 15–120 วินาที', 400);
+    if (!Number.isFinite(rawDuration) || rawDuration < 15 || rawDuration > 240) {
+        throw httpError('ความยาววิดีโอ (durationSec) ต้องอยู่ระหว่าง 15–240 วินาที', 400);
     }
     const durationSec = Math.round(rawDuration);
 
@@ -545,6 +546,21 @@ async function createJob(req = {}) {
     const notes = req.notes ? String(req.notes).trim().slice(0, 1000) : undefined;
     const sendTelegram = req.sendTelegram !== false;
 
+    const ALLOWED_STOP_GATES = new Set(['draft', 'qc', 'autopilot']);
+    const rawStopGate = req.stopGate ? String(req.stopGate).trim().toLowerCase() : '';
+    const stopGate = ALLOWED_STOP_GATES.has(rawStopGate) ? rawStopGate : (mode === 'draft' ? 'draft' : 'qc');
+
+    const ALLOWED_QC_STATUS = new Set(['pending', 'approved', 'rejected']);
+    const rawQcStatus = req.qcStatus ? String(req.qcStatus).trim().toLowerCase() : '';
+    const qcStatus = ALLOWED_QC_STATUS.has(rawQcStatus) ? rawQcStatus : 'pending';
+
+    const lineId = req.lineId ? String(req.lineId).trim().slice(0, 60) : undefined;
+    const lineName = req.lineName ? String(req.lineName).trim().slice(0, 80) : undefined;
+    const batchId = req.batchId ? String(req.batchId).trim().slice(0, 60) : undefined;
+    const contentMode = req.contentMode ? String(req.contentMode).trim().toLowerCase().slice(0, 32) : undefined;
+    const deferredStart = Boolean(req.deferredStart);
+    const queueOrder = Number.isFinite(Number(req.queueOrder)) ? Math.round(Number(req.queueOrder)) : undefined;
+
     const jobId = generateId();
     const jobDir = path.join(JOBS_DIR, jobId);
     await fsp.mkdir(jobDir, { recursive: true });
@@ -558,8 +574,13 @@ async function createJob(req = {}) {
         mode,
         bgm,
         sendTelegram,
+        stopGate,
         ...(voice ? { voice } : {}),
         ...(notes ? { notes } : {}),
+        ...(lineId ? { lineId } : {}),
+        ...(lineName ? { lineName } : {}),
+        ...(batchId ? { batchId } : {}),
+        ...(contentMode ? { contentMode } : {}),
         createdAt: now,
     };
 
@@ -570,10 +591,19 @@ async function createJob(req = {}) {
         durationSec,
         mode,
         bgm,
+        stopGate,
+        qcStatus,
+        ...(voice ? { voice } : {}),
+        ...(lineId ? { lineId } : {}),
+        ...(lineName ? { lineName } : {}),
+        ...(batchId ? { batchId } : {}),
+        ...(contentMode ? { contentMode } : {}),
+        ...(deferredStart ? { deferredStart: true } : {}),
+        ...(queueOrder !== undefined ? { queueOrder } : {}),
         status: 'queued',
         stage: 'queued',
         progress: 0,
-        message: 'เข้าคิวรอเริ่มงาน...',
+        message: deferredStart ? 'รอคิวในสายพานผลิต (Batch Queue)...' : 'เข้าคิวรอเริ่มงาน...',
         versions: [],
         error: null,
         createdAt: now,
@@ -583,7 +613,9 @@ async function createJob(req = {}) {
     await atomicWriteJson(path.join(jobDir, 'request.json'), requestPayload);
     await atomicWriteJson(path.join(jobDir, 'job.json'), initialJob);
 
-    await spawnRunner(jobId, mode);
+    if (!deferredStart) {
+        await spawnRunner(jobId, mode);
+    }
 
     return {
         ok: true,
@@ -591,6 +623,9 @@ async function createJob(req = {}) {
         jobId,
         status: 'queued',
         mode,
+        stopGate,
+        deferredStart,
+        ...(batchId ? { batchId } : {}),
     };
 }
 
@@ -1866,10 +1901,18 @@ async function resolveEditorMedia(jobId, type, name) {
 module.exports = {
     BASE,
     VENV_PY,
+    OUT_ROOT,
     JOBS_DIR,
     LEARN_DIR,
     UPLOAD_DIR,
     ID_RE,
+    httpError,
+    validateId,
+    readJsonSafe,
+    atomicWriteJson,
+    isJobActivelyRunning,
+    findLatestJobFinal,
+    findLatestJobRender,
     listStyles,
     getStatus,
     createJob,

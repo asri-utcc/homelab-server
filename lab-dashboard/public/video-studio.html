@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/video-factory.css?v=1" />
+  <link rel="stylesheet" href="/video-factory.css?v=2" />
 </head>
 <body>
 <div class="app-shell">
@@ -48,10 +48,10 @@
         <span>🖥️</span>
         <span class="mono" id="worker-pill-label">กำลังตรวจ Worker...</span>
       </button>
-      <button type="button" class="credit-pill is-ok" id="credit-pill" title="สถานะเครดิต Gemini API">
+      <a href="/quota" class="credit-pill is-ok" id="credit-pill" title="ยอดเครดิต Gemini API คงเหลือ (ใช้เฉพาะเสียงพากย์วิดีโอ) — คลิกเพื่อดูรายละเอียด">
         <span>💳</span>
         <span class="mono" id="credit-pill-label">กำลังโหลด...</span>
-      </button>
+      </a>
       <a href="/video-studio-legacy" class="btn btn-sm" title="เปิดหน้า Video Studio เวอร์ชันเดิม (สำรอง)">Studio เดิม</a>
 
       <div class="worker-popover hidden" id="worker-popover">
@@ -135,6 +135,7 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-sm btn-emerald" id="btn-switch-edge-global">🎙️ ใช้ Edge TTS (ฟรี ฿0)</button>
+          <a href="/quota" class="btn btn-sm btn-cyan">ดูยอด / วิธีเติมเงิน →</a>
         </div>
       </div>
 
@@ -691,6 +692,10 @@
       <strong id="modal-style-title">รายละเอียดสไตล์</strong>
       <button type="button" class="btn btn-xs" id="btn-close-style-modal">✕</button>
     </div>
+    <div id="modal-style-art-wrap" class="hidden" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="sub-muted" style="font-size:11px;">ภาพตัวอย่างสไตล์</div>
+      <img id="modal-style-art" alt="Style Art Preview" style="width:100%;aspect-ratio:8/3;object-fit:cover;border-radius:9px;border:1px solid var(--line-hi);background:#07090d;display:block;" />
+    </div>
     <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
       <div class="phone-frame" style="width:155px;margin:0;">
         <img id="modal-style-img" alt="Style Full" />
@@ -752,7 +757,7 @@
 
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
-<script src="/video-factory-data.js?v=1"></script>
-<script src="/video-factory-app.js?v=1"></script>
+<script src="/video-factory-data.js?v=2"></script>
+<script src="/video-factory-app.js?v=2"></script>
 </body>
 </html>

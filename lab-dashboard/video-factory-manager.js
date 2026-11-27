@@ -804,13 +804,52 @@ async function reviseJobWithAI(jobId, { prompt, timeSec } = {}) {
         throw httpError('งานกำลังประมวลผลอยู่ กรุณารอให้เสร็จก่อนสั่งแก้ไข', 409);
     }
 
+    const isDraftReady = String(job.status || '').toLowerCase() === 'draft_ready';
+
     // Fast path: audio/BGM remix only (zero video/TTS re-render cost!)
     const bgmIntent = detectBgmIntent(cleanPrompt);
     if (bgmIntent) {
-        const reqData = await readJsonSafe(path.join(jobDir, 'request.json'), {});
+        const reqPath = path.join(jobDir, 'request.json');
+        const reqData = (await readJsonSafe(reqPath, {})) || {};
         const targetBgm = bgmIntent.bgm || reqData.bgm || job.bgm || 'warm_tech';
         const targetVol = bgmIntent.bgmVol !== null ? bgmIntent.bgmVol : 0.10;
         const targetDuck = bgmIntent.duckDb !== null ? bgmIntent.duckDb : 15;
+
+        const [latestRender, latestFinal] = await Promise.all([
+            videoStudioManager.findLatestJobRender(jobDir),
+            videoStudioManager.findLatestJobFinal(jobDir),
+        ]);
+        const hasRenderedVideo = Boolean(latestRender || latestFinal);
+
+        if (isDraftReady || !hasRenderedVideo) {
+            reqData.bgm = targetBgm;
+            await atomicWriteJson(reqPath, reqData);
+
+            const revision = {
+                at: new Date().toISOString(),
+                prompt: cleanPrompt,
+                mode: 'draft-bgm',
+                summary: `บันทึกค่าเพลงประกอบ (BGM=${targetBgm}) ลงในร่างแล้ว — กรุณากด Build เพื่อสร้างวิดีโอ`,
+                engine: 'rule-audio',
+            };
+            job.bgm = targetBgm;
+            job.revisions = [...(Array.isArray(job.revisions) ? job.revisions : []), revision].slice(-30);
+            job.qcStatus = 'pending';
+            job.updatedAt = new Date().toISOString();
+            await atomicWriteJson(jobPath, job);
+
+            return {
+                ok: true,
+                id: cleanId,
+                mode: 'draft-bgm',
+                bgm: targetBgm,
+                needsBuild: true,
+                summary: revision.summary,
+                message: 'งานยังไม่มีไฟล์เรนเดอร์ — บันทึกค่า BGM ลง request.json และ job.json แล้ว กรุณาสั่ง Build เพื่อเรนเดอร์วิดีโอ',
+                revision,
+                dispatch: null,
+            };
+        }
 
         const revision = {
             at: new Date().toISOString(),
@@ -819,6 +858,7 @@ async function reviseJobWithAI(jobId, { prompt, timeSec } = {}) {
             summary: `ปรับมิกซ์เสียงอัตโนมัติ (BGM=${targetBgm}, vol=${targetVol}, duck=${targetDuck}dB)`,
             engine: 'rule-audio',
         };
+        job.bgm = targetBgm;
         job.revisions = [...(Array.isArray(job.revisions) ? job.revisions : []), revision].slice(-30);
         job.qcStatus = 'pending';
         await atomicWriteJson(jobPath, job);
@@ -903,9 +943,11 @@ async function reviseJobWithAI(jobId, { prompt, timeSec } = {}) {
     await videoStudioManager.saveScript(cleanId, script);
 
     const freshJob = await readJsonSafe(jobPath, job);
-    const dispatchMode = changedSceneIds.length === 1 && script.scenes.some((s) => s.id === changedSceneIds[0])
-        ? 'edit-scene'
-        : 'rebuild';
+    const dispatchMode = isDraftReady
+        ? 'build'
+        : (changedSceneIds.length === 1 && script.scenes.some((s) => s.id === changedSceneIds[0])
+            ? 'edit-scene'
+            : 'rebuild');
 
     const revision = {
         at: new Date().toISOString(),
@@ -922,7 +964,9 @@ async function reviseJobWithAI(jobId, { prompt, timeSec } = {}) {
     await atomicWriteJson(jobPath, freshJob);
 
     let dispatch;
-    if (dispatchMode === 'edit-scene') {
+    if (dispatchMode === 'build') {
+        dispatch = await videoStudioManager.buildJob(cleanId);
+    } else if (dispatchMode === 'edit-scene') {
         dispatch = await videoStudioManager.editScene(cleanId, changedSceneIds[0]);
     } else {
         dispatch = await videoStudioManager.rebuildJob(cleanId);
@@ -961,7 +1005,7 @@ async function getWorkersSummary(hubManager) {
             return {
                 nodeId: String(n.nodeId || n.id || ''),
                 alias: String(n.alias || n.displayName || n.nodeId || ''),
-                hostname: String(n.hostname || ''),
+                hostname: String(n.hostname || specs.hostname || ''),
                 online: Boolean(n.online),
                 os: String(n.os || specs.os || ''),
                 arch: String(n.arch || specs.arch || ''),
@@ -979,7 +1023,7 @@ async function getWorkersSummary(hubManager) {
                     memTotalGb,
                 },
                 activeJobs: Number(n.activeJobs || 0),
-                lastSeen: n.lastSeen || null,
+                lastSeen: n.lastSeen || n.lastSeenAt || null,
             };
         });
 
@@ -1000,14 +1044,14 @@ async function getWorkersSummary(hubManager) {
 function classifyJobColumn(job) {
     const status = String(job.status || '').toLowerCase();
     const qc = String(job.qcStatus || 'pending').toLowerCase();
-    if (status === 'draft_ready' || qc === 'rejected') return 'script';
+    if (job.alive || ['researching', 'scripting', 'tts', 'rendering', 'mixing', 'previewing', 'editing', 'building', 'running'].includes(status)) {
+        return 'running';
+    }
+    if (status === 'draft_ready' || (status === 'done' && qc === 'rejected')) return 'script';
     if (status === 'done') {
         return qc === 'approved' ? 'ready' : 'qc';
     }
     if (status === 'queued' && (job.deferredStart || !job.alive)) return 'queued';
-    if (job.alive || ['researching', 'scripting', 'tts', 'rendering', 'mixing', 'previewing', 'editing', 'building', 'running'].includes(status)) {
-        return 'running';
-    }
     // error / aborted -> stay visible in queued or script so user can resume/inspect
     if (status === 'error' || status === 'aborted') return 'queued';
     return 'queued';

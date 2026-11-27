@@ -109,6 +109,14 @@
     return `/api/gemini/local-file?path=${encodeURIComponent(DATA.STYLE_THUMB_DIR + '/' + id + '.jpg')}&v=${encodeURIComponent(v)}`;
   }
 
+  function styleArtUrl(id) {
+    const item = state.artManifest && state.artManifest[id];
+    if (!item) return null;
+    const file = item.file || (id + '.jpg');
+    const v = item.mtime || state.thumbBust;
+    return `/api/gemini/local-file?path=${encodeURIComponent(DATA.STYLE_ART_DIR + '/' + file)}&v=${encodeURIComponent(v)}`;
+  }
+
   function allStyles() {
     return [...state.customStyles, ...state.presets];
   }
@@ -120,22 +128,32 @@
   }
 
   function extractPaletteColors(s) {
-    if (Array.isArray(s?.palette) && s.palette.length) return s.palette.slice(0, 4);
-    if (s?.colors && typeof s.colors === 'object') {
-      const vals = Object.values(s.colors).filter((v) => typeof v === 'string' && /^#/.test(v));
-      if (vals.length) return vals.slice(0, 4);
+    const raw = s?.tokens?.palette ?? s?.palette ?? s?.colors;
+    if (Array.isArray(raw) && raw.length) {
+      const arr = raw.filter((v) => typeof v === 'string' && v.trim()).slice(0, 5);
+      if (arr.length) return arr;
     }
-    return ['#0f172a', '#1e293b', '#38bdf8', '#eef2f7'];
+    if (raw && typeof raw === 'object') {
+      const ordered = [raw.bg, raw.bgSecondary, raw.accent, raw.accent2 || raw.cardBg, raw.fg]
+        .filter((v) => typeof v === 'string' && v.trim());
+      if (ordered.length) return ordered.slice(0, 5);
+      const fallbackVals = Object.values(raw).filter((v) => typeof v === 'string' && /^#/.test(v.trim()));
+      if (fallbackVals.length) return fallbackVals.slice(0, 5);
+    }
+    return ['#0f172a', '#1e293b', '#38bdf8', '#f6c453', '#eef2f7'];
   }
 
   function classifyJobCol(job) {
     if (job.factoryCol) return job.factoryCol;
     const status = String(job.status || '').toLowerCase();
     const qc = String(job.qcStatus || 'pending').toLowerCase();
-    if (status === 'draft_ready' || qc === 'rejected') return 'script';
+    if (job.alive || ['researching', 'scripting', 'tts', 'rendering', 'mixing', 'previewing', 'editing', 'building', 'running'].includes(status)) {
+      return 'running';
+    }
+    if (status === 'draft_ready' || (status === 'done' && qc === 'rejected')) return 'script';
     if (status === 'done') return qc === 'approved' ? 'ready' : 'qc';
     if (status === 'queued' && (job.deferredStart || !job.alive)) return 'queued';
-    if (job.alive || ['researching', 'scripting', 'tts', 'rendering', 'mixing', 'previewing', 'editing', 'building', 'running'].includes(status)) return 'running';
+    if (status === 'error' || status === 'aborted') return 'queued';
     return 'queued';
   }
 
@@ -758,16 +776,16 @@
       const isFav = state.favoriteStyles.has(s.id);
       return `
         <button type="button" class="style-card ${isSel ? 'is-selected' : ''}" data-sid="${esc(s.id)}">
-          <div class="style-card-media" style="--s-bg:${pal[0]};--s-bg2:${pal[1]};">
+          <div class="style-card-media" style="--s-bg:${esc(pal[0] || '#0f172a')};--s-bg2:${esc(pal[1] || pal[0] || '#1e293b')};">
             <img loading="lazy" src="${styleThumbUrl(s.id)}" alt="${esc(s.thName)}" onerror="this.parentElement.classList.add('is-missing')" />
             <div class="style-card-fallback">
-              <div style="width:55%;height:7px;border-radius:4px;background:${pal[2]};"></div>
-              <div style="font-size:10px;color:${pal[3]};opacity:0.85;">${esc(s.enName)}</div>
+              <div style="width:55%;height:7px;border-radius:4px;background:${esc(pal[2] || '#38bdf8')};"></div>
+              <div style="font-size:10px;color:${esc(pal[4] || pal[3] || '#eef2f7')};opacity:0.85;">${esc(s.enName)}</div>
             </div>
             <span class="style-zoom-btn" data-zoom-sid="${esc(s.id)}" title="ดูภาพใหญ่">⤢</span>
             <span class="style-fav-btn" data-fav-sid="${esc(s.id)}" title="ติดดาว">${isFav ? '⭐' : '☆'}</span>
             <div class="style-card-overlay">
-              <div class="swatch-row">${pal.map((c) => `<span class="swatch" style="background:${c}"></span>`).join('')}</div>
+              <div class="swatch-row">${pal.map((c) => `<span class="swatch" style="background:${esc(c)}"></span>`).join('')}</div>
               <div style="font-size:12px;font-weight:700;color:#fff;line-height:1.25;">${esc(s.thName)}</div>
               <div style="font-size:10px;color:rgba(255,255,255,0.72);">${esc(s.id)}</div>
             </div>
@@ -1105,7 +1123,19 @@
 
   $('qc-btn-copy-link').addEventListener('click', async () => {
     const vid = $('qc-video');
-    const url = state.qcJobDetail?.outputs?.watchUrl || (vid.src ? vid.src : '');
+    const selectedFile = $('qc-version-select')?.value || '';
+    const verObj = selectedFile && Array.isArray(state.qcJobDetail?.versions)
+      ? state.qcJobDetail.versions.find((v) => v && typeof v === 'object' && v.file === selectedFile)
+      : null;
+    const isLatest = !selectedFile || selectedFile === jobLatestVideoFile(state.qcJobDetail);
+    const selectedFileUrl = (selectedFile && state.qcJobId)
+      ? `${window.location.origin}/api/video-studio/file/${encodeURIComponent(state.qcJobId)}/${encodeSubPath(selectedFile)}`
+      : '';
+    const url = verObj?.watchUrl
+      || (!isLatest && selectedFileUrl)
+      || state.qcJobDetail?.outputs?.watchUrl
+      || selectedFileUrl
+      || (vid && vid.src ? vid.src : '');
     if (!url) { toast('ยังไม่มีลิงก์วิดีโอสำหรับงานนี้', 'warn'); return; }
     try {
       await navigator.clipboard.writeText(url);
@@ -1193,6 +1223,10 @@
             <label class="field-label">บทบรรยาย (Narration)</label>
             <textarea class="textarea" style="min-height:60px;" data-sc-field="narration" data-idx="${idx}">${esc(sc.narration || '')}</textarea>
           </div>
+          <div>
+            <label class="field-label">Bullets (คั่นด้วย ,)</label>
+            <input class="input" data-sc-field="bullets" data-idx="${idx}" value="${esc(Array.isArray(sc.bullets) ? sc.bullets.join(', ') : (sc.bullets || ''))}" placeholder="ประเด็น 1, ประเด็น 2, ประเด็น 3" />
+          </div>
         </div>
       `;
     }).join('') || `<div class="sub-muted">ยังไม่มีไฟล์บท (script.json) สำหรับงานนี้</div>`;
@@ -1201,7 +1235,12 @@
       el.addEventListener('input', () => {
         const i = Number(el.dataset.idx);
         const f = el.dataset.scField;
-        if (state.qcScript?.scenes?.[i]) state.qcScript.scenes[i][f] = el.value;
+        if (!state.qcScript?.scenes?.[i]) return;
+        if (f === 'bullets') {
+          state.qcScript.scenes[i][f] = el.value.split(',').map((x) => x.trim()).filter(Boolean);
+        } else {
+          state.qcScript.scenes[i][f] = el.value;
+        }
       });
     });
     $('qc-script-list').querySelectorAll('[data-sc-shot]').forEach((sel) => {
@@ -1266,6 +1305,7 @@
       icon: 'sparkles',
       visual: '',
       narration: 'พิมพ์บทบรรยายสำหรับซีนใหม่...',
+      bullets: [],
     });
     renderQCScriptEditor(state.qcJobDetail || {});
   });
@@ -1457,14 +1497,42 @@
 
       $('social-platforms-wrap').querySelectorAll('[data-bv-launch]').forEach((btn) => {
         btn.addEventListener('click', async () => {
+          const platKey = btn.dataset.bvLaunch;
+          btn.disabled = true;
           try {
             const r = await apiFetch('/api/video-studio/social/browser-launch', {
               method: 'POST',
-              body: JSON.stringify({ platform: btn.dataset.bvLaunch, jobId: sj.id }),
+              body: JSON.stringify({ platform: platKey, jobId: sj.id }),
             });
-            toast(`🌐 ${r.message || 'เปิด Browser Vision Semi-Auto แล้ว'}`, 'ok');
+            const targetUrl = r.browserVisionUrl || r.uploadUrl;
+            if (targetUrl) {
+              window.open(targetUrl, '_blank', 'noopener');
+            }
+            const safeKey = (window.CSS && typeof window.CSS.escape === 'function') ? window.CSS.escape(platKey) : platKey;
+            const titleEl = document.querySelector(`[data-plat-title="${safeKey}"]`);
+            const capEl = document.querySelector(`[data-plat-cap="${safeKey}"]`);
+            const kitPlat = r.exportKit?.platforms?.[platKey] || {};
+            const pTitle = (titleEl && titleEl.value.trim()) || kitPlat.title || sj.title || sj.topic || '';
+            const pCap = (capEl && capEl.value.trim()) || kitPlat.caption || '';
+            const dlLink = r.exportKit?.downloadUrl || r.exportKit?.watchUrl || sj.outputs?.watchUrl || '';
+            const clipParts = [
+              pTitle ? `Title: ${pTitle}` : '',
+              pCap ? `Caption:\n${pCap}` : '',
+              dlLink ? `Master Video: ${dlLink}` : '',
+            ].filter(Boolean);
+            const clipText = clipParts.join('\n\n') || r.exportKit?.clipboardText || '';
+            let copied = false;
+            if (clipText && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+              try {
+                await navigator.clipboard.writeText(clipText);
+                copied = true;
+              } catch (_) {}
+            }
+            toast(`🌐 ${r.message || 'เปิด Browser Vision Semi-Auto แล้ว'}${copied ? ' · คัดลอกแคปชันและลิงก์ Master ลงคลิปบอร์ดแล้ว' : ''}`, 'ok');
           } catch (e) {
             toast(`เปิด Browser Semi-Auto ไม่สำเร็จ: ${e.message}`, 'err');
+          } finally {
+            btn.disabled = false;
           }
         });
       });
@@ -1575,7 +1643,17 @@
     document.querySelectorAll('[data-plat-cap]').forEach((el) => { captions[el.dataset.platCap] = el.value; });
 
     const publishMode = document.querySelector('input[name="pubtime"]:checked')?.value || 'now';
-    const scheduledAt = publishMode === 'schedule' ? new Date($('social-schedule-dt').value).toISOString() : null;
+    let scheduledAt = null;
+    if (publishMode === 'schedule') {
+      const rawDt = ($('social-schedule-dt').value || '').trim();
+      const parsedMs = Date.parse(rawDt);
+      if (!rawDt || Number.isNaN(parsedMs)) {
+        toast('กรุณาระบุวันและเวลาตั้งโพสต์ให้ถูกต้องก่อนส่งเข้าคิวค่ะ', 'warn');
+        $('social-schedule-dt').focus();
+        return;
+      }
+      scheduledAt = new Date(parsedMs).toISOString();
+    }
 
     const btn = $('btn-dispatch-social');
     btn.disabled = true;
@@ -1835,12 +1913,36 @@
   function openStyleModal(sid) {
     const s = findStyle(sid);
     const pal = extractPaletteColors(s);
+    const thumbUrl = styleThumbUrl(s.id);
+    const artUrl = styleArtUrl(s.id);
     $('modal-style-title').textContent = s.thName || s.id;
     $('modal-style-en').textContent = `${s.enName || s.id} · ${s.id}`;
     $('modal-style-cat').textContent = s.category || 'ทั่วไป';
     $('modal-style-desc').textContent = s.summary || '';
-    $('modal-style-img').src = styleThumbUrl(s.id);
-    $('modal-style-swatches').innerHTML = pal.map((c) => `<span class="swatch" style="width:16px;height:16px;background:${c}"></span>`).join('');
+
+    const artWrap = $('modal-style-art-wrap');
+    const artImg = $('modal-style-art');
+    if (artWrap && artImg) {
+      if (artUrl) {
+        artImg.onerror = () => artWrap.classList.add('hidden');
+        artImg.src = artUrl;
+        artImg.alt = `${s.thName || s.enName || s.id} (ตัวอย่างสไตล์)`;
+        artWrap.classList.remove('hidden');
+      } else {
+        artImg.removeAttribute('src');
+        artWrap.classList.add('hidden');
+      }
+    }
+
+    const modalImg = $('modal-style-img');
+    modalImg.onerror = () => {
+      modalImg.onerror = null;
+      if (artUrl && modalImg.src !== artUrl) modalImg.src = artUrl;
+    };
+    modalImg.src = thumbUrl || artUrl || '';
+    modalImg.alt = `${s.thName || s.enName || s.id} (9:16)`;
+
+    $('modal-style-swatches').innerHTML = pal.map((c) => `<span class="swatch" style="width:16px;height:16px;background:${esc(c)}"></span>`).join('');
     $('btn-use-modal-style').onclick = () => {
       state.selectedStyleId = s.id;
       $('style-modal').classList.add('hidden');
@@ -1851,6 +1953,29 @@
   }
   $('btn-close-style-modal').addEventListener('click', () => $('style-modal').classList.add('hidden'));
   $('style-modal').addEventListener('click', (e) => { if (e.target === $('style-modal')) $('style-modal').classList.add('hidden'); });
+  $('line-modal').addEventListener('click', (e) => { if (e.target === $('line-modal')) $('line-modal').classList.add('hidden'); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const styleModal = $('style-modal');
+    if (styleModal && !styleModal.classList.contains('hidden')) {
+      styleModal.classList.add('hidden');
+      return;
+    }
+    const lineModal = $('line-modal');
+    if (lineModal && !lineModal.classList.contains('hidden')) {
+      lineModal.classList.add('hidden');
+      return;
+    }
+    const drawer = $('drawer-backdrop');
+    if (drawer && !drawer.classList.contains('hidden')) {
+      closeDrawer();
+      return;
+    }
+    const pop = $('worker-popover');
+    if (pop && !pop.classList.contains('hidden')) {
+      pop.classList.add('hidden');
+    }
+  });
 
   // ── BOOTSTRAP ──────────────────────────────────────────────────────────────
   populateStaticSelects();

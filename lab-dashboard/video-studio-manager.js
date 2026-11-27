@@ -727,6 +727,7 @@ async function buildJob(id) {
     const { cleanId, jobPath, job } = await ensureJobReadyForAction(id, { requireScript: true });
     job.status = 'queued';
     job.stage = 'build';
+    job.qcStatus = 'pending';
     job.error = null;
     job.message = 'เข้าคิวเรนเดอร์วิดีโอจากบท...';
     job.updatedAt = new Date().toISOString();
@@ -767,6 +768,7 @@ async function editScene(id, sceneId) {
 
     job.status = 'queued';
     job.stage = 'edit-scene';
+    job.qcStatus = 'pending';
     job.error = null;
     job.message = `เข้าคิวสร้างเวอร์ชันใหม่จากการแก้ไขซีน ${scId}...`;
     job.updatedAt = new Date().toISOString();
@@ -786,6 +788,7 @@ async function trimJob(id, start, end) {
 
     job.status = 'queued';
     job.stage = 'trim';
+    job.qcStatus = 'pending';
     job.error = null;
     job.message = `เข้าคิวตัดหัว-ท้าย (${s.toFixed(1)}s - ${e.toFixed(1)}s)...`;
     job.updatedAt = new Date().toISOString();
@@ -805,6 +808,7 @@ async function cutJob(id, from, to) {
 
     job.status = 'queued';
     job.stage = 'cut';
+    job.qcStatus = 'pending';
     job.error = null;
     job.message = `เข้าคิวตัดช่วงกลางออก (${f.toFixed(1)}s - ${t.toFixed(1)}s)...`;
     job.updatedAt = new Date().toISOString();
@@ -874,6 +878,7 @@ async function rebuildJob(id, script) {
     const { cleanId, jobPath, job } = await ensureJobReadyForAction(id, { requireScript: true });
     job.status = 'queued';
     job.stage = 'rebuild';
+    job.qcStatus = 'pending';
     job.error = null;
     job.message = 'เข้าคิวสร้างวิดีโอเวอร์ชันใหม่จาก Timeline...';
     job.updatedAt = new Date().toISOString();
@@ -900,6 +905,7 @@ async function remixJob(id, { bgm, bgmVol, duckDb } = {}) {
     const { cleanId, jobPath, job } = await ensureJobReadyForAction(id);
     job.status = 'queued';
     job.stage = 'remix';
+    job.qcStatus = 'pending';
     job.error = null;
     job.message = `เข้าคิวผสมเสียงใหม่ (${bgmVal} · vol ${v} · duck ${d}dB)...`;
     job.updatedAt = new Date().toISOString();
@@ -1730,6 +1736,7 @@ async function exportEditorProject(id, project) {
     const { cleanId, jobPath, job } = await ensureJobReadyForAction(id);
     job.status = 'queued';
     job.stage = 'export';
+    job.qcStatus = 'pending';
     job.error = null;
     job.message = 'เข้าคิว Export จากโปรแกรมตัดต่อ...';
     job.updatedAt = new Date().toISOString();

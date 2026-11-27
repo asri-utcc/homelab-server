@@ -674,23 +674,27 @@ async function launchBrowserSemiAuto(platformKey, jobId) {
     const cleanJobId = validateId(jobId, 'Job ID');
     const kit = await buildExportKit(cleanJobId);
 
+    const profileKey = `soc_${plat.key}`.slice(0, 16);
+    const sessionName = `bv_labweb_${profileKey}`;
+    const browserVisionUrl = `/lab-browser?profile=${encodeURIComponent(profileKey)}&url=${encodeURIComponent(plat.uploadUrl)}`;
+
     if (!fs.existsSync(LAB_BROWSER_BIN)) {
         return {
             ok: true,
             launched: false,
             mode: 'manual_kit',
             platform: plat.key,
+            profileKey,
+            sessionName,
+            authProfile: 'shared',
+            browserVisionUrl,
             uploadUrl: plat.uploadUrl,
             message: 'ไม่พบ lab-browser ในเครื่อง — สร้าง Manual Export Kit ให้คัดลอกแทนแล้ว',
             exportKit: kit,
         };
     }
 
-    const sessionName = `social-${plat.key}`;
-    const args = ['session', 'open', plat.uploadUrl, '--session', sessionName];
-    if (plat.browserProfile) {
-        args.push('--auth-profile', plat.browserProfile);
-    }
+    const args = ['session', 'open', plat.uploadUrl, '--session', sessionName, '--shared-auth'];
 
     try {
         const child = spawn(LAB_BROWSER_BIN, args, {
@@ -704,8 +708,10 @@ async function launchBrowserSemiAuto(platformKey, jobId) {
             launched: true,
             mode: 'browser_vision',
             platform: plat.key,
+            profileKey,
             sessionName,
-            authProfile: plat.browserProfile,
+            authProfile: 'shared',
+            browserVisionUrl,
             uploadUrl: plat.uploadUrl,
             pid: child.pid || null,
             message: `เปิดเซสชัน Browser Vision (${sessionName}) ไปยังหน้าอัปโหลด ${plat.name} แล้ว — ล็อกอินครั้งเดียวแล้ววางไฟล์/แคปชันได้เลย`,
@@ -717,6 +723,10 @@ async function launchBrowserSemiAuto(platformKey, jobId) {
             launched: false,
             mode: 'manual_kit',
             platform: plat.key,
+            profileKey,
+            sessionName,
+            authProfile: 'shared',
+            browserVisionUrl,
             uploadUrl: plat.uploadUrl,
             message: `เปิด Browser Vision ไม่สำเร็จ (${err.message}) — ใช้ Manual Export Kit แทนได้ทันที`,
             exportKit: kit,

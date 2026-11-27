@@ -16,3 +16,22 @@ Standalone full-page web browser service hosted via `lab-dashboard` and sharing 
   ```
 - **Idle TTL:** Requests `idleTtlSec: 3600` (clamped `600..7200` in `browser-vision-bridge.js`; takes effect after `lab-dashboard` is restarted, otherwise defaults to `600s`).
 - **Resource Limits:** `MAX_CHAT_BROWSERS=5` and `MIN_FREE_MB=1200`. Each open window consumes 1 browser slot—use **🛑 ปิดเบราว์เซอร์** (`POST /api/browser-vision/close`) to release RAM when finished.
+
+## Google Login
+
+Google may still reject automated browsers controlled via Playwright/CDP (e.g., `accounts.google.com/v3/signin/rejected`). Rather than trying to bypass Google's bot detection, the recommended workflow is to import an authenticated cookie session from your own desktop browser:
+
+1. Install the **Cookie-Editor** extension in Chrome on your own computer.
+2. Sign in to Google normally in your local Chrome.
+3. Export cookies as **JSON** while visiting **both** `https://google.com` and `https://accounts.google.com`.
+4. Transfer the exported file(s) to homelab with `scp`, for example:
+   ```bash
+   scp cookies.json dev@homelab:/tmp/cookies.json
+   ```
+5. Import the cookies into Lab Browser's shared auth store (defaults to the `shared` profile; add `--auth-profile <name>` to target a specific profile):
+   ```bash
+   /home/dev/.local/bin/lab-browser auth import /tmp/cookies.json
+   ```
+   *(Run the command for each exported JSON file if you saved `google.com` and `accounts.google.com` separately.)*
+6. Delete the exported cookie JSON file(s) from both `/tmp/` on homelab and your local machine once imported.
+7. In `/lab-browser` (or Browser Vision), click **🛑 ปิดเบราว์เซอร์** to close the running browser session, then reopen it so the new session loads the imported cookies.

@@ -8,6 +8,8 @@ const config = require('../lib/config');
 const core = require('../lib/browser-core');
 const { executeAction } = require('../lib/actions');
 const sessionClient = require('../lib/session-client');
+const authStore = require('../lib/auth-store');
+const { parseCookieFile } = require('../lib/cookie-import');
 
 process.stdout.on('error', (err) => {
   if (err && err.code === 'EPIPE') process.exit(0);
@@ -219,6 +221,8 @@ Persistent interactive session commands (keeps tabs/cookies/DOM open; auto-close
 Maintenance:
   lab-browser doctor                  Verify Chromium, Thai fonts, output dir, RAM, active sessions
   lab-browser clean [--days 7]        Remove old screenshots/PDFs from outputs/browser
+  lab-browser auth import <file.json> [--auth-profile <name>]
+                                      Import cookies (Playwright, storageState, Cookie-Editor) into auth profile
 
 Common options:
   --full-page         Capture full scrollable page
@@ -335,6 +339,32 @@ async function main() {
 
   if (cmd === 'clean') {
     printOutput(runClean(opts.days !== undefined ? opts.days : 7), opts);
+    return;
+  }
+
+  if (cmd === 'auth') {
+    const sub = String(rest[0] || '').toLowerCase();
+    if (sub !== 'import') {
+      throw new Error('Usage: lab-browser auth import <file.json> [--auth-profile <name>]');
+    }
+    const fileArg = rest[1];
+    if (!fileArg) {
+      throw new Error('Usage: lab-browser auth import <file.json> [--auth-profile <name>]');
+    }
+    const filePath = path.resolve(fileArg);
+    const rawText = fs.readFileSync(filePath, 'utf8');
+    const cookies = parseCookieFile(rawText);
+    const profile = opts.authProfile || authStore.DEFAULT_PROFILE;
+    const synced = authStore.sync(profile, { cookies });
+    const domains = Array.from(
+      new Set(cookies.map((c) => String(c.domain).replace(/^\./, '').toLowerCase()))
+    ).sort();
+    printOutput({
+      ok: true,
+      profile: synced.profile,
+      imported: cookies.length,
+      domains,
+    }, opts);
     return;
   }
 

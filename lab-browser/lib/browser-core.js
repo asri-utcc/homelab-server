@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const config = require('./config');
 const authStore = require('./auth-store');
 
@@ -9,9 +10,6 @@ const authStore = require('./auth-store');
 process.env.PLAYWRIGHT_BROWSERS_PATH = config.BROWSERS_PATH;
 
 const { chromium } = require('playwright-core');
-
-const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
-const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36';
 
 const LAUNCH_ARGS = [
   '--disable-dev-shm-usage',
@@ -22,6 +20,64 @@ const LAUNCH_ARGS = [
   '--disable-gpu',
 ];
 
+let cachedChromiumVersion = undefined;
+
+function parseMajorVersion(version) {
+  if (version === undefined || version === null) return null;
+  const str = String(version).trim();
+  if (!str) return null;
+  const fullMatch = str.match(/(\d+)\.\d+\.\d+\.\d+/);
+  if (fullMatch) return fullMatch[1];
+  const simpleMatch = str.match(/(\d+)/);
+  return simpleMatch ? simpleMatch[1] : null;
+}
+
+function detectChromiumVersion() {
+  if (cachedChromiumVersion !== undefined) return cachedChromiumVersion;
+  try {
+    const execPath = chromium.executablePath();
+    const out = execFileSync(execPath, ['--version'], {
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    const m = out.match(/(\d+\.\d+\.\d+\.\d+)/);
+    cachedChromiumVersion = m ? m[1] : (out || null);
+  } catch (err) {
+    process.stderr.write(
+      `[lab-browser] Warning: failed to detect Chromium version from executable (${err && err.message ? err.message : err})\n`
+    );
+    cachedChromiumVersion = null;
+  }
+  return cachedChromiumVersion;
+}
+
+function buildUa(version, isMobile = false) {
+  const major = parseMajorVersion(version) || parseMajorVersion(detectChromiumVersion());
+  if (!major) return undefined;
+  if (isMobile) {
+    return `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Mobile Safari/537.36`;
+  }
+  return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+}
+
+async function launchWithFallback(fn, baseOpts = {}) {
+  if (baseOpts.headless === false) {
+    return await fn(baseOpts);
+  }
+  const primaryOpts = { channel: 'chromium', ...baseOpts };
+  try {
+    return await fn(primaryOpts);
+  } catch (err) {
+    process.stderr.write(
+      `[lab-browser] Warning: Chromium channel "chromium" launch failed (${err && err.message ? err.message : err}); falling back to default headless shell\n`
+    );
+    const fallbackOpts = { ...baseOpts };
+    delete fallbackOpts.channel;
+    return await fn(fallbackOpts);
+  }
+}
+
 function checkRamGuard() {
   const freeMb = config.getFreeMemMb();
   if (freeMb !== null && freeMb < 250) {
@@ -30,19 +86,21 @@ function checkRamGuard() {
   return freeMb;
 }
 
-function buildContextOptions(opts = {}) {
+function buildContextOptions(opts = {}, browserVersion = null) {
   const vp = config.parseViewport(opts);
   const headers = {
     'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7',
     ...(opts.headers || {}),
   };
 
+  const userAgent = opts.userAgent || buildUa(browserVersion, vp.isMobile);
+
   const ctxOpts = {
     viewport: { width: vp.width, height: vp.height },
     deviceScaleFactor: vp.deviceScaleFactor,
     isMobile: vp.isMobile,
     hasTouch: vp.hasTouch,
-    userAgent: opts.userAgent || (vp.isMobile ? MOBILE_UA : DESKTOP_UA),
+    ...(userAgent ? { userAgent } : {}),
     locale: opts.locale || 'th-TH',
     timezoneId: opts.timezone || 'Asia/Bangkok',
     ignoreHTTPSErrors: Boolean(opts.ignoreHttpsErrors),
@@ -74,18 +132,23 @@ async function openBrowserSession(opts = {}) {
 
   config.ensureDirs({ includeAuth: Boolean(authProfile) });
   checkRamGuard();
+  config.parseViewport(opts);
 
-  const { ctxOpts, viewportMeta } = buildContextOptions(opts);
   const headless = !opts.headful;
 
   if (opts.persistProfile) {
     const profileDir = path.join(config.PROFILES_DIR, config.sanitizeSessionName(opts.persistProfile));
     fs.mkdirSync(profileDir, { recursive: true });
-    const context = await chromium.launchPersistentContext(profileDir, {
-      headless,
-      args: LAUNCH_ARGS,
-      ...ctxOpts,
-    });
+    const detectedVersion = detectChromiumVersion();
+    const { ctxOpts, viewportMeta } = buildContextOptions(opts, detectedVersion);
+    const context = await launchWithFallback(
+      (launchOpts) => chromium.launchPersistentContext(profileDir, launchOpts),
+      {
+        headless,
+        args: LAUNCH_ARGS,
+        ...ctxOpts,
+      }
+    );
     await applyStealthInit(context);
     const page = context.pages()[0] || await context.newPage();
     return {
@@ -100,12 +163,17 @@ async function openBrowserSession(opts = {}) {
     };
   }
 
-  const browser = await chromium.launch({
-    headless,
-    args: LAUNCH_ARGS,
-  });
+  const browser = await launchWithFallback(
+    (launchOpts) => chromium.launch(launchOpts),
+    {
+      headless,
+      args: LAUNCH_ARGS,
+    }
+  );
 
   try {
+    const browserVersion = typeof browser.version === 'function' ? browser.version() : null;
+    const { ctxOpts, viewportMeta } = buildContextOptions(opts, browserVersion);
     let context;
     let initialAuthState = null;
 
@@ -441,6 +509,8 @@ async function capturePdf(page, urlForSlug, opts = {}) {
 
 module.exports = {
   chromium,
+  buildUa,
+  launchWithFallback,
   buildContextOptions,
   openBrowserSession,
   attachTelemetry,

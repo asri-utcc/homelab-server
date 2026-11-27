@@ -13,6 +13,7 @@ const {
     sanitizeUrl,
     mapWmoCodeToThai,
     parseDockerLabelsToApp,
+    enrichBuiltinApps,
     resolveRole,
     isFamilyAllowedRequest,
     checkFamilyPassword,
@@ -445,6 +446,15 @@ test('Family / Guest Role is opt-in, restricts endpoints, and filters launcher i
         assert.equal(isFamilyAllowedRequest('GET', '/api/launcher'), true);
         assert.equal(isFamilyAllowedRequest('GET', '/api/weather'), true);
         assert.equal(isFamilyAllowedRequest('GET', '/api/overview'), true);
+        assert.equal(isFamilyAllowedRequest('GET', '/api/energy/live'), true);
+        // Query string stripping & cache-busted static assets
+        assert.equal(isFamilyAllowedRequest('GET', '/?kiosk=1'), true);
+        assert.equal(isFamilyAllowedRequest('GET', '/launcher-bar.css?v=20261127-hub1'), true);
+        assert.equal(isFamilyAllowedRequest('GET', '/hub-workspace.js?v=20261127-hub1'), true);
+        assert.equal(isFamilyAllowedRequest('GET', '/api/weather?force=1'), true);
+        assert.equal(isFamilyAllowedRequest('GET', '/api/energy/history?range=24h'), true);
+        assert.equal(isFamilyAllowedRequest('GET', '/api/docker?all=1'), false);
+        assert.equal(isFamilyAllowedRequest('POST', '/api/bookmarks?x=1'), false);
         assert.equal(isFamilyAllowedRequest('PUT', '/api/launcher'), false);
         assert.equal(isFamilyAllowedRequest('POST', '/api/launcher/bookmarks'), false);
         assert.equal(isFamilyAllowedRequest('POST', '/api/terminal/exec'), false);
@@ -490,4 +500,47 @@ test('parseDockerLabelsToApp skips non-web ports and stopped unlabelled containe
         Labels: {},
     });
     assert.equal(stoppedUnlabelled, null);
+});
+
+test('builtin and docker apps default openInWorkspace to false while preserving embed', () => {
+    const enriched = enrichBuiltinApps([
+        { id: 'agent-hub', label: 'Agent Hub', url: '/agent-hub' },
+        { id: 'video-studio', label: 'Video Studio', url: '/video-studio', openInWorkspace: true },
+        { id: 'energy', label: 'Energy', url: '#energy' },
+    ]);
+    const agentHub = enriched.find((a) => a.id === 'agent-hub');
+    assert.equal(agentHub.embed, true);
+    assert.equal(agentHub.openInWorkspace, false);
+
+    const videoStudio = enriched.find((a) => a.id === 'video-studio');
+    assert.equal(videoStudio.embed, true);
+    assert.equal(videoStudio.openInWorkspace, true);
+
+    const energy = enriched.find((a) => a.id === 'energy');
+    assert.equal(energy.embed, false);
+    assert.equal(energy.openInWorkspace, false);
+
+    const dockerDefault = parseDockerLabelsToApp({
+        Id: '333',
+        Names: ['/custom-web'],
+        State: 'running',
+        Ports: [{ PublicPort: 8088, PrivatePort: 8088, Type: 'tcp' }],
+        Labels: { 'lab.dashboard.enable': 'true' },
+    });
+    assert.equal(dockerDefault.embed, true);
+    assert.equal(dockerDefault.openInWorkspace, false);
+
+    const dockerWorkspace = parseDockerLabelsToApp({
+        Id: '444',
+        Names: ['/custom-ws'],
+        State: 'running',
+        Ports: [{ PublicPort: 8089, PrivatePort: 8089, Type: 'tcp' }],
+        Labels: {
+            'lab.dashboard.enable': 'true',
+            'lab.dashboard.workspace': 'true',
+            'lab.dashboard.embed': 'false',
+        },
+    });
+    assert.equal(dockerWorkspace.embed, false);
+    assert.equal(dockerWorkspace.openInWorkspace, true);
 });

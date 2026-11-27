@@ -209,7 +209,7 @@ function enrichBuiltinApps(links = []) {
                 group: String(l.group || meta.group || 'Homelab'),
                 description: String(l.description || ''),
                 embed,
-                openInWorkspace: l.openInWorkspace !== undefined ? Boolean(l.openInWorkspace) : embed,
+                openInWorkspace: Boolean(l.openInWorkspace),
                 family: l.family !== undefined ? Boolean(l.family) : (meta.family !== undefined ? meta.family : DEFAULT_FAMILY_APP_IDS.has(id)),
             };
         });
@@ -298,8 +298,10 @@ function parseDockerLabelsToApp(container, opts = {}) {
         pickLabel(labels, ['lab.dashboard.description', 'homepage.description', 'org.opencontainers.image.description']),
         180
     );
-    const embedRaw = pickLabel(labels, ['lab.dashboard.embed', 'lab.dashboard.workspace']);
+    const embedRaw = pickLabel(labels, ['lab.dashboard.embed']);
     const embed = embedRaw ? parseBool(embedRaw, true) : true;
+    const workspaceRaw = pickLabel(labels, ['lab.dashboard.workspace']);
+    const openInWorkspace = workspaceRaw ? parseBool(workspaceRaw, false) : false;
     const familyRaw = pickLabel(labels, ['lab.dashboard.family']);
     const family = familyRaw ? parseBool(familyRaw, false) : false;
 
@@ -313,7 +315,7 @@ function parseDockerLabelsToApp(container, opts = {}) {
         group,
         description,
         embed,
-        openInWorkspace: embed,
+        openInWorkspace,
         family,
         containerName: rawName,
         containerState: String(container.State || 'unknown').toLowerCase(),
@@ -383,6 +385,7 @@ const FAMILY_ALLOWED_GET_EXACT = new Set([
     '/api/weather',
     '/api/overview',
     '/api/energy',
+    '/api/energy/live',
     '/api/energy/history',
     '/manifest.json',
     '/sw.js',
@@ -406,7 +409,7 @@ const STATIC_ASSET_EXT_RE = /\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|json
  */
 function isFamilyAllowedRequest(method, pathname) {
     const m = String(method || 'GET').toUpperCase();
-    const p = String(pathname || '/');
+    const p = String(pathname || '/').split('?')[0].split('#')[0] || '/';
 
     if (p === '/api/login' || p === '/api/logout') return true;
     if (m !== 'GET' && m !== 'HEAD') return false;

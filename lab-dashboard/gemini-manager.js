@@ -30,6 +30,7 @@ const aiRouter = require('./ai-router');
 const crossTeam = require('./cross-team-orchestrator');
 const tokenUsageHelper = require('./token-usage');
 const audit = require('./audit-logger');
+const autoResumeUtils = require('./auto-resume-utils');
 
 const HOME_DIR = os.homedir();
 const AGY_BIN = process.env.AGY_BIN || path.join(HOME_DIR, '.local/bin/agy');
@@ -60,6 +61,9 @@ const activeRuns = new Map(); // sessionId -> { child, job }
 const lastJobs = new Map();   // sessionId -> last job object
 const autoResumeMap = new Map(); // sessionId -> recovery/auto-resume state
 const autoResumeTimers = new Map(); // sessionId -> Timeout handle
+const quotaResumeHistory = new Map(); // sessionId -> { failures, lastAt }
+const QUOTA_RESUME_WINDOW_MS = 6 * 3600 * 1000;
+const QUOTA_RESUME_MAX_FAILURES = 3;
 
 let taskQueue = [];
 // คิวงานแยกตามห้องแชท: ทุกรายการมี sessionId, แต่ละห้องรันคิวของตัวเองอิสระ
@@ -1390,6 +1394,7 @@ function executeAuto(params, onChunk, onDone) {
         mode: params.mode,
         cwd: params.cwd,
         model: aiRouter.AUTO_MODEL_ID,
+        fromRecovery: Boolean(params.fromRecovery),
         liveThought: { currentAction: '🧠 สมองกลางกำลังวิเคราะห์งาน...', thinking: '', steps: [], stepsCount: 0, timeline: [] }
     };
     let aborted = false;
@@ -1421,7 +1426,9 @@ function executeAuto(params, onChunk, onDone) {
             meta.model = aiRouter.AUTO_MODEL_ID;
             saveSessionsIndexSync();
         }
-        if (code !== 0 && code !== 130 && !aborted && !(job && job.status === 'aborted')) {
+        if (code === 0) {
+            quotaResumeHistory.delete(sid);
+        } else if (code !== 130 && !aborted && !(job && job.status === 'aborted')) {
             try {
                 await finalizeFailedJobRecovery(job || placeholder, {
                     isAuto: true,
@@ -1517,8 +1524,10 @@ function executeAuto(params, onChunk, onDone) {
                     model: c.model,
                     agyAccount: c.engine === 'agy' ? c.account : null,
                     routeBanner: banner,
-                    routerDirective: aiRouter.directiveFor(decision, c),
+                    routerDirective: [params.routerDirective, aiRouter.directiveFor(decision, c)].filter(Boolean).join('\n\n'),
                     deferPersist: true,
+                    fromRecovery: Boolean(params.fromRecovery),
+                    freshConversation: Boolean(params.freshConversation),
                     isAuto: true,
                     attempts: [...tried]
                 }, (type, payload) => {
@@ -1647,6 +1656,7 @@ function executeAuto(params, onChunk, onDone) {
                 mode: params.mode || 'exec',
                 cwd: safeCwd,
                 model: aiRouter.AUTO_MODEL_ID,
+                fromRecovery: Boolean(params.fromRecovery),
                 liveThought: placeholder.liveThought
             };
             activeJob = teamJob;
@@ -1719,13 +1729,13 @@ function buildBrowserVisionPrompt(rawPrompt, sessionId, browserVision) {
 }
 
 // ── Execute Prompt Stream ────────────────────────────────────────────────────
-function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '', browserVision = false, fromRecovery = false, isAuto = false, attempts = null }, onChunk, onDone) {
+function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = 'gemini-4-hydrogen-high', resetSession = false, agyAccount = null, routeBanner = '', deferPersist = false, routerDirective = '', browserVision = false, fromRecovery = false, freshConversation = false, isAuto = false, attempts = null }, onChunk, onDone) {
     const sid0 = resolveSessionId(sessionId);
     if (!fromRecovery && !deferPersist) {
         clearRecoveryForSession(sid0);
     }
     if (model === aiRouter.AUTO_MODEL_ID) {
-        return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession, browserVision, fromRecovery }, onChunk, onDone);
+        return executeAuto({ sessionId, jobId, prompt, images, mode, cwd, resetSession, routerDirective, browserVision, fromRecovery, freshConversation }, onChunk, onDone);
     }
     const sid = sid0;
     if (activeRuns.has(sid)) {
@@ -1789,7 +1799,8 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         modelInfo: null,
         tokenUsage: null,
         steps: [],
-        deferPersist: Boolean(deferPersist)
+        deferPersist: Boolean(deferPersist),
+        fromRecovery: Boolean(fromRecovery)
     };
     job.modelInfo = buildJobModelInfo({ model, account: job.usedAccount, auto: isAuto, attempts });
     activeJob = job;
@@ -1845,7 +1856,8 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             } catch (_) {}
             return false;
         };
-        const hadClaudeSession = Boolean(!forceNew && sessMeta && sessMeta.claudeSessionId && claudeSessionExistsOnDisk(sessMeta.claudeSessionId));
+        const useFreshClaude = Boolean(fromRecovery && freshConversation);
+        const hadClaudeSession = Boolean(!forceNew && !useFreshClaude && sessMeta && sessMeta.claudeSessionId && claudeSessionExistsOnDisk(sessMeta.claudeSessionId));
         let claudeSid = hadClaudeSession ? sessMeta.claudeSessionId : crypto.randomUUID();
         let finalClaudePrompt = cliPrompt;
 
@@ -1854,7 +1866,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         const claudeSyncedCount = (sessMeta && typeof sessMeta.claudeSyncedCount === 'number')
             ? sessMeta.claudeSyncedCount
             : (hadClaudeSession ? priorForClaude.length : 0);
-        const needClaudeBridge = !hadClaudeSession || Boolean(sessMeta && sessMeta.needsClaudeBridge) || (claudeSyncedCount < priorForClaude.length);
+        const needClaudeBridge = !useFreshClaude && (!hadClaudeSession || Boolean(sessMeta && sessMeta.needsClaudeBridge) || (claudeSyncedCount < priorForClaude.length));
         if (needClaudeBridge && priorForClaude.length > 0) {
             const bridgeBlock = formatSessionHistoryBridge(priorForClaude);
             if (bridgeBlock) {
@@ -1877,7 +1889,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             '--verbose',
             '--include-partial-messages'
         ];
-        if (hadClaudeSession) {
+        if (hadClaudeSession && !useFreshClaude) {
             args.push('--resume', claudeSid);
         } else {
             args.push('--session-id', claudeSid);
@@ -2240,7 +2252,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             syncClaudeTokenUsage(true);
             try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
             lastJobs.set(sid, job);
-            if (!job.deferPersist && effectiveCode !== 0 && job.status !== 'aborted') {
+            if (!job.deferPersist && effectiveCode === 0) {
+                quotaResumeHistory.delete(sid);
+            } else if (!job.deferPersist && effectiveCode !== 0 && job.status !== 'aborted') {
                 try { await finalizeFailedJobRecovery(job, { stderrTail: claudeStderrTail }); } catch (_) {}
             }
             if (!job.deferPersist && job.status !== 'aborted') {
@@ -2293,7 +2307,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
                 activeRuns.delete(sid);
                 lastJobs.set(sid, job);
                 try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
-                if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
+                if (!job.deferPersist && code === 0) {
+                    quotaResumeHistory.delete(sid);
+                } else if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
                     try { await finalizeFailedJobRecovery(job, {}); } catch (_) {}
                 }
                 if (!job.deferPersist && job.status !== 'aborted') {
@@ -2329,9 +2345,14 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
 
         const prevAccount = (sessMeta && sessMeta.agyAccount) || null;
         const switchedAccount = Boolean(prevAccount && prevAccount !== agyAcc.id);
-        let convId = (!forceNew && sessMeta)
+        const useFreshAgy = Boolean(fromRecovery && freshConversation);
+        let convId = (!forceNew && !useFreshAgy && sessMeta)
             ? ((sessMeta.agyConvs && sessMeta.agyConvs[agyAcc.id]) || (!switchedAccount ? existingConvId : null))
             : null;
+        // Start fresh conversation for this account only (never touch other accounts' agyConvs)
+        if (useFreshAgy && sessMeta && sessMeta.agyConvs) {
+            delete sessMeta.agyConvs[agyAcc.id];
+        }
         // Verify that the conversation directory actually exists in this Google account's brain dir
         if (convId && !fs.existsSync(path.join(agyBrain, convId))) {
             convId = null;
@@ -2344,10 +2365,12 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
         const agySyncedForAcc = (sessMeta && sessMeta.agySyncedCount && typeof sessMeta.agySyncedCount[agyAcc.id] === 'number')
             ? sessMeta.agySyncedCount[agyAcc.id]
             : (convId && !switchedAccount && !(sessMeta && sessMeta.needsAgyBridge) ? priorForAgy.length : 0);
-        const needAgyBridge = !convId
+        const needAgyBridge = !useFreshAgy && (
+            !convId
             || Boolean(sessMeta && sessMeta.needsAgyBridge)
             || switchedAccount
-            || (agySyncedForAcc < priorForAgy.length);
+            || (agySyncedForAcc < priorForAgy.length)
+        );
 
         let finalAgyPrompt = cliPrompt;
         if (needAgyBridge && priorForAgy.length > 0) {
@@ -2548,7 +2571,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
             try { onChunk('meta', { modelInfo: job.modelInfo, tokenUsage: job.tokenUsage || null }); } catch (_) {}
             lastJobs.set(sid, job);
 
-            if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
+            if (!job.deferPersist && code === 0) {
+                quotaResumeHistory.delete(sid);
+            } else if (!job.deferPersist && code !== 0 && job.status !== 'aborted') {
                 try { await finalizeFailedJobRecovery(job, { stderrTail: agyStderrTail }); } catch (_) {}
             }
             if (!job.deferPersist && job.status !== 'aborted') {
@@ -2590,7 +2615,7 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
     }
 
     const args = ['-p', cliPrompt, '--skip-trust'];
-    if (!forceNew) {
+    if (!forceNew && !(fromRecovery && freshConversation)) {
         args.push('--resume', 'latest');
     }
     if (mode === 'exec') {
@@ -2643,6 +2668,9 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
     child.on('close', (code) => {
         activeChild = null;
         activeJob.exitCode = code;
+        if (code === 0) {
+            quotaResumeHistory.delete(sid);
+        }
         if (activeJob.status !== 'aborted') {
             activeJob.status = (code === 0) ? 'completed' : 'error';
             if (code !== 0 && !activeJob.error) {
@@ -3736,6 +3764,15 @@ function loadAutoResumeStoreSync() {
             // Prune stale records older than 24 hours
             if (rec.createdAt && (now - rec.createdAt) > 24 * 3600 * 1000) continue;
             autoResumeMap.set(rec.sessionId, rec);
+            if (rec.quotaResumeFailures > 0) {
+                const lastAt = rec.updatedAt || rec.createdAt || now;
+                if ((now - lastAt) <= QUOTA_RESUME_WINDOW_MS) {
+                    quotaResumeHistory.set(rec.sessionId, {
+                        failures: Number(rec.quotaResumeFailures) || 0,
+                        lastAt
+                    });
+                }
+            }
             if (rec.armed) {
                 restored++;
                 scheduleAutoResumeTimer(rec);
@@ -3760,6 +3797,7 @@ function clearAutoResumeTimer(sessionId) {
 function clearRecoveryForSession(sessionId) {
     if (!sessionId) return;
     clearAutoResumeTimer(sessionId);
+    quotaResumeHistory.delete(sessionId);
     if (autoResumeMap.has(sessionId)) {
         autoResumeMap.delete(sessionId);
         saveAutoResumeStoreSync();
@@ -3774,6 +3812,7 @@ function sanitizeRecoveryForClient(rec) {
         model: rec.model,
         modelLabel: rec.modelLabel || aiRouter.modelLabel(rec.model),
         agyAccount: rec.agyAccount || null,
+        switchedFrom: rec.switchedFrom || null,
         engine: rec.engine,
         isQuotaLimit: Boolean(rec.isQuotaLimit),
         stepsCount: Array.isArray(rec.steps) ? rec.steps.length : 0,
@@ -3782,7 +3821,9 @@ function sanitizeRecoveryForClient(rec) {
         armed: Boolean(rec.armed),
         resumeAt: rec.resumeAt || null,
         resetSource: rec.resetSource || null,
+        exhaustedWindow: rec.exhaustedWindow || null,
         retryCount: rec.retryCount || 0,
+        quotaResumeFailures: rec.quotaResumeFailures || 0,
         lastCheckMsg: rec.lastCheckMsg || null,
         createdAt: rec.createdAt || Date.now(),
         updatedAt: rec.updatedAt || Date.now()
@@ -3795,60 +3836,9 @@ function getRecoveryState(sessionId) {
     return rec ? sanitizeRecoveryForClient(rec) : null;
 }
 
-function parseResetTimeFromText(text) {
-    const raw = String(text || '');
-    if (!raw) return null;
-    const now = Date.now();
-    const bufferMs = 45 * 1000;
-
-    // 1) Explicit ISO timestamp
-    const isoMatch = raw.match(/resets?(?:\s+at)?\s+(\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)/i);
-    if (isoMatch) {
-        const ms = Date.parse(isoMatch[1]);
-        if (!Number.isNaN(ms) && ms > now && (ms - now) <= 8 * 24 * 3600 * 1000) {
-            return { resumeAt: ms + bufferMs, source: 'error_text' };
-        }
-    }
-
-    // 2) Relative duration: "try again in 45 minutes" / "resets in 2 hours 15 minutes"
-    const relMatch = raw.match(/(?:resets?|try again|wait|available)\s+(?:in\s+)?(?:(\d+)\s*(?:hours?|hrs?|h)\s*)?(?:(\d+)\s*(?:minutes?|mins?|m)\s*)?(?:(\d+)\s*(?:seconds?|secs?|s))?/i);
-    if (relMatch && (relMatch[1] || relMatch[2] || relMatch[3])) {
-        const ms = ((Number(relMatch[1] || 0) * 3600) + (Number(relMatch[2] || 0) * 60) + Number(relMatch[3] || 0)) * 1000;
-        if (ms >= 5000 && ms <= 24 * 3600 * 1000) {
-            return { resumeAt: now + ms + bufferMs, source: 'error_text' };
-        }
-    }
-
-    // 3) Clock time: "resets 6am (Asia/Bangkok)" or "resets 14:30" or "resets at 11:15pm"
-    const clkMatch = raw.match(/resets?(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?/i);
-    if (clkMatch) {
-        let hour = Number(clkMatch[1]);
-        const min = Number(clkMatch[2] || 0);
-        const ampm = clkMatch[3] ? clkMatch[3].toLowerCase() : null;
-        const tz = clkMatch[4] ? clkMatch[4].trim() : '';
-        if (ampm === 'pm' && hour < 12) hour += 12;
-        if (ampm === 'am' && hour === 12) hour = 0;
-        if (hour >= 0 && hour <= 23 && min >= 0 && min <= 59) {
-            const d = new Date(now);
-            if (/utc|gmt/i.test(tz)) {
-                d.setUTCHours(hour, min, 0, 0);
-            } else {
-                d.setHours(hour, min, 0, 0);
-            }
-            let targetMs = d.getTime();
-            if (targetMs <= now) targetMs += 24 * 3600 * 1000;
-            if (targetMs > now && (targetMs - now) <= 25 * 3600 * 1000) {
-                return { resumeAt: targetMs + bufferMs, source: 'error_text' };
-            }
-        }
-    }
-
-    return null;
-}
-
 async function resolveQuotaResetTime({ engine, model, agyAccount, errorText, outputText, stderrText }) {
     const combined = [errorText, stderrText, String(outputText || '').slice(-1500)].filter(Boolean).join('\n');
-    const parsedFromText = parseResetTimeFromText(combined);
+    const parsedFromText = autoResumeUtils.parseResetTimeFromText(combined);
     const now = Date.now();
     const bufferMs = 45 * 1000;
 
@@ -3859,15 +3849,18 @@ async function resolveQuotaResetTime({ engine, model, agyAccount, errorText, out
                 new Promise((resolve) => setTimeout(() => resolve(null), 3500))
             ]);
             if (cw && cw.ok) {
-                const fh = cw.fiveHour;
-                const wk = cw.weekly;
-                const pick = (fh && fh.remainingPct <= 5 && fh.resetTime)
-                    ? fh.resetTime
-                    : ((wk && wk.remainingPct <= 5 && wk.resetTime) ? wk.resetTime : (fh && fh.resetTime));
+                const state = autoResumeUtils.windowState({ fiveHour: cw.fiveHour, weekly: cw.weekly });
+                const pick = (!state.usable && state.resetTime)
+                    ? state.resetTime
+                    : (cw.fiveHour && cw.fiveHour.resetTime);
                 if (pick) {
                     const ms = Date.parse(pick);
                     if (!Number.isNaN(ms) && ms > now) {
-                        return { resumeAt: ms + bufferMs, source: 'quota_api' };
+                        return {
+                            resumeAt: ms + bufferMs,
+                            source: 'quota_api',
+                            exhaustedWindow: state.exhaustedWindow || null
+                        };
                     }
                 }
             }
@@ -3878,19 +3871,29 @@ async function resolveQuotaResetTime({ engine, model, agyAccount, errorText, out
             ]);
             if (q && q.ok && Array.isArray(q.pools)) {
                 const pid = aiRouter.agyPoolId(model || '');
-                const pool = q.pools.find((p) => p.id === pid) || q.pools[0];
-                const rt = (pool && pool.fiveHour && pool.fiveHour.resetTime) || (pool && pool.resetTime);
+                const pool = q.pools.find((p) => p.id === pid) || null;
+                const state = autoResumeUtils.poolWindowState(pool);
+                const rt = (!state.usable && state.resetTime)
+                    ? state.resetTime
+                    : ((pool && pool.fiveHour && pool.fiveHour.resetTime) || (pool && pool.resetTime) || state.resetTime);
                 if (rt) {
                     const ms = Date.parse(rt);
                     if (!Number.isNaN(ms) && ms > now) {
-                        return { resumeAt: ms + bufferMs, source: 'quota_api' };
+                        return {
+                            resumeAt: ms + bufferMs,
+                            source: 'quota_api',
+                            exhaustedWindow: state.exhaustedWindow || null
+                        };
                     }
                 }
             }
         }
     } catch (_) {}
 
-    return parsedFromText || { resumeAt: null, source: 'poll' };
+    if (parsedFromText) {
+        return { ...parsedFromText, exhaustedWindow: null };
+    }
+    return { resumeAt: null, source: 'poll', exhaustedWindow: null };
 }
 
 function scheduleAutoResumeTimer(rec) {
@@ -3934,12 +3937,22 @@ async function checkQuotaRecovered(rec) {
     try {
         if (rec.engine === 'claude-code') {
             const cw = await getClaudeWebQuota({ force: true });
-            if (cw && cw.ok && cw.fiveHour) {
-                if (cw.fiveHour.remainingPct <= 2) {
+            if (cw && cw.ok) {
+                const state = autoResumeUtils.windowState({ fiveHour: cw.fiveHour, weekly: cw.weekly }, 2);
+                if (!state.usable) {
+                    const rtMs = state.resetTime ? Date.parse(state.resetTime) : NaN;
+                    const nextResumeAt = (!Number.isNaN(rtMs) && rtMs > Date.now())
+                        ? (rtMs + 45 * 1000)
+                        : (Date.now() + 90 * 1000);
+                    const winLabel = state.exhaustedWindow === 'weekly'
+                        ? 'รอบสัปดาห์'
+                        : (state.exhaustedWindow === '5h' ? 'รอบ 5 ชม.' : 'ไม่ทราบสถานะ');
+                    const pctText = state.remainingPct !== null ? `ยังเหลือ ${state.remainingPct}%` : 'ไม่สามารถตรวจสอบได้';
                     return {
                         ready: false,
-                        nextResumeAt: cw.fiveHour.resetTime ? (Date.parse(cw.fiveHour.resetTime) + 45 * 1000) : (Date.now() + 90 * 1000),
-                        msg: `โควตา Claude 5h ยังอยู่ที่ ${cw.fiveHour.remainingPct}%`
+                        nextResumeAt,
+                        exhaustedWindow: state.exhaustedWindow || null,
+                        msg: `โควตา Claude ${winLabel} ${pctText}`
                     };
                 }
                 return { ready: true };
@@ -3951,13 +3964,30 @@ async function checkQuotaRecovered(rec) {
             const q = await getQuotaSummary({ accountId: rec.agyAccount || 'g1' });
             if (q && q.ok && Array.isArray(q.pools)) {
                 const pid = aiRouter.agyPoolId(rec.model || '');
-                const pool = q.pools.find((p) => p.id === pid);
-                if (pool && pool.remainingPct <= 2) {
-                    const rt = (pool.fiveHour && pool.fiveHour.resetTime) || pool.resetTime;
+                const pool = q.pools.find((p) => p.id === pid) || null;
+                const state = autoResumeUtils.poolWindowState(pool, 2);
+                if (state.missing) {
                     return {
                         ready: false,
-                        nextResumeAt: rt ? (Date.parse(rt) + 45 * 1000) : (Date.now() + 2 * 60 * 1000),
-                        msg: `โควตา ${pool.name} ยังอยู่ที่ ${pool.remainingPct}%`
+                        nextResumeAt: Date.now() + 5 * 60 * 1000,
+                        exhaustedWindow: null,
+                        msg: 'ไม่พบข้อมูลโควตา pool นี้'
+                    };
+                }
+                if (!state.usable) {
+                    const rtMs = state.resetTime ? Date.parse(state.resetTime) : NaN;
+                    const nextResumeAt = (!Number.isNaN(rtMs) && rtMs > Date.now())
+                        ? (rtMs + 45 * 1000)
+                        : (Date.now() + 2 * 60 * 1000);
+                    const winLabel = state.exhaustedWindow === 'weekly'
+                        ? 'รอบสัปดาห์'
+                        : (state.exhaustedWindow === '5h' ? 'รอบ 5 ชม.' : '');
+                    const pctText = state.remainingPct !== null ? `ยังเหลือ ${state.remainingPct}%` : 'ไม่สามารถตรวจสอบได้';
+                    return {
+                        ready: false,
+                        nextResumeAt,
+                        exhaustedWindow: state.exhaustedWindow || null,
+                        msg: `โควตา ${pool.name || pid}${winLabel ? ` ${winLabel}` : ''} ${pctText}`
                     };
                 }
                 return { ready: true };
@@ -3973,11 +4003,47 @@ async function checkQuotaRecovered(rec) {
     return { ready: Boolean(rec.resumeAt && Date.now() >= rec.resumeAt) };
 }
 
-function buildRecoveryDirective({ originalPrompt, failedModelLabel, steps, partialOutput, errorText, isAutoResume }) {
+async function findAlternativeAgyAccount(rec) {
+    if (!rec || rec.engine !== 'agy') return null;
+    try {
+        const accounts = aiRouter.listAgyAccounts();
+        if (!Array.isArray(accounts) || accounts.length === 0) return null;
+        const currentAcc = rec.agyAccount || 'g1';
+        const pid = aiRouter.agyPoolId(rec.model || '');
+        let best = null;
+        for (const acc of accounts) {
+            if (!acc || !acc.id || acc.id === currentAcc || acc.ready === false) continue;
+            let q = null;
+            try {
+                q = await Promise.race([
+                    getQuotaSummary({ accountId: acc.id }),
+                    new Promise((resolve) => setTimeout(() => resolve(null), 4000))
+                ]);
+            } catch (_) {
+                q = null;
+            }
+            if (!q || !q.ok || !Array.isArray(q.pools)) continue;
+            const pool = q.pools.find((p) => p.id === pid) || null;
+            const state = autoResumeUtils.poolWindowState(pool, 5);
+            if (state.usable) {
+                const pct = typeof state.remainingPct === 'number' ? state.remainingPct : 0;
+                if (!best || pct > best.remainingPct) {
+                    best = { accountId: acc.id, remainingPct: pct };
+                }
+            }
+        }
+        return best;
+    } catch (_) {
+        return null;
+    }
+}
+
+function buildRecoveryDirective({ originalPrompt, failedModelLabel, steps, partialOutput, errorText, isAutoResume, recentHistory = '' }) {
     const stepList = Array.isArray(steps) && steps.length > 0
         ? steps.slice(-20).map((s, i) => `${i + 1}. ${s}`).join('\n')
         : '(ยังไม่มีการใช้เครื่องมือ หรือยังไม่บันทึกขั้นตอน)';
     const tail = String(partialOutput || '').trim().slice(-1500);
+    const historyText = String(recentHistory || '').trim();
     const header = isAutoResume
         ? '[⏱️ Auto-Resume หลังปลดลิมิตโควตา]'
         : '[🔄 ส่งไม้ต่อจากโมเดลก่อนหน้าที่หยุดกลางคัน]';
@@ -3991,6 +4057,9 @@ function buildRecoveryDirective({ originalPrompt, failedModelLabel, steps, parti
         `สิ่งที่ทำไปแล้วในรอบก่อน (${Array.isArray(steps) ? steps.length : 0} ขั้นตอน):`,
         stepList
     ];
+    if (historyText) {
+        lines.push('', 'บริบทสนทนาล่าสุด (สรุป):', historyText);
+    }
     if (tail) {
         lines.push('', 'ผลลัพธ์ล่าสุดก่อนหยุด:', tail);
     }
@@ -4000,7 +4069,82 @@ function buildRecoveryDirective({ originalPrompt, failedModelLabel, steps, parti
         '- ตรวจสอบสถานะไฟล์/ระบบปัจจุบันก่อนลงมือแก้ไข เพื่อไม่ให้ทำซ้ำหรือทับงานที่ทำเสร็จไปแล้ว',
         '- ดำเนินการต่อจากจุดที่ค้างอยู่ให้เสร็จสมบูรณ์'
     );
+    if (historyText) {
+        lines.push('- บทสนทนานี้เริ่มใหม่เพื่อประหยัดโควตา ให้ใช้สรุปด้านบนและตรวจไฟล์จริงแทนการถามซ้ำ');
+    }
     return lines.join('\n');
+}
+
+async function launchAutoResume(sessionId, rec) {
+    autoResumeMap.delete(sessionId);
+    saveAutoResumeStoreSync();
+
+    const now = Date.now();
+    const prevHist = quotaResumeHistory.get(sessionId);
+    const histFailures = (prevHist && prevHist.lastAt && (now - prevHist.lastAt) <= QUOTA_RESUME_WINDOW_MS)
+        ? (prevHist.failures || 0)
+        : 0;
+    const recLastAt = rec.updatedAt || rec.createdAt || 0;
+    const recFailures = (recLastAt && (now - recLastAt) <= QUOTA_RESUME_WINDOW_MS)
+        ? Number(rec.quotaResumeFailures || 0)
+        : 0;
+    quotaResumeHistory.set(sessionId, {
+        failures: Math.max(histFailures, recFailures),
+        lastAt: now
+    });
+
+    const messages = loadSessionMessagesSync(sessionId);
+    let historyChars = 0;
+    if (Array.isArray(messages)) {
+        for (const m of messages) {
+            if (!m || typeof m !== 'object') continue;
+            historyChars += String(m.content ?? m.text ?? '').length;
+        }
+    }
+    const freshConversation = Boolean(
+        autoResumeUtils.shouldUseFreshConversation({ historyChars }) || rec.switchedFrom
+    );
+    const recentHistory = freshConversation
+        ? autoResumeUtils.buildRecentHistoryDigest(messages)
+        : '';
+
+    const sessMeta = getSessionMetaSync(sessionId);
+    const failedLabel = rec.modelLabel || aiRouter.modelLabel(rec.model);
+    const directive = buildRecoveryDirective({
+        originalPrompt: rec.prompt,
+        failedModelLabel: failedLabel,
+        steps: rec.steps,
+        partialOutput: rec.partialOutput,
+        errorText: rec.errorText,
+        isAutoResume: true,
+        recentHistory
+    });
+    const resumePrompt = rec.switchedFrom
+        ? `⏱️ [Auto-Resume สลับบัญชี] สลับ ${failedLabel} จาก ${rec.switchedFrom} ไป ${rec.agyAccount} — ดำเนินการต่อจากจุดที่ค้างให้เสร็จสมบูรณ์`
+        : `⏱️ [Auto-Resume หลังปลดลิมิต] โควตา ${failedLabel} รีเซ็ตแล้ว — ดำเนินการต่อจากจุดที่ค้างให้เสร็จสมบูรณ์`;
+
+    console.log(`[GeminiManager] Auto-resuming session ${sessionId} on ${rec.model} (${rec.agyAccount || 'default'}${rec.switchedFrom ? `, switched from ${rec.switchedFrom}` : ''}) fresh=${freshConversation} historyChars=${historyChars}`);
+    try {
+        executePromptAudited(
+            {
+                sessionId,
+                auditSource: 'recovery',
+                prompt: resumePrompt,
+                images: Array.isArray(rec.images) ? rec.images : [],
+                mode: rec.mode || (sessMeta && sessMeta.mode) || 'exec',
+                cwd: rec.cwd || (sessMeta && sessMeta.cwd) || PROJECTS_BASE,
+                model: rec.model,
+                agyAccount: rec.engine === 'agy' ? rec.agyAccount : null,
+                routerDirective: directive,
+                fromRecovery: true,
+                freshConversation
+            },
+            () => {},
+            () => {}
+        );
+    } catch (err) {
+        console.error(`[GeminiManager] Auto-resume launch failed [${sessionId}]:`, err.message);
+    }
 }
 
 async function onAutoResumeTick(sessionId) {
@@ -4022,6 +4166,22 @@ async function onAutoResumeTick(sessionId) {
 
     const chk = await checkQuotaRecovered(rec);
     if (!chk.ready) {
+        if (rec.engine === 'agy') {
+            const alt = await findAlternativeAgyAccount(rec);
+            if (alt) {
+                const prevAccount = rec.agyAccount || 'g1';
+                rec.switchedFrom = prevAccount;
+                rec.agyAccount = alt.accountId;
+                rec.lastCheckMsg = `สลับจาก ${prevAccount} ไป ${alt.accountId} (เหลือ ${alt.remainingPct}%)`;
+                rec.updatedAt = Date.now();
+                console.log(`[GeminiManager] Auto-resume switching account [${sessionId}]: ${prevAccount} -> ${alt.accountId} (${alt.remainingPct}% remaining)`);
+                await launchAutoResume(sessionId, rec);
+                return;
+            }
+        }
+        if (chk.exhaustedWindow) {
+            rec.exhaustedWindow = chk.exhaustedWindow;
+        }
         if (rec.resumeAt) {
             rec.retryCount = (rec.retryCount || 0) + 1;
             if (rec.retryCount > 8) {
@@ -4041,49 +4201,17 @@ async function onAutoResumeTick(sessionId) {
     }
 
     // Quota recovered! Trigger resume now
-    autoResumeMap.delete(sessionId);
-    saveAutoResumeStoreSync();
-    aiRouter.clearCooldowns();
-
-    const sessMeta = getSessionMetaSync(sessionId);
-    const failedLabel = rec.modelLabel || aiRouter.modelLabel(rec.model);
-    const directive = buildRecoveryDirective({
-        originalPrompt: rec.prompt,
-        failedModelLabel: failedLabel,
-        steps: rec.steps,
-        partialOutput: rec.partialOutput,
-        errorText: rec.errorText,
-        isAutoResume: true
-    });
-    const resumePrompt = `⏱️ [Auto-Resume หลังปลดลิมิต] โควตา ${failedLabel} รีเซ็ตแล้ว — ดำเนินการต่อจากจุดที่ค้างให้เสร็จสมบูรณ์`;
-
-    console.log(`[GeminiManager] Auto-resuming session ${sessionId} on ${rec.model} (${rec.agyAccount || 'default'})`);
-    try {
-        executePromptAudited(
-            {
-                sessionId,
-                auditSource: 'recovery',
-                prompt: resumePrompt,
-                images: Array.isArray(rec.images) ? rec.images : [],
-                mode: rec.mode || (sessMeta && sessMeta.mode) || 'exec',
-                cwd: rec.cwd || (sessMeta && sessMeta.cwd) || PROJECTS_BASE,
-                model: rec.model,
-                agyAccount: rec.engine === 'agy' ? rec.agyAccount : null,
-                routerDirective: directive,
-                fromRecovery: true
-            },
-            () => {},
-            () => {}
-        );
-    } catch (err) {
-        console.error(`[GeminiManager] Auto-resume launch failed [${sessionId}]:`, err.message);
-    }
+    await launchAutoResume(sessionId, rec);
 }
 
 async function finalizeFailedJobRecovery(job, { isAuto = false, stderrTail = '' } = {}) {
     if (!job || !job.sessionId) return null;
     const sid = job.sessionId;
-    if (job.status === 'aborted' || job.exitCode === 130 || job.exitCode === 0) return null;
+    if (job.exitCode === 0) {
+        quotaResumeHistory.delete(sid);
+        return null;
+    }
+    if (job.status === 'aborted' || job.exitCode === 130) return null;
 
     const errText = String(job.error || '');
     const rawOut = String(job.output || '');
@@ -4097,7 +4225,7 @@ async function finalizeFailedJobRecovery(job, { isAuto = false, stderrTail = '' 
     const failedEngine = engineOfModel(failedModel);
     const failedAccount = job.usedAccount || job.agyAccount || (failedEngine === 'claude-code' ? 'claude-pro' : null);
 
-    let resetInfo = { resumeAt: null, source: null };
+    let resetInfo = { resumeAt: null, source: null, exhaustedWindow: null };
     if (isQuotaLimit) {
         resetInfo = await resolveQuotaResetTime({
             engine: failedEngine,
@@ -4110,12 +4238,31 @@ async function finalizeFailedJobRecovery(job, { isAuto = false, stderrTail = '' 
     }
 
     const now = Date.now();
+    const isFromRecovery = Boolean(job.fromRecovery || job.auditSource === 'recovery');
+    let quotaResumeFailures = 0;
+    if (isQuotaLimit && isFromRecovery) {
+        const hist = quotaResumeHistory.get(sid);
+        if (hist && hist.lastAt && (now - hist.lastAt) <= QUOTA_RESUME_WINDOW_MS) {
+            quotaResumeFailures = (hist.failures || 0) + 1;
+            quotaResumeHistory.set(sid, { failures: quotaResumeFailures, lastAt: now });
+        }
+    }
+
+    let armed = Boolean(isQuotaLimit);
+    let lastCheckMsg = null;
+    if (isQuotaLimit && quotaResumeFailures >= QUOTA_RESUME_MAX_FAILURES) {
+        armed = false;
+        lastCheckMsg = 'Auto-Resume หยุดเอง: โควตาหมดซ้ำ 3 รอบติด กรุณาเลือกโมเดล/บัญชีอื่นหรือรอรีเซ็ต';
+        console.log(`[GeminiManager] Auto-resume stopped after ${quotaResumeFailures} consecutive quota failures [${sid}]`);
+    }
+
     const rec = {
         sessionId: sid,
         jobId: job.id,
         model: failedModel,
         modelLabel: failedModel === aiRouter.AUTO_MODEL_ID ? 'Auto (ทุกโมเดล)' : aiRouter.modelLabel(failedModel),
         agyAccount: failedAccount,
+        switchedFrom: null,
         engine: failedEngine,
         mode: job.mode || 'exec',
         cwd: job.cwd || PROJECTS_BASE,
@@ -4126,14 +4273,24 @@ async function finalizeFailedJobRecovery(job, { isAuto = false, stderrTail = '' 
         errorText: errText.slice(0, 300),
         isQuotaLimit,
         isAuto,
-        armed: Boolean(isQuotaLimit),
+        armed,
         resumeAt: resetInfo ? resetInfo.resumeAt : null,
         resetSource: resetInfo ? resetInfo.source : null,
+        exhaustedWindow: resetInfo ? (resetInfo.exhaustedWindow || null) : null,
         retryCount: 0,
-        lastCheckMsg: null,
+        quotaResumeFailures,
+        lastCheckMsg,
         createdAt: now,
         updatedAt: now
     };
+
+    if (rec.armed && isQuotaLimit && failedEngine === 'agy') {
+        const alt = await findAlternativeAgyAccount(rec);
+        if (alt) {
+            rec.resumeAt = Date.now() + 15 * 1000;
+            rec.lastCheckMsg = `พบบัญชีสำรอง ${alt.accountId} (เหลือ ${alt.remainingPct}%) — เตรียมสลับบัญชีอัตโนมัติ`;
+        }
+    }
 
     autoResumeMap.set(sid, rec);
     saveAutoResumeStoreSync();
@@ -4192,7 +4349,9 @@ async function armAutoResume(sessionId) {
     if (!rec) throw new Error('ไม่พบงานที่หยุดชั่วคราวในห้องแชทนี้');
     rec.armed = true;
     rec.retryCount = 0;
+    rec.quotaResumeFailures = 0;
     rec.lastCheckMsg = null;
+    quotaResumeHistory.delete(sid);
     if (!rec.resumeAt || rec.resumeAt <= Date.now()) {
         const resetInfo = await resolveQuotaResetTime({
             engine: rec.engine,
@@ -4204,6 +4363,7 @@ async function armAutoResume(sessionId) {
         });
         rec.resumeAt = resetInfo ? resetInfo.resumeAt : null;
         rec.resetSource = resetInfo ? resetInfo.source : 'poll';
+        rec.exhaustedWindow = resetInfo ? (resetInfo.exhaustedWindow || null) : null;
     }
     rec.updatedAt = Date.now();
     saveAutoResumeStoreSync();

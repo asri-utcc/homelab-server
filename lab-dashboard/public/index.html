@@ -7,7 +7,7 @@
 <title>Home-lab Control Panel</title>
 <link rel="stylesheet" href="/styles.css?v=20261121-bgstar">
 <link rel="stylesheet" href="/launcher-bar.css?v=20261124-launcher">
-<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov3">
+<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov4">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -438,6 +438,30 @@
           </div>
         </div>
       </article>
+
+      <!-- Band 3: AI Quota & Credits (All Accounts + Providers) -->
+      <section class="ov3-card ov3-span-12" id="ov3-panel-quota" aria-label="โควตา AI ทั้งหมด">
+        <header class="ov3-card__head">
+          <div class="ov2-panel-title-group">
+            <h2 class="ov3-card__title">โควตา AI ทั้งหมด</h2>
+            <span class="ov3-card__sub" id="ov3-quota-sub">กำลังตรวจสอบโควตาทุกช่องทาง…</span>
+          </div>
+          <div class="ov2-panel-actions">
+            <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" id="ov3-quota-toggle-models" aria-expanded="false" aria-controls="ov3-quota-models-wrap">รายโมเดล</button>
+            <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" id="ov3-quota-refresh" title="อัปเดตโควตา AI ทันที">รีเฟรช</button>
+            <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/quota">หน้าเต็ม</a>
+          </div>
+        </header>
+        <div class="ov3-card__body ov3-quota-body">
+          <div class="ov3-quota-grid" id="ov3-quota-grid">
+            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
+            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
+            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
+            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
+          </div>
+          <div class="ov3-quota-models" id="ov3-quota-models-wrap" hidden></div>
+        </div>
+      </section>
 
       <!-- Band 3: Compute Resources Table (homelab always first + Agent Hub nodes) -->
       <section class="ov3-card ov3-span-12" id="ov2-panel-nodes" aria-label="ทรัพยากรเครื่องและ Agent">
@@ -1826,7 +1850,7 @@
   </button>
 </nav>
 
-<script src="/overview-v2.js?v=20261127-ov3"></script>
+<script src="/overview-v2.js?v=20261127-ov4"></script>
 <script src="/launcher-bar.js?v=20261124-3dwow"></script>
 <script src="/model-alerts.js" defer></script>
 </body>

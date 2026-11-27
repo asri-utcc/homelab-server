@@ -2056,6 +2056,222 @@
     animation: ov3-shimmer 1.2s linear infinite;
 }
 
+/* ── Band 3: AI Quota Grid ──────────────────────────────────────────────── */
+.ov3-quota-body {
+    padding: 16px 20px 18px;
+    gap: 14px;
+}
+
+.ov3-quota-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+    gap: 12px;
+}
+
+.ov3-qcard {
+    background: var(--ov-surface-2);
+    border: 1px solid var(--ov-border);
+    border-radius: var(--ov-radius-sm);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.ov3-qcard.is-limit {
+    border-color: rgba(248, 113, 113, 0.42);
+}
+
+.ov3-qcard__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.ov3-qcard__title-wrap {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ov3-qcard__name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ov-ink-1);
+    line-height: 1.25;
+}
+
+.ov3-qcard__sub {
+    font-size: 11.5px;
+    color: var(--ov-ink-3);
+    font-family: var(--ov-mono);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ov3-qpools {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    flex: 1 1 auto;
+}
+
+.ov3-qpool {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.ov3-qpool__top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.ov3-qpool__label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ov-ink-2);
+    min-width: 0;
+}
+
+.ov3-qpool__val {
+    font-size: 15px;
+    font-weight: 700;
+    font-family: var(--ov-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ov-ink-1);
+    flex-shrink: 0;
+}
+
+.ov3-qpool__val[data-tone="ok"],
+.ov3-qcredit__val[data-tone="ok"] {
+    color: var(--ov-green);
+}
+
+.ov3-qpool__val[data-tone="warn"],
+.ov3-qcredit__val[data-tone="warn"] {
+    color: var(--ov-amber);
+}
+
+.ov3-qpool__val[data-tone="err"],
+.ov3-qcredit__val[data-tone="err"] {
+    color: var(--ov-red);
+}
+
+.ov3-qpool__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--ov-ink-3);
+    font-variant-numeric: tabular-nums;
+}
+
+.ov3-qpool__win {
+    font-family: var(--ov-mono);
+    font-size: 11px;
+    color: var(--ov-ink-2);
+}
+
+.ov3-qpool__win[data-tone="err"] {
+    color: var(--ov-red);
+    font-weight: 600;
+}
+
+.ov3-qpool__win[data-tone="warn"] {
+    color: var(--ov-amber);
+}
+
+.ov3-qdivider {
+    height: 1px;
+    background: var(--ov-border);
+    margin: 2px 0;
+}
+
+.ov3-qcredit {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.ov3-qcredit__val {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--ov-mono);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+    color: var(--ov-ink-1);
+}
+
+.ov3-qcredit__sub {
+    font-size: 11.5px;
+    color: var(--ov-ink-3);
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+}
+
+.ov3-quota-models {
+    border-top: 1px solid var(--ov-border);
+    padding-top: 12px;
+    overflow-x: auto;
+}
+
+.ov3-quota-models[hidden] {
+    display: none;
+}
+
+.ov3-qmodels-table td,
+.ov3-qmodels-table th {
+    padding: 8px 10px;
+}
+
+.ov3-qmodels-table th:first-child,
+.ov3-qmodels-table td:first-child {
+    padding-left: 10px;
+}
+
+.ov3-qmodels-table th:last-child,
+.ov3-qmodels-table td:last-child {
+    padding-right: 10px;
+}
+
+.ov3-qmodels-group td {
+    background: var(--ov-surface-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ov-ink-2);
+    padding: 7px 10px;
+}
+
+.ov3-qmini-bar {
+    width: 68px;
+    height: 5px;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 8px;
+    border-radius: 999px;
+    background: var(--ov-surface-2);
+    overflow: hidden;
+}
+
+.ov3-qmini-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+}
+
+.ov3-qcard .ov3-bar,
+.ov3-qmodels-table .ov3-qmini-bar {
+    background: rgba(148, 163, 184, 0.22);
+}
+
 /* ── ov3 Responsive Breakpoints ─────────────────────────────────────────── */
 @media (max-width: 1280px) {
     .ov3-kpis {
@@ -2101,6 +2317,12 @@
     .ov3-tabs--sub {
         padding-left: 16px;
         padding-right: 16px;
+    }
+    .ov3-quota-body {
+        padding: 12px 16px 16px;
+    }
+    .ov3-quota-grid {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 

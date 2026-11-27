@@ -14,6 +14,7 @@
     'use strict';
 
     const POLL_MS = 6000;
+    const QUOTA_POLL_MS = 60000;
     const API_RETRY_MS = 60000;
     const SEEN_STORAGE_KEY = 'ov2_seen_videos_v1';
     const HIST_STORAGE_KEY = 'ov2.hist.v1';
@@ -44,6 +45,10 @@
         freshTimer: null,
         inFlight: false,
         restartingKey: null,
+        quota: null,
+        quotaInFlight: false,
+        quotaUpdatedAt: 0,
+        quotaModelsOpen: false,
     };
 
     const flashTimers = new WeakMap();
@@ -833,6 +838,7 @@
             if (freshEl) freshEl.removeAttribute('data-stale');
             metaEl.textContent = sec < 2 ? 'อัปเดตล่าสุดเมื่อสักครู่' : `อัปเดตล่าสุด ${sec} วินาทีที่แล้ว`;
         }
+        updateQuotaCountdowns();
     }
 
     function renderHeader(data) {
@@ -1784,6 +1790,439 @@
         renderInfra(data);
     }
 
+    // ── AI Quota (All Accounts + Providers) ─────────────────────────────────
+    function quotaTone(pct) {
+        const n = Number(pct);
+        if (!Number.isFinite(n)) return 'neutral';
+        if (n >= 50) return 'ok';
+        if (n >= 20) return 'warn';
+        return 'err';
+    }
+
+    function fmtQuotaCountdown(iso) {
+        if (!iso) return '—';
+        const diff = Date.parse(iso) - Date.now();
+        if (!Number.isFinite(diff)) return '—';
+        if (diff <= 0) return 'พร้อมรีเซ็ต';
+        const days = Math.floor(diff / 86400000);
+        const hrs = Math.floor((diff % 86400000) / 3600000);
+        const mins = Math.floor((diff % 3600000) / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        if (days > 0) return `${days} วัน ${hrs} ชม.`;
+        if (hrs > 0) return `${hrs} ชม. ${String(mins).padStart(2, '0')} น.`;
+        if (mins > 0) return `${mins} น. ${String(secs).padStart(2, '0')} วิ`;
+        return `${secs} วิ`;
+    }
+
+    function shortPoolName(p) {
+        if (!p) return 'Pool';
+        if (p.id === 'gemini') return 'Gemini (Hydrogen / Flash / Pro)';
+        if (p.id === 'claude') return 'Claude & GPT';
+        return p.name || p.id || 'Pool';
+    }
+
+    function updateQuotaCountdowns() {
+        const root = $('ov3-panel-quota');
+        if (!root) return;
+        const nodes = root.querySelectorAll('[data-quota-reset]');
+        for (const el of nodes) {
+            const iso = el.getAttribute('data-quota-reset');
+            if (!iso) continue;
+            const next = fmtQuotaCountdown(iso);
+            if (el.textContent !== next) el.textContent = next;
+        }
+    }
+
+    function renderGoogleQuotaCard(acct) {
+        const d = acct && acct.data;
+        const label = (acct && acct.label) || 'Google';
+        const email = (d && d.email) || (acct && acct.email) || '';
+
+        if (!d || !d.ok) {
+            return `
+                <article class="ov3-qcard">
+                    <div class="ov3-qcard__head">
+                        <div class="ov3-qcard__title-wrap">
+                            <div class="ov3-qcard__name">${esc(label)}</div>
+                            ${email ? `<div class="ov3-qcard__sub">${esc(email)}</div>` : ''}
+                        </div>
+                        <span class="ov3-badge" data-tone="neutral">ข้ามอัตโนมัติ</span>
+                    </div>
+                    <div class="ov3-qcredit__sub">ไม่สามารถดึงโควตาได้ (${esc((d && d.error) || 'ไม่มีข้อมูล')}) · ระบบ Auto Router ข้ามให้อัตโนมัติ</div>
+                </article>
+            `;
+        }
+
+        const pools = Array.isArray(d.pools) ? d.pools : [];
+        const hasAvail = pools.some((p) => Number(p.remainingPct) > 5);
+        const hasExhausted = pools.some((p) => Number(p.remainingPct) <= 0);
+        const allLow = !hasAvail && pools.length > 0;
+        const badgeTone = allLow ? 'err' : (hasExhausted ? 'warn' : (hasAvail ? 'ok' : 'neutral'));
+        const badgeText = allLow ? 'หมดทุกพูล' : (hasExhausted ? 'หมดบางพูล' : (hasAvail ? 'พร้อมใช้' : 'ไม่มีพูล'));
+
+        const poolsHtml = pools.map((p) => {
+            const rem = Math.round(clampPct(p.remainingPct));
+            const tone = quotaTone(rem);
+            const fh = p.fiveHour;
+            const wk = p.weekly;
+            let metaHtml = '';
+
+            if (fh && wk) {
+                const fhRem = Math.round(clampPct(fh.remainingPct));
+                const wkRem = Math.round(clampPct(wk.remainingPct));
+                const fhTone = quotaTone(fhRem);
+                const wkTone = quotaTone(wkRem);
+                const fhSpan = fh.resetTime
+                    ? `<span class="ov3-qpool__win" data-tone="${fhTone === 'ok' ? '' : fhTone}">5 ชม. ${fhRem}% (<span data-quota-reset="${esc(fh.resetTime)}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>)</span>`
+                    : `<span class="ov3-qpool__win" data-tone="${fhTone === 'ok' ? '' : fhTone}">5 ชม. ${fhRem}%</span>`;
+                let wkSpan = '';
+                if (wkRem <= 0) {
+                    const wkReset = wk.resetTime || p.resetTime || '';
+                    wkSpan = `<span class="ov3-qpool__win" data-tone="err">สัปดาห์หมด 0%${wkReset ? ` · รีเซ็ตใน <span data-quota-reset="${esc(wkReset)}">${esc(fmtQuotaCountdown(wkReset))}</span>` : ''}</span>`;
+                } else {
+                    wkSpan = wk.resetTime
+                        ? `<span class="ov3-qpool__win" data-tone="${wkTone === 'ok' ? '' : wkTone}">7 วัน ${wkRem}% (<span data-quota-reset="${esc(wk.resetTime)}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>)</span>`
+                        : `<span class="ov3-qpool__win" data-tone="${wkTone === 'ok' ? '' : wkTone}">7 วัน ${wkRem}%</span>`;
+                }
+                metaHtml = `${fhSpan}${wkSpan}`;
+            } else {
+                const used = Math.round(clampPct(p.usedPct));
+                const rst = p.resetTime
+                    ? `รีเซ็ตใน <span data-quota-reset="${esc(p.resetTime)}">${esc(fmtQuotaCountdown(p.resetTime))}</span>`
+                    : '—';
+                metaHtml = `<span>ใช้ไป ${used}% (${esc(p.modelsCount || 0)} โมเดล)</span><span>${rst}</span>`;
+            }
+
+            return `
+                <div class="ov3-qpool">
+                    <div class="ov3-qpool__top">
+                        <span class="ov3-qpool__label">${esc(shortPoolName(p))}</span>
+                        <span class="ov3-qpool__val" data-tone="${tone}">${rem}%</span>
+                    </div>
+                    <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${tone}" style="width:${rem}%"></span></div>
+                    <div class="ov3-qpool__meta">${metaHtml}</div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <article class="ov3-qcard${allLow ? ' is-limit' : ''}">
+                <div class="ov3-qcard__head">
+                    <div class="ov3-qcard__title-wrap">
+                        <div class="ov3-qcard__name">${esc(label)}</div>
+                        ${email ? `<div class="ov3-qcard__sub" title="${esc(email)}">${esc(email)}</div>` : ''}
+                    </div>
+                    <span class="ov3-badge" data-tone="${badgeTone}">${esc(badgeText)}</span>
+                </div>
+                <div class="ov3-qpools">${poolsHtml || '<div class="ov3-qcredit__sub">ไม่มีข้อมูลพูล</div>'}</div>
+            </article>
+        `;
+    }
+
+    function renderClaudeQuotaCard(cw) {
+        if (!cw || !cw.ok) {
+            const note = cw && cw.error
+                ? `${cw.error} — Auto Router ข้ามให้อัตโนมัติ`
+                : 'ไม่ได้ใช้งานหรือเชื่อมต่อไม่ได้ — Auto Router ข้ามให้อัตโนมัติ';
+            return `
+                <article class="ov3-qcard">
+                    <div class="ov3-qcard__head">
+                        <div class="ov3-qcard__title-wrap">
+                            <div class="ov3-qcard__name">Claude.ai Pro</div>
+                            <div class="ov3-qcard__sub">Anthropic Rolling 5h &amp; 7d</div>
+                        </div>
+                        <span class="ov3-badge" data-tone="neutral">ไม่ได้ใช้</span>
+                    </div>
+                    <div class="ov3-qcredit__sub">${esc(note)}</div>
+                </article>
+            `;
+        }
+
+        const fh = cw.fiveHour || { remainingPct: 100, usedPct: 0, resetTime: null };
+        const wk = cw.weekly || { remainingPct: 100, usedPct: 0, resetTime: null };
+        const fhRem = Math.round(clampPct(fh.remainingPct));
+        const wkRem = Math.round(clampPct(wk.remainingPct));
+        const fhTone = quotaTone(fhRem);
+        const wkTone = quotaTone(wkRem);
+        const isExhausted = fhRem <= 0 || wkRem <= 0;
+        const minRem = Math.min(fhRem, wkRem);
+        const badgeTone = wkRem <= 0 ? 'err' : (fhRem <= 0 ? 'warn' : (minRem > 5 ? 'ok' : 'warn'));
+        const badgeText = wkRem <= 0 ? 'หมดโควตาสัปดาห์' : (fhRem <= 0 ? 'รอบ 5 ชม. หมด' : (minRem > 5 ? 'พร้อมใช้' : 'ใกล้หมด'));
+        const planLabel = cw.plan ? `Claude.ai (${String(cw.plan).toUpperCase()})` : 'Claude.ai Pro';
+        const subText = cw.orgName || 'OAuth · Claude Code';
+
+        return `
+            <article class="ov3-qcard${isExhausted ? ' is-limit' : ''}">
+                <div class="ov3-qcard__head">
+                    <div class="ov3-qcard__title-wrap">
+                        <div class="ov3-qcard__name">${esc(planLabel)}</div>
+                        <div class="ov3-qcard__sub" title="${esc(subText)}">${esc(subText)}</div>
+                    </div>
+                    <span class="ov3-badge" data-tone="${badgeTone}">${esc(badgeText)}</span>
+                </div>
+                <div class="ov3-qpools">
+                    <div class="ov3-qpool">
+                        <div class="ov3-qpool__top">
+                            <span class="ov3-qpool__label">รอบ 5 ชั่วโมง (5h Rolling)</span>
+                            <span class="ov3-qpool__val" data-tone="${fhTone}">${fhRem}%</span>
+                        </div>
+                        <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${fhTone}" style="width:${fhRem}%"></span></div>
+                        <div class="ov3-qpool__meta">
+                            <span>ใช้ไป ${Math.round(clampPct(fh.usedPct))}%</span>
+                            <span>${fh.resetTime ? `รีเซ็ตใน <span data-quota-reset="${esc(fh.resetTime)}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>` : '—'}</span>
+                        </div>
+                    </div>
+                    <div class="ov3-qpool">
+                        <div class="ov3-qpool__top">
+                            <span class="ov3-qpool__label">รายสัปดาห์ (7 วัน)</span>
+                            <span class="ov3-qpool__val" data-tone="${wkTone}">${wkRem}%</span>
+                        </div>
+                        <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${wkTone}" style="width:${wkRem}%"></span></div>
+                        <div class="ov3-qpool__meta">
+                            <span>ใช้ไป ${Math.round(clampPct(wk.usedPct))}%</span>
+                            <span>${wk.resetTime ? `รีเซ็ตใน <span data-quota-reset="${esc(wk.resetTime)}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>` : '—'}</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderCreditsQuotaCard(ds, gc) {
+        const dsTotal = ds && ds.ok ? parseFloat(ds.totalBalance || '0') : 0;
+        const dsReady = Boolean(ds && ds.ok && ds.isAvailable && dsTotal > 0.1);
+        const dsLow = Boolean(ds && ds.ok && ds.isAvailable && dsTotal <= 0.5 && dsTotal > 0.1);
+        const dsTone = !ds || !ds.ok ? 'neutral' : (!dsReady ? 'err' : (dsLow ? 'warn' : 'ok'));
+        const dsBadge = !ds || !ds.ok ? 'ไม่ได้ตั้งค่า' : (!dsReady ? 'เครดิตหมด' : (dsLow ? 'ใกล้หมด' : 'พร้อมใช้'));
+        const dsModels = (ds && ds.ok && Array.isArray(ds.models))
+            ? ds.models.map((m) => m.name || m.id).filter(Boolean).join(' · ')
+            : '';
+
+        const gcReady = Boolean(gc && gc.ok && !gc.isEmpty && Number(gc.remainingThb) > 0.5);
+        const gcLow = Boolean(gc && gc.ok && Number(gc.remainingThb) < Number(gc.lowThb || 10));
+        const gcTone = !gc || !gc.ok ? 'neutral' : (Number(gc.remainingThb) <= 0.5 ? 'err' : (gcLow ? 'warn' : 'ok'));
+        const gcBadge = !gc || !gc.ok ? 'ไม่ได้ตั้งค่า' : (Number(gc.remainingThb) <= 0.5 ? 'เครดิตหมด' : (gcLow ? 'ใกล้หมด' : 'พร้อมใช้'));
+        const gcPct = (gc && gc.ok)
+            ? clampPct((Number(gc.remainingThb) / (Number(gc.topUpThb) || Number(gc.baselineThb) || 1)) * 100)
+            : 0;
+
+        const anyWarn = dsLow || gcLow;
+        const anyReady = dsReady || gcReady;
+        const headTone = anyWarn ? 'warn' : (anyReady ? 'ok' : 'neutral');
+        const headText = anyWarn ? 'เครดิตใกล้หมด' : (anyReady ? 'พร้อมใช้' : 'ไม่ได้เติม');
+
+        return `
+            <article class="ov3-qcard">
+                <div class="ov3-qcard__head">
+                    <div class="ov3-qcard__title-wrap">
+                        <div class="ov3-qcard__name">เครดิต API (Pay-As-You-Go)</div>
+                        <div class="ov3-qcard__sub">DeepSeek &amp; Gemini TTS</div>
+                    </div>
+                    <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
+                </div>
+
+                <div class="ov3-qcredit">
+                    <div class="ov3-qpool__top">
+                        <span class="ov3-qpool__label">DeepSeek API</span>
+                        <span class="ov3-badge" data-tone="${dsTone}">${esc(dsBadge)}</span>
+                    </div>
+                    ${ds && ds.ok ? `
+                        <div class="ov3-qcredit__val" data-tone="${dsTone}">$${esc(ds.totalBalance)} <span style="font-size:12px;font-weight:500;color:var(--ov-ink-3);">${esc(ds.currency || 'USD')}</span></div>
+                        <div class="ov3-qcredit__sub">เติมเอง $${esc(ds.toppedUpBalance || '0.00')} · โบนัส $${esc(ds.grantedBalance || '0.00')}</div>
+                        ${dsModels ? `<div class="ov3-qcredit__sub" title="${esc(dsModels)}">${esc(dsModels)}</div>` : ''}
+                    ` : `<div class="ov3-qcredit__sub">ยังไม่ได้ตั้งค่า หรือติดต่อ API ไม่ได้</div>`}
+                </div>
+
+                <div class="ov3-qdivider"></div>
+
+                <div class="ov3-qcredit">
+                    <div class="ov3-qpool__top">
+                        <span class="ov3-qpool__label">Gemini TTS (เสียงวิดีโอ)</span>
+                        <span class="ov3-badge" data-tone="${gcTone}">${esc(gcBadge)}</span>
+                    </div>
+                    ${gc && gc.ok ? `
+                        <div class="ov3-qcredit__val" data-tone="${gcTone}">฿${Number(gc.remainingThb).toFixed(2)}</div>
+                        <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${gcTone}" style="width:${gcPct.toFixed(0)}%"></span></div>
+                        <div class="ov3-qcredit__sub">ตั้งต้น ฿${Number(gc.baselineThb).toFixed(2)} · ใช้ไป ฿${Number(gc.spentThb).toFixed(2)} (${esc(gc.calls || 0)} ครั้ง)</div>
+                    ` : `<div class="ov3-qcredit__sub">ไม่มีข้อมูลเครดิต Gemini TTS</div>`}
+                </div>
+            </article>
+        `;
+    }
+
+    function renderQuotaModelsTable(q) {
+        const wrap = $('ov3-quota-models-wrap');
+        const toggleBtn = $('ov3-quota-toggle-models');
+
+        const accounts = (q && q.accounts) || [];
+        const ds = q && q.deepseek;
+        const dsModels = (ds && ds.ok && Array.isArray(ds.models)) ? ds.models : [];
+
+        let totalModels = dsModels.length;
+        for (const a of accounts) {
+            if (a && a.data && a.data.ok && Array.isArray(a.data.models)) {
+                totalModels += a.data.models.length;
+            }
+        }
+
+        if (toggleBtn) {
+            toggleBtn.textContent = totalModels > 0
+                ? `รายโมเดล (${totalModels}) ${ui.quotaModelsOpen ? '▴' : '▾'}`
+                : `รายโมเดล ${ui.quotaModelsOpen ? '▴' : '▾'}`;
+            toggleBtn.setAttribute('aria-expanded', ui.quotaModelsOpen ? 'true' : 'false');
+        }
+
+        if (!wrap) return;
+        wrap.hidden = !ui.quotaModelsOpen;
+        if (!ui.quotaModelsOpen) return;
+
+        if (totalModels === 0) {
+            wrap.innerHTML = '<div class="ov3-empty" style="padding:18px;">ไม่พบรายละเอียดรายโมเดล</div>';
+            return;
+        }
+
+        const rows = [];
+        for (const a of accounts) {
+            const d = a && a.data;
+            const list = (d && d.ok && Array.isArray(d.models)) ? d.models : [];
+            if (!list.length) continue;
+            rows.push(`<tr class="ov3-qmodels-group"><td colspan="4">${esc(a.label || a.id)}${d.email ? ` · ${esc(d.email)}` : ''} (${list.length} โมเดล)</td></tr>`);
+            for (const m of list) {
+                const rem = Math.round(clampPct(m.remainingPct) * 10) / 10;
+                const used = Math.round(clampPct(m.usedPct) * 10) / 10;
+                const tone = quotaTone(rem);
+                const col = tone === 'ok' ? 'var(--ov-green)' : (tone === 'warn' ? 'var(--ov-amber)' : 'var(--ov-red)');
+                const rst = m.resetTime
+                    ? `<span data-quota-reset="${esc(m.resetTime)}">${esc(fmtQuotaCountdown(m.resetTime))}</span>`
+                    : '—';
+                rows.push(`
+                    <tr>
+                        <td class="ov2-mono">${esc(m.displayName || m.id)}</td>
+                        <td class="ov2-mono">
+                            <span class="ov3-qmini-bar"><span style="width:${clampPct(rem)}%;background:${col}"></span></span>
+                            <strong style="color:${col}">${rem}%</strong>
+                        </td>
+                        <td class="ov2-mono" style="color:var(--ov-ink-3)">${used}%</td>
+                        <td class="ov2-mono">${rst}</td>
+                    </tr>
+                `);
+            }
+        }
+
+        if (dsModels.length) {
+            rows.push(`<tr class="ov3-qmodels-group"><td colspan="4">DeepSeek Platform · Pay-As-You-Go (${dsModels.length} โมเดล)</td></tr>`);
+            for (const m of dsModels) {
+                rows.push(`
+                    <tr>
+                        <td class="ov2-mono">${esc(m.name || m.id)} <span style="color:var(--ov-ink-3)">(${esc(m.id)})</span></td>
+                        <td class="ov2-mono"><strong style="color:var(--ov-green)">$${esc(ds.totalBalance)} ${esc(ds.currency || 'USD')}</strong></td>
+                        <td class="ov2-mono" style="color:var(--ov-ink-3)">Pay-As-You-Go</td>
+                        <td class="ov2-mono" style="color:var(--ov-ink-3)">ไม่มีวันหมดอายุ</td>
+                    </tr>
+                `);
+            }
+        }
+
+        wrap.innerHTML = `
+            <table class="ov3-table ov3-qmodels-table">
+                <thead>
+                    <tr>
+                        <th scope="col">โมเดล</th>
+                        <th scope="col">คงเหลือ</th>
+                        <th scope="col">ใช้ไป</th>
+                        <th scope="col">รีเซ็ตใน</th>
+                    </tr>
+                </thead>
+                <tbody>${rows.join('')}</tbody>
+            </table>
+        `;
+    }
+
+    function renderQuotaPanel(q) {
+        const gridEl = $('ov3-quota-grid');
+        const subEl = $('ov3-quota-sub');
+        if (!gridEl || !q) return;
+
+        const accounts = q.accounts || [];
+        const cw = q.claudeWeb;
+        const ds = q.deepseek;
+        const gc = q.geminiCredit;
+
+        let totalChannels = accounts.length + 3; // Google accounts + Claude Pro + DeepSeek + Gemini TTS
+        let readyChannels = 0;
+        for (const a of accounts) {
+            if (a && a.data && a.data.ok && (a.data.pools || []).some((p) => Number(p.remainingPct) > 5)) {
+                readyChannels += 1;
+            }
+        }
+        if (cw && cw.ok && Math.min(cw.fiveHour?.remainingPct ?? 100, cw.weekly?.remainingPct ?? 100) > 5) {
+            readyChannels += 1;
+        }
+        if (ds && ds.ok && ds.isAvailable && parseFloat(ds.totalBalance || '0') > 0.1) {
+            readyChannels += 1;
+        }
+        if (gc && gc.ok && !gc.isEmpty && Number(gc.remainingThb) > 0.5) {
+            readyChannels += 1;
+        }
+
+        if (subEl) {
+            const timeStr = ui.quotaUpdatedAt
+                ? new Date(ui.quotaUpdatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+                : '';
+            subEl.textContent = `พร้อมใช้ ${readyChannels}/${totalChannels} ช่องทาง${timeStr ? ` · อัปเดต ${timeStr}` : ''}`;
+        }
+
+        const cardsHtml = [
+            ...accounts.map(renderGoogleQuotaCard),
+            renderClaudeQuotaCard(cw),
+            renderCreditsQuotaCard(ds, gc),
+        ].join('');
+
+        gridEl.innerHTML = cardsHtml;
+        renderQuotaModelsTable(q);
+    }
+
+    async function fetchQuotaData(force = false) {
+        if (ui.quotaInFlight) return;
+        if (!force && (document.hidden || !isOverviewActive())) return;
+        ui.quotaInFlight = true;
+        try {
+            const [primary, accountsRes] = await Promise.all([
+                fetchJsonSafe('/api/gemini/quota'),
+                fetchJsonSafe('/api/ai-router/accounts'),
+            ]);
+            const rawAccts = (accountsRes && Array.isArray(accountsRes.accounts)) ? accountsRes.accounts : [];
+            const extraDefs = rawAccts.filter((a) => a && a.id && a.id !== 'g1' && a.ready);
+            const extraResults = await Promise.all(extraDefs.map(async (a) => ({
+                id: a.id,
+                label: a.label || a.id,
+                email: a.email || '',
+                data: await fetchJsonSafe(`/api/gemini/quota?account=${encodeURIComponent(a.id)}`),
+            })));
+
+            ui.quota = {
+                accounts: [
+                    {
+                        id: 'g1',
+                        label: (primary && primary.accountLabel) || 'Google#1',
+                        email: (primary && primary.email) || '',
+                        data: primary,
+                    },
+                    ...extraResults,
+                ],
+                claudeWeb: primary ? primary.claudeWeb : null,
+                deepseek: primary ? primary.deepseek : null,
+                geminiCredit: primary ? primary.geminiCredit : null,
+            };
+            ui.quotaUpdatedAt = Date.now();
+            renderQuotaPanel(ui.quota);
+        } catch (_) {
+            // keep last rendered quota snapshot quietly
+        } finally {
+            ui.quotaInFlight = false;
+        }
+    }
+
     // ── Polling & Hook from app.js ──────────────────────────────────────────
     async function tick(force = false) {
         if (ui.inFlight) return;
@@ -1947,7 +2386,15 @@
             }
         });
 
-        $('ov2-btn-refresh')?.addEventListener('click', () => tick(true));
+        $('ov2-btn-refresh')?.addEventListener('click', () => {
+            tick(true);
+            fetchQuotaData(true);
+        });
+        $('ov3-quota-refresh')?.addEventListener('click', () => fetchQuotaData(true));
+        $('ov3-quota-toggle-models')?.addEventListener('click', () => {
+            ui.quotaModelsOpen = !ui.quotaModelsOpen;
+            if (ui.quota) renderQuotaModelsTable(ui.quota);
+        });
         $('ov2-btn-new-chat')?.addEventListener('click', createAndOpenNewChat);
         $('ov2-ai-mark-all')?.addEventListener('click', markAllChatsRead);
         $('ov2-vid-mark-all')?.addEventListener('click', () => setVideoSeen({ all: true }));
@@ -2248,16 +2695,24 @@
         bindEvents();
         initPrayerWidget();
         tick(true);
+        fetchQuotaData(true);
         setInterval(() => tick(false), POLL_MS);
+        setInterval(() => fetchQuotaData(false), QUOTA_POLL_MS);
 
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && isOverviewActive()) tick(false);
+            if (!document.hidden && isOverviewActive()) {
+                tick(false);
+                if (Date.now() - ui.quotaUpdatedAt > QUOTA_POLL_MS) fetchQuotaData(false);
+            }
         });
 
         const view = $('view-overview');
         if (view && typeof MutationObserver !== 'undefined') {
             const obs = new MutationObserver(() => {
-                if (isOverviewActive() && !document.hidden) tick(false);
+                if (isOverviewActive() && !document.hidden) {
+                    tick(false);
+                    if (Date.now() - ui.quotaUpdatedAt > QUOTA_POLL_MS) fetchQuotaData(false);
+                }
             });
             obs.observe(view, { attributes: true, attributeFilter: ['class'] });
         }

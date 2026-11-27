@@ -69,6 +69,7 @@ You are Antigravity AI, the intelligent autonomous agent running on this Homelab
   * `web-browser`: When the user asks to visit/view a website, capture a webpage screenshot/PDF, check UI/console errors, or interact with web pages (runs locally via `/home/dev/.local/bin/lab-browser`).
   * `motion-video-studio`: When the user asks to create animated explainer videos, vertical 9:16 storytelling clips, Remotion + Three.js/SVG motion graphics (46 styles), Thai TTS voiceovers, or interactive HTML motion diagrams (runs locally via `/home/dev/.local/bin/motion-studio`).
   * `offload-jobs`: When running heavy compute, batch processing, media/AI scripts, or offloading any workload to connected Homelab Agent Hub workers (`asridaytrade`, `servergigi`, etc.) via `/home/dev/.local/bin/agent-ctl run` (`job.run`).
+  * `daily-news-broadcast`: When the user asks for a daily/morning news clip, news summary video, 'สรุปข่าว', 'คลิปข่าวเช้า', or to rerun/fix the daily news broadcast (Daily News Broadcast v2 via `/home/dev/projects/daily-news-clip.py`, cron 07:30).
 
 ## Generic Job Offload Protocol (`job.run` / Homelab Agent Hub)
 - Skill: `/home/dev/.gemini/antigravity-cli/skills/offload-jobs/SKILL.md` — **MUST read** before dispatching custom `agent-ctl run` jobs (contains ready-to-use Whisper STT, FFmpeg, and Python venv recipes for Windows `cmd.exe` & POSIX).

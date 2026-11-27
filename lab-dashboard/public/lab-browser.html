@@ -917,6 +917,116 @@
     <div class="lb-toast-stack" id="lb-toast-stack" aria-live="polite"></div>
   </div>
 
+  <script>
+    (() => {
+      let memClosed = false;
+      let lastMemMessage = '';
+
+      function formatMemClosedText(msg) {
+        const mb = msg && msg.mb != null ? msg.mb : '?';
+        const limitMb = msg && msg.limitMb != null ? msg.limitMb : '?';
+        return `⚠️ เซสชันถูกปิดอัตโนมัติเพราะใช้หน่วยความจำ ${mb} MB เกินเพดาน ${limitMb} MB เพื่อปกป้อง homelab — กดเปิดใหม่เพื่อเริ่มต่อ (cookie ที่ล็อกอินแล้วถูกบันทึกไว้)`;
+      }
+
+      function showMemClosedOverlay() {
+        if (!memClosed || !lastMemMessage) return;
+        const frameImg = document.getElementById('lb-frame-img');
+        const placeholder = document.getElementById('lb-placeholder');
+        const iconEl = document.getElementById('lb-placeholder-icon');
+        const titleEl = document.getElementById('lb-placeholder-title');
+        const subEl = document.getElementById('lb-placeholder-sub');
+        const retryBtn = document.getElementById('lb-placeholder-retry');
+        if (frameImg) {
+          frameImg.classList.remove('has-frame');
+          frameImg.removeAttribute('src');
+        }
+        if (iconEl) iconEl.textContent = '⚠️';
+        if (titleEl) titleEl.textContent = 'เซสชันถูกปิดอัตโนมัติเพราะใช้หน่วยความจำเกินเพดาน';
+        if (subEl) subEl.textContent = lastMemMessage;
+        if (retryBtn) retryBtn.style.display = '';
+        if (placeholder) placeholder.classList.remove('is-hidden');
+      }
+
+      function showMemClosedToast(text) {
+        const stack = document.getElementById('lb-toast-stack');
+        if (!stack || !text) return;
+        const toast = document.createElement('div');
+        toast.className = 'lb-toast lb-toast--warn';
+        toast.textContent = text;
+        stack.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transition = 'opacity 0.2s ease';
+          setTimeout(() => {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+          }, 220);
+        }, 7000);
+      }
+
+      const NativeWebSocket = window.WebSocket;
+      if (typeof NativeWebSocket === 'function') {
+        const WrappedWebSocket = function (url, protocols) {
+          const sock = protocols !== undefined
+            ? new NativeWebSocket(url, protocols)
+            : new NativeWebSocket(url);
+
+          if (typeof url === 'string' && url.includes('/ws/browser-vision')) {
+            sock.addEventListener('message', (ev) => {
+              if (typeof ev.data !== 'string') return;
+              try {
+                const msg = JSON.parse(ev.data);
+                if (msg && msg.type === 'session_closed' && msg.reason === 'memory_limit_exceeded') {
+                  memClosed = true;
+                  lastMemMessage = formatMemClosedText(msg);
+                  showMemClosedOverlay();
+                  showMemClosedToast(lastMemMessage);
+                }
+              } catch (_) {}
+            });
+
+            sock.addEventListener('close', () => {
+              if (memClosed) {
+                setTimeout(showMemClosedOverlay, 0);
+              }
+            });
+          }
+          return sock;
+        };
+        WrappedWebSocket.prototype = NativeWebSocket.prototype;
+        WrappedWebSocket.CONNECTING = NativeWebSocket.CONNECTING;
+        WrappedWebSocket.OPEN = NativeWebSocket.OPEN;
+        WrappedWebSocket.CLOSING = NativeWebSocket.CLOSING;
+        WrappedWebSocket.CLOSED = NativeWebSocket.CLOSED;
+        window.WebSocket = WrappedWebSocket;
+      }
+
+      const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+      if (nativeFetch) {
+        window.fetch = function (input, init) {
+          const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+          if (
+            memClosed &&
+            typeof url === 'string' &&
+            (url.startsWith('/api/browser-vision/session') || url.startsWith('/api/browser-vision/start'))
+          ) {
+            queueMicrotask(showMemClosedOverlay);
+            return new Promise(() => {});
+          }
+          return nativeFetch(input, init);
+        };
+      }
+
+      document.addEventListener('click', (ev) => {
+        const target = ev.target && ev.target.closest
+          ? ev.target.closest('#lb-reconnect-btn, #lb-placeholder-retry')
+          : null;
+        if (target && memClosed) {
+          memClosed = false;
+          lastMemMessage = '';
+        }
+      }, true);
+    })();
+  </script>
   <script src="/lab-browser-app.js" defer></script>
 </body>
 </html>

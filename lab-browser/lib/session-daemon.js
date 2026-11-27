@@ -1016,7 +1016,66 @@ async function main() {
   // ── Idle Timer & Shutdown ──────────────────────────────────────────────────
   let lastCommandAtMs = Date.now();
   const MAX_VIEWER_IDLE_MS = 20 * 60 * 1000; // 20 min max passive viewer without commands
-  const MAX_SESSION_RSS_MB = 1200; // Hard cap 1.2 GB for session + chromium children
+  const MAX_SESSION_MB = parseInt(process.env.LAB_BROWSER_SESSION_MAX_MB, 10) || 2048;
+  const HARD_MAX_SESSION_MB = parseInt(process.env.LAB_BROWSER_SESSION_HARD_MAX_MB, 10) || 3072;
+  const MIN_SYSTEM_AVAILABLE_MB = 1500;
+  let memBreachCount = 0;
+
+  function readPssKb(pid) {
+    try {
+      const content = fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8');
+      const match = content.match(/^Pss:\s+(\d+)/m);
+      return match ? Number(match[1]) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function readMemAvailableMb() {
+    try {
+      const content = fs.readFileSync('/proc/meminfo', 'utf8');
+      const match = content.match(/^MemAvailable:\s+(\d+)/m);
+      return match ? Math.round(Number(match[1]) / 1024) : Infinity;
+    } catch (_) {
+      return Infinity;
+    }
+  }
+
+  function isSensitivePageUrl(u) {
+    if (!u || typeof u !== 'string') return false;
+    try {
+      const parsed = new URL(u);
+      const host = parsed.hostname.toLowerCase();
+      const sensitiveHosts = [
+        'accounts.google.com',
+        'login.microsoftonline.com',
+        'login.live.com',
+        'appleid.apple.com',
+      ];
+      if (sensitiveHosts.some((h) => host === h || host.endsWith('.' + h))) {
+        return true;
+      }
+      if (/(signin|login|challenge|2fa|otp)/i.test(parsed.pathname)) {
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function stripUrlQuery(u) {
+    if (!u || typeof u !== 'string') return 'unknown';
+    try {
+      const parsed = new URL(u);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+      }
+      return u.split(/[?#]/)[0] || 'unknown';
+    } catch (_) {
+      return u.split(/[?#]/)[0] || 'unknown';
+    }
+  }
 
   const rssWatchdog = setInterval(() => {
     if (closing) return;
@@ -1033,21 +1092,49 @@ async function main() {
         if (!children.has(pp)) children.set(pp, []);
         children.get(pp).push(p);
       }
-      let totalKb = 0;
+      let totalRssKb = 0;
+      let totalPssKb = 0;
       const stack = [process.pid];
       const seen = new Set();
       while (stack.length) {
         const cur = stack.pop();
         if (seen.has(cur)) continue;
         seen.add(cur);
-        totalKb += (rssByPid.get(cur) || 0);
+        const rssKb = rssByPid.get(cur) || 0;
+        totalRssKb += rssKb;
+        const pssKb = readPssKb(cur);
+        totalPssKb += (pssKb !== null ? pssKb : rssKb);
         for (const c of (children.get(cur) || [])) stack.push(c);
       }
-      const totalMb = Math.round(totalKb / 1024);
-      if (totalMb > MAX_SESSION_RSS_MB) {
-        console.error(`[lab-browser] Session ${sessionName} exceeded memory limit (${totalMb} MB > ${MAX_SESSION_RSS_MB} MB), shutting down to protect homelab.`);
-        shutdown('memory_limit_exceeded').catch(() => process.exit(0));
+      const pssMb = Math.round(totalPssKb / 1024);
+      const rssMb = Math.round(totalRssKb / 1024);
+      const availMb = readMemAvailableMb();
+      const hardOver = pssMb > HARD_MAX_SESSION_MB;
+      const over = hardOver || (pssMb > MAX_SESSION_MB && availMb < MIN_SYSTEM_AVAILABLE_MB);
+      if (!over) {
+        memBreachCount = 0;
+        return;
       }
+      memBreachCount += 1;
+      const rawUrl = (activePage && !activePage.isClosed()) ? activePage.url() : '';
+      const safeUrl = stripUrlQuery(rawUrl);
+      const onSensitivePage = Boolean(rawUrl && isSensitivePageUrl(rawUrl));
+      const required = hardOver ? 2 : (onSensitivePage ? 4 : 2);
+      const limitMb = hardOver ? HARD_MAX_SESSION_MB : MAX_SESSION_MB;
+      if (memBreachCount < required) {
+        console.error(`[lab-browser] Session ${sessionName} memory warning (${memBreachCount}/${required}): PSS ${pssMb} MB, RSS ${rssMb} MB, avail ${availMb} MB, limit ${limitMb} MB, url=${safeUrl}`);
+        return;
+      }
+      try {
+        broadcast({
+          type: 'session_closed',
+          reason: 'memory_limit_exceeded',
+          mb: pssMb,
+          limitMb,
+        });
+      } catch (_) {}
+      console.error(`[lab-browser] Session ${sessionName} exceeded memory limit (PSS ${pssMb} MB > ${limitMb} MB; RSS ${rssMb} MB, avail ${availMb} MB, url=${safeUrl}), shutting down to protect homelab.`);
+      shutdown('memory_limit_exceeded').catch(() => process.exit(0));
     } catch (_) {}
   }, 30000);
   if (typeof rssWatchdog.unref === 'function') rssWatchdog.unref();

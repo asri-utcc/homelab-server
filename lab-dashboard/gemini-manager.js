@@ -3250,6 +3250,7 @@ async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
             if (pool) pools.push(pool);
         }
 
+        const basePoolPct = Object.fromEntries(pools.map(p => [p.id, { remainingPct: p.remainingPct, usedPct: p.usedPct, resetTime: p.resetTime }]));
         // ── Enrich pool ด้วย bucket 5h / weekly จาก retrieveUserQuotaSummary ──
         const poolById = Object.fromEntries(pools.map(p => [p.id, p]));
         const applyBuckets = (pool, group) => {
@@ -3321,6 +3322,20 @@ async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
                 }
                 pool.bucketGroup = info.group;
                 pool.usageSource = 'agy-usage';
+            }
+        }
+
+        // กฎของผู้ใช้ (2026-11-27): pool Gemini (Hydrogen/Flash/Pro/Neon) นับเฉพาะลิมิต 5 ชม.
+        // ไม่นับ weekly (ถือว่าไม่จำกัดจนกว่าจะ error จริง) → ตัด weekly ออกที่ต้นทาง ทุกตัวที่ใช้ต่อจะไม่เห็นมัน
+        for (const pool of pools) {
+            if (pool.id !== 'gemini') continue;
+            delete pool.weekly;
+            if (pool.fiveHour) {
+                pool.remainingPct = pool.fiveHour.remainingPct;
+                pool.usedPct = pool.fiveHour.usedPct;
+                pool.resetTime = pool.fiveHour.resetTime;
+            } else if (basePoolPct.gemini) {
+                Object.assign(pool, basePoolPct.gemini);
             }
         }
 

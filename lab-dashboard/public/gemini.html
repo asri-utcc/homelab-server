@@ -5882,8 +5882,9 @@ body::before {
       } else {
         // Hydrogen / Flash / Claude / GPT (and Argon when sharing Gemini pool): 2 rings (5-Hour Limit + Weekly Limit)
         g5h.style.display = '';
-        gWk.style.display = '';
         const isClaude = modelId.includes('claude') || modelId.includes('gpt');
+        // pool Gemini (Hydrogen/Flash/Pro/Neon) นับเฉพาะ 5 ชม. — ไม่แสดงวงแหวน/ตัวเลข weekly
+        gWk.style.display = isClaude ? '' : 'none';
         const pool = isClaude ? claudePool : geminiPool;
         const pct5h = pool?.fiveHour?.remainingPct ?? pool?.remainingPct ?? 100;
         const pctWk = pool?.weekly?.remainingPct ?? pool?.remainingPct ?? 100;
@@ -5902,7 +5903,9 @@ body::before {
         rWk.style.filter = `drop-shadow(0 0 5px ${colWk})`;
 
         if (pill) {
-          pill.innerHTML = `<span style="color:${col5h}">5H: ${pct5h}%</span> · <span style="color:${colWk}">Weekly: ${pctWk}%</span>`;
+          pill.innerHTML = isClaude
+            ? `<span style="color:${col5h}">5H: ${pct5h}%</span> · <span style="color:${colWk}">Weekly: ${pctWk}%</span>`
+            : `<span style="color:${col5h}">5H: ${pct5h}%</span>`;
         }
       }
       if (typeof syncModelTriggerUI === 'function') syncModelTriggerUI();

@@ -1960,8 +1960,9 @@
             const rackUsedPct = p.weekly ? p.weekly.usedPct : p.usedPct;
             const pace = calculateWeeklyPace(rackUsedPct, weeklyResetForRack);
             const badgeTone = isExhausted ? 'err' : pace.badgeTone;
-            const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : pace.badgeLabel;
-            const rackHtml = build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
+            const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : (p.id === 'gemini' ? '5 ชม.' : pace.badgeLabel);
+            const fiveHourOnly = p.id === 'gemini'; // กฎผู้ใช้: pool Gemini นับเฉพาะ 5 ชม. ไม่แสดง weekly rack/pace
+            const rackHtml = fiveHourOnly ? '' : build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
             const familyAttr = p.id === 'claude' ? 'claude' : 'gemini';
 
             const splitHtml = (p.fiveHour && p.weekly) ? `
@@ -1992,7 +1993,7 @@
                     </div>
                     ${splitHtml}
                     ${rackHtml}
-                    <div class="ov3-qpace" data-level="${pace.level}">${esc(pace.summaryText)}</div>
+                    ${fiveHourOnly ? '' : `<div class="ov3-qpace" data-level="${pace.level}">${esc(pace.summaryText)}</div>`}
                     ${exhaustedBox}
                 </article>
             `;
@@ -2003,7 +2004,7 @@
                 <div class="ov3-qsec__head">
                     <div class="ov3-qsec__title">
                         <span class="ov3-qsec__name">Google Antigravity · ${esc(label)}</span>
-                        <span class="ov3-qsec__sub">${esc(email)}${esc(tier)} · รีเซ็ต 5 ชม. &amp; 7 วัน</span>
+                        <span class="ov3-qsec__sub">${esc(email)}${esc(tier)} · Gemini นับเฉพาะรอบ 5 ชม.</span>
                     </div>
                     <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
                 </div>

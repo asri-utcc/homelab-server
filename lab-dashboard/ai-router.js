@@ -507,8 +507,9 @@ function agyPoolBudget(quota, model) {
         if ((quota.unavailablePools || []).some((p) => p.id === poolId)) return null;
         return { mode: 'unknown', surplus: -0.1, remainingPct: FALLBACK_UNKNOWN_PCT, windows: [] };
     }
+    // pool gemini: นับเฉพาะ 5 ชม. (weekly ไม่จำกัดจนกว่าจะ error จริง — กฎผู้ใช้ 2026-11-27)
     const windows = (pool.fiveHour || pool.weekly)
-        ? [['5h', pool.fiveHour], ['weekly', pool.weekly]]
+        ? [['5h', pool.fiveHour], ...(poolId === 'gemini' ? [] : [['weekly', pool.weekly]])]
         : [['5h', { remainingPct: pool.remainingPct, resetTime: pool.resetTime }]];
     return assessBudget(windows);
 }

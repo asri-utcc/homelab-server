@@ -61,6 +61,8 @@ def format_reset_left(reset_iso: str | None) -> str:
 def window_type(reset_iso: str | None, pool_id: str) -> str:
     if pool_id == "argon":
         return "Weekly Limit"
+    if pool_id == "gemini":
+        return "5-Hour Limit"  # กฎผู้ใช้: Gemini นับเฉพาะ 5 ชม. ไม่นับ weekly
     if not reset_iso:
         return "5-Hour / Weekly"
     try:

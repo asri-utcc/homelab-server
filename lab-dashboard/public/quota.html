@@ -846,9 +846,10 @@
           : (is5hWindow ? sharedWeeklyReset : p.resetTime);
         const rackUsedPct = p.weekly ? p.weekly.usedPct : p.usedPct;
         const pace = calculateWeeklyPace(rackUsedPct, weeklyResetForRack);
-        const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : pace.badgeLabel;
+        const fiveHourOnly = p.id === 'gemini'; // กฎผู้ใช้: pool Gemini นับเฉพาะ 5 ชม. ไม่แสดง weekly rack/pace
+        const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : (fiveHourOnly ? '5 ชม.' : pace.badgeLabel);
         const badgeCls = isExhausted ? 'pace-crit' : pace.badgeCls;
-        const rackHtml = build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
+        const rackHtml = fiveHourOnly ? '' : build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
         const windowSplitHtml = (p.fiveHour && p.weekly)
           ? `<div class="pool-meta" style="margin-top:4px; font-size:11px; color:var(--muted);">
                <span>5h: <strong style="color:${colorForPct(p.fiveHour.remainingPct)}">${p.fiveHour.remainingPct}%</strong></span>
@@ -871,7 +872,7 @@
           </div>
           ${windowSplitHtml}
           ${rackHtml}
-          <div class="pace-summary ${pace.summaryClass}">${pace.summaryText}</div>
+          ${fiveHourOnly ? '' : `<div class="pace-summary ${pace.summaryClass}">${pace.summaryText}</div>`}
           <div class="big-countdown-box ${isExhausted ? 'active' : ''}">
             <div class="big-countdown-label">🔴 หมดโควตาแล้ว — รอรีเซ็ตในอีก</div>
             <div class="big-countdown-timer cd" data-reset="${p.resetTime || ''}">${fmtCountdown(p.resetTime)}</div>

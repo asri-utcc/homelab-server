@@ -331,7 +331,8 @@
     { key: 'script', title: '2. รอตรวจบท / แก้ไข', cls: '' },
     { key: 'running', title: '3. กำลังผลิต', cls: 'is-active-col' },
     { key: 'qc', title: '4. รอตรวจ QC', cls: 'is-qc' },
-    { key: 'ready', title: '5. พร้อมโพสต์ / เสร็จ', cls: '' },
+    { key: 'ready', title: '5. พร้อมโพสต์', cls: '' },
+    { key: 'kept', title: '6. จบงาน / เก็บไว้ดูเอง', cls: 'is-kept' },
   ];
 
   const VOICE_OPTIONS = [

@@ -8,7 +8,7 @@
  * Responsibilities:
  *  - Sequential Factory Queue Pump (maxConcurrent = 1 to protect homelab RAM)
  *  - Single, Batch, and Daily News Broadcast v2 order submission
- *  - QC state machine (pending | approved | rejected) with audit history
+ *  - QC state machine (pending | approved | rejected | skipped) with audit history
  *  - AI Natural-Language Revision (Gemini REST API + deterministic fallback)
  *  - Production Lines CRUD + manual trigger (factory_lines.json)
  *  - Preferences & Favorite Styles persistence (factory_prefs.json)
@@ -43,8 +43,8 @@ const GEMINI_ENV_PATHS = [
 
 const ID_RE = /^[a-z0-9-]{6,40}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const ALLOWED_QC_STATUS = new Set(['pending', 'approved', 'rejected']);
-const ALLOWED_STOP_GATES = new Set(['draft', 'qc', 'autopilot']);
+const ALLOWED_QC_STATUS = new Set(['pending', 'approved', 'rejected', 'skipped']);
+const ALLOWED_STOP_GATES = new Set(['draft', 'qc', 'autopilot', 'skip']);
 const ALLOWED_BGM = new Set(['warm_tech', 'story_cinematic', 'dawn_ambient', 'none']);
 
 const MAX_CONCURRENT = 1;
@@ -610,7 +610,7 @@ async function submitOrder(payload = {}) {
                 contentMode,
                 deferredStart: true,
                 queueOrder: Date.now() + i,
-                qcStatus: 'pending',
+                qcStatus: stopGate === 'skip' ? 'skipped' : 'pending',
             });
             created.push(job);
         }
@@ -651,7 +651,7 @@ async function submitOrder(payload = {}) {
         contentMode,
         deferredStart: hasRunning,
         queueOrder: Date.now(),
-        qcStatus: 'pending',
+        qcStatus: stopGate === 'skip' ? 'skipped' : 'pending',
     });
 
     if (hasRunning) {
@@ -715,7 +715,7 @@ async function setJobQC(jobId, { qcStatus, note } = {}) {
     const cleanId = validateId(jobId, 'Job ID');
     const status = String(qcStatus || '').trim().toLowerCase();
     if (!ALLOWED_QC_STATUS.has(status)) {
-        throw httpError('สถานะ QC ต้องเป็น pending, approved หรือ rejected เท่านั้น', 400);
+        throw httpError('สถานะ QC ต้องเป็น pending, approved, rejected หรือ skipped เท่านั้น', 400);
     }
 
     const jobDir = path.join(videoStudioManager.JOBS_DIR, cleanId);
@@ -723,8 +723,13 @@ async function setJobQC(jobId, { qcStatus, note } = {}) {
     const job = await readJsonSafe(jobPath, null);
     if (!job) throw httpError('ไม่พบงานที่ระบุ', 404);
 
+    if (status === 'skipped' && String(job.status || '').toLowerCase() !== 'done') {
+        throw httpError('งานยังเรนเดอร์ไม่เสร็จ จึงกดผ่านแบบไม่โพสต์ไม่ได้', 409);
+    }
+
     const now = new Date().toISOString();
-    const cleanNote = String(note || '').trim().slice(0, 400);
+    const rawNote = String(note || '').trim().slice(0, 400);
+    const cleanNote = rawNote || (status === 'skipped' ? 'ผ่าน — เก็บไว้ดูเอง ไม่ต้องโพสต์' : '');
     const history = Array.isArray(job.qcHistory) ? job.qcHistory : [];
     history.push({
         status,
@@ -834,7 +839,7 @@ async function reviseJobWithAI(jobId, { prompt, timeSec } = {}) {
             };
             job.bgm = targetBgm;
             job.revisions = [...(Array.isArray(job.revisions) ? job.revisions : []), revision].slice(-30);
-            job.qcStatus = 'pending';
+            job.qcStatus = job.qcStatus === 'skipped' ? 'skipped' : 'pending';
             job.updatedAt = new Date().toISOString();
             await atomicWriteJson(jobPath, job);
 
@@ -860,7 +865,7 @@ async function reviseJobWithAI(jobId, { prompt, timeSec } = {}) {
         };
         job.bgm = targetBgm;
         job.revisions = [...(Array.isArray(job.revisions) ? job.revisions : []), revision].slice(-30);
-        job.qcStatus = 'pending';
+        job.qcStatus = job.qcStatus === 'skipped' ? 'skipped' : 'pending';
         await atomicWriteJson(jobPath, job);
 
         const remixRes = await videoStudioManager.remixJob(cleanId, {
@@ -959,7 +964,7 @@ async function reviseJobWithAI(jobId, { prompt, timeSec } = {}) {
         engine,
     };
     freshJob.revisions = [...(Array.isArray(freshJob.revisions) ? freshJob.revisions : []), revision].slice(-30);
-    freshJob.qcStatus = 'pending';
+    freshJob.qcStatus = freshJob.qcStatus === 'skipped' ? 'skipped' : 'pending';
     freshJob.updatedAt = new Date().toISOString();
     await atomicWriteJson(jobPath, freshJob);
 
@@ -1047,6 +1052,7 @@ function classifyJobColumn(job) {
     if (job.alive || ['researching', 'scripting', 'tts', 'rendering', 'mixing', 'previewing', 'editing', 'building', 'running'].includes(status)) {
         return 'running';
     }
+    if (status === 'done' && qc === 'skipped') return 'kept';
     if (status === 'draft_ready' || (status === 'done' && qc === 'rejected')) return 'script';
     if (status === 'done') {
         return qc === 'approved' ? 'ready' : 'qc';
@@ -1070,6 +1076,7 @@ async function getAnalytics({ socialPublishManager = null, geminiCredit = null }
     let qcPendingJobs = 0;
     let qcApprovedJobs = 0;
     let qcRejectedJobs = 0;
+    let keptJobs = 0;
     let errorJobs = 0;
     let totalCostThb = 0;
     let monthCostThb = 0;
@@ -1084,6 +1091,7 @@ async function getAnalytics({ socialPublishManager = null, geminiCredit = null }
         else if (col === 'script') scriptJobs += 1;
         else if (col === 'qc') qcPendingJobs += 1;
         else if (col === 'ready') qcApprovedJobs += 1;
+        else if (col === 'kept') keptJobs += 1;
 
         if (j.status === 'done') doneJobs += 1;
         if (j.status === 'error' || j.status === 'aborted') errorJobs += 1;
@@ -1138,6 +1146,7 @@ async function getAnalytics({ socialPublishManager = null, geminiCredit = null }
         queuedJobs,
         scriptJobs,
         qcPendingJobs,
+        keptJobs,
         qcApprovedJobs,
         qcRejectedJobs,
         errorJobs,

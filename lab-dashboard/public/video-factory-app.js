@@ -150,6 +150,7 @@
     if (job.alive || ['researching', 'scripting', 'tts', 'rendering', 'mixing', 'previewing', 'editing', 'building', 'running'].includes(status)) {
       return 'running';
     }
+    if (status === 'done' && qc === 'skipped') return 'kept';
     if (status === 'draft_ready' || (status === 'done' && qc === 'rejected')) return 'script';
     if (status === 'done') return qc === 'approved' ? 'ready' : 'qc';
     if (status === 'queued' && (job.deferredStart || !job.alive)) return 'queued';
@@ -395,7 +396,7 @@
   }
 
   function updateCounters() {
-    const c = { running: 0, queued: 0, script: 0, qc: 0, ready: 0 };
+    const c = { running: 0, queued: 0, script: 0, qc: 0, ready: 0, kept: 0 };
     for (const j of state.jobs) {
       const col = classifyJobCol(j);
       c[col] = (c[col] || 0) + 1;
@@ -404,6 +405,7 @@
     $('cnt-queued').textContent = c.queued;
     $('cnt-qc').textContent = c.qc;
     $('cnt-ready').textContent = c.ready;
+    if ($('cnt-kept')) $('cnt-kept').textContent = c.kept;
     $('rail-floor-cnt').textContent = state.jobs.length;
     $('rail-qc-cnt').textContent = c.qc + c.script;
     $('rail-social-cnt').textContent = c.ready;
@@ -471,11 +473,13 @@
           if (isErr && !j.alive) {
             quickAction = `<button type="button" class="btn btn-amber btn-xs" data-resume-job="${esc(j.id)}">▶ ทำงานต่อ</button>`;
           } else if (col.key === 'qc') {
-            quickAction = `<button type="button" class="btn btn-amber btn-xs" data-open-qc="${esc(j.id)}">🔍 ตรวจ QC</button>`;
+            quickAction = `<button type="button" class="btn btn-amber btn-xs" data-open-qc="${esc(j.id)}">🔍 ตรวจ QC</button><button type="button" class="btn btn-xs" data-skip-qc="${esc(j.id)}">✔️ ผ่าน (ไม่โพสต์)</button>`;
           } else if (col.key === 'script') {
             quickAction = `<button type="button" class="btn btn-cyan btn-xs" data-open-qc="${esc(j.id)}">📝 ตรวจบท</button>`;
           } else if (col.key === 'ready') {
             quickAction = `<button type="button" class="btn btn-emerald btn-xs" data-open-social="${esc(j.id)}">📤 โพสต์</button>`;
+          } else if (col.key === 'kept') {
+            quickAction = `<button type="button" class="btn btn-xs" data-unskip-qc="${esc(j.id)}">↩️ ส่งตรวจ QC</button><button type="button" class="btn btn-emerald btn-xs" data-open-social="${esc(j.id)}">📤 โพสต์</button>`;
           } else if (col.key === 'running') {
             quickAction = `<button type="button" class="btn btn-rose btn-xs" data-abort-job="${esc(j.id)}">⏹ ยกเลิก</button>`;
           }
@@ -529,13 +533,14 @@
             <td class="mono">${esc(j.id)}</td>
             <td><b>${esc(j.title || j.topic || j.id)}</b></td>
             <td>${esc(j.lineName || 'สั่งอิสระ')} <span class="badge mono">${esc(j.styleId || '—')}</span></td>
-            <td><span class="badge ${col === 'qc' ? 'amber' : col === 'running' ? 'cyan' : col === 'ready' ? 'emerald' : ''}">${esc(colLabel(col))}</span></td>
+            <td><span class="badge ${col === 'qc' ? 'amber' : col === 'running' ? 'cyan' : col === 'ready' ? 'emerald' : col === 'kept' ? 'slate' : ''}">${esc(colLabel(col))}</span></td>
             <td class="mono">${esc(j.renderNode || j.outputs?.renderNode || '—')}</td>
             <td class="mono">${cost !== null ? (cost > 0 ? '฿' + cost.toFixed(2) : 'ฟรี ฿0') : '—'}</td>
             <td>
               <div style="display:flex;gap:5px;flex-wrap:wrap;">
                 <button type="button" class="btn btn-xs" data-inspect-job="${esc(j.id)}">ดู</button>
                 <button type="button" class="btn btn-xs btn-amber" data-open-qc="${esc(j.id)}">QC</button>
+                ${j.status === 'done' && !['approved', 'skipped'].includes(j.qcStatus) ? `<button type="button" class="btn btn-xs" data-skip-qc="${esc(j.id)}" title="ผ่านเลย ไม่ต้องโพสต์">✔️</button>` : ''}
                 ${j.status === 'done' ? `<button type="button" class="btn btn-xs btn-emerald" data-open-social="${esc(j.id)}">โพสต์</button>` : ''}
               </div>
             </td>
@@ -571,6 +576,12 @@
     });
     document.querySelectorAll('[data-abort-job]').forEach((b) => {
       b.addEventListener('click', () => abortJobById(b.dataset.abortJob));
+    });
+    document.querySelectorAll('[data-skip-qc]').forEach((b) => {
+      b.addEventListener('click', () => setJobQcQuick(b.dataset.skipQc, 'skipped'));
+    });
+    document.querySelectorAll('[data-unskip-qc]').forEach((b) => {
+      b.addEventListener('click', () => setJobQcQuick(b.dataset.unskipQc, 'pending'));
     });
   }
 
@@ -676,6 +687,8 @@
 
       $('drawer-foot').innerHTML = `
         <button type="button" class="btn btn-amber btn-sm" id="dr-open-qc">🔍 เปิดห้อง QC / แก้บท</button>
+        ${j.status === 'done' && j.qcStatus !== 'skipped' ? `<button type="button" class="btn btn-sm" id="dr-skip-qc">✔️ ผ่าน (ไม่โพสต์)</button>` : ''}
+        ${j.status === 'done' && j.qcStatus === 'skipped' ? `<button type="button" class="btn btn-sm" id="dr-unskip-qc">↩️ ส่งกลับรอ QC</button>` : ''}
         ${j.status === 'done' ? `<button type="button" class="btn btn-emerald btn-sm" id="dr-open-social">📤 ศูนย์โพสต์</button>` : ''}
         ${j.status === 'done' ? `<a class="btn btn-sm" href="/video-editor.html?job=${encodeURIComponent(j.id)}" target="_blank">✂️ 6-Track Editor</a>` : ''}
         ${dlUrl ? `<a class="btn btn-sm" href="${dlUrl}" download>⬇ โหลด Master</a>` : ''}
@@ -684,6 +697,10 @@
       `;
 
       $('dr-open-qc').onclick = () => { closeDrawer(); state.qcJobId = j.id; switchView('qc'); };
+      const btnSkip = $('dr-skip-qc');
+      if (btnSkip) btnSkip.onclick = () => { closeDrawer(); setJobQcQuick(j.id, 'skipped'); };
+      const btnUnskip = $('dr-unskip-qc');
+      if (btnUnskip) btnUnskip.onclick = () => { closeDrawer(); setJobQcQuick(j.id, 'pending'); };
       const btnSoc = $('dr-open-social');
       if (btnSoc) btnSoc.onclick = () => { closeDrawer(); state.socialJobId = j.id; switchView('social'); };
       const btnRes = $('dr-resume');
@@ -1390,6 +1407,24 @@
     } catch (e) { toast(`Remix ไม่สำเร็จ: ${e.message}`, 'err'); }
   });
 
+  async function setJobQcQuick(jobId, qcStatus, note = '') {
+    if (!jobId) return;
+    try {
+      await apiFetch(`/api/video-studio/factory/jobs/${encodeURIComponent(jobId)}/qc`, {
+        method: 'POST',
+        body: JSON.stringify({ qcStatus, note }),
+      });
+      await refreshFactoryState(true);
+      if (qcStatus === 'skipped') {
+        toast('✔️ ผ่านแล้ว เก็บไว้ดูเอง (ไม่ต้องโพสต์) ค่ะ', 'ok');
+      } else if (qcStatus === 'pending') {
+        toast('↩️ ส่งกลับไปรอตรวจ QC แล้วค่ะ', 'ok');
+      }
+    } catch (e) {
+      toast(`อัปเดตสถานะ QC ไม่สำเร็จ: ${e.message}`, 'err');
+    }
+  }
+
   async function submitQCDecision(qcStatus) {
     if (!state.qcJobId) return;
     try {
@@ -1402,6 +1437,9 @@
         state.socialJobId = state.qcJobId;
         toast('✅ อนุมัติผ่าน QC! ส่งต่อไปยังศูนย์โพสต์โซเชียลแล้วค่ะ', 'ok');
         switchView('social');
+      } else if (qcStatus === 'skipped') {
+        toast('✔️ ผ่านแล้ว เก็บไว้ดูเอง ไม่ต้องโพสต์ค่ะ', 'ok');
+        switchView('archive');
       } else {
         toast('🔄 ตีกลับงานไปรอแก้ไขแล้วค่ะ', 'warn');
         switchView('floor');
@@ -1412,6 +1450,7 @@
   }
   $('btn-qc-approve').addEventListener('click', () => submitQCDecision('approved'));
   $('btn-qc-reject').addEventListener('click', () => submitQCDecision('rejected'));
+  if ($('btn-qc-skip')) $('btn-qc-skip').addEventListener('click', () => submitQCDecision('skipped'));
 
   // ── VIEW 4: SOCIAL DISPATCH & SCHEDULER (OPTION C) ─────────────────────────
   async function loadSocialHub() {
@@ -1445,7 +1484,7 @@
       $('social-ready-list').innerHTML = readyJobs.map((j) => `
         <button type="button" class="job-card ${j.id === state.socialJobId ? 'is-selected' : ''}" data-sjob="${esc(j.id)}" style="text-align:left;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span class="badge ${j.qcStatus === 'approved' ? 'emerald' : 'amber'}">${j.qcStatus === 'approved' ? '✅ ผ่าน QC' : '🔍 รอ QC'}</span>
+            <span class="badge ${j.qcStatus === 'approved' ? 'emerald' : j.qcStatus === 'skipped' ? 'slate' : 'amber'}">${j.qcStatus === 'approved' ? '✅ ผ่าน QC' : j.qcStatus === 'skipped' ? '✔️ เก็บไว้ดูเอง' : '🔍 รอ QC'}</span>
             <span class="mono sub-muted">${Math.round(Number(j.outputs?.durationSec ?? j.durationSec ?? 0))}s</span>
           </div>
           <div class="job-title">${esc(j.title || j.topic || j.id)}</div>
@@ -1506,6 +1545,16 @@
             });
             const targetUrl = r.browserVisionUrl || r.uploadUrl;
             if (targetUrl) {
+              window.HomelabBVAlerts?.raise({
+                id: 'bv-soc-' + platKey + '-' + sj.id,
+                kind: 'social_upload',
+                title: '📤 รอล็อกอิน/อัปโหลด ' + platKey,
+                detail: r.message || sj.title || sj.topic || 'เปิด Browser Vision เพื่ออัปโหลดคลิป',
+                sourceType: 'social',
+                platform: platKey,
+                browserVisionUrl: r.browserVisionUrl || targetUrl,
+                url: r.uploadUrl || targetUrl,
+              });
               window.open(targetUrl, '_blank', 'noopener');
             }
             const safeKey = (window.CSS && typeof window.CSS.escape === 'function') ? window.CSS.escape(platKey) : platKey;
@@ -1888,6 +1937,8 @@
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
               <button type="button" class="btn btn-xs btn-amber" data-arch-qc="${esc(j.id)}">QC</button>
+              ${j.status === 'done' && !['approved', 'skipped'].includes(j.qcStatus) ? `<button type="button" class="btn btn-xs" data-arch-skip="${esc(j.id)}" title="ผ่านเลย ไม่ต้องโพสต์ เก็บไว้ดูเอง">✔️ ผ่าน</button>` : ''}
+              ${j.qcStatus === 'skipped' ? `<span class="badge slate">✔️ เก็บไว้ดูเอง</span><button type="button" class="btn btn-xs" data-arch-unskip="${esc(j.id)}" title="ยกเลิก ส่งกลับไปรอ QC">↩️</button>` : ''}
               ${j.status === 'done' ? `<button type="button" class="btn btn-xs btn-emerald" data-arch-soc="${esc(j.id)}">โพสต์</button>` : ''}
               ${j.status === 'done' ? `<a class="btn btn-xs" href="/video-editor.html?job=${encodeURIComponent(j.id)}" target="_blank">✂️</a>` : ''}
               ${dlUrl ? `<a class="btn btn-xs" href="${dlUrl}" download>⬇</a>` : ''}
@@ -1901,11 +1952,43 @@
     $('archive-table-body').querySelectorAll('[data-arch-qc]').forEach((b) => {
       b.addEventListener('click', () => { state.qcJobId = b.dataset.archQc; switchView('qc'); });
     });
+    $('archive-table-body').querySelectorAll('[data-arch-skip]').forEach((b) => {
+      b.addEventListener('click', () => setJobQcQuick(b.dataset.archSkip, 'skipped'));
+    });
+    $('archive-table-body').querySelectorAll('[data-arch-unskip]').forEach((b) => {
+      b.addEventListener('click', () => setJobQcQuick(b.dataset.archUnskip, 'pending'));
+    });
     $('archive-table-body').querySelectorAll('[data-arch-soc]').forEach((b) => {
       b.addEventListener('click', () => { state.socialJobId = b.dataset.archSoc; switchView('social'); });
     });
     $('archive-table-body').querySelectorAll('[data-arch-del]').forEach((b) => {
       b.addEventListener('click', () => deleteJobById(b.dataset.archDel));
+    });
+  }
+
+  if ($('archive-bulk-skip')) {
+    $('archive-bulk-skip').addEventListener('click', async () => {
+      const pendingQcJobs = state.jobs.filter((j) => classifyJobCol(j) === 'qc');
+      if (!pendingQcJobs.length) {
+        toast('ไม่มีงานที่ค้างตรวจ QC แล้วค่ะ', 'ok');
+        return;
+      }
+      if (!confirm(`ปิดงานที่ค้างตรวจ QC ทั้งหมด ${pendingQcJobs.length} งาน เป็น 'เก็บไว้ดูเอง (ไม่โพสต์)' ใช่ไหม?`)) return;
+      let ok = 0;
+      let fail = 0;
+      for (const j of pendingQcJobs) {
+        try {
+          await apiFetch(`/api/video-studio/factory/jobs/${encodeURIComponent(j.id)}/qc`, {
+            method: 'POST',
+            body: JSON.stringify({ qcStatus: 'skipped', note: 'bulk-skip' }),
+          });
+          ok++;
+        } catch {
+          fail++;
+        }
+      }
+      await refreshFactoryState(true);
+      toast(`✔️ ปิดงานค้าง QC สำเร็จ ${ok} งาน${fail ? ` (ล้มเหลว ${fail} งาน)` : ''}`, fail ? 'warn' : 'ok');
     });
   }
 

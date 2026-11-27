@@ -410,6 +410,7 @@ a { color: inherit; text-decoration: none; }
 .badge.emerald { background: var(--emerald-soft); border-color: rgba(34, 197, 94, 0.45); color: #BBF7D0; }
 .badge.rose { background: var(--rose-soft); border-color: rgba(244, 63, 94, 0.45); color: #FECDD3; }
 .badge.violet { background: var(--violet-soft); border-color: rgba(167, 139, 250, 0.45); color: #DDD6FE; }
+.badge.slate { background: rgba(148, 163, 184, 0.14); border-color: rgba(148, 163, 184, 0.38); color: #CBD5E1; }
 
 /* ── VIEW 1: FACTORY FLOOR ─────────────────────────────────────────────── */
 .toolbar-row {
@@ -426,7 +427,7 @@ a { color: inherit; text-decoration: none; }
 
 .conveyor-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(236px, 1fr));
+  grid-template-columns: repeat(6, minmax(220px, 1fr));
   gap: 12px;
   overflow-x: auto;
   padding-bottom: 8px;
@@ -444,6 +445,7 @@ a { color: inherit; text-decoration: none; }
 }
 .conveyor-col.is-qc { border-color: rgba(245, 166, 35, 0.36); }
 .conveyor-col.is-active-col { border-color: rgba(56, 189, 248, 0.36); }
+.conveyor-col.is-kept { border-color: rgba(148, 163, 184, 0.36); }
 .col-head {
   display: flex;
   align-items: center;

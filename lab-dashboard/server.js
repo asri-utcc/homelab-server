@@ -38,6 +38,7 @@ const bgRemoveManager = require('./bg-remove-manager');
 const assetVaultManager = require('./asset-vault-manager');
 const videoStudioManager = require('./video-studio-manager');
 const agentHubManager = require('./agent-hub-manager');
+const { createOverviewManager } = require('./overview-manager');
 let browserVisionBridge = null;
 try {
     browserVisionBridge = require('./browser-vision-bridge');
@@ -1345,6 +1346,14 @@ async function buildSummary() {
     };
 }
 
+const overviewManager = createOverviewManager({
+    buildSummary,
+    geminiManager,
+    audit,
+    videoStudioManager,
+    agentHubManager,
+});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // ระบบล็อกอิน — แทน HTTP Basic Auth (dialog ของเบราว์เซอร์ ซึ่งแต่งสไตล์ไม่ได้)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1760,6 +1769,23 @@ const server = http.createServer(async (req, res) => {
 
         if (p === '/api/summary') {
             return sendJson(res, 200, await buildSummary());
+        }
+        if (req.method === 'GET' && p === '/api/overview') {
+            res.setHeader('Cache-Control', 'no-store');
+            return sendJson(res, 200, await overviewManager.getOverview());
+        }
+        if (req.method === 'POST' && p === '/api/overview/seen') {
+            let body;
+            try {
+                body = await readJsonBody(req, 64 * 1024);
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message || 'Invalid JSON payload' });
+            }
+            try {
+                return sendJson(res, 200, await overviewManager.markVideoSeen(body));
+            } catch (err) {
+                return sendJson(res, err.statusCode || 400, { ok: false, error: err.message });
+            }
         }
         if (p === '/api/energy') {
             return sendJson(res, 200, await cached('energy', 6000, energyMetrics));

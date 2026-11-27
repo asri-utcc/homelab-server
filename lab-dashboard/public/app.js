@@ -309,7 +309,7 @@ function defaultWarpConfig() {
     const scenes = {};
     Object.keys(WARP_SCENE_META).forEach((n) => { scenes[n] = { on: true, weight: 3 }; });
     return {
-        enabled: true,
+        enabled: false,
         mode: 'random',
         fixed: 'blackhole',
         scenes,

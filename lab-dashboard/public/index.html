@@ -7,7 +7,7 @@
 <title>Home-lab Control Panel</title>
 <link rel="stylesheet" href="/styles.css?v=20261121-bgstar">
 <link rel="stylesheet" href="/launcher-bar.css?v=20261124-launcher">
-<link rel="stylesheet" href="/agent-mini-widget.css?v=20261124-launcher">
+<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov2">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -344,234 +344,210 @@
 
 <main class="wrap">
 
-  <!-- ════════ VIEW 1: OVERVIEW & QUICK LAUNCH ════════ -->
+  <!-- ════════ VIEW 1: OVERVIEW & OPERATIONS BOARD ════════ -->
   <div class="lab-view is-active" id="view-overview" data-view-id="overview">
     <div class="lab-launcher" id="lab-launcher" aria-label="App Launcher"></div>
-    <!-- 3D Galaxy & Zodiac Astrolabe Command Hero -->
-    <section class="ov-galaxy-hero" id="ov-galaxy-hero" aria-label="3D Galaxy Linux Server Monitor">
-      <canvas id="ov-galaxy-canvas"></canvas>
 
-      <div class="ov-galaxy-grid">
-        <!-- Left HUD Wing: Linux Compute & Host Vitals -->
-        <aside class="ov-hud-wing ov-hud-wing--left" data-ov-card="vitals">
-          <div class="ov-wing-head">
-            <span class="ov-wing-dot"></span>
-            <span>LINUX SERVER VITALS</span>
-            <button type="button" class="ov-card-toggle" data-ov-toggle="vitals" aria-expanded="true" title="ย่อ/ขยายการ์ด">▾</button>
+    <div class="ov2" id="ov2-root">
+      <!-- Top Summary & Quick Actions -->
+      <div class="ov2-topbar">
+        <div class="ov2-status-lead">
+          <span class="ov2-status-dot" id="ov2-status-dot" aria-hidden="true"></span>
+          <div>
+            <span class="ov2-status-summary" id="ov2-status-summary">กำลังโหลดภาพรวมระบบ…</span>
+            <span class="ov2-status-meta" id="ov2-status-meta"></span>
           </div>
-          <div class="ov-card-body">
-            <div class="ov-wing-sub" id="ov-wing-host">homelab · Linux</div>
-
-            <div class="ov-vital-item">
-              <div class="ov-vital-row"><span>CPU Load</span><strong id="ov-wing-cpu">—%</strong></div>
-              <div class="ov-vital-bar"><i id="ov-wing-cpu-bar" style="width:0%"></i></div>
-              <div class="ov-vital-meta" id="ov-wing-load">Load: —</div>
-            </div>
-
-            <div class="ov-vital-item">
-              <div class="ov-vital-row"><span>Memory (RAM)</span><strong id="ov-wing-mem">—%</strong></div>
-              <div class="ov-vital-bar"><i id="ov-wing-mem-bar" class="is-emerald" style="width:0%"></i></div>
-              <div class="ov-vital-meta" id="ov-wing-mem-meta">— / —</div>
-            </div>
-
-            <div class="ov-vital-item">
-              <div class="ov-vital-row"><span>Root Disk</span><strong id="ov-wing-disk">—%</strong></div>
-              <div class="ov-vital-bar"><i id="ov-wing-disk-bar" class="is-violet" style="width:0%"></i></div>
-              <div class="ov-vital-meta" id="ov-wing-disk-meta">— / —</div>
-            </div>
-
-            <div class="ov-vital-split">
-              <div class="ov-mini-stat">
-                <span>Peak Temp</span>
-                <strong id="ov-wing-temp">—°C</strong>
-              </div>
-              <div class="ov-mini-stat">
-                <span>Uptime</span>
-                <strong id="ov-wing-uptime">—</strong>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        <!-- Center Stage: 3D Holographic Armillary, Zodiac Ring & Orbiting Telemetry Planets -->
-        <div class="ov-galaxy-center">
-          <div class="ov-space-nav" id="ov-space-nav">
-            <div class="ov-search-wrap">
-              <input type="text" id="ov-space-search" name="ov_cosmic_radar_filter" class="ov-space-search" placeholder="🔍 ค้นหาดาว / เซอร์วิส (เช่น CPU, HA, Docker)..." autocomplete="off" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly');" />
-              <div class="ov-search-results" id="ov-search-results"></div>
-            </div>
-            <div class="ov-zoom-controls" aria-label="3D Camera Zoom">
-              <button type="button" class="ov-zoom-btn" id="ov-zoom-out" title="Zoom Out (−)">−</button>
-              <span class="ov-zoom-val" id="ov-zoom-val">1.0x</span>
-              <button type="button" class="ov-zoom-btn" id="ov-zoom-in" title="Zoom In (+)">+</button>
-              <button type="button" class="ov-zoom-btn ov-zoom-btn--reset" id="ov-zoom-reset" title="รีเซ็ตมุมกล้อง (Esc)">🎯</button>
-            </div>
-          </div>
-
-          <div class="ov-reactor-stage" id="ov-reactor-stage">
-            <div class="reactor-pulse-wave"></div>
-            <div class="reactor-pulse-wave reactor-pulse-wave--delay"></div>
-            <div class="reactor-armillary-3d" aria-hidden="true">
-              <svg class="armillary-ring armillary-ring--zodiac" id="ov-zodiac-svg" viewBox="0 0 360 360"></svg>
-              <svg class="armillary-ring armillary-ring--gyro-a" viewBox="0 0 360 360">
-                <circle cx="180" cy="180" r="158" fill="none" stroke="rgba(0, 229, 255, 0.34)" stroke-width="1.2" stroke-dasharray="24 12 6 12" />
-                <circle cx="180" cy="180" r="148" fill="none" stroke="rgba(168, 85, 247, 0.28)" stroke-width="0.9" stroke-dasharray="3 7" />
-              </svg>
-              <svg class="armillary-ring armillary-ring--gyro-b" viewBox="0 0 360 360">
-                <circle cx="180" cy="180" r="136" fill="none" stroke="rgba(52, 211, 153, 0.32)" stroke-width="1.2" stroke-dasharray="18 10 4 10" />
-                <circle cx="180" cy="180" r="126" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="0.8" stroke-dasharray="2 8" />
-              </svg>
-              <svg class="armillary-ring armillary-ring--equator" viewBox="0 0 360 360">
-                <circle cx="180" cy="180" r="176" fill="none" stroke="rgba(0, 229, 255, 0.22)" stroke-width="1" stroke-dasharray="6 14" />
-                <circle cx="180" cy="180" r="112" fill="none" stroke="rgba(245, 208, 97, 0.2)" stroke-width="0.9" stroke-dasharray="2 10" />
-              </svg>
-            </div>
-            <svg class="reactor-svg" id="ov-reactor-svg" viewBox="0 0 300 300" aria-hidden="true">
-              <circle cx="150" cy="150" r="142" fill="none" stroke="rgba(168, 85, 247, 0.26)" stroke-width="1" stroke-dasharray="3 9" />
-              <g class="ring-cw-slow">
-                <circle cx="150" cy="150" r="126" fill="none" stroke="rgba(0, 229, 255, 0.32)" stroke-width="1.1" stroke-dasharray="28 14 6 14" />
-              </g>
-              <g class="ring-ccw-med">
-                <circle cx="150" cy="150" r="102" fill="none" stroke="#00e5ff" stroke-width="2.2" stroke-dasharray="55 24 18 24 70 28" stroke-linecap="round" opacity="0.65" />
-              </g>
-              <g class="ring-cw-fast">
-                <circle cx="150" cy="150" r="70" fill="none" stroke="#00e5ff" stroke-width="1.6" stroke-dasharray="36 18 10 18" opacity="0.78" />
-              </g>
-              <g class="ring-octa">
-                <polygon points="150,96 188,112 204,150 188,188 150,204 112,188 96,150 112,112" fill="none" stroke="rgba(0, 229, 255, 0.52)" stroke-width="1.2" />
-              </g>
-            </svg>
-            <div class="reactor-core-orb ov-core-orb" id="ov-core-voice-btn" role="button" tabindex="0" title="กด 2 ครั้ง (ดับเบิลคลิก) เพื่อเปิด AI Chat + เริ่มแชทใหม่ + เปิดไมค์สั่งงานด้วยเสียง" aria-label="ดับเบิลคลิกเพื่อเปิด AI Chat และพูดสั่งงานด้วยเสียง">
-              <canvas id="ov-core-particle-canvas" width="180" height="180"></canvas>
-              <div class="core-singularity"></div>
-              <div class="core-meridian"></div>
-              <div class="core-meridian core-meridian--2"></div>
-              <div class="core-meridian core-meridian--3"></div>
-              <svg class="ov-core-mic-ico" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="9" y="2.5" width="6" height="11" rx="3" />
-                <path d="M5 10.5a7 7 0 0 0 14 0" />
-                <line x1="12" y1="17.5" x2="12" y2="21.5" />
-                <line x1="8.5" y1="21.5" x2="15.5" y2="21.5" />
-              </svg>
-            </div>
-            <div class="orbit-planets-layer" id="ov-orbit-planets"></div>
-          </div>
-
-          <div class="ov-galaxy-caption">
-            <div class="ov-reactor-status" id="ov-reactor-status">SYSTEM NOMINAL · LIVE TELEMETRY</div>
-            <div class="ov-galaxy-badges">
-              <span class="ov-zodiac-badge" id="ov-zodiac-badge">♏ SCORPIO</span>
-              <span class="ov-astro-date-badge" id="ov-astro-date-badge">กำลังคำนวณปฏิทินโหราศาสตร์…</span>
-            </div>
-          </div>
-
-          <div class="planet-popover ov-planet-popover" id="ov-planet-popover"></div>
         </div>
-
-        <!-- Right HUD Column: AC Power, Containers + Premium 3D Prayer Times -->
-        <div class="ov-wing-stack ov-wing-stack--right">
-          <aside class="ov-hud-wing ov-hud-wing--right" data-ov-card="infra">
-            <div class="ov-wing-head">
-              <span class="ov-wing-dot ov-wing-dot--gold"></span>
-              <span>POWER &amp; INFRASTRUCTURE</span>
-              <button type="button" class="ov-card-toggle" data-ov-toggle="infra" aria-expanded="true" title="ย่อ/ขยายการ์ด">▾</button>
-            </div>
-
-            <div class="ov-card-body">
-              <div class="ov-power-box">
-                <span class="ov-power-label">⚡ PZEM-01 Active Load</span>
-                <strong class="ov-power-val" id="ov-wing-watts">— W</strong>
-                <span class="ov-power-sub" id="ov-wing-ac">— V · — A</span>
-              </div>
-
-              <div class="ov-vital-split">
-                <div class="ov-mini-stat">
-                  <span>Docker</span>
-                  <strong id="ov-wing-docker">—/—</strong>
-                </div>
-                <div class="ov-mini-stat">
-                  <span>PM2 Apps</span>
-                  <strong id="ov-wing-pm2">—</strong>
-                </div>
-                <div class="ov-mini-stat">
-                  <span>Services</span>
-                  <strong id="ov-wing-svc">—/—</strong>
-                </div>
-              </div>
-
-              <div class="ov-net-box">
-                <span>🌐 Network I/O</span>
-                <strong id="ov-wing-net">↓ —  ↑ —</strong>
-              </div>
-
-              <div class="ov-quick-actions">
-                <button type="button" class="ov-act-btn" onclick="window.switchView && window.switchView('services')">🐳 คอนเทนเนอร์</button>
-                <button type="button" class="ov-act-btn" onclick="window.switchView && window.switchView('ports')">🛡️ พอร์ต &amp; VPN</button>
-                <button type="button" class="ov-act-btn ov-act-btn--ai" onclick="window.switchView && window.switchView('terminal')">⚡ AI &amp; Terminal</button>
-                <button type="button" class="ov-act-btn" onclick="window.openOverviewCosmic && window.openOverviewCosmic('trends')">🛰️ กราฟย้อนหลัง</button>
-              </div>
-            </div>
-          </aside>
-
-          <!-- Premium 3D Galaxy Prayer Times Card -->
-          <aside class="ov-prayer-card" id="ov-prayer-card" data-ov-card="prayer" aria-label="เวลาละหมาดประจำวัน">
-            <div class="ov-prayer-bg-glow" aria-hidden="true"></div>
-            <div class="ov-prayer-head">
-              <div class="ov-prayer-title-wrap">
-                <div class="ov-prayer-orb3d" aria-hidden="true">
-                  <span class="ov-prayer-ring3d"></span>
-                  <span class="ov-prayer-moon">☪</span>
-                </div>
-                <div class="ov-prayer-title-text">
-                  <div class="ov-prayer-kicker">PRAYER TIMES</div>
-                  <div class="ov-prayer-hijri" id="ov-prayer-hijri">กำลังโหลดปฏิทินฮิจเราะห์…</div>
-                </div>
-              </div>
-              <div class="ov-prayer-head-actions">
-                <button type="button" class="ov-prayer-gear-btn" id="ov-prayer-gear-btn" title="ตั้งค่าเวลาละหมาดขั้นสูง" aria-label="ตั้งค่าเวลาละหมาดขั้นสูง">⚙️</button>
-                <button type="button" class="ov-card-toggle" data-ov-toggle="prayer" aria-expanded="true" title="ย่อ/ขยายการ์ด">▾</button>
-              </div>
-            </div>
-
-            <div class="ov-card-body">
-              <div class="ov-prayer-loc-row">
-                <button type="button" class="ov-prayer-city-btn" id="ov-prayer-city-btn" title="คลิกเพื่อเปลี่ยนจังหวัด/เมือง">📍 Bangkok</button>
-                <span class="ov-prayer-method-pill" id="ov-prayer-method-badge">MWL · Shafi</span>
-              </div>
-
-              <div class="ov-prayer-next">
-                <div class="ov-prayer-next-left">
-                  <span class="ov-prayer-next-label">เวลาถัดไป</span>
-                  <strong class="ov-prayer-next-name" id="ov-prayer-next-name">—</strong>
-                </div>
-                <div class="ov-prayer-next-right">
-                  <strong class="ov-prayer-next-time" id="ov-prayer-next-time">--:--</strong>
-                  <span class="ov-prayer-countdown" id="ov-prayer-countdown">อีก --:--:--</span>
-                </div>
-              </div>
-
-              <div class="ov-prayer-prog-track">
-                <div class="ov-prayer-prog-fill" id="ov-prayer-prog" style="width:0%"></div>
-              </div>
-
-              <div class="ov-prayer-meta-strip" id="ov-prayer-meta-strip" style="display:none">
-                <span id="ov-prayer-sunrise-info">🌅 ชูรูก --:--</span>
-              </div>
-
-              <div class="ov-prayer-grid" id="ov-prayer-grid">
-                <div class="ov-prayer-pill" data-prayer="Fajr"><span>ซุบฮิ</span><strong>--:--</strong></div>
-                <div class="ov-prayer-pill" data-prayer="Dhuhr"><span>ซุฮ์ริ</span><strong>--:--</strong></div>
-                <div class="ov-prayer-pill" data-prayer="Asr"><span>อัศริ</span><strong>--:--</strong></div>
-                <div class="ov-prayer-pill" data-prayer="Maghrib"><span>มัฆริบ</span><strong>--:--</strong></div>
-                <div class="ov-prayer-pill" data-prayer="Isha"><span>อิชาอ์</span><strong>--:--</strong></div>
-              </div>
-            </div>
-          </aside>
+        <div class="ov2-topbar-actions">
+          <button type="button" class="ov2-btn ov2-btn--primary" id="ov2-btn-new-chat">+ แชท AI ใหม่</button>
+          <a class="ov2-btn" href="/video-studio">+ สร้างคลิป</a>
+          <button type="button" class="ov2-btn" id="ov2-btn-refresh" title="อัปเดตข้อมูลทันที">รีเฟรช</button>
         </div>
       </div>
-    </section>
 
-    <section class="ov-agent-mini" id="ov-agent-mini" aria-label="Homelab Agent Hub nodes"></section>
+      <!-- Band 1: Attention Rail -->
+      <section class="ov2-rail" id="ov2-rail" aria-label="สิ่งที่ต้องดู"></section>
+
+      <!-- Band 2: AI Chats + Videos & Renders -->
+      <section class="ov2-grid-2" aria-label="งาน AI และวิดีโอ">
+        <!-- Card A: AI Chats -->
+        <article class="ov2-panel" id="ov2-panel-ai">
+          <header class="ov2-panel-head">
+            <div class="ov2-panel-title-group">
+              <h2 class="ov2-panel-title">งาน AI และแชท</h2>
+              <span class="ov2-panel-sub" id="ov2-ai-sub"></span>
+            </div>
+            <div class="ov2-panel-actions">
+              <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-ai-mark-all" style="display:none">อ่านแล้วทั้งหมด</button>
+              <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/gemini">เปิดทั้งหมด</a>
+            </div>
+          </header>
+          <div class="ov2-tabs" id="ov2-ai-tabs" role="tablist"></div>
+          <div class="ov2-panel-body" id="ov2-ai-body">
+            <div class="ov2-empty">กำลังโหลดรายการแชท AI…</div>
+          </div>
+        </article>
+
+        <!-- Card B: Videos & Active Renders -->
+        <article class="ov2-panel" id="ov2-panel-videos">
+          <header class="ov2-panel-head">
+            <div class="ov2-panel-title-group">
+              <h2 class="ov2-panel-title">วิดีโอและงานเรนเดอร์</h2>
+              <span class="ov2-panel-sub" id="ov2-vid-sub"></span>
+            </div>
+            <div class="ov2-panel-actions">
+              <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-vid-mark-all" style="display:none">ดูทั้งหมดแล้ว</button>
+              <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/video-studio">เปิดสตูดิโอ</a>
+            </div>
+          </header>
+          <div class="ov2-tabs" id="ov2-vid-tabs" role="tablist"></div>
+          <div class="ov2-panel-body" id="ov2-vid-body">
+            <div class="ov2-empty">กำลังโหลดรายการวิดีโอ…</div>
+          </div>
+        </article>
+      </section>
+
+      <!-- Band 3: Compute Resources (homelab + Agent Hub nodes) -->
+      <section class="ov2-panel" id="ov2-panel-nodes" aria-label="ทรัพยากรเครื่องและ Agent">
+        <header class="ov2-panel-head">
+          <div class="ov2-panel-title-group">
+            <h2 class="ov2-panel-title">ทรัพยากรเครื่องและ Agent</h2>
+            <span class="ov2-panel-sub" id="ov2-nodes-sub"></span>
+          </div>
+          <div class="ov2-panel-actions">
+            <a class="ov2-btn ov2-btn--xs" href="/agent-hub">จัดการ Agent Hub</a>
+          </div>
+        </header>
+        <div class="ov2-table-wrap">
+          <table class="ov2-matrix">
+            <thead>
+              <tr>
+                <th scope="col">เครื่อง</th>
+                <th scope="col">CPU</th>
+                <th scope="col">RAM</th>
+                <th scope="col">GPU / ดิสก์ &amp; ความร้อน</th>
+                <th scope="col">งานที่ทำอยู่ / ล่าสุด</th>
+              </tr>
+            </thead>
+            <tbody id="ov2-matrix-body">
+              <tr><td colspan="5" style="text-align:center;color:var(--ov-ink-3);padding:18px;">กำลังโหลดข้อมูลเครื่อง…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="ov2-nodes-mobile" id="ov2-nodes-mobile"></div>
+      </section>
+
+      <!-- Band 4: PM2 & Docker + Energy & Prayer Times -->
+      <section class="ov2-grid-bottom" aria-label="บริการ พลังงาน และเวลาละหมาด">
+        <!-- Infrastructure Panel -->
+        <article class="ov2-panel" id="ov2-panel-infra">
+          <header class="ov2-panel-head">
+            <div class="ov2-panel-title-group">
+              <h2 class="ov2-panel-title">บริการ PM2 และ Docker</h2>
+            </div>
+            <div class="ov2-panel-actions">
+              <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-btn-goto-services">จัดการทั้งหมด</button>
+            </div>
+          </header>
+          <div class="ov2-tabs" id="ov2-infra-tabs" role="tablist"></div>
+          <div class="ov2-panel-body" id="ov2-infra-body">
+            <div class="ov2-empty">กำลังโหลดสถานะบริการ…</div>
+          </div>
+        </article>
+
+        <!-- Right Utility Column: Energy + Prayer -->
+        <div class="ov2-side-stack">
+          <article class="ov2-panel" id="ov2-panel-energy">
+            <header class="ov2-panel-head">
+              <div class="ov2-panel-title-group">
+                <h2 class="ov2-panel-title">ไฟฟ้าบ้าน (PZEM-01)</h2>
+              </div>
+              <div class="ov2-panel-actions">
+                <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-btn-goto-energy">ดูกราฟ</button>
+              </div>
+            </header>
+            <div class="ov2-energy-body">
+              <div class="ov2-energy-hero">
+                <div class="ov2-energy-watts" id="ov2-en-watts">— <small>W</small></div>
+                <div class="ov2-energy-ac" id="ov2-en-ac">— V · — A</div>
+              </div>
+              <div class="ov2-energy-stats">
+                <div class="ov2-energy-stat">
+                  <span>วันนี้</span>
+                  <strong id="ov2-en-today">—</strong>
+                  <small id="ov2-en-today-kwh">— kWh</small>
+                </div>
+                <div class="ov2-energy-stat">
+                  <span>เดือนนี้</span>
+                  <strong id="ov2-en-month">—</strong>
+                  <small id="ov2-en-month-kwh">— kWh</small>
+                </div>
+                <div class="ov2-energy-stat">
+                  <span>คาดการณ์เดือนนี้</span>
+                  <strong id="ov2-en-proj">—</strong>
+                  <small id="ov2-en-proj-kwh">— kWh</small>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="ov2-panel" id="ov-prayer-card" aria-label="เวลาละหมาดประจำวัน">
+            <header class="ov2-panel-head">
+              <div class="ov2-panel-title-group">
+                <h2 class="ov2-panel-title">เวลาละหมาด</h2>
+                <span class="ov2-panel-sub" id="ov-prayer-hijri">กำลังโหลด…</span>
+              </div>
+              <div class="ov2-panel-actions">
+                <button type="button" class="ov2-prayer-city-btn" id="ov-prayer-city-btn" title="คลิกเพื่อเปลี่ยนเมือง">Bangkok</button>
+                <button type="button" class="ov2-btn ov2-btn--xs" id="ov-prayer-gear-btn" title="ตั้งค่าเวลาละหมาด">ตั้งค่า</button>
+              </div>
+            </header>
+            <div class="ov2-prayer-body">
+              <div class="ov2-prayer-next">
+                <div>
+                  <span class="ov2-prayer-next-lbl">เวลาถัดไป</span>
+                  <strong class="ov2-prayer-next-name" id="ov-prayer-next-name">—</strong>
+                </div>
+                <div class="ov2-prayer-next-right">
+                  <strong class="ov2-prayer-next-time" id="ov-prayer-next-time">--:--</strong>
+                  <span class="ov2-prayer-countdown" id="ov-prayer-countdown">อีก --:--:--</span>
+                </div>
+              </div>
+              <div class="ov2-bar"><i id="ov-prayer-prog" style="width:0%"></i></div>
+              <div class="ov2-prayer-meta-row">
+                <span id="ov-prayer-method-badge">MWL · Shafi</span>
+                <span id="ov-prayer-meta-strip" style="display:none"><span id="ov-prayer-sunrise-info">ชูรูก --:--</span></span>
+              </div>
+              <div class="ov2-prayer-grid" id="ov-prayer-grid">
+                <div class="ov2-prayer-pill" data-prayer="Fajr"><span>ซุบฮิ</span><strong>--:--</strong></div>
+                <div class="ov2-prayer-pill" data-prayer="Dhuhr"><span>ซุฮ์ริ</span><strong>--:--</strong></div>
+                <div class="ov2-prayer-pill" data-prayer="Asr"><span>อัศริ</span><strong>--:--</strong></div>
+                <div class="ov2-prayer-pill" data-prayer="Maghrib"><span>มัฆริบ</span><strong>--:--</strong></div>
+                <div class="ov2-prayer-pill" data-prayer="Isha"><span>อิชาอ์</span><strong>--:--</strong></div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <!-- Built-in Video Quick-Preview Modal -->
+    <dialog class="ov2-video-dialog" id="ov2-video-dialog" aria-labelledby="ov2-vd-title">
+      <div class="ov2-vd-head">
+        <h3 class="ov2-vd-title" id="ov2-vd-title">วิดีโอ</h3>
+        <button type="button" class="ov2-btn ov2-btn--xs" id="ov2-vd-close" aria-label="ปิดหน้าต่าง">ปิด</button>
+      </div>
+      <div class="ov2-vd-stage">
+        <video id="ov2-vd-player" controls playsinline preload="metadata"></video>
+      </div>
+      <div class="ov2-vd-foot">
+        <span id="ov2-vd-meta"></span>
+        <div class="ov2-panel-actions">
+          <a class="ov2-btn ov2-btn--xs" id="ov2-vd-editor" href="/video-studio" target="_blank" rel="noopener">ตัดต่อ</a>
+          <a class="ov2-btn ov2-btn--xs ov2-btn--primary" id="ov2-vd-download" href="#" download>ดาวน์โหลด MP4</a>
+        </div>
+      </div>
+    </dialog>
 
     <!-- Hidden legacy DOM targets so app.js telemetry & charts stay synced without cluttering Overview -->
     <div class="ov-legacy-hidden" style="display:none" aria-hidden="true">
@@ -1696,7 +1672,7 @@
 
 <script src="/ai-think-sounds.js?v=20261121-think"></script>
 <script src="/warp-fx.js?v=20261120-vaultdoor"></script>
-<script src="/app.js?v=20261124-3dwow"></script>
+<script src="/app.js?v=20261127-ov2"></script>
 
 <!-- ── mobile bottom navigation bar ──────────────────────────────────────── -->
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Navigation">
@@ -1821,9 +1797,8 @@
   </button>
 </nav>
 
-<script src="/overview-galaxy.js?v=20261124-3dwow"></script>
+<script src="/overview-v2.js?v=20261127-ov2"></script>
 <script src="/launcher-bar.js?v=20261124-3dwow"></script>
-<script src="/agent-mini-widget.js?v=20261124-launcher"></script>
 <script src="/model-alerts.js" defer></script>
 </body>
 </html>

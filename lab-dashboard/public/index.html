@@ -7,7 +7,7 @@
 <title>Home-lab Control Panel</title>
 <link rel="stylesheet" href="/styles.css?v=20261121-bgstar">
 <link rel="stylesheet" href="/launcher-bar.css?v=20261124-launcher">
-<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov4">
+<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov5">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -452,12 +452,13 @@
             <a class="ov2-btn ov2-btn--xs ov2-btn--ghost" href="/quota">หน้าเต็ม</a>
           </div>
         </header>
+        <div class="ov3-tabs" id="ov3-quota-tabs" role="tablist" aria-label="กรองช่องทางโควตา AI"></div>
         <div class="ov3-card__body ov3-quota-body">
-          <div class="ov3-quota-grid" id="ov3-quota-grid">
-            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
-            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
-            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
-            <div class="ov3-qcard" aria-hidden="true"><span class="ov3-skel" style="width:55%;height:14px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:75%;height:12px"></span></div>
+          <div class="ov3-quota-sections" id="ov3-quota-grid">
+            <div class="ov3-qpool-grid" aria-hidden="true">
+              <div class="ov3-qpool-card"><span class="ov3-skel" style="width:60%;height:15px"></span><span class="ov3-skel" style="width:32%;height:28px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:100%;height:34px"></span></div>
+              <div class="ov3-qpool-card"><span class="ov3-skel" style="width:55%;height:15px"></span><span class="ov3-skel" style="width:32%;height:28px"></span><span class="ov3-skel" style="width:100%;height:8px"></span><span class="ov3-skel" style="width:100%;height:34px"></span></div>
+            </div>
           </div>
           <div class="ov3-quota-models" id="ov3-quota-models-wrap" hidden></div>
         </div>
@@ -1850,7 +1851,7 @@
   </button>
 </nav>
 
-<script src="/overview-v2.js?v=20261127-ov4"></script>
+<script src="/overview-v2.js?v=20261127-ov5"></script>
 <script src="/launcher-bar.js?v=20261124-3dwow"></script>
 <script src="/model-alerts.js" defer></script>
 </body>

@@ -2056,165 +2056,406 @@
     animation: ov3-shimmer 1.2s linear infinite;
 }
 
-/* ── Band 3: AI Quota Grid ──────────────────────────────────────────────── */
+/* ── Band 3: AI Quota Grid (7-Day Pace + 5h/Weekly Breakdown) ────────────── */
 .ov3-quota-body {
     padding: 16px 20px 18px;
     gap: 14px;
 }
 
-.ov3-quota-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
-    gap: 12px;
+.ov3-quota-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
 }
 
-.ov3-qcard {
+.ov3-qsec {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ov3-qsec__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    border-radius: var(--ov-radius-sm);
     background: var(--ov-surface-2);
     border: 1px solid var(--ov-border);
-    border-radius: var(--ov-radius-sm);
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 0;
 }
 
-.ov3-qcard.is-limit {
-    border-color: rgba(248, 113, 113, 0.42);
-}
-
-.ov3-qcard__head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.ov3-qcard__title-wrap {
-    min-width: 0;
-    flex: 1 1 auto;
-}
-
-.ov3-qcard__name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--ov-ink-1);
-    line-height: 1.25;
-}
-
-.ov3-qcard__sub {
-    font-size: 11.5px;
-    color: var(--ov-ink-3);
-    font-family: var(--ov-mono);
-    margin-top: 2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ov3-qpools {
-    display: flex;
-    flex-direction: column;
-    gap: 11px;
-    flex: 1 1 auto;
-}
-
-.ov3-qpool {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.ov3-qpool__top {
+.ov3-qsec__title {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
     gap: 8px;
-}
-
-.ov3-qpool__label {
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--ov-ink-2);
+    flex-wrap: wrap;
     min-width: 0;
 }
 
-.ov3-qpool__val {
-    font-size: 15px;
+.ov3-qsec__name {
+    font-size: 13.5px;
     font-weight: 700;
-    font-family: var(--ov-mono);
-    font-variant-numeric: tabular-nums;
     color: var(--ov-ink-1);
-    flex-shrink: 0;
 }
 
-.ov3-qpool__val[data-tone="ok"],
-.ov3-qcredit__val[data-tone="ok"] {
-    color: var(--ov-green);
+.ov3-qsec__sub {
+    font-family: var(--ov-mono);
+    font-size: 11.5px;
+    color: var(--ov-ink-3);
 }
 
-.ov3-qpool__val[data-tone="warn"],
-.ov3-qcredit__val[data-tone="warn"] {
-    color: var(--ov-amber);
+.ov3-qpool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
 }
 
-.ov3-qpool__val[data-tone="err"],
-.ov3-qcredit__val[data-tone="err"] {
-    color: var(--ov-red);
+.ov3-qpool-card {
+    background: var(--ov-surface-2);
+    border: 1px solid var(--ov-border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
 }
 
-.ov3-qpool__meta {
+.ov3-qpool-card.is-fullspan {
+    grid-column: 1 / -1;
+}
+
+.ov3-qpool-card.is-exhausted {
+    border-color: rgba(248, 113, 113, 0.65);
+    background: linear-gradient(165deg, rgba(239, 68, 68, 0.11), var(--ov-surface-2));
+}
+
+.ov3-qpool-card__head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
     flex-wrap: wrap;
-    font-size: 11.5px;
-    color: var(--ov-ink-3);
-    font-variant-numeric: tabular-nums;
 }
 
-.ov3-qpool__win {
-    font-family: var(--ov-mono);
-    font-size: 11px;
-    color: var(--ov-ink-2);
+.ov3-qpool-card__title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--ov-sky);
+    line-height: 1.25;
 }
 
-.ov3-qpool__win[data-tone="err"] {
+.ov3-qpool-card__title[data-family="claude"] {
+    color: #fb923c;
+}
+
+.ov3-qpool-card__title[data-family="credit"] {
+    color: var(--ov-green);
+}
+
+.ov3-qpool-card.is-exhausted .ov3-qpool-card__title {
     color: var(--ov-red);
-    font-weight: 600;
 }
 
-.ov3-qpool__win[data-tone="warn"] {
+.ov3-qpool-card__pct {
+    font-family: var(--ov-mono);
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--ov-ink-1);
+    margin-top: 2px;
+}
+
+.ov3-qpool-card__pct span {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ov-ink-3);
+    margin-left: 6px;
+}
+
+.ov3-qpool-card__pct[data-tone="ok"],
+.ov3-qval[data-tone="ok"] {
+    color: var(--ov-green);
+}
+
+.ov3-qpool-card__pct[data-tone="warn"],
+.ov3-qval[data-tone="warn"] {
     color: var(--ov-amber);
 }
 
-.ov3-qdivider {
-    height: 1px;
-    background: var(--ov-border);
-    margin: 2px 0;
+.ov3-qpool-card__pct[data-tone="err"],
+.ov3-qval[data-tone="err"] {
+    color: var(--ov-red);
 }
 
-.ov3-qcredit {
+.ov3-qbar {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.22);
+    overflow: hidden;
+}
+
+.ov3-qbar__fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--ov-accent);
+    transition: width 300ms ease;
+}
+
+.ov3-qbar__fill[data-tone="ok"] { background: var(--ov-green); }
+.ov3-qbar__fill[data-tone="warn"] { background: var(--ov-amber); }
+.ov3-qbar__fill[data-tone="err"] { background: var(--ov-red); }
+
+.ov3-qmeta-row {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-family: var(--ov-mono);
+    font-size: 11.5px;
+    color: var(--ov-ink-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.ov3-qmeta-row--split {
+    margin-top: -2px;
+}
+
+/* 7-Segment Daily Weekly Rack (D1-D7 + ▼ วันนี้) */
+.ov3-qrack {
+    margin-top: 16px;
+    background: #0d121b;
+    border: 1px solid rgba(148, 163, 184, 0.20);
+    border-radius: 8px;
+    padding: 5px;
+    position: relative;
+}
+
+.ov3-qrack__grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 5px;
 }
 
-.ov3-qcredit__val {
-    font-size: 20px;
-    font-weight: 700;
+.ov3-qseg {
+    position: relative;
+    height: 24px;
+    background: #161c28;
+    border: 1px solid #293142;
+    border-radius: 5px;
+    overflow: visible;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ov3-qseg__fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0%;
+    background: linear-gradient(180deg, #eab308 0%, #ca8a04 100%);
+    opacity: 0.92;
+    border-radius: 4px;
+    transition: height 0.45s ease;
+}
+
+.ov3-qseg__tag {
+    position: relative;
+    z-index: 2;
     font-family: var(--ov-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #7c879b;
+    line-height: 1;
+    user-select: none;
+}
+
+.ov3-qseg.has-usage .ov3-qseg__tag {
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.78);
+}
+
+.ov3-qseg.is-today {
+    border: 2px solid #facc15;
+    background: rgba(250, 204, 21, 0.14);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.42);
+    z-index: 4;
+}
+
+.ov3-qseg.is-today .ov3-qseg__tag {
+    color: #fef08a;
+    font-weight: 800;
+}
+
+.ov3-qtoday-ptr {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #facc15;
+    color: #090d16;
+    font-size: 9.5px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+    z-index: 10;
+    line-height: 1.2;
+}
+
+.ov3-qseg.is-over-budget {
+    border-color: rgba(239, 68, 68, 0.80);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.28);
+}
+
+.ov3-qseg.is-over-budget .ov3-qseg__fill {
+    background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+    opacity: 0.95;
+}
+
+.ov3-qseg.is-over-budget .ov3-qseg__tag {
+    color: #fecaca;
+    font-weight: 800;
+}
+
+.ov3-qpace {
+    font-size: 11.5px;
+    color: var(--ov-ink-2);
+    margin-top: 2px;
+    padding: 7px 10px;
+    background: rgba(15, 23, 42, 0.48);
+    border-left: 3px solid var(--ov-green);
+    border-radius: 5px;
+    line-height: 1.45;
+}
+
+.ov3-qpace[data-level="2"] {
+    border-left-color: var(--ov-amber);
+    color: #fde68a;
+    background: rgba(245, 158, 11, 0.11);
+}
+
+.ov3-qpace[data-level="3"] {
+    border-left-color: var(--ov-red);
+    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.13);
+    font-weight: 600;
+}
+
+.ov3-qcountdown-box {
+    margin-top: 2px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    text-align: center;
+}
+
+.ov3-qcountdown-box__lbl {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ov-red);
+    margin-bottom: 2px;
+}
+
+.ov3-qcountdown-box__val {
+    font-family: var(--ov-mono);
+    font-size: 15.5px;
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
-    line-height: 1.15;
     color: var(--ov-ink-1);
 }
 
-.ov3-qcredit__sub {
-    font-size: 11.5px;
-    color: var(--ov-ink-3);
-    line-height: 1.4;
-    font-variant-numeric: tabular-nums;
+.ov3-qpills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.ov3-qpill {
+    font-family: var(--ov-mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--ov-surface);
+    border: 1px solid var(--ov-border);
+    color: var(--ov-ink-2);
+}
+
+/* Light theme refinements for Weekly Pace rack & callouts */
+:root[data-theme="light"] #view-overview .ov3-qpool-card.is-exhausted {
+    background: linear-gradient(165deg, rgba(220, 38, 38, 0.06), var(--ov-surface-2));
+    border-color: rgba(220, 38, 38, 0.48);
+}
+
+:root[data-theme="light"] #view-overview .ov3-qpool-card__title[data-family="claude"] {
+    color: #c2410c;
+}
+
+:root[data-theme="light"] #view-overview .ov3-qrack {
+    background: #e9eef5;
+    border-color: rgba(15, 23, 42, 0.12);
+}
+
+:root[data-theme="light"] #view-overview .ov3-qseg {
+    background: #ffffff;
+    border-color: #cbd5e1;
+}
+
+:root[data-theme="light"] #view-overview .ov3-qseg__tag {
+    color: #475569;
+}
+
+:root[data-theme="light"] #view-overview .ov3-qseg.has-usage .ov3-qseg__tag {
+    color: #0f172a;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+:root[data-theme="light"] #view-overview .ov3-qseg.is-today {
+    border-color: #d97706;
+    background: rgba(245, 158, 11, 0.16);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.22);
+}
+
+:root[data-theme="light"] #view-overview .ov3-qseg.is-today .ov3-qseg__tag {
+    color: #78350f;
+}
+
+:root[data-theme="light"] #view-overview .ov3-qtoday-ptr {
+    background: #f59e0b;
+    color: #ffffff;
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.18);
+}
+
+:root[data-theme="light"] #view-overview .ov3-qseg.is-over-budget .ov3-qseg__tag {
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.50);
+}
+
+:root[data-theme="light"] #view-overview .ov3-qpace {
+    background: #eef2f7;
+    color: #334155;
+}
+
+:root[data-theme="light"] #view-overview .ov3-qpace[data-level="2"] {
+    background: rgba(217, 119, 6, 0.10);
+    color: #92400e;
+}
+
+:root[data-theme="light"] #view-overview .ov3-qpace[data-level="3"] {
+    background: rgba(220, 38, 38, 0.10);
+    color: #991b1b;
 }
 
 .ov3-quota-models {
@@ -2257,7 +2498,7 @@
     vertical-align: middle;
     margin-right: 8px;
     border-radius: 999px;
-    background: var(--ov-surface-2);
+    background: rgba(148, 163, 184, 0.22);
     overflow: hidden;
 }
 
@@ -2265,11 +2506,6 @@
     display: block;
     height: 100%;
     border-radius: 999px;
-}
-
-.ov3-qcard .ov3-bar,
-.ov3-qmodels-table .ov3-qmini-bar {
-    background: rgba(148, 163, 184, 0.22);
 }
 
 /* ── ov3 Responsive Breakpoints ─────────────────────────────────────────── */
@@ -2292,6 +2528,9 @@
     }
     .ov3-span-3 {
         grid-column: span 6;
+    }
+    .ov3-qpool-grid {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -2321,8 +2560,14 @@
     .ov3-quota-body {
         padding: 12px 16px 16px;
     }
-    .ov3-quota-grid {
-        grid-template-columns: minmax(0, 1fr);
+    .ov3-qpool-card {
+        padding: 14px;
+    }
+    .ov3-qrack__grid {
+        gap: 3px;
+    }
+    .ov3-qseg__tag {
+        font-size: 9.5px;
     }
 }
 

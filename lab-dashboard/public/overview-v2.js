@@ -49,6 +49,7 @@
         quotaInFlight: false,
         quotaUpdatedAt: 0,
         quotaModelsOpen: false,
+        quotaTab: 'all',
     };
 
     const flashTimers = new WeakMap();
@@ -1790,7 +1791,9 @@
         renderInfra(data);
     }
 
-    // ── AI Quota (All Accounts + Providers) ─────────────────────────────────
+    // ── AI Quota (All Accounts + Providers · 7-Day Pace UI) ─────────────────
+    const QUOTA_SLOT_SIZE = 100 / 7;
+
     function quotaTone(pct) {
         const n = Number(pct);
         if (!Number.isFinite(n)) return 'neutral';
@@ -1803,22 +1806,86 @@
         if (!iso) return '—';
         const diff = Date.parse(iso) - Date.now();
         if (!Number.isFinite(diff)) return '—';
-        if (diff <= 0) return 'พร้อมรีเซ็ต';
+        if (diff <= 0) return 'พร้อมรีเซ็ตแล้ว';
         const days = Math.floor(diff / 86400000);
         const hrs = Math.floor((diff % 86400000) / 3600000);
         const mins = Math.floor((diff % 3600000) / 60000);
         const secs = Math.floor((diff % 60000) / 1000);
-        if (days > 0) return `${days} วัน ${hrs} ชม.`;
-        if (hrs > 0) return `${hrs} ชม. ${String(mins).padStart(2, '0')} น.`;
-        if (mins > 0) return `${mins} น. ${String(secs).padStart(2, '0')} วิ`;
-        return `${secs} วิ`;
+        if (days > 0) {
+            return `${days} วัน ${hrs} ชม. ${String(mins).padStart(2, '0')} น. ${String(secs).padStart(2, '0')} วิ`;
+        }
+        return `${hrs} ชม. ${String(mins).padStart(2, '0')} น. ${String(secs).padStart(2, '0')} วิ`;
     }
 
-    function shortPoolName(p) {
-        if (!p) return 'Pool';
-        if (p.id === 'gemini') return 'Gemini (Hydrogen / Flash / Pro)';
-        if (p.id === 'claude') return 'Claude & GPT';
-        return p.name || p.id || 'Pool';
+    function calculateWeeklyPace(usedPct, resetIso, now = Date.now()) {
+        const safePct = Math.min(100, Math.max(0, Math.round(usedPct || 0)));
+        const resetEpoch = resetIso ? Date.parse(resetIso) : 0;
+        let daysRemaining = 3.5;
+        let hasValidEpoch = false;
+
+        if (Number.isFinite(resetEpoch) && resetEpoch > now) {
+            daysRemaining = (resetEpoch - now) / 86400000;
+            hasValidEpoch = true;
+        }
+
+        const cycleDays = 7;
+        const daysRemainingClamped = Math.min(cycleDays, Math.max(0, daysRemaining));
+        const daysElapsed = Math.min(cycleDays, Math.max(0, cycleDays - daysRemainingClamped));
+        const expectedPct = (daysElapsed / cycleDays) * 100;
+        const delta = safePct - expectedPct;
+        const remainingQuotaPct = Math.max(0, 100 - safePct);
+        const suggestedDailyBudget = daysRemainingClamped > 0.2
+            ? (remainingQuotaPct / daysRemainingClamped)
+            : remainingQuotaPct;
+
+        const currentDayIndex = Math.min(7, Math.max(1, Math.ceil(daysElapsed) || 1));
+        const daysAhead = delta > 0 ? (delta / (100 / cycleDays)).toFixed(1) : '0';
+
+        let level = 1;
+        let badgeTone = 'ok';
+        let badgeLabel = '● ปกติ (On Pace)';
+        let summaryText = `อยู่ในเกณฑ์: เหลืออีก ${daysRemainingClamped.toFixed(1)} วัน | ใช้ได้เฉลี่ย ~${suggestedDailyBudget.toFixed(0)}%/วัน`;
+
+        if (delta > 20 || (safePct >= 90 && daysRemainingClamped >= 1.5) || safePct >= 98) {
+            level = 3;
+            badgeTone = 'err';
+            badgeLabel = '⚡ วิกฤติ (Critical)';
+            summaryText = `วิกฤติ! ใช้ล้นเกินจุดวันนี้ไป ~${daysAhead} วัน (+${Math.max(0, Math.round(delta))}%) | เหลือ ${daysRemainingClamped.toFixed(1)} วัน (ควรชะลอการใช้)`;
+        } else if (delta > 5 || (safePct >= 75 && daysRemainingClamped >= 2)) {
+            level = 2;
+            badgeTone = 'warn';
+            badgeLabel = '▲ เร่งตัว (High Burn)';
+            summaryText = `เร่งตัว: ใช้ล้นเกินจุดวันนี้ไป ~${daysAhead} วัน (+${Math.round(delta)}%) | เหลือ ${daysRemainingClamped.toFixed(1)} วัน (แนะชะลอเหลือ ~${suggestedDailyBudget.toFixed(0)}%/วัน)`;
+        }
+
+        return { safePct, currentDayIndex, level, badgeTone, badgeLabel, summaryText, hasValidEpoch };
+    }
+
+    function build7SegmentRackHtml(usedPct, currentDayIndex) {
+        const safePct = Math.min(100, Math.max(0, Number(usedPct) || 0));
+        let cells = '';
+        for (let idx = 0; idx < 7; idx++) {
+            const dayNumber = idx + 1;
+            const lower = idx * QUOTA_SLOT_SIZE;
+            const upper = (idx + 1) * QUOTA_SLOT_SIZE;
+            let fillPct = 0;
+            if (safePct >= upper) fillPct = 100;
+            else if (safePct > lower) fillPct = Math.round(((safePct - lower) / QUOTA_SLOT_SIZE) * 100);
+
+            const isToday = dayNumber === currentDayIndex;
+            const isOver = (dayNumber > currentDayIndex) && (fillPct > 0);
+            const cls = [
+                'ov3-qseg',
+                fillPct > 0 ? 'has-usage' : '',
+                isToday ? 'is-today' : '',
+                isOver ? 'is-over-budget' : '',
+            ].filter(Boolean).join(' ');
+
+            const pointer = isToday ? '<span class="ov3-qtoday-ptr">▼ วันนี้</span>' : '';
+            const title = `วันที่ ${dayNumber} ของรอบ${isToday ? ' (วันนี้)' : ''} - ใช้โควตาส่วนนี้ไป ${fillPct}%`;
+            cells += `<div class="${cls}" title="${esc(title)}"><div class="ov3-qseg__fill" style="height:${fillPct}%"></div><span class="ov3-qseg__tag">D${dayNumber}</span>${pointer}</div>`;
+        }
+        return `<div class="ov3-qrack"><div class="ov3-qrack__grid">${cells}</div></div>`;
     }
 
     function updateQuotaCountdowns() {
@@ -1833,175 +1900,224 @@
         }
     }
 
-    function renderGoogleQuotaCard(acct) {
+    function renderGoogleQuotaSection(acct) {
         const d = acct && acct.data;
         const label = (acct && acct.label) || 'Google';
         const email = (d && d.email) || (acct && acct.email) || '';
+        const tier = (d && d.tier) ? ` (${d.tier})` : '';
 
         if (!d || !d.ok) {
             return `
-                <article class="ov3-qcard">
-                    <div class="ov3-qcard__head">
-                        <div class="ov3-qcard__title-wrap">
-                            <div class="ov3-qcard__name">${esc(label)}</div>
-                            ${email ? `<div class="ov3-qcard__sub">${esc(email)}</div>` : ''}
+                <section class="ov3-qsec">
+                    <div class="ov3-qsec__head">
+                        <div class="ov3-qsec__title">
+                            <span class="ov3-qsec__name">Google Antigravity · ${esc(label)}</span>
+                            ${email ? `<span class="ov3-qsec__sub">${esc(email)}</span>` : ''}
                         </div>
                         <span class="ov3-badge" data-tone="neutral">ข้ามอัตโนมัติ</span>
                     </div>
-                    <div class="ov3-qcredit__sub">ไม่สามารถดึงโควตาได้ (${esc((d && d.error) || 'ไม่มีข้อมูล')}) · ระบบ Auto Router ข้ามให้อัตโนมัติ</div>
-                </article>
+                    <div class="ov3-qpool-grid">
+                        <div class="ov3-qpool-card is-fullspan">
+                            <div class="ov3-qpool-card__head">
+                                <span class="ov3-qpool-card__title">${esc(label)} ไม่พร้อมใช้งาน</span>
+                                <span class="ov3-badge" data-tone="warn">ข้ามอัตโนมัติ</span>
+                            </div>
+                            <div class="ov3-qmeta-row">${esc((d && d.error) || 'ไม่พบโทเค็นหรือติดต่อ API ไม่ได้')} — ระบบ Auto Router ข้ามบัญชีนี้ให้อัตโนมัติ</div>
+                        </div>
+                    </div>
+                </section>
             `;
         }
 
         const pools = Array.isArray(d.pools) ? d.pools : [];
+        const exhaustedCount = pools.filter((p) => Number(p.remainingPct) <= 0).length;
         const hasAvail = pools.some((p) => Number(p.remainingPct) > 5);
-        const hasExhausted = pools.some((p) => Number(p.remainingPct) <= 0);
-        const allLow = !hasAvail && pools.length > 0;
-        const badgeTone = allLow ? 'err' : (hasExhausted ? 'warn' : (hasAvail ? 'ok' : 'neutral'));
-        const badgeText = allLow ? 'หมดทุกพูล' : (hasExhausted ? 'หมดบางพูล' : (hasAvail ? 'พร้อมใช้' : 'ไม่มีพูล'));
+        const headTone = exhaustedCount === pools.length && pools.length > 0
+            ? 'err'
+            : (exhaustedCount > 0 ? 'warn' : (hasAvail ? 'ok' : 'neutral'));
+        const headText = !pools.length
+            ? 'ไม่มีข้อมูล'
+            : (exhaustedCount > 0 ? `หมดโควตา ${exhaustedCount} พูล` : `${pools.length} พูลพร้อมใช้`);
 
-        const poolsHtml = pools.map((p) => {
+        const weeklyPool = pools.find((x) =>
+            (x.weekly && x.weekly.resetTime) ||
+            (x.resetTime && (Date.parse(x.resetTime) - Date.now()) > 12 * 3600 * 1000)
+        );
+        const sharedWeeklyReset = (weeklyPool && weeklyPool.weekly && weeklyPool.weekly.resetTime)
+            || (weeklyPool && weeklyPool.resetTime)
+            || new Date(Date.now() + 7 * 86400000).toISOString();
+
+        const cardsHtml = pools.map((p) => {
             const rem = Math.round(clampPct(p.remainingPct));
+            const used = Math.round(clampPct(p.usedPct));
+            const isExhausted = rem <= 0;
             const tone = quotaTone(rem);
-            const fh = p.fiveHour;
-            const wk = p.weekly;
-            let metaHtml = '';
+            const resetMs = p.resetTime ? (Date.parse(p.resetTime) - Date.now()) : 0;
+            const is5hWindow = resetMs > 0 && resetMs <= 12 * 3600 * 1000;
+            const weeklyResetForRack = (p.weekly && p.weekly.resetTime)
+                ? p.weekly.resetTime
+                : (is5hWindow ? sharedWeeklyReset : p.resetTime);
+            const rackUsedPct = p.weekly ? p.weekly.usedPct : p.usedPct;
+            const pace = calculateWeeklyPace(rackUsedPct, weeklyResetForRack);
+            const badgeTone = isExhausted ? 'err' : pace.badgeTone;
+            const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : pace.badgeLabel;
+            const rackHtml = build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);
+            const familyAttr = p.id === 'claude' ? 'claude' : 'gemini';
 
-            if (fh && wk) {
-                const fhRem = Math.round(clampPct(fh.remainingPct));
-                const wkRem = Math.round(clampPct(wk.remainingPct));
-                const fhTone = quotaTone(fhRem);
-                const wkTone = quotaTone(wkRem);
-                const fhSpan = fh.resetTime
-                    ? `<span class="ov3-qpool__win" data-tone="${fhTone === 'ok' ? '' : fhTone}">5 ชม. ${fhRem}% (<span data-quota-reset="${esc(fh.resetTime)}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>)</span>`
-                    : `<span class="ov3-qpool__win" data-tone="${fhTone === 'ok' ? '' : fhTone}">5 ชม. ${fhRem}%</span>`;
-                let wkSpan = '';
-                if (wkRem <= 0) {
-                    const wkReset = wk.resetTime || p.resetTime || '';
-                    wkSpan = `<span class="ov3-qpool__win" data-tone="err">สัปดาห์หมด 0%${wkReset ? ` · รีเซ็ตใน <span data-quota-reset="${esc(wkReset)}">${esc(fmtQuotaCountdown(wkReset))}</span>` : ''}</span>`;
-                } else {
-                    wkSpan = wk.resetTime
-                        ? `<span class="ov3-qpool__win" data-tone="${wkTone === 'ok' ? '' : wkTone}">7 วัน ${wkRem}% (<span data-quota-reset="${esc(wk.resetTime)}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>)</span>`
-                        : `<span class="ov3-qpool__win" data-tone="${wkTone === 'ok' ? '' : wkTone}">7 วัน ${wkRem}%</span>`;
-                }
-                metaHtml = `${fhSpan}${wkSpan}`;
-            } else {
-                const used = Math.round(clampPct(p.usedPct));
-                const rst = p.resetTime
-                    ? `รีเซ็ตใน <span data-quota-reset="${esc(p.resetTime)}">${esc(fmtQuotaCountdown(p.resetTime))}</span>`
-                    : '—';
-                metaHtml = `<span>ใช้ไป ${used}% (${esc(p.modelsCount || 0)} โมเดล)</span><span>${rst}</span>`;
-            }
+            const splitHtml = (p.fiveHour && p.weekly) ? `
+                <div class="ov3-qmeta-row ov3-qmeta-row--split">
+                    <span>5h: <strong class="ov3-qval" data-tone="${quotaTone(p.fiveHour.remainingPct)}">${Math.round(clampPct(p.fiveHour.remainingPct))}%</strong></span>
+                    <span>Weekly: <strong class="ov3-qval" data-tone="${quotaTone(p.weekly.remainingPct)}">${Math.round(clampPct(p.weekly.remainingPct))}%</strong> (<span data-quota-reset="${esc(p.weekly.resetTime || '')}">${esc(fmtQuotaCountdown(p.weekly.resetTime))}</span>)</span>
+                </div>
+            ` : '';
+
+            const exhaustedBox = isExhausted ? `
+                <div class="ov3-qcountdown-box">
+                    <div class="ov3-qcountdown-box__lbl">🔴 หมดโควตาแล้ว — รอรีเซ็ตในอีก</div>
+                    <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(p.resetTime || '')}">${esc(fmtQuotaCountdown(p.resetTime))}</div>
+                </div>
+            ` : '';
 
             return `
-                <div class="ov3-qpool">
-                    <div class="ov3-qpool__top">
-                        <span class="ov3-qpool__label">${esc(shortPoolName(p))}</span>
-                        <span class="ov3-qpool__val" data-tone="${tone}">${rem}%</span>
+                <article class="ov3-qpool-card${isExhausted ? ' is-exhausted' : ''}">
+                    <div class="ov3-qpool-card__head">
+                        <div class="ov3-qpool-card__title" data-family="${familyAttr}">${esc(p.name || p.id)}</div>
+                        <span class="ov3-badge" data-tone="${badgeTone}">${esc(badgeText)}</span>
                     </div>
-                    <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${tone}" style="width:${rem}%"></span></div>
-                    <div class="ov3-qpool__meta">${metaHtml}</div>
-                </div>
+                    <div class="ov3-qpool-card__pct" data-tone="${tone}">${rem}%<span>คงเหลือ</span></div>
+                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${tone}" style="width:${rem}%"></span></div>
+                    <div class="ov3-qmeta-row">
+                        <span>ใช้ไป ${used}% (${esc(p.modelsCount || 0)} โมเดล)</span>
+                        <span data-quota-reset="${esc(p.resetTime || '')}">${esc(fmtQuotaCountdown(p.resetTime))}</span>
+                    </div>
+                    ${splitHtml}
+                    ${rackHtml}
+                    <div class="ov3-qpace" data-level="${pace.level}">${esc(pace.summaryText)}</div>
+                    ${exhaustedBox}
+                </article>
             `;
         }).join('');
 
         return `
-            <article class="ov3-qcard${allLow ? ' is-limit' : ''}">
-                <div class="ov3-qcard__head">
-                    <div class="ov3-qcard__title-wrap">
-                        <div class="ov3-qcard__name">${esc(label)}</div>
-                        ${email ? `<div class="ov3-qcard__sub" title="${esc(email)}">${esc(email)}</div>` : ''}
+            <section class="ov3-qsec">
+                <div class="ov3-qsec__head">
+                    <div class="ov3-qsec__title">
+                        <span class="ov3-qsec__name">Google Antigravity · ${esc(label)}</span>
+                        <span class="ov3-qsec__sub">${esc(email)}${esc(tier)} · รีเซ็ต 5 ชม. &amp; 7 วัน</span>
                     </div>
-                    <span class="ov3-badge" data-tone="${badgeTone}">${esc(badgeText)}</span>
+                    <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
                 </div>
-                <div class="ov3-qpools">${poolsHtml || '<div class="ov3-qcredit__sub">ไม่มีข้อมูลพูล</div>'}</div>
-            </article>
+                <div class="ov3-qpool-grid">${cardsHtml || '<div class="ov3-empty">ไม่มีข้อมูลพูล</div>'}</div>
+            </section>
         `;
     }
 
-    function renderClaudeQuotaCard(cw) {
+    function renderClaudeQuotaSection(cw) {
         if (!cw || !cw.ok) {
             const note = cw && cw.error
-                ? `${cw.error} — Auto Router ข้ามให้อัตโนมัติ`
-                : 'ไม่ได้ใช้งานหรือเชื่อมต่อไม่ได้ — Auto Router ข้ามให้อัตโนมัติ';
+                ? `${cw.error} — ระบบ Auto Router ข้ามอัตโนมัติ`
+                : 'ไม่ได้ใช้งานหรือเชื่อมต่อไม่ได้ — ระบบ Auto Router ข้าม Claude Code CLI อัตโนมัติ';
             return `
-                <article class="ov3-qcard">
-                    <div class="ov3-qcard__head">
-                        <div class="ov3-qcard__title-wrap">
-                            <div class="ov3-qcard__name">Claude.ai Pro</div>
-                            <div class="ov3-qcard__sub">Anthropic Rolling 5h &amp; 7d</div>
+                <section class="ov3-qsec">
+                    <div class="ov3-qsec__head">
+                        <div class="ov3-qsec__title">
+                            <span class="ov3-qsec__name">Claude.ai (Anthropic)</span>
+                            <span class="ov3-qsec__sub">Rolling 5 ชม. &amp; รายสัปดาห์</span>
                         </div>
                         <span class="ov3-badge" data-tone="neutral">ไม่ได้ใช้</span>
                     </div>
-                    <div class="ov3-qcredit__sub">${esc(note)}</div>
-                </article>
+                    <div class="ov3-qpool-grid">
+                        <div class="ov3-qpool-card is-fullspan">
+                            <div class="ov3-qmeta-row">${esc(note)}</div>
+                        </div>
+                    </div>
+                </section>
             `;
         }
 
         const fh = cw.fiveHour || { remainingPct: 100, usedPct: 0, resetTime: null };
         const wk = cw.weekly || { remainingPct: 100, usedPct: 0, resetTime: null };
         const fhRem = Math.round(clampPct(fh.remainingPct));
+        const fhUsed = Math.round(clampPct(fh.usedPct));
         const wkRem = Math.round(clampPct(wk.remainingPct));
+        const wkUsed = Math.round(clampPct(wk.usedPct));
         const fhTone = quotaTone(fhRem);
         const wkTone = quotaTone(wkRem);
+        const wkPace = calculateWeeklyPace(wkUsed, wk.resetTime);
+        const wkRack = build7SegmentRackHtml(wkUsed, wkPace.currentDayIndex);
         const isExhausted = fhRem <= 0 || wkRem <= 0;
-        const minRem = Math.min(fhRem, wkRem);
-        const badgeTone = wkRem <= 0 ? 'err' : (fhRem <= 0 ? 'warn' : (minRem > 5 ? 'ok' : 'warn'));
-        const badgeText = wkRem <= 0 ? 'หมดโควตาสัปดาห์' : (fhRem <= 0 ? 'รอบ 5 ชม. หมด' : (minRem > 5 ? 'พร้อมใช้' : 'ใกล้หมด'));
-        const planLabel = cw.plan ? `Claude.ai (${String(cw.plan).toUpperCase()})` : 'Claude.ai Pro';
-        const subText = cw.orgName || 'OAuth · Claude Code';
+        const headTone = wkRem <= 0 ? 'err' : (fhRem <= 0 ? 'warn' : 'ok');
+        const headText = isExhausted
+            ? (wkRem <= 0 ? 'หมดโควตาสัปดาห์' : 'รอบ 5 ชม. หมด')
+            : `พร้อมใช้ (${String(cw.plan || 'Pro').toUpperCase()})`;
 
         return `
-            <article class="ov3-qcard${isExhausted ? ' is-limit' : ''}">
-                <div class="ov3-qcard__head">
-                    <div class="ov3-qcard__title-wrap">
-                        <div class="ov3-qcard__name">${esc(planLabel)}</div>
-                        <div class="ov3-qcard__sub" title="${esc(subText)}">${esc(subText)}</div>
+            <section class="ov3-qsec">
+                <div class="ov3-qsec__head">
+                    <div class="ov3-qsec__title">
+                        <span class="ov3-qsec__name">Claude.ai (${esc(String(cw.plan || 'Pro').toUpperCase())})</span>
+                        <span class="ov3-qsec__sub">${esc(cw.orgName || 'OAuth · Claude Code')} · Rolling 5 ชม. &amp; รายสัปดาห์</span>
                     </div>
-                    <span class="ov3-badge" data-tone="${badgeTone}">${esc(badgeText)}</span>
+                    <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
                 </div>
-                <div class="ov3-qpools">
-                    <div class="ov3-qpool">
-                        <div class="ov3-qpool__top">
-                            <span class="ov3-qpool__label">รอบ 5 ชั่วโมง (5h Rolling)</span>
-                            <span class="ov3-qpool__val" data-tone="${fhTone}">${fhRem}%</span>
+                <div class="ov3-qpool-grid">
+                    <article class="ov3-qpool-card${fhRem <= 0 ? ' is-exhausted' : ''}">
+                        <div class="ov3-qpool-card__head">
+                            <div class="ov3-qpool-card__title" data-family="claude">Rolling 5-Hour Limit</div>
+                            <span class="ov3-badge" data-tone="${fhRem <= 0 ? 'err' : (fhRem < 25 ? 'warn' : 'ok')}">${fhRem <= 0 ? '⚡ หมดรอบ 5 ชม.' : '● ปกติ'}</span>
                         </div>
-                        <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${fhTone}" style="width:${fhRem}%"></span></div>
-                        <div class="ov3-qpool__meta">
-                            <span>ใช้ไป ${Math.round(clampPct(fh.usedPct))}%</span>
-                            <span>${fh.resetTime ? `รีเซ็ตใน <span data-quota-reset="${esc(fh.resetTime)}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>` : '—'}</span>
+                        <div class="ov3-qpool-card__pct" data-tone="${fhTone}">${fhRem}%<span>คงเหลือ</span></div>
+                        <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${fhTone}" style="width:${fhRem}%"></span></div>
+                        <div class="ov3-qmeta-row">
+                            <span>ใช้ไป ${fhUsed}%</span>
+                            <span data-quota-reset="${esc(fh.resetTime || '')}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>
                         </div>
-                    </div>
-                    <div class="ov3-qpool">
-                        <div class="ov3-qpool__top">
-                            <span class="ov3-qpool__label">รายสัปดาห์ (7 วัน)</span>
-                            <span class="ov3-qpool__val" data-tone="${wkTone}">${wkRem}%</span>
+                        <div class="ov3-qpace" data-level="${fhRem <= 0 ? 3 : 1}">${esc(cw.orgName || 'Claude.ai')} · รีเซ็ตทุก 5 ชั่วโมง</div>
+                        ${fhRem <= 0 ? `
+                            <div class="ov3-qcountdown-box">
+                                <div class="ov3-qcountdown-box__lbl">🔴 หมดรอบ 5 ชม. แล้ว — รอรีเซ็ตในอีก</div>
+                                <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(fh.resetTime || '')}">${esc(fmtQuotaCountdown(fh.resetTime))}</div>
+                            </div>
+                        ` : ''}
+                    </article>
+
+                    <article class="ov3-qpool-card${wkRem <= 0 ? ' is-exhausted' : ''}">
+                        <div class="ov3-qpool-card__head">
+                            <div class="ov3-qpool-card__title" data-family="claude">Weekly Limit (7-Day Pace)</div>
+                            <span class="ov3-badge" data-tone="${wkRem <= 0 ? 'err' : wkPace.badgeTone}">${wkRem <= 0 ? '⚡ หมดโควตาสัปดาห์' : esc(wkPace.badgeLabel)}</span>
                         </div>
-                        <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${wkTone}" style="width:${wkRem}%"></span></div>
-                        <div class="ov3-qpool__meta">
-                            <span>ใช้ไป ${Math.round(clampPct(wk.usedPct))}%</span>
-                            <span>${wk.resetTime ? `รีเซ็ตใน <span data-quota-reset="${esc(wk.resetTime)}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>` : '—'}</span>
+                        <div class="ov3-qpool-card__pct" data-tone="${wkTone}">${wkRem}%<span>คงเหลือ</span></div>
+                        <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${wkTone}" style="width:${wkRem}%"></span></div>
+                        <div class="ov3-qmeta-row">
+                            <span>ใช้ไป ${wkUsed}%</span>
+                            <span data-quota-reset="${esc(wk.resetTime || '')}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>
                         </div>
-                    </div>
+                        ${wkRack}
+                        <div class="ov3-qpace" data-level="${wkPace.level}">${esc(wkPace.summaryText)}</div>
+                        ${wkRem <= 0 ? `
+                            <div class="ov3-qcountdown-box">
+                                <div class="ov3-qcountdown-box__lbl">🔴 หมดโควตาสัปดาห์แล้ว — รอรีเซ็ตในอีก</div>
+                                <div class="ov3-qcountdown-box__val" data-quota-reset="${esc(wk.resetTime || '')}">${esc(fmtQuotaCountdown(wk.resetTime))}</div>
+                            </div>
+                        ` : ''}
+                    </article>
                 </div>
-            </article>
+            </section>
         `;
     }
 
-    function renderCreditsQuotaCard(ds, gc) {
+    function renderCreditsQuotaSection(ds, gc) {
         const dsTotal = ds && ds.ok ? parseFloat(ds.totalBalance || '0') : 0;
         const dsReady = Boolean(ds && ds.ok && ds.isAvailable && dsTotal > 0.1);
         const dsLow = Boolean(ds && ds.ok && ds.isAvailable && dsTotal <= 0.5 && dsTotal > 0.1);
         const dsTone = !ds || !ds.ok ? 'neutral' : (!dsReady ? 'err' : (dsLow ? 'warn' : 'ok'));
-        const dsBadge = !ds || !ds.ok ? 'ไม่ได้ตั้งค่า' : (!dsReady ? 'เครดิตหมด' : (dsLow ? 'ใกล้หมด' : 'พร้อมใช้'));
-        const dsModels = (ds && ds.ok && Array.isArray(ds.models))
-            ? ds.models.map((m) => m.name || m.id).filter(Boolean).join(' · ')
-            : '';
+        const dsBadge = !ds || !ds.ok ? 'ไม่ได้ตั้งค่า' : (!dsReady ? 'เครดิตหมด' : (dsLow ? 'ใกล้หมด' : '● พร้อมใช้'));
+        const dsModels = (ds && ds.ok && Array.isArray(ds.models)) ? ds.models : [];
 
         const gcReady = Boolean(gc && gc.ok && !gc.isEmpty && Number(gc.remainingThb) > 0.5);
         const gcLow = Boolean(gc && gc.ok && Number(gc.remainingThb) < Number(gc.lowThb || 10));
         const gcTone = !gc || !gc.ok ? 'neutral' : (Number(gc.remainingThb) <= 0.5 ? 'err' : (gcLow ? 'warn' : 'ok'));
-        const gcBadge = !gc || !gc.ok ? 'ไม่ได้ตั้งค่า' : (Number(gc.remainingThb) <= 0.5 ? 'เครดิตหมด' : (gcLow ? 'ใกล้หมด' : 'พร้อมใช้'));
+        const gcBadge = !gc || !gc.ok ? 'ไม่ได้ตั้งค่า' : (Number(gc.remainingThb) <= 0.5 ? 'เครดิตหมด' : (gcLow ? 'ใกล้หมด' : '● พร้อมใช้'));
         const gcPct = (gc && gc.ok)
             ? clampPct((Number(gc.remainingThb) / (Number(gc.topUpThb) || Number(gc.baselineThb) || 1)) * 100)
             : 0;
@@ -2012,41 +2128,53 @@
         const headText = anyWarn ? 'เครดิตใกล้หมด' : (anyReady ? 'พร้อมใช้' : 'ไม่ได้เติม');
 
         return `
-            <article class="ov3-qcard">
-                <div class="ov3-qcard__head">
-                    <div class="ov3-qcard__title-wrap">
-                        <div class="ov3-qcard__name">เครดิต API (Pay-As-You-Go)</div>
-                        <div class="ov3-qcard__sub">DeepSeek &amp; Gemini TTS</div>
+            <section class="ov3-qsec">
+                <div class="ov3-qsec__head">
+                    <div class="ov3-qsec__title">
+                        <span class="ov3-qsec__name">เครดิต API (Pay-As-You-Go)</span>
+                        <span class="ov3-qsec__sub">DeepSeek Platform &amp; Gemini API (TTS วิดีโอ)</span>
                     </div>
                     <span class="ov3-badge" data-tone="${headTone}">${esc(headText)}</span>
                 </div>
+                <div class="ov3-qpool-grid">
+                    <article class="ov3-qpool-card">
+                        <div class="ov3-qpool-card__head">
+                            <div class="ov3-qpool-card__title">DeepSeek API Credit</div>
+                            <span class="ov3-badge" data-tone="${dsTone}">${esc(dsBadge)}</span>
+                        </div>
+                        ${ds && ds.ok ? `
+                            <div class="ov3-qpool-card__pct" data-tone="${dsTone}">$${esc(ds.totalBalance)}<span>${esc(ds.currency || 'USD')} คงเหลือ</span></div>
+                            <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${dsTone}" style="width:${dsReady ? 100 : 0}%"></span></div>
+                            <div class="ov3-qmeta-row">
+                                <span>เติมเอง $${esc(ds.toppedUpBalance || '0.00')}</span>
+                                <span>โบนัส $${esc(ds.grantedBalance || '0.00')}</span>
+                            </div>
+                            ${dsModels.length ? `<div class="ov3-qpills">${dsModels.map((m) => `<span class="ov3-qpill">${esc(m.name || m.id)}</span>`).join('')}</div>` : ''}
+                            <div class="ov3-qpace" data-level="${dsReady ? 1 : 2}">${dsReady ? 'Pay-As-You-Go · หักตาม Token จริง · ไม่มีวันหมดอายุ' : 'เครดิตหมด — สมองกลางข้าม DeepSeek อัตโนมัติ'}</div>
+                        ` : `<div class="ov3-qmeta-row">ยังไม่ได้ตั้งค่า DEEPSEEK_API_KEY หรือติดต่อ API ไม่ได้</div>`}
+                    </article>
 
-                <div class="ov3-qcredit">
-                    <div class="ov3-qpool__top">
-                        <span class="ov3-qpool__label">DeepSeek API</span>
-                        <span class="ov3-badge" data-tone="${dsTone}">${esc(dsBadge)}</span>
-                    </div>
-                    ${ds && ds.ok ? `
-                        <div class="ov3-qcredit__val" data-tone="${dsTone}">$${esc(ds.totalBalance)} <span style="font-size:12px;font-weight:500;color:var(--ov-ink-3);">${esc(ds.currency || 'USD')}</span></div>
-                        <div class="ov3-qcredit__sub">เติมเอง $${esc(ds.toppedUpBalance || '0.00')} · โบนัส $${esc(ds.grantedBalance || '0.00')}</div>
-                        ${dsModels ? `<div class="ov3-qcredit__sub" title="${esc(dsModels)}">${esc(dsModels)}</div>` : ''}
-                    ` : `<div class="ov3-qcredit__sub">ยังไม่ได้ตั้งค่า หรือติดต่อ API ไม่ได้</div>`}
+                    <article class="ov3-qpool-card">
+                        <div class="ov3-qpool-card__head">
+                            <div class="ov3-qpool-card__title" data-family="credit">Gemini API Credit (TTS วิดีโอ)</div>
+                            <span class="ov3-badge" data-tone="${gcTone}">${esc(gcBadge)}</span>
+                        </div>
+                        ${gc && gc.ok ? `
+                            <div class="ov3-qpool-card__pct" data-tone="${gcTone}">฿${Number(gc.remainingThb).toFixed(2)}<span>${esc(gc.currency || 'THB')} คงเหลือ</span></div>
+                            <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${gcTone}" style="width:${gcPct.toFixed(0)}%"></span></div>
+                            <div class="ov3-qmeta-row">
+                                <span>ตั้งต้น ฿${Number(gc.baselineThb).toFixed(2)}</span>
+                                <span>ใช้ไป ฿${Number(gc.spentThb).toFixed(2)} (${esc(gc.calls || 0)} ครั้ง)</span>
+                            </div>
+                            <div class="ov3-qmeta-row ov3-qmeta-row--split">
+                                <span>Token เข้า ${Number(gc.inputTokens || 0).toLocaleString('th-TH')}</span>
+                                <span>ออก ${Number(gc.outputTokens || 0).toLocaleString('th-TH')}</span>
+                            </div>
+                            <div class="ov3-qpace" data-level="${gcLow ? 2 : 1}">ใช้เฉพาะเสียงบรรยายวิดีโอ (Gemini TTS) · เรต ${esc(gc.usdToThb || 34.5)} ฿/$</div>
+                        ` : `<div class="ov3-qmeta-row">ไม่มีข้อมูลเครดิต Gemini TTS</div>`}
+                    </article>
                 </div>
-
-                <div class="ov3-qdivider"></div>
-
-                <div class="ov3-qcredit">
-                    <div class="ov3-qpool__top">
-                        <span class="ov3-qpool__label">Gemini TTS (เสียงวิดีโอ)</span>
-                        <span class="ov3-badge" data-tone="${gcTone}">${esc(gcBadge)}</span>
-                    </div>
-                    ${gc && gc.ok ? `
-                        <div class="ov3-qcredit__val" data-tone="${gcTone}">฿${Number(gc.remainingThb).toFixed(2)}</div>
-                        <div class="ov3-bar"><span class="ov3-bar__fill" data-tone="${gcTone}" style="width:${gcPct.toFixed(0)}%"></span></div>
-                        <div class="ov3-qcredit__sub">ตั้งต้น ฿${Number(gc.baselineThb).toFixed(2)} · ใช้ไป ฿${Number(gc.spentThb).toFixed(2)} (${esc(gc.calls || 0)} ครั้ง)</div>
-                    ` : `<div class="ov3-qcredit__sub">ไม่มีข้อมูลเครดิต Gemini TTS</div>`}
-                </div>
-            </article>
+            </section>
         `;
     }
 
@@ -2141,6 +2269,7 @@
     function renderQuotaPanel(q) {
         const gridEl = $('ov3-quota-grid');
         const subEl = $('ov3-quota-sub');
+        const tabsEl = $('ov3-quota-tabs');
         if (!gridEl || !q) return;
 
         const accounts = q.accounts || [];
@@ -2148,7 +2277,7 @@
         const ds = q.deepseek;
         const gc = q.geminiCredit;
 
-        let totalChannels = accounts.length + 3; // Google accounts + Claude Pro + DeepSeek + Gemini TTS
+        const totalChannels = accounts.length + 3;
         let readyChannels = 0;
         for (const a of accounts) {
             if (a && a.data && a.data.ok && (a.data.pools || []).some((p) => Number(p.remainingPct) > 5)) {
@@ -2172,13 +2301,70 @@
             subEl.textContent = `พร้อมใช้ ${readyChannels}/${totalChannels} ช่องทาง${timeStr ? ` · อัปเดต ${timeStr}` : ''}`;
         }
 
-        const cardsHtml = [
-            ...accounts.map(renderGoogleQuotaCard),
-            renderClaudeQuotaCard(cw),
-            renderCreditsQuotaCard(ds, gc),
-        ].join('');
+        const validTabs = new Set(['all', ...accounts.map((a) => a.id), 'claude', 'credits']);
+        if (!validTabs.has(ui.quotaTab)) ui.quotaTab = 'all';
 
-        gridEl.innerHTML = cardsHtml;
+        if (tabsEl) {
+            const tabs = [
+                {
+                    id: 'all',
+                    label: 'ทั้งหมด',
+                    badge: `${readyChannels}/${totalChannels}`,
+                    tone: readyChannels > 0 ? 'ok' : 'err',
+                },
+                ...accounts.map((a) => {
+                    const ps = (a.data && a.data.ok && Array.isArray(a.data.pools)) ? a.data.pools : [];
+                    const summary = ps.length ? ps.map((p) => `${Math.round(clampPct(p.remainingPct))}%`).join(' · ') : 'ข้าม';
+                    const hasOk = ps.some((p) => Number(p.remainingPct) > 5);
+                    const hasZero = ps.some((p) => Number(p.remainingPct) <= 0);
+                    return {
+                        id: a.id,
+                        label: a.label || a.id,
+                        badge: summary,
+                        tone: !ps.length ? 'neutral' : (hasZero ? (hasOk ? 'warn' : 'err') : 'ok'),
+                    };
+                }),
+                {
+                    id: 'claude',
+                    label: 'Claude Pro',
+                    badge: (cw && cw.ok)
+                        ? `${Math.round(clampPct(cw.fiveHour?.remainingPct))}% · ${Math.round(clampPct(cw.weekly?.remainingPct))}%`
+                        : 'ไม่ได้ใช้',
+                    tone: !(cw && cw.ok) ? 'neutral' : ((cw.weekly?.remainingPct ?? 100) <= 0 ? 'err' : ((cw.fiveHour?.remainingPct ?? 100) <= 0 ? 'warn' : 'ok')),
+                },
+                {
+                    id: 'credits',
+                    label: 'เครดิต API',
+                    badge: [
+                        (ds && ds.ok) ? `$${ds.totalBalance}` : null,
+                        (gc && gc.ok) ? `฿${Math.round(Number(gc.remainingThb))}` : null,
+                    ].filter(Boolean).join(' · ') || '—',
+                    tone: 'ok',
+                },
+            ];
+
+            tabsEl.innerHTML = tabs.map((t) => `
+                <button type="button" class="ov3-tab" role="tab" aria-selected="${ui.quotaTab === t.id ? 'true' : 'false'}" data-quota-tab="${esc(t.id)}">
+                    <span>${esc(t.label)}</span>
+                    <span class="ov3-badge" data-tone="${esc(t.tone)}">${esc(t.badge)}</span>
+                </button>
+            `).join('');
+        }
+
+        const sections = [];
+        for (const a of accounts) {
+            if (ui.quotaTab === 'all' || ui.quotaTab === a.id) {
+                sections.push(renderGoogleQuotaSection(a));
+            }
+        }
+        if (ui.quotaTab === 'all' || ui.quotaTab === 'claude') {
+            sections.push(renderClaudeQuotaSection(cw));
+        }
+        if (ui.quotaTab === 'all' || ui.quotaTab === 'credits') {
+            sections.push(renderCreditsQuotaSection(ds, gc));
+        }
+
+        gridEl.innerHTML = sections.join('');
         renderQuotaModelsTable(q);
     }
 
@@ -2391,6 +2577,12 @@
             fetchQuotaData(true);
         });
         $('ov3-quota-refresh')?.addEventListener('click', () => fetchQuotaData(true));
+        $('ov3-quota-tabs')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-quota-tab]');
+            if (!btn) return;
+            ui.quotaTab = btn.dataset.quotaTab || 'all';
+            if (ui.quota) renderQuotaPanel(ui.quota);
+        });
         $('ov3-quota-toggle-models')?.addEventListener('click', () => {
             ui.quotaModelsOpen = !ui.quotaModelsOpen;
             if (ui.quota) renderQuotaModelsTable(ui.quota);

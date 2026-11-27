@@ -2587,6 +2587,118 @@
     }
 }
 
+/* ── Rueso Weather Widget ───────────────────────────────────────────────── */
+.ov3-weather-grid {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 1.5fr);
+    gap: 16px;
+    align-items: center;
+}
+
+.ov3-weather-cur {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ov3-weather-hero {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ov3-weather-ico {
+    font-size: 40px;
+    line-height: 1;
+}
+
+.ov3-weather-temp {
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--ov-ink-1);
+}
+
+.ov3-weather-cond {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ov-sky);
+    margin-top: 2px;
+}
+
+.ov3-weather-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ov3-weather-stat {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--ov-surface-2);
+    border: 1px solid var(--ov-border);
+    font-size: 12px;
+    color: var(--ov-ink-2);
+}
+
+.ov3-weather-daily {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.ov3-weather-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 8px;
+    border-radius: var(--ov-radius-sm);
+    background: var(--ov-surface-2);
+    border: 1px solid var(--ov-border);
+    text-align: center;
+}
+
+.ov3-weather-day.is-today {
+    border-color: var(--ov-sky);
+    background: var(--ov-sky-bg);
+}
+
+.ov3-weather-day__lbl {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ov-ink-2);
+}
+
+.ov3-weather-day__ico {
+    font-size: 22px;
+    line-height: 1.1;
+}
+
+.ov3-weather-day__tmp {
+    font-size: 13px;
+    color: var(--ov-ink-1);
+}
+
+.ov3-weather-day__rain {
+    font-size: 11px;
+    color: var(--ov-sky);
+}
+
+@media (max-width: 820px) {
+    .ov3-weather-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 520px) {
+    .ov3-weather-daily {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 /* ── Reduced Motion Guard ───────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
     #view-overview *,

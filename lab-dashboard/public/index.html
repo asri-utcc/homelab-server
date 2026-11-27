@@ -6,8 +6,9 @@
 <meta name="color-scheme" content="dark light">
 <title>Home-lab Control Panel</title>
 <link rel="stylesheet" href="/styles.css?v=20261121-bgstar">
-<link rel="stylesheet" href="/launcher-bar.css?v=20261124-launcher">
-<link rel="stylesheet" href="/overview-v2.css?v=20261127-ov5">
+<link rel="stylesheet" href="/launcher-bar.css?v=20261127-hub1">
+<link rel="stylesheet" href="/hub-workspace.css?v=20261127-hub1">
+<link rel="stylesheet" href="/overview-v2.css?v=20261127-hub1">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#06090e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -582,6 +583,22 @@
                 <div class="ov2-prayer-pill" data-prayer="Isha"><span>อิชาอ์</span><strong>--:--</strong></div>
               </div>
             </div>
+      </article>
+
+      <!-- Band 5: Local Weather Widget (Rueso, Narathiwat) -->
+      <article class="ov3-card ov2-panel ov3-span-12" id="ov-weather-card" aria-label="พยากรณ์อากาศ อ.รือเสาะ จ.นราธิวาส">
+        <header class="ov3-card__head">
+          <div class="ov2-panel-title-group">
+            <h2 class="ov3-card__title">🌤️ สภาพอากาศ</h2>
+            <span class="ov3-card__sub" id="ov-weather-sub">อ.รือเสาะ จ.นราธิวาส</span>
+          </div>
+          <div class="ov2-panel-actions">
+            <button type="button" class="ov2-btn ov2-btn--xs ov2-btn--ghost" id="ov-weather-refresh" title="อัปเดตสภาพอากาศ">รีเฟรช</button>
+          </div>
+        </header>
+        <div class="ov3-card__body" id="ov-weather-body">
+          <div class="ov3-empty">กำลังโหลดพยากรณ์อากาศ อ.รือเสาะ…</div>
+        </div>
       </article>
     </div>
 
@@ -1851,8 +1868,9 @@
   </button>
 </nav>
 
-<script src="/overview-v2.js?v=20261127-ov5"></script>
-<script src="/launcher-bar.js?v=20261124-3dwow"></script>
+<script src="/overview-v2.js?v=20261127-hub1"></script>
+<script src="/launcher-bar.js?v=20261127-hub1"></script>
+<script src="/hub-workspace.js?v=20261127-hub1"></script>
 <script src="/model-alerts.js" defer></script>
 </body>
 </html>

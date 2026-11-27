@@ -45,7 +45,8 @@
 
 .lab-launcher__pin,
 .lab-launcher__search-btn,
-.lab-launcher__edit-btn {
+.lab-launcher__edit-btn,
+.lab-launcher__tool-btn {
     appearance: none;
     display: inline-flex;
     align-items: center;
@@ -67,7 +68,8 @@
 
 .lab-launcher__pin:hover,
 .lab-launcher__search-btn:hover,
-.lab-launcher__edit-btn:hover {
+.lab-launcher__edit-btn:hover,
+.lab-launcher__tool-btn:hover {
     border-color: rgba(0, 229, 255, 0.55);
     background: rgba(0, 229, 255, 0.12);
     box-shadow: 0 0 14px rgba(0, 229, 255, 0.18);
@@ -75,15 +77,68 @@
 
 .lab-launcher__pin:active,
 .lab-launcher__search-btn:active,
-.lab-launcher__edit-btn:active {
+.lab-launcher__edit-btn:active,
+.lab-launcher__tool-btn:active {
     transform: scale(0.97);
 }
 
 .lab-launcher__pin:focus-visible,
 .lab-launcher__search-btn:focus-visible,
-.lab-launcher__edit-btn:focus-visible {
+.lab-launcher__edit-btn:focus-visible,
+.lab-launcher__tool-btn:focus-visible {
     outline: 2px solid #00e5ff;
     outline-offset: 2px;
+}
+
+.lab-launcher__tool-btn {
+    min-width: 42px;
+    padding: 0 10px;
+    font-size: 16px;
+}
+
+/* ── Live API Badge Pills ────────────────────────────────────────────────── */
+.lab-launcher__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-family: var(--fx-mono, ui-monospace, monospace);
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.01em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.lab-launcher__badge--ok {
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(16, 185, 129, 0.42);
+    color: #34d399;
+}
+
+.lab-launcher__badge--info {
+    background: rgba(0, 229, 255, 0.16);
+    border-color: rgba(0, 229, 255, 0.42);
+    color: #38bdf8;
+}
+
+.lab-launcher__badge--warn {
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(245, 158, 11, 0.42);
+    color: #fbbf24;
+}
+
+.lab-launcher__badge--err {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.48);
+    color: #f87171;
+}
+
+.lab-launcher__badge--neutral {
+    background: rgba(148, 163, 184, 0.14);
+    border-color: rgba(148, 163, 184, 0.28);
+    color: #cbd5e1;
 }
 
 .lab-launcher__ico {
@@ -662,6 +717,7 @@ a.mobile-nav-btn {
     .lab-launcher__pin,
     .lab-launcher__search-btn,
     .lab-launcher__edit-btn,
+    .lab-launcher__tool-btn,
     .lab-modal-backdrop,
     .lab-palette__item,
     .lab-editor__row,
@@ -669,4 +725,253 @@ a.mobile-nav-btn {
         animation: none !important;
         transition: none !important;
     }
+}
+
+/* ── Palette Meta, Docker Tag, Workspace Mini Actions ────────────────────── */
+.lab-palette__item-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.lab-palette__item-tag--docker {
+    background: rgba(14, 165, 233, 0.18);
+    border-color: rgba(14, 165, 233, 0.45);
+    color: #7dd3fc;
+}
+
+.lab-palette__ws-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    color: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.lab-palette__ws-btn:hover {
+    border-color: rgba(0, 229, 255, 0.55);
+    background: rgba(0, 229, 255, 0.16);
+}
+
+/* ── Editor Tabs & Bookmarks CRUD Pane ───────────────────────────────────── */
+.lab-editor__head-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lab-editor__btn--sm {
+    min-height: 34px;
+    padding: 0 11px;
+    font-size: 12.5px;
+}
+
+.lab-editor__tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(12, 18, 36, 0.65);
+}
+
+.lab-editor__tab {
+    appearance: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--ink-muted, #8ea5bc);
+    font: 600 13px/1 system-ui, sans-serif;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: color 0.14s ease, border-color 0.14s ease;
+}
+
+.lab-editor__tab.is-active {
+    color: #00e5ff;
+    border-bottom-color: #00e5ff;
+}
+
+.lab-editor__bm-pane {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 16px;
+    overflow-y: auto;
+}
+
+.lab-bm-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(16, 23, 44, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lab-bm-form__grid {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 80px 120px;
+    gap: 8px;
+}
+
+.lab-bm-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11.5px;
+    color: var(--ink-muted, #8ea5bc);
+}
+
+.lab-bm-field .lab-editor__filter {
+    margin-bottom: 0;
+    font-size: 13.5px;
+}
+
+.lab-bm-form__checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+
+.lab-bm-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--ink-1, #e8f4ff);
+    cursor: pointer;
+}
+
+.lab-bm-form__btns {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lab-editor__row-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.lab-editor__row-sub {
+    font-size: 11px;
+    color: var(--ink-muted, #8ea5bc);
+    font-family: var(--fx-mono, ui-monospace, monospace);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+    .lab-bm-form__grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Light Theme Support (:root[data-theme="light"]) ─────────────────────── */
+:root[data-theme="light"] .lab-launcher {
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(2, 132, 199, 0.22);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .lab-launcher__pin,
+:root[data-theme="light"] .lab-launcher__search-btn,
+:root[data-theme="light"] .lab-launcher__edit-btn,
+:root[data-theme="light"] .lab-launcher__tool-btn {
+    background: #f1f5f9;
+    border-color: rgba(15, 23, 42, 0.12);
+    color: #0f172a;
+}
+
+:root[data-theme="light"] .lab-launcher__pin:hover,
+:root[data-theme="light"] .lab-launcher__search-btn:hover,
+:root[data-theme="light"] .lab-launcher__edit-btn:hover,
+:root[data-theme="light"] .lab-launcher__tool-btn:hover {
+    background: rgba(2, 132, 199, 0.10);
+    border-color: rgba(2, 132, 199, 0.45);
+}
+
+:root[data-theme="light"] .lab-launcher__kbd {
+    background: rgba(15, 23, 42, 0.06);
+    border-color: rgba(15, 23, 42, 0.14);
+    color: #475569;
+}
+
+:root[data-theme="light"] .lab-launcher__badge--ok { color: #047857; background: rgba(16, 185, 129, 0.14); }
+:root[data-theme="light"] .lab-launcher__badge--info { color: #0369a1; background: rgba(2, 132, 199, 0.12); }
+:root[data-theme="light"] .lab-launcher__badge--warn { color: #b45309; background: rgba(245, 158, 11, 0.14); }
+:root[data-theme="light"] .lab-launcher__badge--err { color: #b91c1c; background: rgba(239, 68, 68, 0.14); }
+:root[data-theme="light"] .lab-launcher__badge--neutral { color: #475569; background: rgba(15, 23, 42, 0.07); }
+
+:root[data-theme="light"] .lab-palette,
+:root[data-theme="light"] .lab-editor {
+    background: #ffffff;
+    border-color: rgba(2, 132, 199, 0.25);
+    color: #0f172a;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+:root[data-theme="light"] .lab-palette__head,
+:root[data-theme="light"] .lab-editor__head,
+:root[data-theme="light"] .lab-editor__tabs,
+:root[data-theme="light"] .lab-palette__foot,
+:root[data-theme="light"] .lab-editor__foot {
+    background: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.10);
+}
+
+:root[data-theme="light"] .lab-palette__input,
+:root[data-theme="light"] .lab-palette__item-lbl,
+:root[data-theme="light"] .lab-editor__btn,
+:root[data-theme="light"] .lab-editor__mini-btn,
+:root[data-theme="light"] .lab-bm-check {
+    color: #0f172a;
+}
+
+:root[data-theme="light"] .lab-editor__col,
+:root[data-theme="light"] .lab-bm-form {
+    background: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.10);
+}
+
+:root[data-theme="light"] .lab-editor__filter {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.16);
+    color: #0f172a;
+}
+
+:root[data-theme="light"] .lab-editor__row {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.10);
+}
+
+:root[data-theme="light"] .lab-editor__tab.is-active,
+:root[data-theme="light"] .lab-editor__col-head,
+:root[data-theme="light"] .lab-palette__group {
+    color: #0284c7;
+}
+
+:root[data-theme="light"] .lab-editor__tab.is-active {
+    border-bottom-color: #0284c7;
+}
+
+:root[data-theme="light"] .lab-launcher-toast {
+    background: #0f172a;
+    color: #f8fafc;
 }

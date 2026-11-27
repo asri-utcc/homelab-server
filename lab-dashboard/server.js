@@ -41,6 +41,12 @@ const videoFactoryManager = require('./video-factory-manager');
 const socialPublishManager = require('./social-publish-manager');
 const agentHubManager = require('./agent-hub-manager');
 const { createOverviewManager } = require('./overview-manager');
+const {
+    createDashboardHubManager,
+    checkFamilyPassword,
+    isFamilyAllowedRequest,
+    resolveRole,
+} = require('./dashboard-hub-manager');
 let browserVisionBridge = null;
 try {
     browserVisionBridge = require('./browser-vision-bridge');
@@ -1221,54 +1227,6 @@ const LINKS = [
 
 const LAUNCHER_FILE = path.join(__dirname, 'launcher-config.json');
 const DEFAULT_PINNED = ['agent-hub', 'video-studio', 'chat', 'energy', 'terminal'];
-const LAUNCHER_MAX_PINNED = 12;
-const VALID_LINK_IDS = new Set(LINKS.map((l) => l.id));
-
-function sanitizeLauncherPinned(list) {
-    const seen = new Set();
-    const clean = [];
-    for (const item of list) {
-        if (typeof item !== 'string') continue;
-        const id = item.trim();
-        if (!VALID_LINK_IDS.has(id) || seen.has(id)) continue;
-        seen.add(id);
-        clean.push(id);
-        if (clean.length >= LAUNCHER_MAX_PINNED) break;
-    }
-    return clean;
-}
-
-async function readLauncher() {
-    try {
-        const raw = await fsp.readFile(LAUNCHER_FILE, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.pinned)) {
-            return { pinned: sanitizeLauncherPinned(DEFAULT_PINNED) };
-        }
-        return { pinned: sanitizeLauncherPinned(parsed.pinned) };
-    } catch (_) {
-        return { pinned: sanitizeLauncherPinned(DEFAULT_PINNED) };
-    }
-}
-
-async function writeLauncher(pinned) {
-    if (!Array.isArray(pinned) || !pinned.every((id) => typeof id === 'string')) {
-        const err = new Error('pinned must be an array of strings');
-        err.statusCode = 400;
-        throw err;
-    }
-    const clean = sanitizeLauncherPinned(pinned);
-    const tmpFile = `${LAUNCHER_FILE}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-    const payload = JSON.stringify({ pinned: clean }, null, 2) + '\n';
-    try {
-        await fsp.writeFile(tmpFile, payload, 'utf8');
-        await fsp.rename(tmpFile, LAUNCHER_FILE);
-    } catch (err) {
-        try { await fsp.unlink(tmpFile); } catch (_) { /* ignore */ }
-        throw err;
-    }
-    return clean;
-}
 
 async function energyMetrics() {
     try {
@@ -1354,6 +1312,19 @@ const overviewManager = createOverviewManager({
     agentHubManager,
 });
 
+const dashboardHubManager = createDashboardHubManager({
+    launcherFile: LAUNCHER_FILE,
+    links: LINKS,
+    defaultPinned: DEFAULT_PINNED,
+    tailHost: TAIL_HOST,
+    dockerSock: DOCKER_SOCK,
+    buildSummary,
+    agentHubManager,
+    geminiManager,
+    audit,
+    videoStudioManager,
+});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // ระบบล็อกอิน — แทน HTTP Basic Auth (dialog ของเบราว์เซอร์ ซึ่งแต่งสไตล์ไม่ได้)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1424,30 +1395,38 @@ function signToken(payload, secret) {
     return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
-function makeSession(user, ttlMs, secret) {
+function makeSession(user, ttlMs, secret, role = 'admin') {
     const exp = Date.now() + ttlMs;
-    const payload = [
+    const normRole = String(role || 'admin').toLowerCase() === 'family' ? 'family' : 'admin';
+    const fields = [
         Buffer.from(String(user), 'utf8').toString('base64url'),
         String(exp),
         crypto.randomBytes(9).toString('base64url'),
-    ].join('.');
-    return { token: `${payload}.${signToken(payload, secret)}`, exp };
+    ];
+    if (normRole !== 'admin') fields.push(normRole);
+    const payload = fields.join('.');
+    return { token: `${payload}.${signToken(payload, secret)}`, exp, role: normRole };
 }
 
 function verifySession(token, secret) {
     if (!token || typeof token !== 'string') return null;
     const parts = token.split('.');
-    if (parts.length !== 4) return null;
-    const payload = `${parts[0]}.${parts[1]}.${parts[2]}`;
+    if (parts.length !== 4 && parts.length !== 5) return null;
+    const hasRole = parts.length === 5;
+    const payload = hasRole
+        ? `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3]}`
+        : `${parts[0]}.${parts[1]}.${parts[2]}`;
+    const sigPart = hasRole ? parts[4] : parts[3];
     const want = signToken(payload, secret);
-    const got = Buffer.from(String(parts[3]), 'utf8');
+    const got = Buffer.from(String(sigPart), 'utf8');
     const exp = Buffer.from(want, 'utf8');
     if (got.length !== exp.length || !crypto.timingSafeEqual(got, exp)) return null;
     const until = Number(parts[1]);
     if (!Number.isFinite(until) || until <= Date.now()) return null;
     let user = '';
     try { user = Buffer.from(parts[0], 'base64url').toString('utf8'); } catch (_) { return null; }
-    return { user, exp: until };
+    const role = hasRole && String(parts[3]).toLowerCase() === 'family' ? 'family' : 'admin';
+    return { user, exp: until, role };
 }
 
 // ── cookie ───────────────────────────────────────────────────────────────────
@@ -1606,8 +1585,10 @@ async function handleLogin(req, res, url) {
         return;
     }
 
-    const ok = await checkPassword(password);
-    if (!ok) {
+    const env = await readEnv();
+    const isAdmin = await checkPassword(password);
+    const isFamily = !isAdmin && checkFamilyPassword(password, env);
+    if (!isAdmin && !isFamily) {
         noteLoginFail(ip);
         await new Promise((r) => setTimeout(r, 350));   // หน่วงช้าอัตโนมัติ
         if (asJson) return sendJson(res, 401, { error: 'Invalid access key.' });
@@ -1617,16 +1598,17 @@ async function handleLogin(req, res, url) {
     }
 
     loginFails.delete(ip);
-    const env = await readEnv();
-    const user = env.DASH_AUTH_USER || 'admin';
+    const roleCfg = dashboardHubManager.getRoleConfig(env);
+    const role = isAdmin ? 'admin' : 'family';
+    const user = isAdmin ? (env.DASH_AUTH_USER || 'admin') : roleCfg.familyUser;
     const secret = await sessionSecret();
     const ttl = remember ? SESSION_REMEMBER_MS : SESSION_TTL_MS;
-    const { token } = makeSession(user, ttl, secret);
+    const { token } = makeSession(user, ttl, secret, role);
     const cookie = sessionCookie(token, ttl, isSecureReq(req));
 
     if (asJson) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Set-Cookie': cookie, 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, user, redirect: rd, expiresAt: new Date(Date.now() + ttl).toISOString() }));
+        res.end(JSON.stringify({ ok: true, user, role, redirect: rd, expiresAt: new Date(Date.now() + ttl).toISOString() }));
         return;
     }
     res.writeHead(302, { Location: rd, 'Set-Cookie': cookie, 'Cache-Control': 'no-store' });
@@ -1672,8 +1654,23 @@ async function handleAuthCheck(req, res) {
         res.end('redirecting to sign-in');
         return;
     }
+    const role = resolveRole(sess);
+    if (role === 'family') {
+        const origMethod = req.headers['x-forwarded-method'] || req.method || 'GET';
+        if (!isFamilyAllowedRequest(origMethod, uri)) {
+            res.writeHead(403, {
+                'X-Auth-User': sess.user,
+                'X-Auth-Role': role,
+                'Cache-Control': 'no-store',
+                'Content-Type': 'text/plain; charset=utf-8',
+            });
+            res.end('Forbidden: family/guest role does not have access to this resource');
+            return;
+        }
+    }
     res.writeHead(200, {
         'X-Auth-User': sess.user,
+        'X-Auth-Role': role,
         'X-Auth-Expires': new Date(sess.exp).toISOString(),
         'Cache-Control': 'no-store',
         'Content-Type': 'text/plain; charset=utf-8',
@@ -1684,9 +1681,12 @@ async function handleAuthCheck(req, res) {
 async function sessionInfo(req) {
     const sess = await currentSession(req);
     const env = await readEnv();
+    const roleCfg = dashboardHubManager.getRoleConfig(env);
     return {
         authenticated: !!sess,
         user: sess ? sess.user : null,
+        role: sess ? resolveRole(sess) : null,
+        familyEnabled: roleCfg.familyEnabled,
         expiresAt: sess ? new Date(sess.exp).toISOString() : null,
         site: TAIL_HOST,
     };
@@ -1766,6 +1766,14 @@ const server = http.createServer(async (req, res) => {
         if (p === '/api/logout') return handleLogout(req, res);
         if (p === '/auth') return await handleAuthCheck(req, res);
         if (p === '/api/session') return sendJson(res, 200, await sessionInfo(req));
+
+        // ── Family / Guest Role Guard (opt-in: only restricts authenticated family sessions) ──
+        if (p.startsWith('/api/')) {
+            const reqSess = await currentSession(req);
+            if (reqSess && resolveRole(reqSess) === 'family' && !isFamilyAllowedRequest(req.method, p)) {
+                return sendJson(res, 403, { ok: false, error: 'Forbidden: family/guest role is read-only', role: 'family' });
+            }
+        }
 
         if (p === '/api/summary') {
             return sendJson(res, 200, await buildSummary());
@@ -3184,8 +3192,9 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (req.method === 'GET' && p === '/api/launcher') {
-            const { pinned } = await readLauncher();
-            return sendJson(res, 200, { ok: true, pinned, apps: LINKS, defaults: DEFAULT_PINNED });
+            const sess = await currentSession(req);
+            const includeBadges = url.searchParams.get('badges') !== '0';
+            return sendJson(res, 200, await dashboardHubManager.getLauncher({ session: sess, includeBadges }));
         }
         if ((req.method === 'PUT' || req.method === 'POST') && p === '/api/launcher') {
             let body;
@@ -3197,10 +3206,9 @@ const server = http.createServer(async (req, res) => {
             if (!body || typeof body !== 'object' || Array.isArray(body)) {
                 return sendJson(res, 400, { ok: false, error: 'Invalid request body' });
             }
-            const nextPinned = body.reset === true ? DEFAULT_PINNED : body.pinned;
             try {
-                const pinned = await writeLauncher(nextPinned);
-                return sendJson(res, 200, { ok: true, pinned });
+                const result = await dashboardHubManager.setPinned(body.pinned, { reset: body.reset === true });
+                return sendJson(res, 200, result);
             } catch (err) {
                 if (err && err.statusCode === 400) {
                     return sendJson(res, 400, { ok: false, error: err.message });
@@ -3208,8 +3216,80 @@ const server = http.createServer(async (req, res) => {
                 throw err;
             }
         }
+        if (req.method === 'GET' && p === '/api/launcher/badges') {
+            const sess = await currentSession(req);
+            const force = url.searchParams.get('force') === '1' || url.searchParams.get('refresh') === '1';
+            const badgeRes = await dashboardHubManager.getBadges({ force });
+            if (resolveRole(sess) === 'family') {
+                const launcherRes = await dashboardHubManager.getLauncher({ session: sess, includeBadges: false });
+                const allowedIds = new Set((launcherRes.apps || []).map((a) => a.id));
+                const filtered = Object.fromEntries(
+                    Object.entries(badgeRes.badges || {}).filter(([k]) => allowedIds.has(k))
+                );
+                return sendJson(res, 200, { ...badgeRes, badges: filtered });
+            }
+            return sendJson(res, 200, badgeRes);
+        }
+        if (req.method === 'GET' && p === '/api/launcher/discovered') {
+            const force = url.searchParams.get('force') === '1' || url.searchParams.get('refresh') === '1';
+            const items = await dashboardHubManager.discoverDockerApps({ force });
+            return sendJson(res, 200, { ok: true, items, count: items.length });
+        }
+        if (req.method === 'GET' && p === '/api/bookmarks') {
+            const sess = await currentSession(req);
+            return sendJson(res, 200, await dashboardHubManager.listBookmarks({ session: sess }));
+        }
+        if (req.method === 'POST' && p === '/api/bookmarks') {
+            let body;
+            try {
+                body = await readJsonBody(req);
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message || 'Invalid JSON payload' });
+            }
+            try {
+                return sendJson(res, 201, await dashboardHubManager.createBookmark(body));
+            } catch (err) {
+                if (err && err.statusCode) {
+                    return sendJson(res, err.statusCode, { ok: false, error: err.message });
+                }
+                throw err;
+            }
+        }
+        if ((req.method === 'PUT' || req.method === 'PATCH') && p.startsWith('/api/bookmarks/')) {
+            const bmId = decodeURIComponent(p.slice('/api/bookmarks/'.length));
+            let body;
+            try {
+                body = await readJsonBody(req);
+            } catch (err) {
+                return sendJson(res, 400, { ok: false, error: err.message || 'Invalid JSON payload' });
+            }
+            try {
+                return sendJson(res, 200, await dashboardHubManager.updateBookmark(bmId, body));
+            } catch (err) {
+                if (err && err.statusCode) {
+                    return sendJson(res, err.statusCode, { ok: false, error: err.message });
+                }
+                throw err;
+            }
+        }
+        if (req.method === 'DELETE' && p.startsWith('/api/bookmarks/')) {
+            const bmId = decodeURIComponent(p.slice('/api/bookmarks/'.length));
+            try {
+                return sendJson(res, 200, await dashboardHubManager.deleteBookmark(bmId));
+            } catch (err) {
+                if (err && err.statusCode) {
+                    return sendJson(res, err.statusCode, { ok: false, error: err.message });
+                }
+                throw err;
+            }
+        }
+        if (req.method === 'GET' && p === '/api/weather') {
+            const force = url.searchParams.get('force') === '1' || url.searchParams.get('refresh') === '1';
+            return sendJson(res, 200, await dashboardHubManager.getWeather({ force }));
+        }
         if (req.method === 'POST' && p === '/api/refresh') {
             cache.clear();
+            dashboardHubManager.resetCache();
             return sendJson(res, 200, { ok: true });
         }
         if (p === '/agent-hub' || p === '/agent-hub/') {

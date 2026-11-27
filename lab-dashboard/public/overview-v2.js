@@ -2418,6 +2418,7 @@
             const data = await fetchOverviewData();
             if (data && data.ok) {
                 ui.lastData = data;
+                window.__labOverviewCache = data;
                 ui.lastUpdatedAt = Date.now();
                 pushHist(data);
                 renderAll(data);
@@ -2440,6 +2441,7 @@
             ui.lastData.host = host;
             ui.lastData.infra = infra;
             if (ui.lastData.attention) ui.lastData.attention.servicesDown = infra.problems.length;
+            window.__labOverviewCache = ui.lastData;
             ui.lastUpdatedAt = Date.now();
             if (Date.now() - ui.lastHistPushAt >= 4500) pushHist(ui.lastData);
             renderHeader(ui.lastData);
@@ -2875,6 +2877,213 @@
         setInterval(updateCountdown, 1000);
     }
 
+    // ── Rueso, Narathiwat Weather Widget (Open-Meteo via /api/weather + fallback) ──
+    function initWeatherWidget() {
+        const card = $('ov-weather-card');
+        if (!card) return;
+
+        const WEATHER_POLL_MS = 15 * 60 * 1000;
+        const DIRECT_URL = 'https://api.open-meteo.com/v1/forecast?latitude=6.3917&longitude=101.5186'
+            + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,rain,weather_code,wind_speed_10m,is_day'
+            + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'
+            + '&timezone=Asia%2FBangkok&forecast_days=4';
+
+        function mapWmoFallback(code, isDay) {
+            const c = Number(code);
+            if (c === 0) return { conditionTh: isDay ? 'ท้องฟ้าแจ่มใส' : 'ท้องฟ้าโปร่ง', emoji: isDay ? '☀️' : '🌙' };
+            if (c === 1) return { conditionTh: 'เมฆบางส่วนเล็กน้อย', emoji: isDay ? '🌤️' : '🌙' };
+            if (c === 2) return { conditionTh: 'มีเมฆบางส่วน', emoji: isDay ? '⛅' : '☁️' };
+            if (c === 3) return { conditionTh: 'มีเมฆมาก', emoji: '☁️' };
+            if (c === 45 || c === 48) return { conditionTh: 'มีหมอก', emoji: '🌫️' };
+            if (c >= 51 && c <= 67) return { conditionTh: 'ฝนตก', emoji: '🌧️' };
+            if (c >= 80 && c <= 82) return { conditionTh: 'ฝนซู่', emoji: '🌦️' };
+            if (c >= 95) return { conditionTh: 'พายุฝนฟ้าคะนอง', emoji: '⛈️' };
+            return { conditionTh: 'สภาพอากาศทั่วไป', emoji: isDay ? '🌤️' : '🌙' };
+        }
+
+        function formatDayLabel(isoDate, idx) {
+            if (idx === 0) return 'วันนี้';
+            if (idx === 1) return 'พรุ่งนี้';
+            try {
+                const d = new Date(`${isoDate}T00:00:00+07:00`);
+                return d.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' });
+            } catch (_) {
+                return String(isoDate || '').slice(5);
+            }
+        }
+
+        function renderWeather(data) {
+            const body = $('ov-weather-body');
+            const sub = $('ov-weather-sub');
+            if (!body) return;
+            body.textContent = '';
+
+            if (!data || !data.current) {
+                const errEl = document.createElement('div');
+                errEl.className = 'ov3-empty';
+                errEl.textContent = 'ไม่สามารถโหลดข้อมูลอากาศ อ.รือเสาะ ได้ในขณะนี้';
+                body.appendChild(errEl);
+                return;
+            }
+
+            if (sub) {
+                const loc = (data.location && data.location.name) || 'อ.รือเสาะ จ.นราธิวาส';
+                sub.textContent = `${loc}${data.stale ? ' (แคช)' : ''}`;
+            }
+
+            const cur = data.current;
+            const wrap = document.createElement('div');
+            wrap.className = 'ov3-weather-grid';
+
+            const left = document.createElement('div');
+            left.className = 'ov3-weather-cur';
+
+            const hero = document.createElement('div');
+            hero.className = 'ov3-weather-hero';
+
+            const ico = document.createElement('span');
+            ico.className = 'ov3-weather-ico';
+            ico.setAttribute('aria-hidden', 'true');
+            ico.textContent = cur.emoji || '🌤️';
+
+            const tempWrap = document.createElement('div');
+            tempWrap.className = 'ov3-weather-temp-wrap';
+
+            const temp = document.createElement('div');
+            temp.className = 'ov3-weather-temp ov2-num';
+            temp.textContent = cur.tempC != null ? `${Math.round(cur.tempC)}°C` : '—°C';
+
+            const cond = document.createElement('div');
+            cond.className = 'ov3-weather-cond';
+            cond.textContent = cur.conditionTh || 'สภาพอากาศทั่วไป';
+
+            tempWrap.appendChild(temp);
+            tempWrap.appendChild(cond);
+            hero.appendChild(ico);
+            hero.appendChild(tempWrap);
+
+            const stats = document.createElement('div');
+            stats.className = 'ov3-weather-stats';
+            const addStat = (lbl, val) => {
+                const s = document.createElement('span');
+                s.className = 'ov3-weather-stat';
+                s.textContent = `${lbl} ${val}`;
+                stats.appendChild(s);
+            };
+            addStat('รู้สึก', cur.feelsLikeC != null ? `${Math.round(cur.feelsLikeC)}°C` : '—');
+            addStat('ความชื้น', cur.humidityPct != null ? `${Math.round(cur.humidityPct)}%` : '—');
+            addStat('ลม', cur.windKmh != null ? `${Math.round(cur.windKmh)} กม./ชม.` : '—');
+            if (cur.rainMm != null && Number(cur.rainMm) > 0) {
+                addStat('ฝน', `${Number(cur.rainMm).toFixed(1)} มม.`);
+            }
+
+            left.appendChild(hero);
+            left.appendChild(stats);
+
+            const right = document.createElement('div');
+            right.className = 'ov3-weather-daily';
+            const daily = Array.isArray(data.daily) ? data.daily.slice(0, 4) : [];
+            daily.forEach((d, idx) => {
+                const cell = document.createElement('div');
+                cell.className = 'ov3-weather-day' + (idx === 0 ? ' is-today' : '');
+
+                const dLbl = document.createElement('span');
+                dLbl.className = 'ov3-weather-day__lbl';
+                dLbl.textContent = formatDayLabel(d.date, idx);
+
+                const dIco = document.createElement('span');
+                dIco.className = 'ov3-weather-day__ico';
+                dIco.textContent = d.emoji || '🌤️';
+
+                const dTmp = document.createElement('strong');
+                dTmp.className = 'ov3-weather-day__tmp ov2-num';
+                dTmp.textContent = `${d.tempMinC != null ? Math.round(d.tempMinC) : '—'}° / ${d.tempMaxC != null ? Math.round(d.tempMaxC) : '—'}°`;
+
+                const dRain = document.createElement('small');
+                dRain.className = 'ov3-weather-day__rain';
+                dRain.textContent = `💧 ${d.precipProbPct != null ? Math.round(d.precipProbPct) : 0}%`;
+
+                cell.appendChild(dLbl);
+                cell.appendChild(dIco);
+                cell.appendChild(dTmp);
+                cell.appendChild(dRain);
+                right.appendChild(cell);
+            });
+
+            wrap.appendChild(left);
+            wrap.appendChild(right);
+            body.appendChild(wrap);
+        }
+
+        async function loadWeather(force = false) {
+            try {
+                const r = await fetch(`/api/weather${force ? '?force=1' : ''}`, { cache: 'no-store' });
+                if (r.ok) {
+                    const data = await r.json();
+                    if (data && data.current) {
+                        window.__labWeatherCache = data;
+                        renderWeather(data);
+                        return;
+                    }
+                }
+            } catch (_) {}
+
+            // Direct Open-Meteo fallback if server hasn't restarted yet
+            try {
+                const r2 = await fetch(DIRECT_URL);
+                if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
+                const raw = await r2.json();
+                const cur = (raw && raw.current) || {};
+                const isDay = cur.is_day !== 0;
+                const meta = mapWmoFallback(cur.weather_code, isDay);
+                const dRaw = (raw && raw.daily) || {};
+                const dates = Array.isArray(dRaw.time) ? dRaw.time : [];
+                const daily = dates.map((date, idx) => {
+                    const code = Array.isArray(dRaw.weather_code) ? dRaw.weather_code[idx] : 0;
+                    const dm = mapWmoFallback(code, true);
+                    return {
+                        date,
+                        tempMaxC: Array.isArray(dRaw.temperature_2m_max) ? Number(dRaw.temperature_2m_max[idx]) : null,
+                        tempMinC: Array.isArray(dRaw.temperature_2m_min) ? Number(dRaw.temperature_2m_min[idx]) : null,
+                        precipProbPct: Array.isArray(dRaw.precipitation_probability_max) ? Number(dRaw.precipitation_probability_max[idx]) : null,
+                        weatherCode: Number(code) || 0,
+                        conditionTh: dm.conditionTh,
+                        emoji: dm.emoji,
+                    };
+                });
+                const fallbackData = {
+                    ok: true,
+                    location: { name: 'อ.รือเสาะ จ.นราธิวาส', lat: 6.3917, lon: 101.5186, timezone: 'Asia/Bangkok' },
+                    fetchedAt: new Date().toISOString(),
+                    cached: false,
+                    stale: false,
+                    current: {
+                        tempC: cur.temperature_2m != null ? Number(cur.temperature_2m) : null,
+                        feelsLikeC: cur.apparent_temperature != null ? Number(cur.apparent_temperature) : null,
+                        humidityPct: cur.relative_humidity_2m != null ? Number(cur.relative_humidity_2m) : null,
+                        windKmh: cur.wind_speed_10m != null ? Number(cur.wind_speed_10m) : null,
+                        rainMm: cur.rain != null ? Number(cur.rain) : 0,
+                        weatherCode: Number(cur.weather_code) || 0,
+                        isDay,
+                        conditionTh: meta.conditionTh,
+                        emoji: meta.emoji,
+                    },
+                    daily,
+                };
+                window.__labWeatherCache = fallbackData;
+                renderWeather(fallbackData);
+            } catch (_) {
+                renderWeather(window.__labWeatherCache || null);
+            }
+        }
+
+        $('ov-weather-refresh')?.addEventListener('click', () => loadWeather(true));
+        loadWeather(false);
+        setInterval(() => {
+            if (!document.hidden) loadWeather(false);
+        }, WEATHER_POLL_MS);
+    }
+
     // ── Boot ────────────────────────────────────────────────────────────────
     function init() {
         if (!$('ov2-root')) return;
@@ -2886,6 +3095,7 @@
         }
         bindEvents();
         initPrayerWidget();
+        initWeatherWidget();
         tick(true);
         fetchQuotaData(true);
         setInterval(() => tick(false), POLL_MS);

@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func resetGlobalAgentForTest(t *testing.T, hubURL string) {
@@ -238,5 +240,87 @@ func TestLocalUIEndpoints(t *testing.T) {
 	sc, _ := out["selfCheck"].(map[string]interface{})
 	if sc == nil || sc["serverOnline"] != true {
 		t.Fatalf("expected selfCheck.serverOnline=true, got %+v", out)
+	}
+}
+
+func TestBuildLiveMetricsEmptyCurrentJobsJSON(t *testing.T) {
+	resetGlobalAgentForTest(t, "http://127.0.0.1:1")
+
+	metrics := buildLiveMetrics()
+	if metrics.CurrentJobs == nil {
+		t.Fatalf("expected CurrentJobs to be non-nil empty slice when idle")
+	}
+
+	raw, err := json.Marshal(metrics)
+	if err != nil {
+		t.Fatalf("json.Marshal(buildLiveMetrics()) failed: %v", err)
+	}
+	if !strings.Contains(string(raw), `"currentJobs":[]`) {
+		t.Fatalf("expected JSON to contain \"currentJobs\":[], got: %s", string(raw))
+	}
+}
+
+func TestVerifyWithHubFallbackConcurrentNoDeadlock(t *testing.T) {
+	oldSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agent-hub/agent/self-status" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.URL.Path == "/api/agent-hub/agent/heartbeat" && r.Method == http.MethodPost {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":          true,
+				"nodeId":      "test-win-node",
+				"displayName": "ConcurrentPC",
+				"alias":       "concurrent-pc",
+				"serverTime":  "2026-11-28T00:00:02Z",
+				"commands":    []interface{}{},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer oldSrv.Close()
+
+	resetGlobalAgentForTest(t, oldSrv.URL)
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+
+	// Writers continuously acquiring s.mu.Lock() via SetHeartbeatSuccess
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 40; i++ {
+				runtimeState.SetHeartbeatSuccess(oldSrv.URL, 5, "concurrent-pc", "ConcurrentPC", "1.2.0")
+				runtimeState.SetLongPollConnected(i%2 == 0)
+			}
+		}()
+	}
+
+	// Readers calling VerifyWithHub() (fallback path) and buildLiveMetrics() concurrently
+	for r := 0; r < 4; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 15; i++ {
+				res := runtimeState.VerifyWithHub()
+				if !res.OK || !res.FallbackUsed {
+					t.Errorf("expected fallback VerifyWithHub OK, got %+v", res)
+				}
+				_ = buildLiveMetrics()
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("deadlock detected during concurrent VerifyWithHub fallback + SetHeartbeatSuccess")
 	}
 }

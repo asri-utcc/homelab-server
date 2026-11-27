@@ -240,3 +240,82 @@ test('Agent Hub v1.2.0: workerState, self-status (non-mutating), mini, and pause
         await fsp.rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
     }
 });
+
+test('Agent Hub v1.2.0 regression: omitted currentJobs on subsequent heartbeat clears stale jobs and returns to idle', async () => {
+    const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'agent-hub-v120-reg-'));
+    const prevRoot = process.env.AGENT_HUB_ROOT;
+    const prevSkip = process.env.AGENT_HUB_SKIP_SIDE_EFFECTS;
+
+    process.env.AGENT_HUB_ROOT = tmpRoot;
+    process.env.AGENT_HUB_SKIP_SIDE_EFFECTS = '1';
+
+    const mgrPath = require.resolve('../agent-hub-manager');
+    delete require.cache[mgrPath];
+    const mgr = require('../agent-hub-manager');
+
+    try {
+        const status0 = await mgr.getHubStatus();
+        const authHeaders = { 'X-Agent-Token': status0.token };
+
+        // 1. Heartbeat with running job in metrics.currentJobs
+        const hbRunning = await callApi(mgr, 'POST', '/api/agent-hub/agent/heartbeat', {
+            headers: authHeaders,
+            body: {
+                specs: { nodeId: 'win-reg', hostname: 'WIN-REG', os: 'windows' },
+                metrics: {
+                    cpuPct: 55,
+                    activeJobs: 1,
+                    paused: false,
+                    currentJobs: [
+                        { jobId: 'gjob_stale', name: 'render-clip', kind: 'generic', status: 'running', progress: 80, message: 'encoding' },
+                    ],
+                },
+            },
+        });
+        assert.equal(hbRunning.status, 200);
+        assert.equal(hbRunning.body.workerState, 'running');
+
+        const miniBefore = await callApi(mgr, 'GET', '/api/agent-hub/mini');
+        assert.equal(miniBefore.body.nodes[0].workerState, 'running');
+        assert.equal(miniBefore.body.nodes[0].activeJobs, 1);
+        assert.equal(miniBefore.body.nodes[0].currentJobs.length, 1);
+
+        // 2. Subsequent heartbeat with activeJobs: 0 and currentJobs OMITTED
+        const hbIdle = await callApi(mgr, 'POST', '/api/agent-hub/agent/heartbeat', {
+            headers: authHeaders,
+            body: {
+                specs: { nodeId: 'win-reg' },
+                metrics: {
+                    cpuPct: 5,
+                    activeJobs: 0,
+                    paused: false,
+                },
+            },
+        });
+        assert.equal(hbIdle.status, 200);
+        assert.equal(hbIdle.body.workerState, 'idle');
+
+        const hubStatusAfter = await mgr.getHubStatus();
+        const nodeAfter = hubStatusAfter.nodes.find((n) => n.nodeId === 'win-reg');
+        assert.equal(nodeAfter.workerState, 'idle');
+        assert.equal(nodeAfter.activeJobs, 0);
+        assert.equal(nodeAfter.currentJobs.length, 0);
+        assert.deepEqual(nodeAfter.metrics.currentJobs, []);
+
+        const miniAfter = await callApi(mgr, 'GET', '/api/agent-hub/mini');
+        assert.equal(miniAfter.body.nodes[0].workerState, 'idle');
+        assert.equal(miniAfter.body.nodes[0].activeJobs, 0);
+        assert.equal(miniAfter.body.nodes[0].currentJobs.length, 0);
+
+        const selfAfter = await callApi(mgr, 'GET', '/api/agent-hub/agent/self-status?nodeId=win-reg', { headers: authHeaders });
+        assert.equal(selfAfter.body.workerState, 'idle');
+        assert.equal(selfAfter.body.activeJobs, 0);
+        assert.equal(selfAfter.body.currentJobs.length, 0);
+    } finally {
+        if (prevRoot === undefined) delete process.env.AGENT_HUB_ROOT;
+        else process.env.AGENT_HUB_ROOT = prevRoot;
+        if (prevSkip === undefined) delete process.env.AGENT_HUB_SKIP_SIDE_EFFECTS;
+        else process.env.AGENT_HUB_SKIP_SIDE_EFFECTS = prevSkip;
+        await fsp.rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+    }
+});

@@ -86,7 +86,7 @@ type LiveMetrics struct {
 	ActiveJobs  int32        `json:"activeJobs"`
 	Paused      bool         `json:"paused"`
 	WorkerState string       `json:"workerState"`
-	CurrentJobs []TrackedJob `json:"currentJobs,omitempty"`
+	CurrentJobs []TrackedJob `json:"currentJobs"`
 	HubEndpoint string       `json:"hubEndpoint"`
 	Timestamp   string       `json:"timestamp"`
 }
@@ -405,6 +405,9 @@ func buildLiveMetrics() LiveMetrics {
 	ep := currentEndpoint
 	endpointMutex.RUnlock()
 	activeJobs := runtimeState.ActiveJobs()
+	if activeJobs == nil {
+		activeJobs = []TrackedJob{}
+	}
 	activeCount := atomic.LoadInt32(&activeJobsCount)
 	if int32(len(activeJobs)) > activeCount {
 		activeCount = int32(len(activeJobs))
@@ -3786,6 +3789,7 @@ func handleSelfUpdate(p map[string]interface{}) (map[string]interface{}, error) 
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
 		stopSystemTray()
+		time.Sleep(150 * time.Millisecond)
 		_ = spawnBackgroundDaemon(exePath, installDir)
 		os.Exit(0)
 	}()

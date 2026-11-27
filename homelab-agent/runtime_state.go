@@ -680,11 +680,11 @@ func (s *agentRuntimeState) verifyWithHubFallback(nowIso string) *HubSelfStatusR
 	s.mu.RLock()
 	res.ServerLongPoll = s.longPollConnected
 	res.ServerAlias = s.hubAlias
-	res.ServerDisplayName = s.DisplayName()
 	res.HubAgentVersion = s.hubAgentVersion
 	res.HubTotalNodes = s.hubTotalNodes
 	res.HubOnlineNodes = s.hubOnlineNodes
 	s.mu.RUnlock()
+	res.ServerDisplayName = s.DisplayName()
 	res.ServerWorkerState = s.WorkerState()
 	res.ServerLastSeenAt = time.Now().UTC().Format(time.RFC3339)
 	res.HubServerTime = res.ServerLastSeenAt

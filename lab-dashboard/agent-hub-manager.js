@@ -574,6 +574,7 @@ function handleHeartbeat(body, clientIp) {
         metrics: {
             ...existing.metrics,
             ...metrics,
+            currentJobs: Array.isArray(metrics.currentJobs) ? metrics.currentJobs : [],
         },
         lastIp: clientIp || existing.lastIp || '',
         lastSeenAt: nowIso,

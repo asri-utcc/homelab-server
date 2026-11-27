@@ -11,11 +11,13 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
 var (
+	cpuSampleMu   sync.Mutex
 	lastUnixIdle  uint64
 	lastUnixTotal uint64
 	lastUnixPct   float64
@@ -46,6 +48,9 @@ func killProcessTree(c *exec.Cmd) {
 }
 
 func sampleLinuxCPU() float64 {
+	cpuSampleMu.Lock()
+	defer cpuSampleMu.Unlock()
+
 	f, err := os.Open("/proc/stat")
 	if err != nil {
 		return lastUnixPct
@@ -72,6 +77,11 @@ func sampleLinuxCPU() float64 {
 		lastUnixIdle = idle
 		return 0
 	}
+	if total < lastUnixTotal || idle < lastUnixIdle {
+		lastUnixTotal = total
+		lastUnixIdle = idle
+		return lastUnixPct
+	}
 	dTotal := total - lastUnixTotal
 	dIdle := idle - lastUnixIdle
 	lastUnixTotal = total
@@ -83,7 +93,14 @@ func sampleLinuxCPU() float64 {
 	if dTotal > dIdle {
 		busy = dTotal - dIdle
 	}
-	lastUnixPct = (float64(busy) / float64(dTotal)) * 100.0
+	pct := (float64(busy) / float64(dTotal)) * 100.0
+	if pct < 0 {
+		pct = 0
+	}
+	if pct > 100 {
+		pct = 100
+	}
+	lastUnixPct = pct
 	return lastUnixPct
 }
 

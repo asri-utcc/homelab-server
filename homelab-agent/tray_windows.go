@@ -149,6 +149,7 @@ type trayController struct {
 	icons          map[string]uintptr
 	lastState      string
 	lastTip        string
+	lastOpenUI     time.Time
 	onQuit         func()
 	stopped        bool
 }
@@ -513,6 +514,18 @@ func (t *trayController) handleMenuCommand(id uint16) {
 	}
 }
 
+func (t *trayController) openStatusAppDebounced() {
+	now := time.Now()
+	t.mu.Lock()
+	if !t.lastOpenUI.IsZero() && now.Sub(t.lastOpenUI) < 700*time.Millisecond {
+		t.mu.Unlock()
+		return
+	}
+	t.lastOpenUI = now
+	t.mu.Unlock()
+	go openLocalStatusApp(runtimeState.LocalUIURL())
+}
+
 func (t *trayController) RequestRefresh() {
 	t.mu.Lock()
 	hwnd := t.hwnd
@@ -532,7 +545,7 @@ func trayWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case wmTrayCallback:
 		switch uint32(lParam & 0xFFFF) {
 		case wmLButtonUp, wmLButtonDblClk:
-			go openLocalStatusApp(runtimeState.LocalUIURL())
+			winTray.openStatusAppDebounced()
 		case wmRButtonUp, wmContextMenu:
 			winTray.showContextMenu()
 		}

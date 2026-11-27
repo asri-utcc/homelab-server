@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -45,6 +46,7 @@ func fileTimeToUint64(ft fileTime) uint64 {
 }
 
 var (
+	cpuSampleMu    sync.Mutex
 	lastIdleTime   uint64
 	lastKernelTime uint64
 	lastUserTime   uint64
@@ -56,6 +58,9 @@ func init() {
 }
 
 func sampleWindowsCPU() float64 {
+	cpuSampleMu.Lock()
+	defer cpuSampleMu.Unlock()
+
 	var idle, kernel, user fileTime
 	r, _, _ := procGetSystemTimes.Call(
 		uintptr(unsafe.Pointer(&idle)),
@@ -74,6 +79,13 @@ func sampleWindowsCPU() float64 {
 		lastKernelTime = k
 		lastUserTime = u
 		return 0
+	}
+
+	if i < lastIdleTime || k < lastKernelTime || u < lastUserTime {
+		lastIdleTime = i
+		lastKernelTime = k
+		lastUserTime = u
+		return lastCpuPct
 	}
 
 	dIdle := i - lastIdleTime

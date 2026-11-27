@@ -2334,6 +2334,9 @@ const server = http.createServer(async (req, res) => {
             try {
                 const env = await readEnv();
                 const roleCfg = dashboardHubManager.getRoleConfig(env);
+                const pin = String(env.DASH_FAMILY_PASS || env.FAMILY_AUTH_PASS || '').trim();
+                const pinMasked = pin ? '•'.repeat(Math.min(pin.length, 12)) + ' (ตั้งไว้แล้ว กรอกใหม่เพื่อเปลี่ยน)' : null;
+                const reveal = url.searchParams.get('reveal') === '1';
                 const launcher = await dashboardHubManager.getLauncher({ role: 'admin', includeBadges: false });
                 const apps = (launcher.apps || []).map((a) => ({
                     id: a.id,
@@ -2343,15 +2346,20 @@ const server = http.createServer(async (req, res) => {
                     source: a.source,
                     family: Boolean(a.family),
                 }));
-                return sendJson(res, 200, {
+                const payload = {
                     ok: true,
                     enabled: roleCfg.familyEnabled,
                     user: roleCfg.familyUser,
                     hasPin: roleCfg.familyEnabled,
+                    pinMasked,
                     familyVer: roleCfg.familyVer,
                     loginUrl: `https://${TAIL_HOST}/login`,
                     apps,
-                });
+                };
+                if (reveal) {
+                    payload.pinPlain = pin || '';
+                }
+                return sendJson(res, 200, payload);
             } catch (err) {
                 return sendJson(res, err.statusCode || 500, { ok: false, error: err.message || 'ไม่สามารถอ่านการตั้งค่าบัญชีคนในบ้านได้' });
             }

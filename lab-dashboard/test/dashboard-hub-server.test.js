@@ -295,3 +295,19 @@ test('makeSession & verifySession embed ~ver in family nonce, omit ~ in admin no
     assert.equal(adminParts.length, 4);
     assert.ok(!adminParts[2].includes('~'), `expected admin nonce without ~, got ${adminParts[2]}`);
 });
+
+test('server.js GET /api/settings/family supports reveal=1 (pinPlain) and pinMasked', () => {
+    const startIdx = SERVER_SRC.indexOf("if (req.method === 'GET' && p === '/api/settings/family')");
+    const endIdx = SERVER_SRC.indexOf("if (req.method === 'POST' && p === '/api/settings/family')", startIdx);
+    assert.ok(startIdx !== -1 && endIdx > startIdx, 'server.js missing GET /api/settings/family handler');
+    const handlerSrc = SERVER_SRC.slice(startIdx, endIdx);
+    const requiredSnippets = [
+        'requireAdminSession(req, res)',
+        "url.searchParams.get('reveal') === '1'",
+        'pinMasked',
+        'pinPlain',
+    ];
+    for (const snip of requiredSnippets) {
+        assert.ok(handlerSrc.includes(snip), `GET /api/settings/family missing expected wiring: ${snip}`);
+    }
+});

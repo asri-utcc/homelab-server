@@ -9604,7 +9604,7 @@ body::before {
 
       markAssistantMessageDone(responseBody, Date.now());
       try {
-        const roomTitle = document.getElementById('room-title')?.textContent?.trim() || '';
+        const roomTitle = (currentSessionMeta && currentSessionMeta.title) || document.getElementById('chat-topic-title')?.textContent?.trim() || '';
         window.HomelabBVAlerts?.detectChatMessage?.(fullOutput, currentSessionId, roomTitle);
       } catch (_) {}
       finalizeThinkingBar();
@@ -10488,7 +10488,8 @@ body::before {
     getSessionMeta: () => currentSessionMeta,
     isRunning: () => Boolean(isRunning),
     sendPrompt: (text) => sendPrompt(text),
-    uploadImageFiles: (fileList) => uploadImageFiles(fileList)
+    uploadImageFiles: (fileList) => uploadImageFiles(fileList),
+    switchToSession: (sid) => switchToSession(sid)
   };
 
 })();
@@ -11215,7 +11216,7 @@ body::before {
       const rLow = String(reason || '').toLowerCase();
       const kind = /otp/.test(rLow) ? 'otp' : /captcha|turnstile|human/.test(rLow) ? 'captcha' : /pay|card|checkout/.test(rLow) ? 'payment' : /login|password|auth/.test(rLow) ? 'login' : 'paused';
       const label = reason ? (SENSITIVE_LABELS[rLow] || String(reason)) : '⏸️ เบราว์เซอร์รอคุณดำเนินการ';
-      const roomTitle = document.getElementById('room-title')?.textContent?.trim() || '';
+      const roomTitle = window.__geminiChatBridge?.getSessionMeta?.()?.title || document.getElementById('chat-topic-title')?.textContent?.trim() || '';
       window.HomelabBVAlerts.raise({
         id: alertId,
         kind,
@@ -13374,11 +13375,11 @@ body::before {
   // ── Deep-Link & Iframe Message Receiver for Sticky BV Alerts ──────────────
   window.__homelabOpenBvSession = async (chatId, openBv = true) => {
     try {
-      if (chatId && typeof switchToSession === 'function') {
-        await switchToSession(chatId);
+      if (chatId && typeof window.__geminiChatBridge?.switchToSession === 'function') {
+        await window.__geminiChatBridge.switchToSession(chatId);
       }
       if (openBv && window.BrowserVision && typeof window.BrowserVision.open === 'function') {
-        window.BrowserVision.open(chatId || currentSessionId);
+        window.BrowserVision.open(chatId || window.__geminiChatBridge?.getSessionId?.());
       }
     } catch (_) {}
   };

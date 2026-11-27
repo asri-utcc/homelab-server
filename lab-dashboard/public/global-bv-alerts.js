@@ -240,25 +240,101 @@
     } catch (_) {}
   }
 
+  function getCanonicalKey(alert) {
+    if (!alert || typeof alert !== 'object') return '';
+    if (alert.chatId) return `chat:${String(alert.chatId).trim()}`;
+    if (alert.sessionName) {
+      const sn = String(alert.sessionName).trim();
+      if (sn) return `sess:${sn}`;
+    }
+    return String(alert.id || '').trim();
+  }
+
   function isDismissed(alert, dismissMap) {
-    const exp = dismissMap[alert.id];
-    if (!exp) return false;
     const now = Date.now();
-    if (exp <= now) return false;
-    // If a fresh event arrived AFTER the dismissal was created, surface it again
-    const dismissedAt = exp - DISMISS_TTL_MS;
-    if (Number(alert.ts) > dismissedAt + 1500) return false;
-    return true;
+    const checkExp = (exp) => {
+      if (!exp || exp <= now) return false;
+      // If a fresh event arrived AFTER the dismissal was created, surface it again
+      const dismissedAt = exp - DISMISS_TTL_MS;
+      if (Number(alert.ts) > dismissedAt + 1500) return false;
+      return true;
+    };
+    if (checkExp(dismissMap[alert.id])) return true;
+    const ck = getCanonicalKey(alert);
+    if (ck && checkExp(dismissMap[`ck:${ck}`])) return true;
+    return false;
+  }
+
+  function isGenericDetail(detail, kind) {
+    const d = String(detail || '').trim();
+    if (!d) return true;
+    const meta = KIND_META[kind] || KIND_META.login;
+    if (d === meta.defaultDetail) return true;
+    if (Object.values(KIND_META).some((m) => m.defaultDetail === d)) return true;
+    if (d.endsWith('กรุณาเปิด Browser Vision เพื่อดำเนินการต่อแล้วกด Resume')) return true;
+    return false;
+  }
+
+  function isGenericTitle(title, kind) {
+    const t = String(title || '').trim();
+    if (!t) return true;
+    const meta = KIND_META[kind] || KIND_META.login;
+    return t === meta.defaultTitle || Object.values(KIND_META).some((m) => m.defaultTitle === t);
+  }
+
+  function mergeAlertGroup(group) {
+    if (group.length === 1) return group[0];
+    // Sort newest first; prefer entries with more complete metadata on tie
+    group.sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0));
+    const merged = { ...group[0] };
+    let maxTs = Number(merged.ts) || 0;
+
+    for (let i = 1; i < group.length; i++) {
+      const item = group[i];
+      const itemTs = Number(item.ts) || 0;
+      if (itemTs > maxTs) maxTs = itemTs;
+
+      if (!merged.roomTitle && item.roomTitle) merged.roomTitle = item.roomTitle;
+      if (!merged.platform && item.platform) merged.platform = item.platform;
+      if (!merged.chatId && item.chatId) merged.chatId = item.chatId;
+      if (!merged.sessionName && item.sessionName) merged.sessionName = item.sessionName;
+      if (!merged.url && item.url) merged.url = item.url;
+      if (!merged.domain && item.domain) merged.domain = item.domain;
+      if ((!merged.browserVisionUrl || merged.browserVisionUrl === '/lab-browser') && item.browserVisionUrl && item.browserVisionUrl !== '/lab-browser') {
+        merged.browserVisionUrl = item.browserVisionUrl;
+      }
+
+      // Upgrade generic kind ('paused' / 'handoff') to a more specific kind if available
+      if ((merged.kind === 'paused' || merged.kind === 'handoff') && item.kind && item.kind !== 'paused' && item.kind !== 'handoff') {
+        merged.kind = item.kind;
+      }
+
+      // Prefer non-generic title and detail (e.g., merge client roomTitle/chat snippet with server alert)
+      if (isGenericTitle(merged.title, merged.kind) && item.title && !isGenericTitle(item.title, item.kind)) {
+        merged.title = item.title;
+      }
+      if (isGenericDetail(merged.detail, merged.kind) && item.detail && !isGenericDetail(item.detail, item.kind)) {
+        merged.detail = item.detail;
+      }
+    }
+
+    merged.ts = maxTs;
+    return merged;
   }
 
   function getActiveAlerts() {
     const store = readStoreMap();
     const dismissMap = readDismissMap();
-    const list = [];
+    const groups = new Map();
     for (const item of Object.values(store)) {
-      if (!isDismissed(item, dismissMap)) {
-        list.push(item);
-      }
+      if (isDismissed(item, dismissMap)) continue;
+      const ck = getCanonicalKey(item) || item.id;
+      if (!groups.has(ck)) groups.set(ck, []);
+      groups.get(ck).push(item);
+    }
+    const list = [];
+    for (const group of groups.values()) {
+      list.push(mergeAlertGroup(group));
     }
     list.sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0));
     return list;
@@ -358,6 +434,10 @@
             const btn = document.querySelector('.sidebar__item[data-view="terminal"]')
               || document.querySelector('.mobile-nav-btn[data-view="terminal"]');
             if (btn) btn.click();
+          }
+          const geminiSubtab = document.querySelector('.term-subtab[data-term-subtab="gemini"]');
+          if (geminiSubtab && !geminiSubtab.classList.contains('active') && !geminiSubtab.classList.contains('is-active')) {
+            geminiSubtab.click();
           }
         } catch (_) {}
         dispatchOpenToGeminiIframe(alert.chatId);
@@ -464,6 +544,7 @@
     const key = String(idOrChatOrSession || '').trim();
     if (!key) return false;
     const store = readStoreMap();
+    const targetCanonical = store[key] ? getCanonicalKey(store[key]) : '';
     let removed = false;
     for (const [id, item] of Object.entries(store)) {
       if (
@@ -471,6 +552,7 @@
         || item.chatId === key
         || item.sessionName === key
         || (`bv_${key}` === item.sessionName)
+        || (targetCanonical && getCanonicalKey(item) === targetCanonical)
       ) {
         delete store[id];
         removed = true;
@@ -495,11 +577,25 @@
     const key = String(id || '').trim();
     if (!key) return false;
     const map = readDismissMap();
-    map[key] = Date.now() + DISMISS_TTL_MS;
+    const until = Date.now() + DISMISS_TTL_MS;
+    map[key] = until;
+
+    // Also dismiss every alert in the store sharing the same canonical session key
+    const store = readStoreMap();
+    const targetItem = store[key];
+    const targetCanonical = targetItem ? getCanonicalKey(targetItem) : '';
+    if (targetCanonical) {
+      map[`ck:${targetCanonical}`] = until;
+      for (const [storeId, item] of Object.entries(store)) {
+        if (getCanonicalKey(item) === targetCanonical) {
+          map[storeId] = until;
+        }
+      }
+    }
     writeDismissMap(map);
 
     if (!opts.fromSync) {
-      postBroadcast({ type: 'dismiss', id: key, until: map[key] });
+      postBroadcast({ type: 'dismiss', id: key, until });
       if (inFrame) {
         try {
           window.top.postMessage({ type: 'homelab:bv-alert-dismiss', id: key }, location.origin);

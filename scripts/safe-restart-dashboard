@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# restart lab-dashboard อย่างปลอดภัย: รอ AI chat (agy/claude -p) จบก่อน แล้ว restart ผ่าน ecosystem
+# แล้วตรวจผลซ้ำ — ถ้า PM2 ค้าง errored ("could not be stopped") จะสั่ง restart ซ้ำให้เอง
+# ควรเรียกแบบ detach: (setsid nohup safe-restart-dashboard >/dev/null 2>&1 &)
+export PATH="/home/dev/.gemini/antigravity-cli/bin:/home/dev/.gemini/bin:/home/dev/.local/bin:/home/dev/.local/pm2/node_modules/.bin:/usr/local/bin:/usr/bin:/bin"
+ECO=/home/dev/projects/lab-dashboard/ecosystem.config.js
+URL=http://172.17.0.1:8090/api/summary
+LOG=/home/dev/projects/lab-dashboard/cron-logs/lab_dashboard_watchdog.log
+for i in $(seq 1 180); do
+  if ! pgrep -f "/home/dev/.local/bin/agy.*-p " >/dev/null 2>&1 && ! pgrep -f "/home/dev/.local/bin/claude.*-p " >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+sleep 1
+/home/dev/.gemini/bin/pm2 restart "$ECO" --update-env >/dev/null 2>&1
+for attempt in 1 2 3; do
+  for i in $(seq 1 45); do
+    [ "$(curl -s -o /dev/null -m 3 -w '%{http_code}' "$URL")" = "200" ] && exit 0
+    sleep 2
+  done
+  echo "$(date '+%F %T') safe-restart: not healthy after restart, retry #$attempt" >> "$LOG"
+  /home/dev/.gemini/bin/pm2 restart "$ECO" --update-env >/dev/null 2>&1
+done
+exit 1

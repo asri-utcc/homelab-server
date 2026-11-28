@@ -10,7 +10,9 @@ module.exports = {
             exec_mode: 'fork',
             autorestart: true,
             max_memory_restart: '600M',
-            kill_timeout: 5000,
+            // เผื่อโปรเซสเดิมค้างปิดไม่ทัน (2026-11-24, 2026-11-28 ใช้ ~30s): ถ้าเกิน kill_timeout x2
+            // PM2 จะตั้ง errored แล้วไม่ start ใหม่ — ปกติ gracefulExit ปิดเองใน <1s จึงไม่ช้าลง
+            kill_timeout: 30000,
             watch: false,
             time: true,
             env: {

@@ -1423,445 +1423,747 @@
     <section class="section" id="sec-settings" aria-labelledby="h-settings">
       <div class="section__head">
         <div>
-          <h2 id="h-settings">⚙️ ตั้งค่าระบบทั่วไป (System &amp; AI Settings)</h2>
-          <span class="section__hint" id="settings-hint">ตั้งค่า AI, เสียงพูด (Whisper / Edge Neural TTS), ความจำระยะยาว และการแจ้งเตือน Telegram</span>
+          <h2 id="h-settings">⚙️ ตั้งค่าระบบทั้งหมด (System &amp; AI Settings)</h2>
+          <span class="section__hint" id="settings-hint">จัดการสมองกลาง AI, โควตา, โมเดล, เสียงพูด, บัญชีคนในบ้าน และเวลาละหมาด แยกหมวดชัดเจน</span>
         </div>
-        <div class="section__actions">
+        <div class="section__actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" id="btn-settings-show-all" class="btn btn--sm" aria-pressed="false" title="สลับดูทีละหมวด หรือแสดงทุกหมวดพร้อมกัน">📋 แสดงทุกหมวด</button>
           <span id="set-auth-badge" class="badge">CHECKING...</span>
         </div>
       </div>
 
-      <div class="grid grid--2">
-        <!-- AI & Workspace Card -->
-        <div class="card" data-hud="panel">
-          <div class="card__head">
-            <span class="card__title">🤖 AI &amp; Workspace</span>
-          </div>
-          <div class="stack" style="gap:12px;">
-            <div>
-              <label for="set-model" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">โมเดล AI เริ่มต้น (Default Model)</label>
-              <select id="set-model" class="input" style="width:100%;">
-                <option value="auto">🧠 Auto · สมองกลางเลือกให้ (แนะนำ)</option>
-                <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
-                <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
-                <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
-                <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
-                <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
-                <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
-              </select>
-            </div>
-            <div>
-              <button type="button" class="btn btn--sm" data-mra-open style="width:100%;" title="สถานะโมเดล, อนุมัติโมเดลใหม่, Pareto และวิจัยภายนอก">🧭 จัดการโมเดล AI (Model Registry)</button>
-            </div>
-            <div>
-              <label for="set-cwd" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">โฟลเดอร์ทำงานเริ่มต้น (Working Directory)</label>
-              <select id="set-cwd" class="input" style="width:100%;">
-                <option value="/home/dev/projects">/home/dev/projects</option>
-              </select>
-            </div>
-            <div>
-              <label for="set-apikey" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">Gemini API Key (เว้นว่างหากใช้บัญชี Antigravity)</label>
-              <div style="display:flex;gap:8px;">
-                <input type="password" id="set-apikey" class="input" style="flex:1;" placeholder="AIzaSy... (ไม่บังคับ)" />
-                <button type="button" id="btn-set-save-key" class="btn btn--primary btn--sm">🔑 บันทึก</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Voice, Speaker & UI Card -->
-        <div class="card" data-hud="panel">
-          <div class="card__head">
-            <span class="card__title">🎙️ เสียงพูด &amp; การแสดงผล (Voice &amp; UI)</span>
-          </div>
-          <div class="stack" style="gap:12px;">
-            <div>
-              <label for="set-stt" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">ระบบแปลงเสียงเป็นข้อความ (Speech-to-Text)</label>
-              <select id="set-stt" class="input" style="width:100%;">
-                <option value="whisper">🧠 Whisper (Local Self-Hosted — แม่นยำ)</option>
-                <option value="webspeech">🌐 Web Speech API (เบราว์เซอร์เรียลไทม์)</option>
-              </select>
-            </div>
-            <div>
-              <label for="set-tts-voice" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">เสียงคนพูด AI (Speaker TTS ฟรี)</label>
-              <div style="display:flex;gap:8px;">
-                <select id="set-tts-voice" class="input" style="flex:1;">
-                  <option value="en-US-AvaMultilingualNeural">👩 Ava (Copilot ธรรมชาติ - หญิง อบอุ่น นุ่มนวล แนะนำ)</option>
-                </select>
-                <button type="button" id="btn-set-test-voice" class="btn btn--sm">🔊 ทดสอบ</button>
-              </div>
-            </div>
-            <div>
-              <label for="set-tts-style" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">สไตล์น้ำเสียง &amp; อารมณ์ (Voice Mood)</label>
-              <select id="set-tts-style" class="input" style="width:100%;">
-                <option value="natural">🌿 ธรรมชาติ นุ่มนวล (แนะนำ)</option>
-                <option value="warm">☕ อบอุ่น ผ่อนคลาย เล่าเรื่อง</option>
-                <option value="cheerful">✨ สดใส เป็นกันเอง มีชีวิตชีวา</option>
-                <option value="calm">🎙️ สุขุม นิ่ง ชัดเจน</option>
-              </select>
-            </div>
-            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
-              <span>🗣️ อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Auto-Read)</span>
-              <input type="checkbox" id="chk-set-auto-tts" style="width:18px;height:18px;" />
-            </label>
-            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
-              <span>🔊 เสียงเอฟเฟกต์ (Sound FX)</span>
-              <input type="checkbox" id="chk-set-sound-fx" style="width:18px;height:18px;" />
-            </label>
-            <div>
-              <label for="set-think-sound" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">🧠 เสียงตอน AI กำลังคิด (Thinking Sound)</label>
-              <div style="display:flex;gap:8px;">
-                <select id="set-think-sound" class="input" style="flex:1;"></select>
-                <button type="button" id="btn-set-test-think" class="btn btn--sm">▶ ทดลองฟัง</button>
-              </div>
-              <small id="set-think-sound-desc" style="display:block;margin-top:4px;font-size:11px;color:var(--ink-muted);"></small>
-            </div>
-            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;">
-              <span>👁️ แสดงลูกแก้ว 3D Reactor HUD ในหน้า AI</span>
-              <input type="checkbox" id="chk-set-hud" style="width:18px;height:18px;" />
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <!-- Warp FX Studio (rendered/bound by initWarpStudio in app.js) -->
-      <div class="card warp-studio" id="card-warp-studio" data-hud="panel" style="margin-top:16px;">
-        <div class="card__head">
-          <span class="card__title">🌀 สตูดิโอเอฟเฟกต์วาร์ป (Warp FX Studio)</span>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span id="warp-summary-badge" class="badge badge--ok">—</span>
-            <button type="button" id="btn-warp-test-random" class="btn btn--sm" title="ทดสอบตามการตั้งค่าปัจจุบัน">🎲 ทดสอบสุ่ม</button>
-            <button type="button" id="btn-warp-reset" class="btn btn--sm" title="คืนค่าตั้งต้นทั้งหมด">↺ ค่าเริ่มต้น</button>
-          </div>
-        </div>
-
-        <div class="warp-studio__top">
-          <label class="warp-switch warp-switch--master">
-            <input type="checkbox" id="warp-enabled" />
-            <span class="warp-switch__track" aria-hidden="true"></span>
-            <span class="warp-switch__text">
-              <strong>เปิดใช้เอฟเฟกต์วาร์ปเมื่อเปลี่ยนหน้า</strong>
-              <small>ปิดแล้วจะเปลี่ยนหน้าทันทีแบบไม่มีเอฟเฟกต์</small>
+      <div class="settings-shell">
+        <nav class="settings-nav" id="settings-nav" aria-label="หมวดหมู่การตั้งค่า">
+          <button type="button" class="settings-nav__item is-active" data-settings-tab="brain">
+            <span class="settings-nav__icon">🧠</span>
+            <span class="settings-nav__text">
+              <strong>สมองกลาง AI &amp; โควตา</strong>
+              <small>เกณฑ์ทีมข้ามค่าย &amp; ประหยัดโควตา</small>
             </span>
-          </label>
-
-          <div class="warp-field">
-            <span class="warp-field__label">โหมดการเลือกฉาก</span>
-            <div class="warp-seg" role="radiogroup" aria-label="โหมดการเลือกฉาก">
-              <label><input type="radio" name="warp-mode" value="random" /><span>🎲 สุ่มตามน้ำหนัก</span></label>
-              <label><input type="radio" name="warp-mode" value="cycle" /><span>🔁 วนตามลำดับ</span></label>
-              <label><input type="radio" name="warp-mode" value="fixed" /><span>📌 ใช้แบบเดียว</span></label>
-            </div>
-            <small class="warp-field__hint" id="warp-mode-hint"></small>
-          </div>
-        </div>
-
-        <div class="warp-scenes" id="warp-scenes"></div>
-
-        <div class="warp-options">
-          <div class="warp-field">
-            <span class="warp-field__label">⏱️ ความยาวฉาก <b id="warp-duration-val">2.0 วิ</b></span>
-            <input type="range" id="warp-duration" min="0.8" max="4" step="0.1" />
-            <div class="warp-chips">
-              <button type="button" class="warp-chip" data-warp-duration="1.2">⚡ เร็ว 1.2</button>
-              <button type="button" class="warp-chip" data-warp-duration="2">🌌 มาตรฐาน 2.0</button>
-              <button type="button" class="warp-chip" data-warp-duration="3">🎬 ซีเนมาติก 3.0</button>
-            </div>
-          </div>
-          <div class="warp-field">
-            <span class="warp-field__label">✨ ความหนาแน่นอนุภาค</span>
-            <div class="warp-seg" role="radiogroup" aria-label="ความหนาแน่นอนุภาค">
-              <label><input type="radio" name="warp-density" value="0.5" /><span>🍃 ประหยัด</span></label>
-              <label><input type="radio" name="warp-density" value="1" /><span>⚖️ มาตรฐาน</span></label>
-              <label><input type="radio" name="warp-density" value="1.6" /><span>🔥 สูงสุด</span></label>
-            </div>
-            <small class="warp-field__hint">ลดลงถ้ามือถือหรือเครื่องเก่ากระตุก</small>
-          </div>
-          <div class="warp-field">
-            <span class="warp-field__label">⚡ ความสว่างแฟลช <b id="warp-flash-val">100%</b></span>
-            <input type="range" id="warp-flash" min="0" max="100" step="5" />
-            <small class="warp-field__hint">ลดลงเพื่อถนอมสายตา (0% = ไม่มีแฟลชขาว)</small>
-          </div>
-          <div class="warp-field">
-            <span class="warp-field__label">🔊 ระดับเสียงวาร์ป <b id="warp-volume-val">80%</b></span>
-            <input type="range" id="warp-volume" min="0" max="100" step="5" />
-            <small class="warp-field__hint">จะดังเมื่อเปิดทั้งเสียงวาร์ปและเสียงเอฟเฟกต์หลัก (Sound FX)</small>
-          </div>
-        </div>
-
-        <div class="warp-toggles">
-          <label class="warp-switch"><input type="checkbox" id="warp-sound" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">🎵 เล่นเสียงประกอบวาร์ป</span></label>
-          <label class="warp-switch"><input type="checkbox" id="warp-norepeat" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">🚫 ไม่สุ่มซ้ำแบบเดิมติดกัน</span></label>
-          <label class="warp-switch"><input type="checkbox" id="warp-mobile-off" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">📱 ปิดเอฟเฟกต์บนจอเล็ก (มือถือ)</span></label>
-          <label class="warp-switch"><input type="checkbox" id="warp-reduced-motion" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">♿ ปิดเมื่อระบบตั้ง "ลดการเคลื่อนไหว"</span></label>
-        </div>
-
-        <div class="warp-stats">
-          <span id="warp-stats-text">ยังไม่มีสถิติ</span>
-          <button type="button" id="btn-warp-stats-reset" class="btn btn--sm btn--ghost">ล้างสถิติ</button>
-        </div>
-      </div>
-
-      <!-- Family Mode Settings -->
-      <div class="card" id="card-family-settings" data-hud="panel" style="margin-top:16px;">
-        <div class="card__head">
-          <span class="card__title">👨‍👩‍👧 บัญชีคนในบ้าน (Family Mode)</span>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span id="fam-status-badge" class="badge">กำลังโหลด...</span>
-            <span id="fam-ver-badge" class="badge" style="display:none;">v0</span>
-          </div>
-        </div>
-
-        <p style="margin:0 0 12px;font-size:12px;color:var(--ink-muted);line-height:1.5;">
-          คนในบ้านใช้ช่องกรอกรหัสผ่านเดียวกันในหน้า Login (ระบบจะแยกระหว่างรหัสแอดมินกับ PIN คนในบ้านให้อัตโนมัติ) และจะเห็นได้เฉพาะแอปที่ติ๊กเลือกไว้ด้านล่างเท่านั้น
-        </p>
-
-        <div class="stack" style="gap:14px;">
-          <label class="warp-switch warp-switch--master">
-            <input type="checkbox" id="fam-enabled" />
-            <span class="warp-switch__track" aria-hidden="true"></span>
-            <span class="warp-switch__text">
-              <strong>เปิดใช้งานบัญชีคนในบ้าน (Family Role)</strong>
-              <small>สลับเปิด/ปิดแล้วกดบันทึกเพื่ออัปเดตสิทธิ์ทันที</small>
+            <span class="badge badge--ok settings-nav__badge" id="nav-brain-badge">≥85</span>
+          </button>
+          <button type="button" class="settings-nav__item" data-settings-tab="ai">
+            <span class="settings-nav__icon">🤖</span>
+            <span class="settings-nav__text">
+              <strong>โมเดล &amp; ความจำ AI</strong>
+              <small>Model เริ่มต้น, API Key, MEMORY.md</small>
             </span>
-          </label>
+          </button>
+          <button type="button" class="settings-nav__item" data-settings-tab="voice">
+            <span class="settings-nav__icon">🎙️</span>
+            <span class="settings-nav__text">
+              <strong>เสียง &amp; เอฟเฟกต์</strong>
+              <small>TTS/STT, เสียง AI คิด, Warp FX</small>
+            </span>
+          </button>
+          <button type="button" class="settings-nav__item" data-settings-tab="family">
+            <span class="settings-nav__icon">👨‍👩‍👧</span>
+            <span class="settings-nav__text">
+              <strong>บัญชีคนในบ้าน</strong>
+              <small>PIN และสิทธิ์เข้าแอป</small>
+            </span>
+          </button>
+          <button type="button" class="settings-nav__item" data-settings-tab="prayer">
+            <span class="settings-nav__icon">☪️</span>
+            <span class="settings-nav__text">
+              <strong>เวลาละหมาด</strong>
+              <small>พิกัด, มัซฮับ, ชดเชยเวลา</small>
+            </span>
+          </button>
+          <button type="button" class="settings-nav__item" data-settings-tab="system">
+            <span class="settings-nav__icon">📬</span>
+            <span class="settings-nav__text">
+              <strong>แจ้งเตือน &amp; เครื่องมือ</strong>
+              <small>Telegram, Cron, โควตา</small>
+            </span>
+          </button>
+        </nav>
 
-          <div class="grid grid--2" style="gap:12px;">
-            <div>
-              <label for="fam-user" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">ชื่อผู้ใช้คนในบ้าน (Username)</label>
-              <input type="text" id="fam-user" class="input" style="width:100%;" maxlength="32" placeholder="family" autocomplete="off" />
+        <div class="settings-panels" id="settings-panels">
+          <!-- Group 1: Central Brain AI & Quota Control -->
+          <div class="settings-group is-active" data-settings-group="brain">
+            <div class="settings-group-head">
+              <div>
+                <h3>🧠 สมองกลาง AI &amp; การคุมโควตา (AI Router Control)</h3>
+                <p>กำหนดเกณฑ์เปิดทีมข้ามค่าย, โมเดลของ Worker, การนับ Weekly Limit ของ Gemini และการแจ้งเตือนโควตาลดเร็ว</p>
+              </div>
+              <span id="brain-status-badge" class="badge badge--ok">≥85 · W3 · สมดุล</span>
             </div>
-            <div>
-              <label for="fam-pin" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">รหัส PIN คนในบ้าน (อย่างน้อย 4 ตัว และห้ามซ้ำรหัสแอดมิน)</label>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                <input type="password" id="fam-pin" class="input" style="flex:1;min-width:140px;" inputmode="numeric" autocomplete="new-password" maxlength="64" placeholder="กรอก PIN 4–64 ตัว" />
-                <button type="button" id="btn-fam-reveal" class="btn btn--sm" title="แสดง/ซ่อน PIN">👁 แสดง</button>
-                <button type="button" id="btn-fam-gen" class="btn btn--sm" title="สุ่ม PIN 6 หลัก">🎲 สุ่ม 6 หลัก</button>
-                <button type="button" id="btn-fam-copy-pin" class="btn btn--sm" title="คัดลอก PIN">📋 คัดลอก</button>
+
+            <!-- Presets -->
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">⚡ โปรไฟล์แนะนำ (Quick Presets)</span>
+                <span style="font-size:11.5px;color:var(--ink-muted);">เลือกแล้วปรับแก้ค่าต่อได้ก่อนกดบันทึก</span>
+              </div>
+              <div class="brain-presets" id="brain-presets">
+                <button type="button" class="brain-preset-btn" data-brain-preset="economy">
+                  <strong>🍃 ประหยัดสุด</strong>
+                  <small>ทีม ≥90 · Worker สูงสุด 2 (Flash) · คุมโควตาเข้ม</small>
+                </button>
+                <button type="button" class="brain-preset-btn" data-brain-preset="balanced">
+                  <strong>⚖️ สมดุล (แนะนำ)</strong>
+                  <small>ทีม ≥85 · Worker สูงสุด 3 (Hydrogen) · นับ Weekly</small>
+                </button>
+                <button type="button" class="brain-preset-btn" data-brain-preset="performance">
+                  <strong>🚀 เน้นความแรง</strong>
+                  <small>ทีม ≥70 · Worker สูงสุด 4 (Neon) · ไม่บล็อก Weekly</small>
+                </button>
+              </div>
+            </div>
+
+            <!-- Part 1: Cross-Team Orchestrator -->
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">🤝 ส่วนที่ 1: ควบคุมทีม AI ข้ามค่าย (Cross-Team Orchestrator)</span>
+              </div>
+              <div class="stack" style="gap:14px;">
+                <label class="warp-switch warp-switch--master">
+                  <input type="checkbox" id="brain-ct-enabled" checked />
+                  <span class="warp-switch__track" aria-hidden="true"></span>
+                  <span class="warp-switch__text">
+                    <strong>เปิดใช้ทีมข้ามค่ายอัตโนมัติ (Architect → Workers → Reviewer)</strong>
+                    <small>ปิดไว้หากต้องการให้ AI ทำงานตัวเดียวเสมอ (ยกเว้นสั่งแท็ก #ทีมข้ามค่าย เอง)</small>
+                  </span>
+                </label>
+
+                <div class="brain-slider-box">
+                  <div class="brain-slider-box__head">
+                    <div>
+                      <label for="brain-ct-min-num" style="font-size:13px;font-weight:700;color:var(--ink-1);">เกณฑ์ความยากขั้นต่ำในการเปิดทีมข้ามค่าย</label>
+                      <div style="font-size:11.5px;color:var(--ink-muted);">เปิดโหมดทีมอัตโนมัติเฉพาะงานที่มีคะแนนความยาก ≥ ค่านี้ (ค่าแนะนำ: 85)</div>
+                    </div>
+                    <div class="brain-num-pill">
+                      <span>≥</span>
+                      <input type="number" id="brain-ct-min-num" class="input" min="40" max="100" step="1" value="85" autocomplete="off" data-lpignore="true" />
+                      <span>/ 100</span>
+                    </div>
+                  </div>
+                  <input type="range" id="brain-ct-min-range" min="40" max="100" step="1" value="85" style="width:100%;" />
+                  <div class="brain-scale-bar" id="brain-tier-bar">
+                    <span class="brain-scale-seg brain-scale-seg--low">0–34 ต่ำ</span>
+                    <span class="brain-scale-seg brain-scale-seg--med">35–59 กลาง</span>
+                    <span class="brain-scale-seg brain-scale-seg--high" id="brain-scale-high">60–84 สูง (ตัวเดียว)</span>
+                    <span class="brain-scale-seg brain-scale-seg--team" id="brain-scale-team">≥85 ทีมข้ามค่าย</span>
+                  </div>
+                </div>
+
+                <div class="brain-grid">
+                  <div>
+                    <label for="brain-ct-max-workers" class="brain-label">จำนวน Worker สูงสุดต่องาน (ตัว)</label>
+                    <input type="number" id="brain-ct-max-workers" class="input" min="1" max="6" step="1" value="3" autocomplete="off" data-lpignore="true" />
+                    <small class="brain-hint">งานระดับ XHigh จะขยายเพิ่มได้ +1 ตัว (ไม่เกิน 6)</small>
+                  </div>
+                  <div>
+                    <label for="brain-ct-worker-model" class="brain-label">โมเดลเริ่มต้นของ Worker</label>
+                    <select id="brain-ct-worker-model" class="input">
+                      <option value="hydrogen">⚡ Hydrogen (คุ้มค่า/แนะนำ)</option>
+                      <option value="flash">🍃 Flash 3.8 (ประหยัดสุด)</option>
+                      <option value="argon">🟣 Argon (โควตาแยก)</option>
+                      <option value="neon">💎 Neon (ฉลาดสุด/กินโควตา 2×)</option>
+                    </select>
+                    <small class="brain-hint">Architect จะเลือกโมเดลคุ้มค่าให้เหมาะกับแต่ละข้อย่อย</small>
+                  </div>
+                  <div>
+                    <label for="brain-ct-max-rework" class="brain-label">รอบแก้ไขสูงสุดหลัง Reviewer ตรวจ</label>
+                    <select id="brain-ct-max-rework" class="input">
+                      <option value="0">0 รอบ (ไม่แก้ซ้ำ)</option>
+                      <option value="1">1 รอบ (มาตรฐาน)</option>
+                      <option value="2">2 รอบ (เข้มงวด)</option>
+                    </select>
+                    <small class="brain-hint">ลดเหลือ 0 หรือ 1 เพื่อกันโควตาบานปลาย</small>
+                  </div>
+                  <div>
+                    <label for="brain-cont-max" class="brain-label">เพดานความยากของคำสั่งต่อเนื่อง</label>
+                    <input type="number" id="brain-cont-max" class="input" min="40" max="100" step="1" value="74" autocomplete="off" data-lpignore="true" />
+                    <small class="brain-hint">กันคำสั่งสั้นอย่าง "ทำต่อเลย" ไม่ให้สืบทอดคะแนนไปเปิดทีมซ้ำ</small>
+                  </div>
+                </div>
+
+                <label class="warp-switch">
+                  <input type="checkbox" id="brain-ct-allow-neon" />
+                  <span class="warp-switch__track" aria-hidden="true"></span>
+                  <span class="warp-switch__text">
+                    <strong>อนุญาตให้ Worker ทั่วไปใช้โมเดล Neon</strong>
+                    <small>ถ้าปิด: สงวน Neon ไว้เฉพาะ Architect / Reviewer และงานระดับ #สูงมาก เท่านั้น (ประหยัดโควตา 2–4×)</small>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Part 2: Quota & Economy Guard -->
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">📊 ส่วนที่ 2: โควตา &amp; โหมดประหยัด (Quota &amp; Economy Guard)</span>
+              </div>
+              <div class="stack" style="gap:14px;">
+                <div>
+                  <span class="brain-label" style="margin-bottom:6px;">ระดับความประหยัดในการเลือกโมเดล (Economy Profile)</span>
+                  <div class="warp-seg" role="radiogroup" aria-label="ระดับความประหยัด">
+                    <label><input type="radio" name="brain-economy" value="economy" /><span>🍃 ประหยัดเข้ม</span></label>
+                    <label><input type="radio" name="brain-economy" value="balanced" checked /><span>⚖️ สมดุล (แนะนำ)</span></label>
+                    <label><input type="radio" name="brain-economy" value="performance" /><span>🚀 เน้นความฉลาด</span></label>
+                  </div>
+                  <small class="brain-hint">โหมดสมดุล/ประหยัดจะเลือก Hydrogen และ Flash ก่อนเมื่อความเก่งพอรับงานไหว</small>
+                </div>
+
+                <label class="warp-switch">
+                  <input type="checkbox" id="brain-gemini-weekly" checked />
+                  <span class="warp-switch__track" aria-hidden="true"></span>
+                  <span class="warp-switch__text">
+                    <strong>นับ Weekly Limit ของ Gemini ร่วมกับรอบ 5 ชม.</strong>
+                    <small>ดึงโควตารายสัปดาห์จาก agy /usage มาคำนวณ pace ให้ไม่หมดกลางสัปดาห์</small>
+                  </span>
+                </label>
+
+                <label class="warp-switch">
+                  <input type="checkbox" id="brain-gemini-softgate" checked />
+                  <span class="warp-switch__track" aria-hidden="true"></span>
+                  <span class="warp-switch__text">
+                    <strong>งดทีมข้ามค่ายอัตโนมัติเมื่อ Gemini Weekly ต่ำกว่าแผน</strong>
+                    <small>ถ้าโควตารายสัปดาห์ของทุกบัญชีเหลือต่ำกว่าเวลาที่เหลือ ระบบจะรันตัวเดียวแทน (ยังสั่ง #ทีมข้ามค่าย เองได้)</small>
+                  </span>
+                </label>
+
+                <div class="brain-grid brain-grid--3">
+                  <div>
+                    <label for="brain-min-worker-quota" class="brain-label">โควตาขั้นต่ำก่อนปล่อย Worker (%)</label>
+                    <input type="number" id="brain-min-worker-quota" class="input" min="5" max="60" step="1" value="20" autocomplete="off" data-lpignore="true" />
+                    <small class="brain-hint">ต่ำกว่านี้จะสลับบัญชีหรือลดรุ่น Worker อัตโนมัติ</small>
+                  </div>
+                  <div>
+                    <label for="brain-5h-conserve" class="brain-label">เกณฑ์โหมดถนอมรอบ 5 ชม. (%)</label>
+                    <input type="number" id="brain-5h-conserve" class="input" min="5" max="40" step="1" value="15" autocomplete="off" data-lpignore="true" />
+                    <small class="brain-hint">ลด effort และลดการแตก subagent เมื่อต่ำกว่านี้</small>
+                  </div>
+                  <div>
+                    <label for="brain-5h-critical" class="brain-label">เกณฑ์โหมดวิกฤติรอบ 5 ชม. (%)</label>
+                    <input type="number" id="brain-5h-critical" class="input" min="2" max="25" step="1" value="8" autocomplete="off" data-lpignore="true" />
+                    <small class="brain-hint">ประหยัดสูงสุดและงดทีมข้ามค่ายเมื่อต่ำกว่านี้</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Part 3: Burn-Rate Alert -->
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">✈️ ส่วนที่ 3: แจ้งเตือนอัตราใช้โควตา (Telegram Burn-Rate Alert)</span>
+              </div>
+              <div class="stack" style="gap:12px;">
+                <label class="warp-switch">
+                  <input type="checkbox" id="brain-burn-enabled" checked />
+                  <span class="warp-switch__track" aria-hidden="true"></span>
+                  <span class="warp-switch__text">
+                    <strong>แจ้งเตือนเข้า Telegram เมื่อโควตาบัญชีลดเร็วผิดปกติ</strong>
+                    <small>ตรวจจับอัตโนมัติเมื่อเช็กโควตาในแต่ละบัญชี (ไม่ยิงซ้ำภายในกรอบเวลาเดียวกัน)</small>
+                  </span>
+                </label>
+                <div class="brain-grid">
+                  <div>
+                    <label for="brain-burn-drop" class="brain-label">แจ้งเตือนเมื่อโควตาลดลงเกิน (%)</label>
+                    <input type="number" id="brain-burn-drop" class="input" min="10" max="80" step="1" value="30" autocomplete="off" data-lpignore="true" />
+                  </div>
+                  <div>
+                    <label for="brain-burn-window" class="brain-label">ภายในช่วงเวลา (นาที)</label>
+                    <input type="number" id="brain-burn-window" class="input" min="15" max="240" step="5" value="60" autocomplete="off" data-lpignore="true" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sticky Save Bar -->
+            <div class="brain-action-bar">
+              <span id="brain-dirty-hint" class="brain-dirty-hint">✅ ซิงก์ตรงกับเซิร์ฟเวอร์แล้ว</span>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" id="btn-brain-reset" class="btn btn--sm">↺ คืนค่าเริ่มต้น</button>
+                <button type="button" id="btn-brain-save" class="btn btn--primary btn--sm">💾 บันทึกตั้งค่าสมองกลาง</button>
               </div>
             </div>
           </div>
 
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
-            <button type="button" id="btn-fam-save" class="btn btn--primary btn--sm" style="flex:1 1 200px;">💾 บันทึกบัญชีคนในบ้าน</button>
-            <button type="button" id="btn-fam-revoke" class="btn btn--danger btn--sm" style="flex:1 1 200px;">🚪 เตะทุกเครื่องออก (Revoke)</button>
-          </div>
-
-          <!-- Share Box -->
-          <div id="fam-share" style="padding:12px;border-radius:10px;border:1px solid var(--line, rgba(255,255,255,0.12));background:rgba(255,255,255,0.03);display:flex;flex-direction:column;gap:8px;">
-            <div style="font-size:12px;font-weight:600;">📲 วิธีให้คนในบ้านเข้าใช้</div>
-            <div id="fam-share-text" style="font-size:12px;color:var(--ink-muted);word-break:break-all;">กำลังโหลดลิงก์เข้าใช้งาน...</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button type="button" id="btn-fam-copy-share" class="btn btn--sm" style="flex:1 1 180px;">📋 คัดลอกข้อความแชร์</button>
-            </div>
-          </div>
-
-          <!-- Allowed Apps -->
-          <div style="border-top:1px solid var(--line, rgba(255,255,255,0.1));padding-top:12px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <!-- Group 2: AI Models & Long-Term Memory -->
+          <div class="settings-group" data-settings-group="ai">
+            <div class="settings-group-head">
               <div>
-                <div style="font-size:13px;font-weight:600;">📱 แอปที่คนในบ้านมองเห็นและใช้งานได้</div>
-                <div style="font-size:11px;color:var(--ink-muted);">เลือกเฉพาะแอปที่อนุญาต แล้วกดปุ่มบันทึกรายการแอป</div>
-              </div>
-              <button type="button" id="btn-fam-apps-save" class="btn btn--primary btn--sm" style="flex:0 1 auto;">💾 บันทึกรายการแอป</button>
-            </div>
-            <div id="fam-apps" class="stack" style="gap:10px;">
-              <div style="font-size:12px;color:var(--ink-muted);">กำลังโหลดรายการแอป...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Prayer Times Advanced Settings -->
-      <div class="card" id="card-prayer-settings" data-hud="panel" style="margin-top:16px;">
-        <div class="card__head">
-          <span class="card__title">☪️ ตั้งค่าเวลาละหมาดขั้นสูง (Prayer Times Advanced Settings)</span>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span id="set-prayer-summary-badge" class="badge badge--ok">MWL · Shafi</span>
-            <button type="button" id="btn-prayer-reset" class="btn btn--sm" title="คืนค่าตั้งต้น (MWL / Bangkok)">↺ ค่าเริ่มต้น</button>
-          </div>
-        </div>
-
-        <div class="prayer-set-grid">
-          <!-- Location & Coordinates -->
-          <div class="prayer-set-group">
-            <div class="prayer-set-group-title">📍 ตำแหน่งที่ตั้ง &amp; พิกัด (Location &amp; Coordinates)</div>
-            <div class="prayer-set-row">
-              <div>
-                <label for="set-prayer-city">จังหวัด / เมือง (City Preset)</label>
-                <select id="set-prayer-city" class="input">
-                  <option value="Bangkok">กรุงเทพมหานคร (Bangkok)</option>
-                  <option value="Nonthaburi">นนทบุรี (Nonthaburi)</option>
-                  <option value="Pathum Thani">ปทุมธานี (Pathum Thani)</option>
-                  <option value="Chonburi">ชลบุรี (Chonburi)</option>
-                  <option value="Chiang Mai">เชียงใหม่ (Chiang Mai)</option>
-                  <option value="Phuket">ภูเก็ต (Phuket)</option>
-                  <option value="Hat Yai">หาดใหญ่ / สงขลา (Hat Yai)</option>
-                  <option value="Pattani">ปัตตานี (Pattani)</option>
-                  <option value="Yala">ยะลา (Yala)</option>
-                  <option value="Narathiwat">นราธิวาส (Narathiwat)</option>
-                  <option value="Nakhon Si Thammarat">นครศรีธรรมราช</option>
-                  <option value="Krabi">กระบี่ (Krabi)</option>
-                  <option value="Satun">สตูล (Satun)</option>
-                  <option value="custom">🎯 กำหนดพิกัด Lat / Lon เอง (Custom)</option>
-                </select>
-              </div>
-              <div>
-                <label for="set-prayer-tz">โซนเวลา (UTC Offset)</label>
-                <input type="number" id="set-prayer-tz" class="input" step="0.5" min="-12" max="14" value="7" />
+                <h3>🤖 โมเดล AI, Workspace &amp; ความจำระยะยาว</h3>
+                <p>เลือกโมเดลเริ่มต้นสำหรับแชทใหม่, โฟลเดอร์ทำงานบนเซิร์ฟเวอร์, API Key และไฟล์ความจำ MEMORY.md</p>
               </div>
             </div>
-            <div class="prayer-set-row prayer-set-row--coords">
-              <div>
-                <label for="set-prayer-lat">ละติจูด (Latitude)</label>
-                <input type="number" id="set-prayer-lat" class="input" step="0.0001" min="-90" max="90" value="13.7563" />
+
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">🤖 AI &amp; Workspace</span>
               </div>
-              <div>
-                <label for="set-prayer-lon">ลองจิจูด (Longitude)</label>
-                <input type="number" id="set-prayer-lon" class="input" step="0.0001" min="-180" max="180" value="100.5018" />
+              <div class="stack" style="gap:12px;">
+                <div>
+                  <label for="set-model" class="brain-label">โมเดล AI เริ่มต้น (Default Model)</label>
+                  <select id="set-model" class="input" style="width:100%;">
+                    <option value="auto">🧠 Auto · สมองกลางเลือกให้ (แนะนำ)</option>
+                    <option value="gemini-4-hydrogen-high">Gemini 4 Hydrogen (High)</option>
+                    <option value="gemini-4-hydrogen-medium">Gemini 4 Hydrogen (Medium)</option>
+                    <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
+                    <option value="gemini-4-argon-medium">Gemini 4 Argon (Medium)</option>
+                    <option value="claude-sonnet-5-5-medium">Claude Sonnet 5.5 (Medium)</option>
+                    <option value="claude-opus-5-5-medium">Claude Opus 5.5 (Medium)</option>
+                  </select>
+                </div>
+                <div>
+                  <button type="button" class="btn btn--sm" data-mra-open style="width:100%;" title="สถานะโมเดล, อนุมัติโมเดลใหม่, Pareto และวิจัยภายนอก">🧭 จัดการโมเดล AI (Model Registry)</button>
+                </div>
+                <div class="brain-grid">
+                  <div>
+                    <label for="set-cwd" class="brain-label">โฟลเดอร์ทำงานเริ่มต้น (Working Directory)</label>
+                    <select id="set-cwd" class="input" style="width:100%;">
+                      <option value="/home/dev/projects">/home/dev/projects</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="set-apikey" class="brain-label">Gemini API Key (เว้นว่างหากใช้บัญชี Antigravity)</label>
+                    <div style="display:flex;gap:8px;">
+                      <input type="password" id="set-apikey" class="input" style="flex:1;" placeholder="AIzaSy... (ไม่บังคับ)" autocomplete="off" data-lpignore="true" />
+                      <button type="button" id="btn-set-save-key" class="btn btn--primary btn--sm">🔑 บันทึก</button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div style="display:flex;align-items:flex-end;">
-                <button type="button" id="btn-prayer-gps" class="btn btn--sm" style="width:100%;">📡 ใช้พิกัด GPS</button>
+            </div>
+
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">🧠 ความจำระยะยาวของ AI (MEMORY.md)</span>
+                <button type="button" id="btn-set-save-memory" class="btn btn--primary btn--sm">💾 บันทึกความจำ</button>
               </div>
+              <textarea id="set-memory" class="input" style="width:100%;min-height:200px;font-family:var(--mono);font-size:12.5px;line-height:1.5;resize:vertical;" placeholder="กำลังโหลดความจำระยะยาว..."></textarea>
             </div>
           </div>
 
-          <!-- Calculation Method & Juristic School -->
-          <div class="prayer-set-group">
-            <div class="prayer-set-group-title">🧭 วิธีการคำนวณ &amp; มัซฮับ (Calculation &amp; School)</div>
-            <div class="prayer-set-row">
+          <!-- Group 3: Voice, Audio & Visual FX -->
+          <div class="settings-group" data-settings-group="voice">
+            <div class="settings-group-head">
               <div>
-                <label for="set-prayer-method">มาตรฐานการคำนวณ (Calculation Method)</label>
-                <select id="set-prayer-method" class="input">
-                  <option value="3">Muslim World League (MWL) — 18° / 17°</option>
-                  <option value="11">MUIS (สิงคโปร์) — 20° / 18°</option>
-                  <option value="17">JAKIM (มาเลเซีย) — 20° / 18°</option>
-                  <option value="20">KEMENAG (อินโดนีเซีย) — 20° / 18°</option>
-                  <option value="4">Umm Al-Qura (มักกะห์) — 18.5° / 90m</option>
-                  <option value="5">Egyptian General Authority — 19.5° / 17.5°</option>
-                  <option value="1">Karachi (UIS) — 18° / 18°</option>
-                  <option value="2">ISNA (North America) — 15° / 15°</option>
-                  <option value="13">Diyanet (ตุรกี) — 18° / 17°</option>
-                  <option value="15">Moonsighting Committee Worldwide</option>
-                  <option value="0">Shia Ithna-Ashari (Jafari)</option>
-                  <option value="99">⚙️ กำหนดมุมดวงอาทิตย์เอง (Custom Angles)</option>
-                </select>
-              </div>
-              <div>
-                <label for="set-prayer-school">มัซฮับเวลาอัศริ (Asr Juristic Method)</label>
-                <select id="set-prayer-school" class="input">
-                  <option value="0">ชาฟิอี / มาลิกี / ฮัมบาลี (มาตรฐาน — เงา 1x)</option>
-                  <option value="1">ฮานาฟี (Hanafi — เงา 2x)</option>
-                </select>
+                <h3>🎙️ เสียงพูด, เสียงเอฟเฟกต์ &amp; การแสดงผล</h3>
+                <p>ตั้งค่าระบบแปลงเสียง Whisper, เสียงอ่านตอบ AI, เสียงตอน AI กำลังคิด, ลูกแก้ว 3D HUD และ Warp FX</p>
               </div>
             </div>
 
-            <div class="prayer-set-row" id="prayer-custom-angles-row" style="display:none;">
-              <div>
-                <label for="set-prayer-fajr-angle">มุมดวงอาทิตย์ซุบฮิ (Fajr Angle °)</label>
-                <input type="number" id="set-prayer-fajr-angle" class="input" step="0.5" min="10" max="24" value="18" />
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">🎙️ เสียงพูด &amp; การแสดงผล (Voice &amp; UI)</span>
               </div>
-              <div>
-                <label for="set-prayer-isha-angle">มุมดวงอาทิตย์อิชาอ์ (Isha Angle °)</label>
-                <input type="number" id="set-prayer-isha-angle" class="input" step="0.5" min="10" max="24" value="17" />
+              <div class="stack" style="gap:12px;">
+                <div>
+                  <label for="set-stt" class="brain-label">ระบบแปลงเสียงเป็นข้อความ (Speech-to-Text)</label>
+                  <select id="set-stt" class="input" style="width:100%;">
+                    <option value="whisper">🧠 Whisper (Local Self-Hosted — แม่นยำ)</option>
+                    <option value="webspeech">🌐 Web Speech API (เบราว์เซอร์เรียลไทม์)</option>
+                  </select>
+                </div>
+                <div class="brain-grid">
+                  <div>
+                    <label for="set-tts-voice" class="brain-label">เสียงคนพูด AI (Speaker TTS ฟรี)</label>
+                    <div style="display:flex;gap:8px;">
+                      <select id="set-tts-voice" class="input" style="flex:1;">
+                        <option value="en-US-AvaMultilingualNeural">👩 Ava (Copilot ธรรมชาติ - หญิง อบอุ่น นุ่มนวล แนะนำ)</option>
+                      </select>
+                      <button type="button" id="btn-set-test-voice" class="btn btn--sm">🔊 ทดสอบ</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="set-tts-style" class="brain-label">สไตล์น้ำเสียง &amp; อารมณ์ (Voice Mood)</label>
+                    <select id="set-tts-style" class="input" style="width:100%;">
+                      <option value="natural">🌿 ธรรมชาติ นุ่มนวล (แนะนำ)</option>
+                      <option value="warm">☕ อบอุ่น ผ่อนคลาย เล่าเรื่อง</option>
+                      <option value="cheerful">✨ สดใส เป็นกันเอง มีชีวิตชีวา</option>
+                      <option value="calm">🎙️ สุขุม นิ่ง ชัดเจน</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label for="set-think-sound" class="brain-label">🧠 เสียงตอน AI กำลังคิด (Thinking Sound)</label>
+                  <div style="display:flex;gap:8px;">
+                    <select id="set-think-sound" class="input" style="flex:1;"></select>
+                    <button type="button" id="btn-set-test-think" class="btn btn--sm">▶ ทดลองฟัง</button>
+                  </div>
+                  <small id="set-think-sound-desc" style="display:block;margin-top:4px;font-size:11px;color:var(--ink-muted);"></small>
+                </div>
+                <div class="brain-toggle-list">
+                  <label class="brain-toggle-item">
+                    <span>🗣️ อ่านคำตอบ AI ออกเสียงอัตโนมัติ (Auto-Read)</span>
+                    <input type="checkbox" id="chk-set-auto-tts" style="width:18px;height:18px;" />
+                  </label>
+                  <label class="brain-toggle-item">
+                    <span>🔊 เสียงเอฟเฟกต์ (Sound FX)</span>
+                    <input type="checkbox" id="chk-set-sound-fx" style="width:18px;height:18px;" />
+                  </label>
+                  <label class="brain-toggle-item">
+                    <span>👁️ แสดงลูกแก้ว 3D Reactor HUD ในหน้า AI</span>
+                    <input type="checkbox" id="chk-set-hud" style="width:18px;height:18px;" />
+                  </label>
+                </div>
               </div>
             </div>
 
-            <div class="prayer-set-row prayer-set-row--3">
-              <div>
-                <label for="set-prayer-highlat">ละติจูดสูง (High Latitude)</label>
-                <select id="set-prayer-highlat" class="input">
-                  <option value="3">Angle Based (ตามมุม)</option>
-                  <option value="1">Middle of Night (ครึ่งคืน)</option>
-                  <option value="2">One Seventh (1/7 ของคืน)</option>
-                </select>
+            <!-- Warp FX Studio (rendered/bound by initWarpStudio in app.js) -->
+            <div class="card warp-studio" id="card-warp-studio" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">🌀 สตูดิโอเอฟเฟกต์วาร์ป (Warp FX Studio)</span>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span id="warp-summary-badge" class="badge badge--ok">—</span>
+                  <button type="button" id="btn-warp-test-random" class="btn btn--sm" title="ทดสอบตามการตั้งค่าปัจจุบัน">🎲 ทดสอบสุ่ม</button>
+                  <button type="button" id="btn-warp-reset" class="btn btn--sm" title="คืนค่าตั้งต้นทั้งหมด">↺ ค่าเริ่มต้น</button>
+                </div>
               </div>
-              <div>
-                <label for="set-prayer-midnight">โหมดเที่ยงคืน (Midnight Mode)</label>
-                <select id="set-prayer-midnight" class="input">
-                  <option value="0">Standard (มัฆริบ–ซุบฮิ)</option>
-                  <option value="1">Jafari (มัฆริบ–อาทิตย์ขึ้น)</option>
-                </select>
+
+              <div class="warp-studio__top">
+                <label class="warp-switch warp-switch--master">
+                  <input type="checkbox" id="warp-enabled" />
+                  <span class="warp-switch__track" aria-hidden="true"></span>
+                  <span class="warp-switch__text">
+                    <strong>เปิดใช้เอฟเฟกต์วาร์ปเมื่อเปลี่ยนหน้า</strong>
+                    <small>ปิดแล้วจะเปลี่ยนหน้าทันทีแบบไม่มีเอฟเฟกต์</small>
+                  </span>
+                </label>
+
+                <div class="warp-field">
+                  <span class="warp-field__label">โหมดการเลือกฉาก</span>
+                  <div class="warp-seg" role="radiogroup" aria-label="โหมดการเลือกฉาก">
+                    <label><input type="radio" name="warp-mode" value="random" /><span>🎲 สุ่มตามน้ำหนัก</span></label>
+                    <label><input type="radio" name="warp-mode" value="cycle" /><span>🔁 วนตามลำดับ</span></label>
+                    <label><input type="radio" name="warp-mode" value="fixed" /><span>📌 ใช้แบบเดียว</span></label>
+                  </div>
+                  <small class="warp-field__hint" id="warp-mode-hint"></small>
+                </div>
               </div>
-              <div>
-                <label for="set-prayer-hijri-adj">ปรับวันที่ฮิจเราะห์ (วัน)</label>
-                <input type="number" id="set-prayer-hijri-adj" class="input" step="1" min="-3" max="3" value="0" />
+
+              <div class="warp-scenes" id="warp-scenes"></div>
+
+              <div class="warp-options">
+                <div class="warp-field">
+                  <span class="warp-field__label">⏱️ ความยาวฉาก <b id="warp-duration-val">2.0 วิ</b></span>
+                  <input type="range" id="warp-duration" min="0.8" max="4" step="0.1" />
+                  <div class="warp-chips">
+                    <button type="button" class="warp-chip" data-warp-duration="1.2">⚡ เร็ว 1.2</button>
+                    <button type="button" class="warp-chip" data-warp-duration="2">🌌 มาตรฐาน 2.0</button>
+                    <button type="button" class="warp-chip" data-warp-duration="3">🎬 ซีเนมาติก 3.0</button>
+                  </div>
+                </div>
+                <div class="warp-field">
+                  <span class="warp-field__label">✨ ความหนาแน่นอนุภาค</span>
+                  <div class="warp-seg" role="radiogroup" aria-label="ความหนาแน่นอนุภาค">
+                    <label><input type="radio" name="warp-density" value="0.5" /><span>🍃 ประหยัด</span></label>
+                    <label><input type="radio" name="warp-density" value="1" /><span>⚖️ มาตรฐาน</span></label>
+                    <label><input type="radio" name="warp-density" value="1.6" /><span>🔥 สูงสุด</span></label>
+                  </div>
+                  <small class="warp-field__hint">ลดลงถ้ามือถือหรือเครื่องเก่ากระตุก</small>
+                </div>
+                <div class="warp-field">
+                  <span class="warp-field__label">⚡ ความสว่างแฟลช <b id="warp-flash-val">100%</b></span>
+                  <input type="range" id="warp-flash" min="0" max="100" step="5" />
+                  <small class="warp-field__hint">ลดลงเพื่อถนอมสายตา (0% = ไม่มีแฟลชขาว)</small>
+                </div>
+                <div class="warp-field">
+                  <span class="warp-field__label">🔊 ระดับเสียงวาร์ป <b id="warp-volume-val">80%</b></span>
+                  <input type="range" id="warp-volume" min="0" max="100" step="5" />
+                  <small class="warp-field__hint">จะดังเมื่อเปิดทั้งเสียงวาร์ปและเสียงเอฟเฟกต์หลัก (Sound FX)</small>
+                </div>
+              </div>
+
+              <div class="warp-toggles">
+                <label class="warp-switch"><input type="checkbox" id="warp-sound" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">🎵 เล่นเสียงประกอบวาร์ป</span></label>
+                <label class="warp-switch"><input type="checkbox" id="warp-norepeat" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">🚫 ไม่สุ่มซ้ำแบบเดิมติดกัน</span></label>
+                <label class="warp-switch"><input type="checkbox" id="warp-mobile-off" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">📱 ปิดเอฟเฟกต์บนจอเล็ก (มือถือ)</span></label>
+                <label class="warp-switch"><input type="checkbox" id="warp-reduced-motion" /><span class="warp-switch__track" aria-hidden="true"></span><span class="warp-switch__text">♿ ปิดเมื่อระบบตั้ง "ลดการเคลื่อนไหว"</span></label>
+              </div>
+
+              <div class="warp-stats">
+                <span id="warp-stats-text">ยังไม่มีสถิติ</span>
+                <button type="button" id="btn-warp-stats-reset" class="btn btn--sm btn--ghost">ล้างสถิติ</button>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Per-Prayer Minute Offsets (Tune +/-) -->
-        <div class="prayer-set-group" style="margin-top:12px;">
-          <div class="prayer-set-group-head">
-            <span class="prayer-set-group-title">⏱️ ปรับชดเชยเวลาบวกลบ (Minute Offsets / Ihtiyat ± นาที)</span>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <label for="set-prayer-tune-all" style="font-size:11px;color:var(--ink-muted);margin:0;">บวกลบทั้งหมด:</label>
-              <input type="number" id="set-prayer-tune-all" class="input prayer-tune-input" step="1" min="-30" max="30" value="0" title="ปรับทุกเวลาพร้อมกัน (นาที)" />
-              <button type="button" id="btn-prayer-apply-all" class="btn btn--sm">ใช้กับทุกเวลา</button>
+          <!-- Group 4: Family Mode Settings -->
+          <div class="settings-group" data-settings-group="family">
+            <div class="settings-group-head">
+              <div>
+                <h3>👨‍👩‍👧 บัญชีคนในบ้าน (Family Mode)</h3>
+                <p>สร้าง PIN ให้คนในบ้านเข้าใช้งานและกำหนดรายชื่อแอปที่มองเห็นได้</p>
+              </div>
+            </div>
+
+            <div class="card" id="card-family-settings" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">👨‍👩‍👧 ตั้งค่าสิทธิ์และ PIN คนในบ้าน</span>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span id="fam-status-badge" class="badge">กำลังโหลด...</span>
+                  <span id="fam-ver-badge" class="badge" style="display:none;">v0</span>
+                </div>
+              </div>
+
+              <p style="margin:0 0 12px;font-size:12px;color:var(--ink-muted);line-height:1.5;">
+                คนในบ้านใช้ช่องกรอกรหัสผ่านเดียวกันในหน้า Login (ระบบจะแยกระหว่างรหัสผู้ดูแลกับ PIN คนในบ้านให้อัตโนมัติ) และจะเห็นได้เฉพาะแอปที่ติ๊กเลือกไว้ด้านล่างเท่านั้น
+              </p>
+
+              <div class="stack" style="gap:14px;">
+                <label class="warp-switch warp-switch--master">
+                  <input type="checkbox" id="fam-enabled" />
+                  <span class="warp-switch__track" aria-hidden="true"></span>
+                  <span class="warp-switch__text">
+                    <strong>เปิดใช้งานบัญชีคนในบ้าน (Family Role)</strong>
+                    <small>สลับเปิด/ปิดแล้วกดบันทึกเพื่ออัปเดตสิทธิ์ทันที</small>
+                  </span>
+                </label>
+
+                <div class="grid grid--2" style="gap:12px;">
+                  <div>
+                    <label for="fam-user" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">ชื่อผู้ใช้คนในบ้าน (Username)</label>
+                    <input type="text" id="fam-user" class="input" style="width:100%;" maxlength="32" placeholder="family" autocomplete="off" data-lpignore="true" />
+                  </div>
+                  <div>
+                    <label for="fam-pin" style="display:block;font-size:12px;color:var(--ink-muted);margin-bottom:4px;">รหัส PIN คนในบ้าน (อย่างน้อย 4 ตัว และห้ามซ้ำรหัสผู้ดูแล)</label>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                      <input type="password" id="fam-pin" class="input" style="flex:1;min-width:140px;" inputmode="numeric" autocomplete="new-password" data-lpignore="true" maxlength="64" placeholder="กรอก PIN 4–64 ตัว" />
+                      <button type="button" id="btn-fam-reveal" class="btn btn--sm" title="แสดง/ซ่อน PIN">👁 แสดง</button>
+                      <button type="button" id="btn-fam-gen" class="btn btn--sm" title="สุ่ม PIN 6 หลัก">🎲 สุ่ม 6 หลัก</button>
+                      <button type="button" id="btn-fam-copy-pin" class="btn btn--sm" title="คัดลอก PIN">📋 คัดลอก</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+                  <button type="button" id="btn-fam-save" class="btn btn--primary btn--sm" style="flex:1 1 200px;">💾 บันทึกบัญชีคนในบ้าน</button>
+                  <button type="button" id="btn-fam-revoke" class="btn btn--danger btn--sm" style="flex:1 1 200px;">🚪 เตะทุกเครื่องออก (Revoke)</button>
+                </div>
+
+                <!-- Share Box -->
+                <div id="fam-share" style="padding:12px;border-radius:10px;border:1px solid var(--line, rgba(255,255,255,0.12));background:rgba(255,255,255,0.03);display:flex;flex-direction:column;gap:8px;">
+                  <div style="font-size:12px;font-weight:600;">📲 วิธีให้คนในบ้านเข้าใช้</div>
+                  <div id="fam-share-text" style="font-size:12px;color:var(--ink-muted);word-break:break-all;">กำลังโหลดลิงก์เข้าใช้งาน...</div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" id="btn-fam-copy-share" class="btn btn--sm" style="flex:1 1 180px;">📋 คัดลอกข้อความแชร์</button>
+                  </div>
+                </div>
+
+                <!-- Allowed Apps -->
+                <div style="border-top:1px solid var(--line, rgba(255,255,255,0.1));padding-top:12px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                    <div>
+                      <div style="font-size:13px;font-weight:600;">📱 แอปที่คนในบ้านมองเห็นและใช้งานได้</div>
+                      <div style="font-size:11px;color:var(--ink-muted);">เลือกเฉพาะแอปที่อนุญาต แล้วกดปุ่มบันทึกรายการแอป</div>
+                    </div>
+                    <button type="button" id="btn-fam-apps-save" class="btn btn--primary btn--sm" style="flex:0 1 auto;">💾 บันทึกรายการแอป</button>
+                  </div>
+                  <div id="fam-apps" class="stack" style="gap:10px;">
+                    <div style="font-size:12px;color:var(--ink-muted);">กำลังโหลดรายการแอป...</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="prayer-tune-grid">
-            <div class="prayer-tune-item">
-              <label for="set-prayer-tune-fajr">ซุบฮิ (Fajr)</label>
-              <input type="number" id="set-prayer-tune-fajr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+
+          <!-- Group 5: Prayer Times Advanced Settings -->
+          <div class="settings-group" data-settings-group="prayer">
+            <div class="settings-group-head">
+              <div>
+                <h3>☪️ ตั้งค่าเวลาละหมาดขั้นสูง (Prayer Times)</h3>
+                <p>ปรับพิกัด GPS, วิธีคำนวณ, มัซฮับอัศริ และการชดเชยเวลาแต่ละวักตุ</p>
+              </div>
             </div>
-            <div class="prayer-tune-item">
-              <label for="set-prayer-tune-dhuhr">ซุฮ์ริ (Dhuhr)</label>
-              <input type="number" id="set-prayer-tune-dhuhr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
-            </div>
-            <div class="prayer-tune-item">
-              <label for="set-prayer-tune-asr">อัศริ (Asr)</label>
-              <input type="number" id="set-prayer-tune-asr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
-            </div>
-            <div class="prayer-tune-item">
-              <label for="set-prayer-tune-maghrib">มัฆริบ (Maghrib)</label>
-              <input type="number" id="set-prayer-tune-maghrib" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
-            </div>
-            <div class="prayer-tune-item">
-              <label for="set-prayer-tune-isha">อิชาอ์ (Isha)</label>
-              <input type="number" id="set-prayer-tune-isha" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+
+            <div class="card" id="card-prayer-settings" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">☪️ พิกัด, มาตรฐานการคำนวณ &amp; การชดเชยเวลา</span>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span id="set-prayer-summary-badge" class="badge badge--ok">MWL · Shafi</span>
+                  <button type="button" id="btn-prayer-reset" class="btn btn--sm" title="คืนค่าตั้งต้น (MWL / Bangkok)">↺ ค่าเริ่มต้น</button>
+                </div>
+              </div>
+
+              <div class="prayer-set-grid">
+                <!-- Location & Coordinates -->
+                <div class="prayer-set-group">
+                  <div class="prayer-set-group-title">📍 ตำแหน่งที่ตั้ง &amp; พิกัด (Location &amp; Coordinates)</div>
+                  <div class="prayer-set-row">
+                    <div>
+                      <label for="set-prayer-city">จังหวัด / เมือง (City Preset)</label>
+                      <select id="set-prayer-city" class="input">
+                        <option value="Bangkok">กรุงเทพมหานคร (Bangkok)</option>
+                        <option value="Nonthaburi">นนทบุรี (Nonthaburi)</option>
+                        <option value="Pathum Thani">ปทุมธานี (Pathum Thani)</option>
+                        <option value="Chonburi">ชลบุรี (Chonburi)</option>
+                        <option value="Chiang Mai">เชียงใหม่ (Chiang Mai)</option>
+                        <option value="Phuket">ภูเก็ต (Phuket)</option>
+                        <option value="Hat Yai">หาดใหญ่ / สงขลา (Hat Yai)</option>
+                        <option value="Pattani">ปัตตานี (Pattani)</option>
+                        <option value="Yala">ยะลา (Yala)</option>
+                        <option value="Narathiwat">นราธิวาส (Narathiwat)</option>
+                        <option value="Nakhon Si Thammarat">นครศรีธรรมราช</option>
+                        <option value="Krabi">กระบี่ (Krabi)</option>
+                        <option value="Satun">สตูล (Satun)</option>
+                        <option value="custom">🎯 กำหนดพิกัด Lat / Lon เอง (Custom)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="set-prayer-tz">โซนเวลา (UTC Offset)</label>
+                      <input type="number" id="set-prayer-tz" class="input" step="0.5" min="-12" max="14" value="7" />
+                    </div>
+                  </div>
+                  <div class="prayer-set-row prayer-set-row--coords">
+                    <div>
+                      <label for="set-prayer-lat">ละติจูด (Latitude)</label>
+                      <input type="number" id="set-prayer-lat" class="input" step="0.0001" min="-90" max="90" value="13.7563" />
+                    </div>
+                    <div>
+                      <label for="set-prayer-lon">ลองจิจูด (Longitude)</label>
+                      <input type="number" id="set-prayer-lon" class="input" step="0.0001" min="-180" max="180" value="100.5018" />
+                    </div>
+                    <div style="display:flex;align-items:flex-end;">
+                      <button type="button" id="btn-prayer-gps" class="btn btn--sm" style="width:100%;">📡 ใช้พิกัด GPS</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Calculation Method & Juristic School -->
+                <div class="prayer-set-group">
+                  <div class="prayer-set-group-title">🧭 วิธีการคำนวณ &amp; มัซฮับ (Calculation &amp; School)</div>
+                  <div class="prayer-set-row">
+                    <div>
+                      <label for="set-prayer-method">มาตรฐานการคำนวณ (Calculation Method)</label>
+                      <select id="set-prayer-method" class="input">
+                        <option value="3">Muslim World League (MWL) — 18° / 17°</option>
+                        <option value="11">MUIS (สิงคโปร์) — 20° / 18°</option>
+                        <option value="17">JAKIM (มาเลเซีย) — 20° / 18°</option>
+                        <option value="20">KEMENAG (อินโดนีเซีย) — 20° / 18°</option>
+                        <option value="4">Umm Al-Qura (มักกะห์) — 18.5° / 90m</option>
+                        <option value="5">Egyptian General Authority — 19.5° / 17.5°</option>
+                        <option value="1">Karachi (UIS) — 18° / 18°</option>
+                        <option value="2">ISNA (North America) — 15° / 15°</option>
+                        <option value="13">Diyanet (ตุรกี) — 18° / 17°</option>
+                        <option value="15">Moonsighting Committee Worldwide</option>
+                        <option value="0">Shia Ithna-Ashari (Jafari)</option>
+                        <option value="99">⚙️ กำหนดมุมดวงอาทิตย์เอง (Custom Angles)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="set-prayer-school">มัซฮับเวลาอัศริ (Asr Juristic Method)</label>
+                      <select id="set-prayer-school" class="input">
+                        <option value="0">ชาฟิอี / มาลิกี / ฮัมบาลี (มาตรฐาน — เงา 1x)</option>
+                        <option value="1">ฮานาฟี (Hanafi — เงา 2x)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="prayer-set-row" id="prayer-custom-angles-row" style="display:none;">
+                    <div>
+                      <label for="set-prayer-fajr-angle">มุมดวงอาทิตย์ซุบฮิ (Fajr Angle °)</label>
+                      <input type="number" id="set-prayer-fajr-angle" class="input" step="0.5" min="10" max="24" value="18" />
+                    </div>
+                    <div>
+                      <label for="set-prayer-isha-angle">มุมดวงอาทิตย์อิชาอ์ (Isha Angle °)</label>
+                      <input type="number" id="set-prayer-isha-angle" class="input" step="0.5" min="10" max="24" value="17" />
+                    </div>
+                  </div>
+
+                  <div class="prayer-set-row prayer-set-row--3">
+                    <div>
+                      <label for="set-prayer-highlat">ละติจูดสูง (High Latitude)</label>
+                      <select id="set-prayer-highlat" class="input">
+                        <option value="3">Angle Based (ตามมุม)</option>
+                        <option value="1">Middle of Night (ครึ่งคืน)</option>
+                        <option value="2">One Seventh (1/7 ของคืน)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="set-prayer-midnight">โหมดเที่ยงคืน (Midnight Mode)</label>
+                      <select id="set-prayer-midnight" class="input">
+                        <option value="0">Standard (มัฆริบ–ซุบฮิ)</option>
+                        <option value="1">Jafari (มัฆริบ–อาทิตย์ขึ้น)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="set-prayer-hijri-adj">ปรับวันที่ฮิจเราะห์ (วัน)</label>
+                      <input type="number" id="set-prayer-hijri-adj" class="input" step="1" min="-3" max="3" value="0" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Per-Prayer Minute Offsets (Tune +/-) -->
+              <div class="prayer-set-group" style="margin-top:12px;">
+                <div class="prayer-set-group-head">
+                  <span class="prayer-set-group-title">⏱️ ปรับชดเชยเวลาบวกลบ (Minute Offsets / Ihtiyat ± นาที)</span>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <label for="set-prayer-tune-all" style="font-size:11px;color:var(--ink-muted);margin:0;">บวกลบทั้งหมด:</label>
+                    <input type="number" id="set-prayer-tune-all" class="input prayer-tune-input" step="1" min="-30" max="30" value="0" title="ปรับทุกเวลาพร้อมกัน (นาที)" />
+                    <button type="button" id="btn-prayer-apply-all" class="btn btn--sm">ใช้กับทุกเวลา</button>
+                  </div>
+                </div>
+                <div class="prayer-tune-grid">
+                  <div class="prayer-tune-item">
+                    <label for="set-prayer-tune-fajr">ซุบฮิ (Fajr)</label>
+                    <input type="number" id="set-prayer-tune-fajr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+                  </div>
+                  <div class="prayer-tune-item">
+                    <label for="set-prayer-tune-dhuhr">ซุฮ์ริ (Dhuhr)</label>
+                    <input type="number" id="set-prayer-tune-dhuhr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+                  </div>
+                  <div class="prayer-tune-item">
+                    <label for="set-prayer-tune-asr">อัศริ (Asr)</label>
+                    <input type="number" id="set-prayer-tune-asr" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+                  </div>
+                  <div class="prayer-tune-item">
+                    <label for="set-prayer-tune-maghrib">มัฆริบ (Maghrib)</label>
+                    <input type="number" id="set-prayer-tune-maghrib" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+                  </div>
+                  <div class="prayer-tune-item">
+                    <label for="set-prayer-tune-isha">อิชาอ์ (Isha)</label>
+                    <input type="number" id="set-prayer-tune-isha" class="input prayer-tune-input" step="1" min="-60" max="60" value="0" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Display Options -->
+              <div class="prayer-set-footer">
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="chk-prayer-sunrise" style="width:16px;height:16px;" />
+                    <span>🌅 แสดงเวลาชูรูก (Sunrise) &amp; ชื่อวิธีคำนวณในการ์ด</span>
+                  </label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <label for="set-prayer-timefmt" style="font-size:12px;color:var(--ink-muted);margin:0;">รูปแบบเวลา:</label>
+                    <select id="set-prayer-timefmt" class="input" style="width:auto;padding:4px 10px;">
+                      <option value="24h">24 ชั่วโมง (18:15)</option>
+                      <option value="12h">12 ชั่วโมง (6:15 PM)</option>
+                    </select>
+                  </div>
+                </div>
+                <button type="button" id="btn-prayer-save" class="btn btn--primary btn--sm">💾 บันทึก &amp; คำนวณเวลาใหม่</button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Display Options -->
-        <div class="prayer-set-footer">
-          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="checkbox" id="chk-prayer-sunrise" style="width:16px;height:16px;" />
-              <span>🌅 แสดงเวลาชูรูก (Sunrise) &amp; ชื่อวิธีคำนวณในการ์ด</span>
-            </label>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <label for="set-prayer-timefmt" style="font-size:12px;color:var(--ink-muted);margin:0;">รูปแบบเวลา:</label>
-              <select id="set-prayer-timefmt" class="input" style="width:auto;padding:4px 10px;">
-                <option value="24h">24 ชั่วโมง (18:15)</option>
-                <option value="12h">12 ชั่วโมง (6:15 PM)</option>
-              </select>
+          <!-- Group 6: Notifications & System Tools -->
+          <div class="settings-group" data-settings-group="system">
+            <div class="settings-group-head">
+              <div>
+                <h3>📬 การแจ้งเตือน Telegram &amp; เครื่องมือระบบ</h3>
+                <p>ทดสอบการแจ้งเตือน Telegram และเข้าถึงหน้าจัดการ Cron, โควตา และหน้าตั้งค่าแบบเดี่ยว</p>
+              </div>
+            </div>
+
+            <div class="card" data-hud="panel">
+              <div class="card__head">
+                <span class="card__title">📬 การแจ้งเตือน &amp; ทางลัดระบบ</span>
+              </div>
+              <div class="rowbtns" style="flex-wrap:wrap;gap:10px;">
+                <button type="button" id="btn-set-test-telegram" class="btn btn--primary btn--sm">✈️ ทดสอบส่งข้อความเข้า Telegram</button>
+                <a href="/cron.html" target="_blank" rel="noopener" class="btn btn--sm">⏰ จัดการ Cron อัตโนมัติ</a>
+                <a href="/quota.html" target="_blank" rel="noopener" class="btn btn--sm">📊 ดูโควตา AI</a>
+                <a href="/settings" target="_blank" rel="noopener" class="btn btn--sm">🖥️ เปิดหน้า Settings แบบเต็มจอ</a>
+              </div>
             </div>
           </div>
-          <button type="button" id="btn-prayer-save" class="btn btn--primary btn--sm">💾 บันทึก &amp; คำนวณเวลาใหม่</button>
-        </div>
-      </div>
-
-      <!-- Long-Term Memory -->
-      <div class="card" data-hud="panel" style="margin-top:16px;">
-        <div class="card__head">
-          <span class="card__title">🧠 ความจำระยะยาวของ AI (MEMORY.md)</span>
-          <button type="button" id="btn-set-save-memory" class="btn btn--primary btn--sm">💾 บันทึกความจำ</button>
-        </div>
-        <textarea id="set-memory" class="input" style="width:100%;min-height:150px;font-family:var(--mono);font-size:12.5px;line-height:1.5;resize:vertical;" placeholder="กำลังโหลดความจำระยะยาว..."></textarea>
-      </div>
-
-      <!-- Telegram & System Links -->
-      <div class="card" data-hud="panel" style="margin-top:16px;">
-        <div class="card__head">
-          <span class="card__title">📬 การแจ้งเตือน Telegram &amp; เครื่องมือระบบ</span>
-        </div>
-        <div class="rowbtns" style="flex-wrap:wrap;">
-          <button type="button" id="btn-set-test-telegram" class="btn btn--primary btn--sm">✈️ ทดสอบส่งข้อความเข้า Telegram</button>
-          <a href="/cron.html" target="_blank" rel="noopener" class="btn btn--sm">⏰ จัดการ Cron อัตโนมัติ</a>
-          <a href="/quota.html" target="_blank" rel="noopener" class="btn btn--sm">📊 ดูโควตา AI</a>
         </div>
       </div>
     </section>

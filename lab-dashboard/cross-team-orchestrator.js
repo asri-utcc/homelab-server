@@ -331,13 +331,17 @@ function breakDependencyCycles(tasks) {
     return tasks;
 }
 
-function sanitizeTasks(rawTasks, { cwd, mode, maxTasks = MAX_SUBTASKS } = {}) {
+function sanitizeTasks(rawTasks, { cwd, mode, maxTasks, allowNeonWorkers, defaultWorkerModel } = {}) {
     if (!Array.isArray(rawTasks)) return [];
+    const cfg = typeof aiRouter.getConfig === 'function' ? aiRouter.getConfig() : {};
+    const limitTasks = Math.max(1, Math.min(MAX_SUBTASKS, maxTasks || cfg.crossTeamMaxWorkers || 3));
+    const fallbackModel = defaultWorkerModel || cfg.crossTeamWorkerDefaultModel || 'hydrogen';
+    const allowNeon = allowNeonWorkers !== undefined ? Boolean(allowNeonWorkers) : Boolean(cfg.crossTeamAllowNeonWorkers);
     const out = [];
     const seenIds = new Set();
     const allowWrite = mode === 'exec';
 
-    for (let i = 0; i < rawTasks.length && out.length < maxTasks; i++) {
+    for (let i = 0; i < rawTasks.length && out.length < limitTasks; i++) {
         const raw = rawTasks[i];
         if (!raw || typeof raw !== 'object') continue;
         let id = String(raw.id || `t${out.length + 1}`).trim().replace(/[^A-Za-z0-9_-]/g, '') || `t${out.length + 1}`;
@@ -356,10 +360,15 @@ function sanitizeTasks(rawTasks, { cwd, mode, maxTasks = MAX_SUBTASKS } = {}) {
             ? [...new Set(raw.depends_on.map((d) => String(d || '').trim()).filter(Boolean))]
             : [];
 
+        let model = aiRouter.normalizeWorkerFamily(raw.model || fallbackModel, fallbackModel);
+        if (!allowNeon && model === 'neon') {
+            model = fallbackModel !== 'neon' ? fallbackModel : 'hydrogen';
+        }
+
         out.push({
             id,
             title: String(raw.title || `งานย่อย ${out.length + 1}`).trim().slice(0, 100),
-            model: aiRouter.normalizeWorkerFamily(raw.model || 'neon'),
+            model,
             access,
             files,
             depends_on,
@@ -369,10 +378,10 @@ function sanitizeTasks(rawTasks, { cwd, mode, maxTasks = MAX_SUBTASKS } = {}) {
     return breakDependencyCycles(out);
 }
 
-function parseArchitectPlan(rawOutput, { cwd, mode }) {
+function parseArchitectPlan(rawOutput, { cwd, mode, maxTasks, allowNeonWorkers, defaultWorkerModel } = {}) {
     const obj = extractJsonObject(rawOutput, ['tasks', 'direct_answer']);
     if (!obj) return null;
-    const tasks = sanitizeTasks(obj.tasks || [], { cwd, mode, maxTasks: MAX_SUBTASKS });
+    const tasks = sanitizeTasks(obj.tasks || [], { cwd, mode, maxTasks, allowNeonWorkers, defaultWorkerModel });
     const directAnswer = Boolean(obj.direct_answer) && tasks.length === 0;
     return {
         direct_answer: directAnswer,
@@ -386,14 +395,14 @@ function parseArchitectPlan(rawOutput, { cwd, mode }) {
     };
 }
 
-function parseReviewerVerdict(rawOutput, { cwd, mode, allowRework = true }) {
+function parseReviewerVerdict(rawOutput, { cwd, mode, allowRework = true, allowNeonWorkers, defaultWorkerModel } = {}) {
     const clean = stripAnsi(rawOutput || '').trim();
     const hasReworkTag = /\[\[VERDICT\s*:\s*REWORK\]\]/i.test(clean);
     const hasPassTag = /\[\[VERDICT\s*:\s*PASS\]\]/i.test(clean);
 
     if (allowRework && hasReworkTag) {
         const obj = extractJsonObject(clean, ['rework_tasks', 'tasks']);
-        const reworkTasks = obj ? sanitizeTasks(obj.rework_tasks || obj.tasks || [], { cwd, mode, maxTasks: 3 }) : [];
+        const reworkTasks = obj ? sanitizeTasks(obj.rework_tasks || obj.tasks || [], { cwd, mode, maxTasks: 3, allowNeonWorkers, defaultWorkerModel }) : [];
         if (reworkTasks.length > 0) {
             return {
                 verdict: 'rework',
@@ -503,7 +512,11 @@ function formatImageNotice(imagePaths = []) {
     return `[ผู้ใช้งานแนบรูปภาพมาด้วย กรุณาอ่าน/ดูไฟล์รูปภาพต่อไปนี้:\n${imagePaths.map((p) => `- ${p}`).join('\n')}\n]`;
 }
 
-function buildArchitectPrompt({ prompt, history, imagePaths, cwd, mode, workerAccounts }) {
+function buildArchitectPrompt({ prompt, history, imagePaths, cwd, mode, workerAccounts, maxWorkers, allowNeonWorkers, defaultWorkerModel }) {
+    const cfg = typeof aiRouter.getConfig === 'function' ? aiRouter.getConfig() : {};
+    const workerLimit = Math.max(1, Math.min(MAX_SUBTASKS, maxWorkers || cfg.crossTeamMaxWorkers || 3));
+    const allowNeon = allowNeonWorkers !== undefined ? Boolean(allowNeonWorkers) : Boolean(cfg.crossTeamAllowNeonWorkers);
+    const dfltModel = defaultWorkerModel || cfg.crossTeamWorkerDefaultModel || 'hydrogen';
     const accInfo = workerAccounts && workerAccounts.length
         ? workerAccounts.map((a) => `${a.accountLabel} (${a.remainingPct ?? '?'}%)`).join(', ')
         : 'Gemini (single account)';
@@ -516,10 +529,12 @@ function buildArchitectPrompt({ prompt, history, imagePaths, cwd, mode, workerAc
         'กฎเหล็กของด่าน 1 (Architect):',
         '1. **ห้ามแก้ไข สร้าง หรือลบไฟล์ใดๆ เด็ดขาด** (Strict Read-Only) — ให้ใช้เครื่องมืออ่าน/ค้นไฟล์/ตรวจโครงสร้างเพื่อวางพิมพ์เขียวเท่านั้น',
         '2. วางพิมพ์เขียวให้ละเอียด ระบุ path ไฟล์จริง ชื่อฟังก์ชัน จุดที่ต้องแก้ และคำสั่งตรวจสอบให้ชัดเจน เพื่อไม่ให้ Worker หลุดบริบท',
-        `3. แตกงานให้ทีม Gemini Workers เป็น **1 ถึง ${MAX_SUBTASKS} ข้อย่อย** โดยเลือกโมเดลที่คุ้มค่าให้แต่ละข้อ:`,
-        '   - "neon": งานโค้ดซับซ้อน/แก้ตรรกะสำคัญ/สถาปัตยกรรม',
-        '   - "hydrogen": งานโค้ดทั่วไป/รันเทสต์/แก้ UI หรือสคริปต์มาตรฐาน',
-        '   - "flash": งานอ่าน/ค้นข้อมูล/สรุปไฟล์/ตรวจเช็กสถานะแบบเร็ว',
+        `3. แตกงานให้ทีม Gemini Workers เป็น **1 ถึง ${workerLimit} ข้อย่อย** (เท่าที่จำเป็น อย่าซอยถี่เกินไป) และเน้นประหยัดโควตา (ค่าเริ่มต้นแนะนำ "${dfltModel}"):`,
+        '   - "hydrogen": (ค่าเริ่มต้นแนะนำ) งานโค้ดทั่วไป/UI/API/รันเทสต์/สคริปต์มาตรฐาน',
+        '   - "flash": งานอ่าน/ค้นข้อมูล/สรุปไฟล์/ตรวจเช็กสถานะแบบเร็ว (ประหยัดที่สุด)',
+        allowNeon
+            ? '   - "neon": ใช้เฉพาะจุดที่ตรรกะซับซ้อนมากจริง ๆ (แพงกว่า Hydrogen 2 เท่า)'
+            : '   - "neon": (ถูกจำกัดในโหมดประหยัด — หากระบุมาจะถูกปรับเป็น hydrogen อัตโนมัติ)',
         '   - "argon": งานวิเคราะห์/เทอร์มินัลเพิ่มเติม',
         '4. **กติกากันไฟล์ชนกัน (สำคัญมาก):**',
         '   - ระบุ `access`: `"read"` (อ่าน/ตรวจอย่างเดียว) หรือ `"write"` (แก้ไข/สร้างไฟล์)',
@@ -614,8 +629,8 @@ function buildWorkerPrompt({ task, plan, originalPrompt, imagePaths, cwd, depRes
     return truncateMiddle(sections.join('\n'), MAX_PROMPT_CHARS);
 }
 
-function buildReviewerPrompt({ originalPrompt, history, plan, workerResults, changesSummary, cwd, mode, reworkRound }) {
-    const allowRework = reworkRound < MAX_REWORK_ROUNDS && mode === 'exec';
+function buildReviewerPrompt({ originalPrompt, history, plan, workerResults, changesSummary, cwd, mode, reworkRound, maxReworkRounds = MAX_REWORK_ROUNDS }) {
+    const allowRework = reworkRound < maxReworkRounds && mode === 'exec';
     const workerReport = workerResults.map((r) => {
         const who = r.candidate ? `${r.candidate.label} (${r.candidate.accountLabel})` : r.task.model;
         const durationMs = Number(r.durationMs) || 0;
@@ -1197,13 +1212,22 @@ async function runWorkerWave(tasks, {
     decision,
     workerAccounts,
     maxParallelWorkers,
+    minWorkerQuotaPct = null,
     isRework = false,
     onThoughtEvent,
     abortCtx,
     claimedBrains,
     buildWorkersFn = aiRouter.buildWorkerCandidates,
+    checkQuotaFn = null,
     runner = runSingleCandidate
 }) {
+    const cfg = typeof aiRouter.getConfig === 'function' ? aiRouter.getConfig() : {};
+    const minQuotaThreshold = Number.isFinite(minWorkerQuotaPct) && minWorkerQuotaPct !== null
+        ? minWorkerQuotaPct
+        : (cfg.crossTeamMinWorkerQuotaPct || 20);
+    const liveQuotaFn = checkQuotaFn || (typeof aiRouter.hasQuotaProvider === 'function' && aiRouter.hasQuotaProvider() && typeof aiRouter.getFreshAccountQuota === 'function'
+        ? aiRouter.getFreshAccountQuota
+        : null);
     const completed = new Map(); // id -> result
     const running = new Map();   // id -> { task, account }
     const pending = [...tasks];
@@ -1254,7 +1278,54 @@ async function runWorkerWave(tasks, {
     let ranInParallel = false;
 
     const launchTask = async (task) => {
-        const prefAcc = pickPreferredAccount();
+        let prefAcc = pickPreferredAccount();
+        let requestedModel = task.model;
+        let effectiveModeOverride = (decision && decision.overrides && decision.overrides.mode) || null;
+
+        // Pre-Worker Live Quota Gate: ตรวจโควตาสดก่อนปล่อย Worker ทุกตัว
+        if (liveQuotaFn && accounts.length > 0) {
+            const orderedIds = [];
+            if (prefAcc) orderedIds.push(prefAcc);
+            for (const a of accounts) {
+                if (a.account && a.account !== prefAcc) orderedIds.push(a.account);
+            }
+            const freshPct = {};
+            for (const accId of orderedIds) {
+                try {
+                    const qData = await liveQuotaFn(accId);
+                    const pct = typeof aiRouter.agyRemainingPct === 'function'
+                        ? aiRouter.agyRemainingPct(qData, 'gemini-4-hydrogen-medium')
+                        : null;
+                    if (typeof pct === 'number') freshPct[accId] = pct;
+                } catch (_) {}
+            }
+            const healthyIds = orderedIds
+                .filter((id) => typeof freshPct[id] === 'number' && freshPct[id] >= minQuotaThreshold)
+                .sort((a, b) => {
+                    const aBusy = busyAccounts.has(a) ? 1 : 0;
+                    const bBusy = busyAccounts.has(b) ? 1 : 0;
+                    if (aBusy !== bBusy) return aBusy - bBusy;
+                    return (freshPct[b] || 0) - (freshPct[a] || 0);
+                });
+
+            if (healthyIds.length > 0) {
+                if (prefAcc && typeof freshPct[prefAcc] === 'number' && freshPct[prefAcc] < minQuotaThreshold && healthyIds[0] !== prefAcc) {
+                    const oldAcc = prefAcc;
+                    prefAcc = healthyIds[0];
+                    onThoughtEvent('status', `↪️ โควตา @${oldAcc.toUpperCase()} เหลือ ${freshPct[oldAcc]}% (< ${minQuotaThreshold}%) → สลับไป @${prefAcc.toUpperCase()} (${freshPct[prefAcc]}%)`);
+                }
+            } else if (Object.keys(freshPct).length > 0) {
+                const maxRem = Math.max(...Object.values(freshPct));
+                const critPct = cfg.fiveHourCriticalPct || 8;
+                const downgraded = requestedModel === 'neon' ? 'hydrogen' : (requestedModel === 'hydrogen' ? 'flash' : requestedModel);
+                requestedModel = downgraded;
+                if (!effectiveModeOverride) {
+                    effectiveModeOverride = maxRem < critPct ? 'critical' : 'conserve';
+                }
+                onThoughtEvent('status', `⚠️ โควตา Gemini เหลือต่ำกว่า ${minQuotaThreshold}% ทุกบัญชี (สูงสุด ${maxRem}%) → ลดรุ่น Worker[${task.id}] เป็น ${downgraded} (${effectiveModeOverride})`);
+            }
+        }
+
         if (prefAcc) {
             busyAccounts.add(prefAcc);
             accountUseCount.set(prefAcc, (accountUseCount.get(prefAcc) || 0) + 1);
@@ -1265,15 +1336,15 @@ async function runWorkerWave(tasks, {
         const depResults = (task.depends_on || []).map((id) => completed.get(id)).filter(Boolean);
         const workerPrompt = buildWorkerPrompt({ task, plan, originalPrompt, imagePaths, cwd, depResults, isRework });
 
-        const candidates = await buildWorkersFn(task.model, {
+        const candidates = await buildWorkersFn(requestedModel, {
             preferredAccount: prefAcc,
             qType: decision && decision.classification ? (decision.classification.type === 'quick' ? 'chat' : decision.classification.type) : 'code',
             hasImages: Boolean(imagePaths && imagePaths.length),
-            modeOverride: (decision && decision.overrides && decision.overrides.mode) || null
+            modeOverride: effectiveModeOverride
         });
 
         const tag = `⚡ Worker[${task.id}]`;
-        onThoughtEvent('status', `${tag} เริ่มงาน "${task.title}" (${task.access === 'read' ? 'อ่าน' : 'แก้ไฟล์'} · ขอ ${task.model}${prefAcc ? ' @' + prefAcc.toUpperCase() : ''})`);
+        onThoughtEvent('status', `${tag} เริ่มงาน "${task.title}" (${task.access === 'read' ? 'อ่าน' : 'แก้ไฟล์'} · ขอ ${requestedModel}${prefAcc ? ' @' + prefAcc.toUpperCase() : ''})`);
 
         const res = await runWithFailover(candidates, {
             stageName: `${isRework ? 'rework' : 'worker'}:${task.id}`,
@@ -1518,6 +1589,13 @@ function runCrossTeamPipeline({
         appendOut(banner);
         emitThought('init', `Cross-Team Pipeline · ${teamPlan.reason || 'งานซับซ้อน'}`);
 
+        const cfg = typeof aiRouter.getConfig === 'function' ? aiRouter.getConfig() : {};
+        const maxWorkers = teamPlan.maxWorkers || cfg.crossTeamMaxWorkers || 3;
+        const allowNeonWorkers = teamPlan.allowNeonWorkers !== undefined ? Boolean(teamPlan.allowNeonWorkers) : Boolean(cfg.crossTeamAllowNeonWorkers);
+        const defaultWorkerModel = teamPlan.defaultWorkerModel || cfg.crossTeamWorkerDefaultModel || 'hydrogen';
+        const minWorkerQuotaPct = teamPlan.minWorkerQuotaPct !== undefined ? teamPlan.minWorkerQuotaPct : (cfg.crossTeamMinWorkerQuotaPct || 20);
+        const maxReworkRounds = teamPlan.maxReworkRounds !== undefined ? teamPlan.maxReworkRounds : (cfg.crossTeamMaxReworkRounds ?? MAX_REWORK_ROUNDS);
+
         // ── STAGE 1: ARCHITECT (STRICT READ-ONLY) ────────────────────────────
         emitThought('status', '🏗️ ด่าน 1/3 · Architect กำลังสำรวจโค้ดและวางพิมพ์เขียว...');
         const archPrompt = buildArchitectPrompt({
@@ -1526,7 +1604,10 @@ function runCrossTeamPipeline({
             imagePaths,
             cwd,
             mode,
-            workerAccounts: teamPlan.workerAccounts
+            workerAccounts: teamPlan.workerAccounts,
+            maxWorkers,
+            allowNeonWorkers,
+            defaultWorkerModel
         });
 
         const archRes = await runWithFailover(teamPlan.architects, {
@@ -1560,7 +1641,7 @@ function runCrossTeamPipeline({
         }
 
         const archWho = archRes.candidate ? `${archRes.candidate.label} (${archRes.candidate.accountLabel})` : 'Architect';
-        let plan = parseArchitectPlan(archRes.output, { cwd, mode });
+        let plan = parseArchitectPlan(archRes.output, { cwd, mode, maxTasks: maxWorkers, allowNeonWorkers, defaultWorkerModel });
 
         // Direct-answer short-circuit if Architect determined no Workers needed
         if (plan && plan.direct_answer && plan.answer) {
@@ -1571,7 +1652,7 @@ function runCrossTeamPipeline({
 
         // Graceful fallback if Architect output wasn't valid JSON or returned 0 tasks
         if (!plan || !plan.tasks.length) {
-            emitThought('status', '⚠️ Architect ไม่ส่ง JSON ตามสกีมา — ห่อพิมพ์เขียวเป็นงานย่อย 1 ข้อให้ Gemini 4 Neon ทำต่อ');
+            emitThought('status', `⚠️ Architect ไม่ส่ง JSON ตามสกีมา — ห่อพิมพ์เขียวเป็นงานย่อย 1 ข้อให้ ${defaultWorkerModel} ทำต่อ`);
             plan = {
                 direct_answer: false,
                 summary: (plan && plan.summary) || 'ดำเนินการตามพิมพ์เขียวของ Architect',
@@ -1580,7 +1661,7 @@ function runCrossTeamPipeline({
                 tasks: [{
                     id: 't1',
                     title: 'ลงมือทำงานตามพิมพ์เขียว Architect',
-                    model: 'neon',
+                    model: defaultWorkerModel,
                     access: mode === 'exec' ? 'write' : 'read',
                     files: [],
                     depends_on: [],
@@ -1609,6 +1690,7 @@ function runCrossTeamPipeline({
             decision,
             workerAccounts: teamPlan.workerAccounts,
             maxParallelWorkers: teamPlan.maxParallelWorkers,
+            minWorkerQuotaPct,
             isRework: false,
             onThoughtEvent: emitThought,
             abortCtx,
@@ -1638,12 +1720,12 @@ function runCrossTeamPipeline({
 
         let allWorkerResults = [...wave1.results];
 
-        // ── STAGE 3: REVIEWER (STRICT READ-ONLY + MAX 1 REWORK LOOP) ─────────
+        // ── STAGE 3: REVIEWER (STRICT READ-ONLY + MAX REWORK LOOP) ───────────
         let finalAnswer = '';
         let reviewerUsed = null;
         let reviewDurationMs = 0;
 
-        for (let reworkRound = 0; reworkRound <= MAX_REWORK_ROUNDS; reworkRound++) {
+        for (let reworkRound = 0; reworkRound <= maxReworkRounds; reworkRound++) {
             const changesSummary = await summarizeWorkspaceChanges(cwd, snapshot, allTargetFiles);
             emitThought('status', `🔍 ด่าน 3/3 · Reviewer กำลังตรวจงาน${reworkRound > 0 ? ' (รอบสุดท้ายหลังแก้ไข)' : ''}...`);
 
@@ -1655,7 +1737,8 @@ function runCrossTeamPipeline({
                 changesSummary,
                 cwd,
                 mode,
-                reworkRound
+                reworkRound,
+                maxReworkRounds
             });
 
             const revRes = await runWithFailover(teamPlan.reviewers, {
@@ -1698,10 +1781,12 @@ function runCrossTeamPipeline({
             const verdict = parseReviewerVerdict(revRes.output, {
                 cwd,
                 mode,
-                allowRework: reworkRound < MAX_REWORK_ROUNDS && mode === 'exec'
+                allowRework: reworkRound < maxReworkRounds && mode === 'exec',
+                allowNeonWorkers,
+                defaultWorkerModel
             });
 
-            if (verdict.verdict === 'rework' && verdict.reworkTasks.length > 0 && reworkRound < MAX_REWORK_ROUNDS) {
+            if (verdict.verdict === 'rework' && verdict.reworkTasks.length > 0 && reworkRound < maxReworkRounds) {
                 const revWho = reviewerUsed ? `${reviewerUsed.label} (${reviewerUsed.accountLabel})` : 'Reviewer';
                 const issueTxt = verdict.issues.length ? ` (${verdict.issues.slice(0, 2).join('; ')})` : '';
                 appendOut(`> 🔁 **ด่าน 3 (Reviewer · ${revWho}) พบจุดต้องแก้ไข${issueTxt}** → ส่งกลับทีม Gemini แก้ไข ${verdict.reworkTasks.length} ข้อ...\n\n`);
@@ -1717,6 +1802,7 @@ function runCrossTeamPipeline({
                     decision,
                     workerAccounts: teamPlan.workerAccounts,
                     maxParallelWorkers: teamPlan.maxParallelWorkers,
+                    minWorkerQuotaPct,
                     isRework: true,
                     onThoughtEvent: emitThought,
                     abortCtx,

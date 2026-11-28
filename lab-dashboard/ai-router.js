@@ -31,6 +31,122 @@ const LOG_FILE = path.join(HOME_DIR, '.gemini/ai-router-log.jsonl');
 const CLASSIFY_CWD = path.join(HOME_DIR, '.gemini/router-tmp');
 const CLASSIFIER_MODEL = process.env.AI_ROUTER_CLASSIFIER_MODEL || 'gemini-3.8-flash-low';
 const OUTCOMES_FILE = process.env.AI_ROUTER_OUTCOMES_FILE || path.join(HOME_DIR, '.gemini/ai-router-outcomes.jsonl');
+const CONFIG_FILE = process.env.AI_ROUTER_CONFIG_FILE || path.join(HOME_DIR, '.gemini/ai-router-config.json');
+
+const DEFAULT_CONFIG = Object.freeze({
+    // Cross-Team Orchestrator
+    crossTeamEnabled: true,
+    crossTeamMinComplexity: 85,          // 40..100 (default 85)
+    crossTeamMaxWorkers: 3,              // 1..6 (default 3)
+    crossTeamWorkerDefaultModel: 'hydrogen', // 'hydrogen' | 'flash' | 'neon' | 'argon'
+    crossTeamAllowNeonWorkers: false,    // false = reserve Neon for Architect & xhigh/#สูงมาก
+    crossTeamMaxReworkRounds: 1,         // 0..2
+    crossTeamMinWorkerQuotaPct: 20,      // 5..60 (%)
+    // Quota & Gemini Weekly
+    geminiUseWeeklyLimit: true,          // include Gemini weekly alongside 5h
+    geminiWeeklySoftGate: true,          // suppress auto cross-team if Gemini weekly behind pace
+    fiveHourConservePct: 15,             // 5..40 (%)
+    fiveHourCriticalPct: 8,              // 2..25 (%)
+    // Cost Tiering & Continuation
+    economyMode: 'balanced',             // 'economy' | 'balanced' | 'performance'
+    continuationMaxComplexity: 74,       // 40..100 (caps short follow-ups like "ทำต่อเลย")
+    // Quota Burn-Rate Alert (Telegram)
+    burnAlertEnabled: true,
+    burnAlertDropPct: 30,                // 10..80 (% drop)
+    burnAlertWindowMin: 60               // 15..240 (minutes)
+});
+
+const VALID_WORKER_MODELS = new Set(['hydrogen', 'flash', 'neon', 'argon']);
+const VALID_ECONOMY_MODES = new Set(['economy', 'balanced', 'performance']);
+
+function clampConfigInt(val, min, max, fallback) {
+    const n = Math.round(Number(val));
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+}
+
+function sanitizeConfig(raw, base = DEFAULT_CONFIG) {
+    const src = (raw && typeof raw === 'object') ? raw : {};
+    const b = { ...DEFAULT_CONFIG, ...(base && typeof base === 'object' ? base : {}) };
+    const fiveHourConservePct = clampConfigInt(src.fiveHourConservePct !== undefined ? src.fiveHourConservePct : b.fiveHourConservePct, 5, 40, DEFAULT_CONFIG.fiveHourConservePct);
+    const maxCritical = Math.min(25, Math.max(2, fiveHourConservePct - 2));
+    const fiveHourCriticalPct = clampConfigInt(src.fiveHourCriticalPct !== undefined ? src.fiveHourCriticalPct : b.fiveHourCriticalPct, 2, maxCritical, Math.min(DEFAULT_CONFIG.fiveHourCriticalPct, maxCritical));
+    const rawWorker = String(src.crossTeamWorkerDefaultModel !== undefined ? src.crossTeamWorkerDefaultModel : b.crossTeamWorkerDefaultModel).trim().toLowerCase();
+    const rawEcon = String(src.economyMode !== undefined ? src.economyMode : b.economyMode).trim().toLowerCase();
+    return {
+        crossTeamEnabled: src.crossTeamEnabled !== undefined ? Boolean(src.crossTeamEnabled) : Boolean(b.crossTeamEnabled),
+        crossTeamMinComplexity: clampConfigInt(src.crossTeamMinComplexity !== undefined ? src.crossTeamMinComplexity : b.crossTeamMinComplexity, 40, 100, DEFAULT_CONFIG.crossTeamMinComplexity),
+        crossTeamMaxWorkers: clampConfigInt(src.crossTeamMaxWorkers !== undefined ? src.crossTeamMaxWorkers : b.crossTeamMaxWorkers, 1, 6, DEFAULT_CONFIG.crossTeamMaxWorkers),
+        crossTeamWorkerDefaultModel: VALID_WORKER_MODELS.has(rawWorker) ? rawWorker : DEFAULT_CONFIG.crossTeamWorkerDefaultModel,
+        crossTeamAllowNeonWorkers: src.crossTeamAllowNeonWorkers !== undefined ? Boolean(src.crossTeamAllowNeonWorkers) : Boolean(b.crossTeamAllowNeonWorkers),
+        crossTeamMaxReworkRounds: clampConfigInt(src.crossTeamMaxReworkRounds !== undefined ? src.crossTeamMaxReworkRounds : b.crossTeamMaxReworkRounds, 0, 2, DEFAULT_CONFIG.crossTeamMaxReworkRounds),
+        crossTeamMinWorkerQuotaPct: clampConfigInt(src.crossTeamMinWorkerQuotaPct !== undefined ? src.crossTeamMinWorkerQuotaPct : b.crossTeamMinWorkerQuotaPct, 5, 60, DEFAULT_CONFIG.crossTeamMinWorkerQuotaPct),
+        geminiUseWeeklyLimit: src.geminiUseWeeklyLimit !== undefined ? Boolean(src.geminiUseWeeklyLimit) : Boolean(b.geminiUseWeeklyLimit),
+        geminiWeeklySoftGate: src.geminiWeeklySoftGate !== undefined ? Boolean(src.geminiWeeklySoftGate) : Boolean(b.geminiWeeklySoftGate),
+        fiveHourConservePct,
+        fiveHourCriticalPct,
+        economyMode: VALID_ECONOMY_MODES.has(rawEcon) ? rawEcon : DEFAULT_CONFIG.economyMode,
+        continuationMaxComplexity: clampConfigInt(src.continuationMaxComplexity !== undefined ? src.continuationMaxComplexity : b.continuationMaxComplexity, 40, 100, DEFAULT_CONFIG.continuationMaxComplexity),
+        burnAlertEnabled: src.burnAlertEnabled !== undefined ? Boolean(src.burnAlertEnabled) : Boolean(b.burnAlertEnabled),
+        burnAlertDropPct: clampConfigInt(src.burnAlertDropPct !== undefined ? src.burnAlertDropPct : b.burnAlertDropPct, 10, 80, DEFAULT_CONFIG.burnAlertDropPct),
+        burnAlertWindowMin: clampConfigInt(src.burnAlertWindowMin !== undefined ? src.burnAlertWindowMin : b.burnAlertWindowMin, 15, 240, DEFAULT_CONFIG.burnAlertWindowMin)
+    };
+}
+
+let _cfgCache = null;
+let _cfgMtimeMs = -1;
+
+function getConfig() {
+    const filePath = process.env.AI_ROUTER_CONFIG_FILE || CONFIG_FILE;
+    try {
+        const st = fs.statSync(filePath);
+        if (_cfgCache && st.mtimeMs === _cfgMtimeMs) return _cfgCache;
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        _cfgCache = sanitizeConfig(parsed, DEFAULT_CONFIG);
+        _cfgMtimeMs = st.mtimeMs;
+        return _cfgCache;
+    } catch (_) {
+        _cfgCache = { ...DEFAULT_CONFIG };
+        _cfgMtimeMs = -1;
+        return _cfgCache;
+    }
+}
+
+function writeConfigAtomic(nextCfg) {
+    const filePath = process.env.AI_ROUTER_CONFIG_FILE || CONFIG_FILE;
+    const dir = path.dirname(filePath);
+    fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = path.join(dir, `.${path.basename(filePath)}.tmp.${process.pid}.${Date.now()}`);
+    fs.writeFileSync(tmpPath, JSON.stringify(nextCfg, null, 2) + '\n', 'utf8');
+    fs.renameSync(tmpPath, filePath);
+    try {
+        _cfgMtimeMs = fs.statSync(filePath).mtimeMs;
+    } catch (_) {
+        _cfgMtimeMs = Date.now();
+    }
+    _cfgCache = nextCfg;
+    return nextCfg;
+}
+
+function updateConfig(patch = {}) {
+    const prev = getConfig();
+    const next = sanitizeConfig(patch, prev);
+    writeConfigAtomic(next);
+    if (prev.geminiUseWeeklyLimit !== next.geminiUseWeeklyLimit) {
+        quotaCache.clear();
+    }
+    return next;
+}
+
+function resetConfig() {
+    const prev = getConfig();
+    const next = { ...DEFAULT_CONFIG };
+    writeConfigAtomic(next);
+    if (prev.geminiUseWeeklyLimit !== next.geminiUseWeeklyLimit) {
+        quotaCache.clear();
+    }
+    return next;
+}
 
 const AUTO_MODEL_ID = 'auto';
 const PRIMARY_THRESHOLD = 20;   // % ที่ต้องเหลือเพื่อเป็นตัวเลือกแรก
@@ -341,6 +457,99 @@ function setProviderQuotaProvider(fn) {
     providerQuotaProvider = fn;
 }
 
+function hasQuotaProvider() {
+    return Boolean(quotaProvider);
+}
+
+// ── Quota Burn-Rate Tracker & Telegram Alert ─────────────────────────────────
+const quotaSnapshots = new Map();  // key -> [{ ts, pct }]
+const burnAlertLastAt = new Map(); // key -> ts
+let telegramNotifier = null;
+
+function setTelegramNotifier(fn) {
+    telegramNotifier = typeof fn === 'function' ? fn : null;
+}
+
+function sendBurnRateTelegram(htmlMsg) {
+    if (telegramNotifier) {
+        try { Promise.resolve(telegramNotifier(htmlMsg)).catch(() => {}); } catch (_) {}
+        return;
+    }
+    execFile('/usr/bin/python3', ['/home/dev/projects/notify-telegram.py', htmlMsg], { timeout: 15000 }, () => {});
+}
+
+function recordQuotaSnapshot(accountId, quotaData, now = Date.now()) {
+    if (!quotaData || !quotaData.ok || !Array.isArray(quotaData.pools)) return;
+    const cfg = getConfig();
+    const windowMs = cfg.burnAlertWindowMin * 60 * 1000;
+    const accLabel = quotaData.accountLabel || String(accountId || 'g1').toUpperCase();
+
+    const checkEntry = (poolId, poolName, winName, winObj) => {
+        if (!winObj || typeof winObj.remainingPct !== 'number') return;
+        const pct = Math.max(0, Math.min(100, Math.round(winObj.remainingPct)));
+        const key = `${accountId}:${poolId}:${winName}`;
+        const list = (quotaSnapshots.get(key) || []).filter((s) => now - s.ts <= windowMs);
+        list.push({ ts: now, pct });
+        quotaSnapshots.set(key, list);
+
+        let maxPct = pct;
+        for (const s of list) {
+            if (s.pct > maxPct) maxPct = s.pct;
+        }
+        const dropPct = maxPct - pct;
+        if (!cfg.burnAlertEnabled || dropPct < cfg.burnAlertDropPct) return;
+        const lastAlert = burnAlertLastAt.get(key) || 0;
+        if (now - lastAlert < windowMs) return;
+
+        burnAlertLastAt.set(key, now);
+        logDecision({
+            source: 'burn-alert',
+            prompt: `${accLabel} ${poolId} (${winName})`,
+            decision: null,
+            event: 'burn-alert',
+            extra: { account: accountId, pool: poolId, window: winName, fromPct: maxPct, toPct: pct, dropPct, windowMin: cfg.burnAlertWindowMin }
+        });
+        const resetTxt = winObj.resetTime ? ` · รีเซ็ต ${winObj.resetTime}` : '';
+        const msg = `⚠️ <b>แจ้งเตือนโควตา AI ลดเร็วผิดปกติ</b>\n`
+            + `• บัญชี: <b>${accLabel}</b> · กลุ่ม <b>${poolName || poolId}</b> (${winName})\n`
+            + `• ลดลง: <b>-${dropPct}%</b> ภายใน ${cfg.burnAlertWindowMin} นาที (${maxPct}% → <b>${pct}%</b>)${resetTxt}`;
+        sendBurnRateTelegram(msg);
+    };
+
+    for (const pool of quotaData.pools) {
+        if (!pool || !pool.id) continue;
+        if (pool.fiveHour) checkEntry(pool.id, pool.name, '5h', pool.fiveHour);
+        else if (typeof pool.remainingPct === 'number') checkEntry(pool.id, pool.name, '5h', { remainingPct: pool.remainingPct, resetTime: pool.resetTime });
+        if (pool.weekly) checkEntry(pool.id, pool.name, 'weekly', pool.weekly);
+    }
+    if (quotaData.claudeWeb && quotaData.claudeWeb.ok) {
+        if (quotaData.claudeWeb.fiveHour) checkEntry('claude-pro', 'Claude Pro', '5h', quotaData.claudeWeb.fiveHour);
+        if (quotaData.claudeWeb.weekly) checkEntry('claude-pro', 'Claude Pro', 'weekly', quotaData.claudeWeb.weekly);
+    }
+}
+
+function getBurnRateStatus(now = Date.now()) {
+    const cfg = getConfig();
+    const windowMs = cfg.burnAlertWindowMin * 60 * 1000;
+    const items = [];
+    for (const [key, list] of quotaSnapshots.entries()) {
+        const recent = list.filter((s) => now - s.ts <= windowMs);
+        if (!recent.length) continue;
+        const currentPct = recent[recent.length - 1].pct;
+        const maxPctInWindow = recent.reduce((m, s) => (s.pct > m ? s.pct : m), currentPct);
+        items.push({
+            key,
+            currentPct,
+            maxPctInWindow,
+            dropPct: maxPctInWindow - currentPct,
+            samples: recent.length,
+            windowMin: cfg.burnAlertWindowMin,
+            lastAlertAt: burnAlertLastAt.get(key) || null
+        });
+    }
+    return items.sort((a, b) => b.dropPct - a.dropPct);
+}
+
 async function getAccountQuota(accountId) {
     const hit = quotaCache.get(accountId);
     if (hit && Date.now() - hit.at < QUOTA_TTL_MS) return hit.data;
@@ -351,7 +560,15 @@ async function getAccountQuota(accountId) {
         data = { ok: false, error: err.message };
     }
     quotaCache.set(accountId, { at: Date.now(), data });
+    if (data && data.ok) recordQuotaSnapshot(accountId, data);
     return data;
+}
+
+async function getFreshAccountQuota(accountId, maxAgeMs = 25000) {
+    const hit = quotaCache.get(accountId);
+    if (hit && Date.now() - hit.at < maxAgeMs) return hit.data;
+    quotaCache.delete(accountId);
+    return getAccountQuota(accountId);
 }
 
 async function getProviderQuotas(primaryAccountQuota = null) {
@@ -455,18 +672,20 @@ function windowPace(name, w) {
     };
 }
 
-function assessBudget(windows) {
+function assessBudget(windows, cfg = getConfig()) {
     const paces = windows.map(([n, w]) => windowPace(n, w)).filter(Boolean);
     if (!paces.length) return { mode: 'normal', surplus: 0, remainingPct: 100, windows: [] };
     const remainingPct = Math.min(...paces.map((p) => p.remainingPct));
-    // รอบ 5 ชม. สั้นและรีเซ็ตเร็ว: ถ้าใช้เร็วกว่างบแต่ยังเหลือ ≥ 15% ไม่นับเป็นข้อจำกัด
-    // (ให้รอบรายสัปดาห์เป็นตัวตัดสิน) — ถนอมเพราะ 5 ชม. เฉพาะตอนเหลือ < 15% จริงๆ
-    const relaxed = (p) => p.name === '5h' && p.remainingPct >= FIVE_HOUR_CONSERVE_PCT && p.surplus < 0;
+    const conservePct = Number.isFinite(cfg && cfg.fiveHourConservePct) ? cfg.fiveHourConservePct : FIVE_HOUR_CONSERVE_PCT;
+    const criticalPct = Number.isFinite(cfg && cfg.fiveHourCriticalPct) ? cfg.fiveHourCriticalPct : FIVE_HOUR_CRITICAL_PCT;
+    // รอบ 5 ชม. สั้นและรีเซ็ตเร็ว: ถ้าใช้เร็วกว่างบแต่ยังเหลือ ≥ conservePct ไม่นับเป็นข้อจำกัด
+    // (ให้รอบรายสัปดาห์เป็นตัวตัดสิน) — ถนอมเพราะ 5 ชม. เฉพาะตอนเหลือ < conservePct จริงๆ
+    const relaxed = (p) => p.name === '5h' && p.remainingPct >= conservePct && p.surplus < 0;
     const modeOf = (p) => {
-        if (p.name === '5h' && p.remainingPct < FIVE_HOUR_CRITICAL_PCT) return 'critical';
-        if (p.name === '5h' && p.remainingPct < FIVE_HOUR_CONSERVE_PCT) return 'conserve';
+        if (p.name === '5h' && p.remainingPct < criticalPct) return 'critical';
+        if (p.name === '5h' && p.remainingPct < conservePct) return 'conserve';
         if (relaxed(p)) return 'normal';
-        if (p.surplus < CRITICAL_SURPLUS || p.remainingPct < 8) return 'critical';
+        if (p.surplus < CRITICAL_SURPLUS || p.remainingPct < criticalPct) return 'critical';
         if (p.surplus < CONSERVE_SURPLUS) return 'conserve';
         if (p.timeLeftFrac < SURGE_TIME_FRAC && p.remainingPct >= SURGE_MIN_PCT) return 'surge';
         if (p.surplus >= BOOST_SURPLUS) return 'boost';
@@ -507,11 +726,12 @@ function agyPoolBudget(quota, model) {
         if ((quota.unavailablePools || []).some((p) => p.id === poolId)) return null;
         return { mode: 'unknown', surplus: -0.1, remainingPct: FALLBACK_UNKNOWN_PCT, windows: [] };
     }
-    // pool gemini: นับเฉพาะ 5 ชม. (weekly ไม่จำกัดจนกว่าจะ error จริง — กฎผู้ใช้ 2026-11-27)
+    const cfg = getConfig();
+    const skipGeminiWeekly = poolId === 'gemini' && !cfg.geminiUseWeeklyLimit;
     const windows = (pool.fiveHour || pool.weekly)
-        ? [['5h', pool.fiveHour], ...(poolId === 'gemini' ? [] : [['weekly', pool.weekly]])]
+        ? [['5h', pool.fiveHour], ...(skipGeminiWeekly ? [] : [['weekly', pool.weekly]])]
         : [['5h', { remainingPct: pool.remainingPct, resetTime: pool.resetTime }]];
-    return assessBudget(windows);
+    return assessBudget(windows, cfg);
 }
 
 function claudeProBudget(cw) {
@@ -548,10 +768,23 @@ const MODE_THRIFT = { surge: 0.1, boost: 0.25, normal: 1, conserve: 2.2, critica
 const MODE_EFFORT_SHIFT = { surge: 2, boost: 1, normal: 0, conserve: -1, critical: -2, unknown: 0 };
 const EXPIRING_WEIGHT = 40; // คะแนนพิเศษต่อสัดส่วนโควตาที่กำลังจะหมดอายุ
 const MODE_SCORE_BONUS = { surge: 8, boost: 0, normal: 0, conserve: 0, critical: -10, unknown: 0 };
+const ECONOMY_PROFILES = {
+    economy:     { thriftMult: 1.75, costPenalty: 3.5, lowTarget: 68, maxBoostShift: 0 },
+    balanced:    { thriftMult: 1.35, costPenalty: 2.0, lowTarget: 70, maxBoostShift: 0 },
+    performance: { thriftMult: 0.9,  costPenalty: 0,   lowTarget: 72, maxBoostShift: 1 }
+};
+
+function getEconomyProfile(cfg = getConfig()) {
+    return ECONOMY_PROFILES[cfg.economyMode] || ECONOMY_PROFILES.balanced;
+}
 
 function pickEffort(family, tier, mode) {
     if (family.variants.length === 1) return family.variants[0];
-    const shift = MODE_EFFORT_SHIFT[mode] || 0;
+    const cfg = getConfig();
+    const profile = getEconomyProfile(cfg);
+    let shift = MODE_EFFORT_SHIFT[mode] || 0;
+    if (mode === 'boost' && shift > 0) shift = Math.min(shift, profile.maxBoostShift);
+    if (mode === 'surge' && shift > 0 && cfg.economyMode === 'economy') shift = Math.min(shift, 1);
     const want = Math.max(0, Math.min(TIERS.length - 1, TIERS.indexOf(tier) + shift));
     // เลือก variant ที่ใกล้ระดับที่ต้องการที่สุด (ไม่เกินที่มี)
     let best = family.variants[0];
@@ -562,19 +795,21 @@ function pickEffort(family, tier, mode) {
 }
 
 function scoreCandidate({ family, effort, budget, qType, tier, sticky, load }) {
+    const profile = getEconomyProfile();
     const q = family.q[qType] + (effort ? (EFFORT_Q[effort] ?? 0) : 0);
-    const target = TIER_TARGET_Q[tier];
+    const target = tier === 'low' ? profile.lowTarget : TIER_TARGET_Q[tier];
     const under = Math.max(0, target - q) * 4;                       // อ่อนเกินงาน → โทษหนัก
     const costW = family.cost * (effort ? (EFFORT_COST[effort] ?? 1) : 1);
-    const over = Math.max(0, q - target) * 0.6 * costW * (MODE_THRIFT[budget.mode] || 1); // เกินงาน → เปลืองโควตา
+    const over = Math.max(0, q - target) * 0.6 * costW * (MODE_THRIFT[budget.mode] || 1) * profile.thriftMult; // เกินงาน → เปลืองโควตา
+    const costPenalty = costW * profile.costPenalty * (budget.mode === 'surge' ? 0.25 : 1);
     const budgetScore = budget.surplus * 30 + (budget.remainingPct < PRIMARY_THRESHOLD ? -15 : 0) + (MODE_SCORE_BONUS[budget.mode] || 0)
         + (budget.expiring || 0) * EXPIRING_WEIGHT;
     const loadScore = -4 * Math.min(4, load);
     const stickyScore = sticky ? 6 : 0;
-    const total = q * 0.5 + budgetScore + loadScore + stickyScore - under - over;
+    const total = q * 0.5 + budgetScore + loadScore + stickyScore - under - over - costPenalty;
     return {
         total: Number(total.toFixed(1)),
-        parts: { q, under: Number(under.toFixed(1)), over: Number(over.toFixed(1)), budget: Number(budgetScore.toFixed(1)), load: loadScore, sticky: stickyScore }
+        parts: { q, under: Number(under.toFixed(1)), over: Number(over.toFixed(1)), costPenalty: Number(costPenalty.toFixed(1)), budget: Number(budgetScore.toFixed(1)), load: loadScore, sticky: stickyScore }
     };
 }
 
@@ -771,9 +1006,24 @@ async function classifyTask(prompt, opts = {}) {
     const heur = est.heuristics(text, { hasImages });
     const prior = getSessionPrior(sessionId);
 
+    const cfg = getConfig();
+
     // 0. "ทำต่อเลย" ล้วนๆ → สืบทอดความยากจากงานก่อนหน้า (ไม่เรียก AI ไม่เสียโควตา ไม่เสียเวลา)
+    //    แต่จำกัดเพดานตาม continuationMaxComplexity เพื่อไม่ให้คำสั่งสั้นเปิดทีมข้ามค่ายโดยไม่จำเป็น
     if (prior && prior.complexity >= 30 && est.isPureContinuation(text)) {
-        return { ...est.inheritedClassification(prior, heur), source: 'continuation' };
+        const inh = est.inheritedClassification(prior, heur);
+        const cap = cfg.continuationMaxComplexity;
+        if (inh.complexity > cap) {
+            return {
+                ...inh,
+                complexity: cap,
+                level: levelFromComplexity(cap),
+                tier: tierFromScores(inh.type, cap, inh.risk, inh.needs_tools, inh.quality_bar || 0),
+                continuation: { ...inh.continuation, cappedFrom: inh.complexity },
+                source: 'continuation'
+            };
+        }
+        return { ...inh, source: 'continuation' };
     }
 
     // 1. ทางลัด: ข้อความสั้น/ทักทาย
@@ -812,6 +1062,13 @@ async function classifyTask(prompt, opts = {}) {
     }
     if (!rubric) source = 'fallback';
     const cls = est.finalize({ rubric, heur, prior, fallbackType: CODE_HINT_RE.test(text) ? 'code' : 'chat' });
+    if (cls.continuation && cls.continuation.applied && text.length <= 80 && heur.floor < 50 && cls.complexity > cfg.continuationMaxComplexity) {
+        const cap = cfg.continuationMaxComplexity;
+        cls.continuation.cappedFrom = cls.complexity;
+        cls.complexity = cap;
+        cls.level = levelFromComplexity(cap);
+        cls.tier = tierFromScores(cls.type, cap, cls.risk, cls.needs_tools, cls.quality_bar || 0);
+    }
     return { ...cls, source };
 }
 
@@ -864,7 +1121,6 @@ function buildSubagentDirective(plan) {
 
 // ── ⑤ แผนทีมข้ามค่าย (Architect: Claude Opus → Workers: Gemini G1/G2 → Reviewer: Claude Opus) ──
 // Fallback หลักเมื่อ Claude Opus ไม่พร้อม/โควตาวิกฤติ: เปลี่ยนเป็น Gemini 4 Neon (ไม่ใช่ Hydrogen)
-const CROSS_TEAM_MIN_COMPLEXITY = 65;
 const WORKER_FAMILY_CHAINS = {
     neon: ['gemini-neon', 'gemini-hydrogen', 'gemini-argon', 'gemini-flash', 'claude-sonnet', 'claude-code-sonnet'],
     hydrogen: ['gemini-hydrogen', 'gemini-neon', 'gemini-flash', 'gemini-argon', 'claude-sonnet', 'claude-code-sonnet'],
@@ -873,23 +1129,33 @@ const WORKER_FAMILY_CHAINS = {
 };
 const WORKER_DEFAULT_TIER = { flash: 'low', hydrogen: 'medium', argon: 'medium', neon: 'high' };
 
-function normalizeWorkerFamily(raw) {
+function normalizeWorkerFamily(raw, fallback = null) {
+    const cfg = getConfig();
+    const dflt = (fallback && VALID_WORKER_MODELS.has(fallback)) ? fallback : (cfg.crossTeamWorkerDefaultModel || 'hydrogen');
     const s = String(raw || '').trim().toLowerCase();
+    if (!s) return dflt;
     if (/neon/.test(s)) return 'neon';
     if (/hydrogen/.test(s)) return 'hydrogen';
     if (/flash/.test(s)) return 'flash';
     if (/argon/.test(s)) return 'argon';
-    return 'neon';
+    return dflt;
 }
 
 function upgradeNeonRoleCandidate(cand, tier = 'high') {
     if (!cand || cand.family !== 'gemini-neon') return cand;
     const mode = (cand.budget && cand.budget.mode) || 'normal';
+    const econ = getConfig().economyMode;
     let targetEffort = cand.effort || 'high';
     if (mode === 'critical') {
         targetEffort = targetEffort === 'low' ? 'medium' : targetEffort;
     } else if (mode === 'conserve') {
         targetEffort = TIERS.indexOf(targetEffort) < TIERS.indexOf('medium') ? 'medium' : targetEffort;
+    } else if (econ === 'economy') {
+        const minEffort = tier === 'xhigh' ? 'high' : 'medium';
+        if (TIERS.indexOf(targetEffort) < TIERS.indexOf(minEffort)) targetEffort = minEffort;
+    } else if (econ === 'balanced') {
+        const minEffort = tier === 'xhigh' ? 'xhigh' : 'high';
+        if (TIERS.indexOf(targetEffort) < TIERS.indexOf(minEffort)) targetEffort = minEffort;
     } else {
         const minEffort = (tier === 'xhigh' || mode === 'surge' || mode === 'boost') ? 'xhigh' : 'high';
         if (TIERS.indexOf(targetEffort) < TIERS.indexOf(minEffort)) targetEffort = minEffort;
@@ -934,10 +1200,11 @@ function pickCrossRoleQueue(candidates, { tier = 'high' } = {}) {
 }
 
 /**
- * สร้างแผนทีมข้ามค่าย: เปิดใช้เมื่อเป็นงาน chat ที่ซับซ้อน >= 65
- * หรือเมื่อบังยีระบุแท็ก #ทีมข้ามค่าย (และปิดเมื่อระบุ #เดี่ยว)
+ * สร้างแผนทีมข้ามค่าย: เปิดใช้เมื่อเป็นงานซับซ้อน >= crossTeamMinComplexity (ค่าเริ่มต้น 85)
+ * และผ่านเกณฑ์โควตา/Weekly Gate หรือเมื่อบังยีระบุแท็ก #ทีมข้ามค่าย (และปิดเมื่อระบุ #เดี่ยว)
  */
 function planTeamPipeline(cls, candidates, overrides = {}, source = 'chat') {
+    const cfg = getConfig();
     const hasSub = (candidates || []).some((c) => !c.paid);
     if (!hasSub || overrides.single) {
         return { enabled: false, reason: overrides.single ? 'ผู้ใช้ระบุ #เดี่ยว' : 'ไม่มีบัญชีรายเดือนพร้อมใช้', architects: [], reviewers: [], workerAccounts: [], maxParallelWorkers: 1 };
@@ -952,41 +1219,71 @@ function planTeamPipeline(cls, candidates, overrides = {}, source = 'chat') {
         seenAcc.add(c.account);
         workerAccounts.push({ account: c.account, accountLabel: c.accountLabel, home: c.home, remainingPct: c.remainingPct, budget: c.budget, score: c.score });
     }
-    const hasHealthyWorkerAcc = workerAccounts.some((w) => !w.budget || w.budget.mode !== 'critical');
+    if (!cfg.crossTeamEnabled && !overrides.team) {
+        return { enabled: false, reason: 'ระบบทีมข้ามค่ายอัตโนมัติถูกปิดในการตั้งค่าสมองกลาง', architects: [], reviewers: [], workerAccounts, maxParallelWorkers: 1 };
+    }
+
+    const hasQuotaForTeam = workerAccounts.some((w) => (w.remainingPct ?? 0) >= cfg.crossTeamMinWorkerQuotaPct && (!w.budget || w.budget.mode !== 'critical'));
+    const weeklyBlocked = Boolean(
+        cfg.geminiUseWeeklyLimit
+        && cfg.geminiWeeklySoftGate
+        && !overrides.team
+        && workerAccounts.length > 0
+        && workerAccounts.every((w) => {
+            const wkWin = w.budget && Array.isArray(w.budget.windows) && w.budget.windows.find((win) => win.name === 'weekly');
+            return (wkWin && wkWin.surplus < 0) || (w.budget && (w.budget.mode === 'conserve' || w.budget.mode === 'critical'));
+        })
+    );
 
     const isDeepWork = cls.type === 'code' || cls.type === 'analysis';
     const autoEligible = source === 'chat'
+        && cfg.crossTeamEnabled
         && isDeepWork
         && !['low', 'medium'].includes(tier)
         && overrides.mode !== 'critical'
         && workerAccounts.length > 0
-        && hasHealthyWorkerAcc
-        && (cls.complexity || 0) >= CROSS_TEAM_MIN_COMPLEXITY;
+        && hasQuotaForTeam
+        && !weeklyBlocked
+        && (cls.complexity || 0) >= cfg.crossTeamMinComplexity;
 
     const enabled = Boolean((overrides.team || autoEligible) && roleQueue.length > 0);
     if (!enabled) {
-        return { enabled: false, reason: 'งานไม่ถึงเกณฑ์ทีมข้ามค่าย (รันตัวเดียวเพื่อความเร็ว)', architects: [], reviewers: [], workerAccounts, maxParallelWorkers: 1 };
+        let reason = `งานไม่ถึงเกณฑ์ทีมข้ามค่าย (${cls.complexity || 0}/${cfg.crossTeamMinComplexity}) รันตัวเดียวเพื่อความเร็ว`;
+        if (weeklyBlocked) reason = 'Gemini Weekly ต่ำกว่าแผน — งดทีมข้ามค่ายอัตโนมัติเพื่อถนอมโควตา';
+        else if (!hasQuotaForTeam && workerAccounts.length > 0) reason = `โควตา Worker เหลือต่ำกว่า ${cfg.crossTeamMinWorkerQuotaPct}% — รันตัวเดียวเพื่อประหยัดโควตา`;
+        return { enabled: false, reason, architects: [], reviewers: [], workerAccounts, maxParallelWorkers: 1 };
     }
+
+    const maxWorkers = (overrides.tier === 'xhigh' || cls.tier === 'xhigh')
+        ? Math.min(6, cfg.crossTeamMaxWorkers + 1)
+        : cfg.crossTeamMaxWorkers;
 
     return {
         enabled: true,
-        reason: overrides.team ? 'เปิดใช้ตามแท็ก #ทีมข้ามค่าย' : `งานซับซ้อน (${cls.complexity}/100 · ${TIER_TH[tier] || tier})`,
+        reason: overrides.team ? 'เปิดใช้ตามแท็ก #ทีมข้ามค่าย' : `งานซับซ้อน (${cls.complexity}/100 · เกณฑ์ ≥${cfg.crossTeamMinComplexity} · ${TIER_TH[tier] || tier})`,
         architects: roleQueue,
         reviewers: roleQueue,
         workerAccounts,
-        maxParallelWorkers: Math.min(2, Math.max(1, workerAccounts.length))
+        maxParallelWorkers: Math.min(2, Math.max(1, workerAccounts.length)),
+        maxWorkers,
+        defaultWorkerModel: cfg.crossTeamWorkerDefaultModel,
+        allowNeonWorkers: Boolean(cfg.crossTeamAllowNeonWorkers || overrides.tier === 'xhigh' || cls.tier === 'xhigh' || overrides.team),
+        minWorkerQuotaPct: cfg.crossTeamMinWorkerQuotaPct,
+        maxReworkRounds: cfg.crossTeamMaxReworkRounds
     };
 }
 
 /**
- * จัดลำดับผู้สมัครสำหรับ Worker ย่อยใน Stage 2 (Neon / Hydrogen / Flash / Argon)
+ * จัดลำดับผู้สมัครสำหรับ Worker ย่อยใน Stage 2 (Hydrogen / Flash / Neon / Argon)
  * เรียงตามลำดับตระกูลที่ Architect ร้องขอก่อน (รุ่นที่ขอไม่โดนคะแนนรุ่นอื่นแซง)
  * ภายในตระกูลเดียวกันกระจายไปยัง preferredAccount (G1/G2) ที่ไม่ติด critical ก่อน
  */
-async function buildWorkerCandidates(requestedFamily = 'neon', { preferredAccount = null, tier = null, qType = 'code', hasImages = false, modeOverride = null } = {}) {
-    const reqKey = normalizeWorkerFamily(requestedFamily);
-    const effTier = tier || WORKER_DEFAULT_TIER[reqKey] || 'high';
-    const chain = WORKER_FAMILY_CHAINS[reqKey];
+async function buildWorkerCandidates(requestedFamily = null, { preferredAccount = null, tier = null, qType = 'code', hasImages = false, modeOverride = null } = {}) {
+    const cfg = getConfig();
+    const reqKey = normalizeWorkerFamily(requestedFamily, cfg.crossTeamWorkerDefaultModel);
+    const defaultTier = reqKey === 'neon' && cfg.economyMode === 'economy' ? 'medium' : (WORKER_DEFAULT_TIER[reqKey] || 'medium');
+    const effTier = tier || defaultTier;
+    const chain = WORKER_FAMILY_CHAINS[reqKey] || WORKER_FAMILY_CHAINS.hydrogen;
     const accounts = listAgyAccounts().filter((a) => a.ready);
     const quotas = {};
     const [, provQuotas] = await Promise.all([
@@ -1350,7 +1647,12 @@ async function calibrationReport(limit = 2000) {
 
 module.exports = {
     AUTO_MODEL_ID,
-    CROSS_TEAM_MIN_COMPLEXITY,
+    get CROSS_TEAM_MIN_COMPLEXITY() { return getConfig().crossTeamMinComplexity; },
+    DEFAULT_CONFIG,
+    getConfig,
+    updateConfig,
+    resetConfig,
+    sanitizeConfig,
     get ROUTES() { return getRoutes(); },
     getRoutes,
     activeFamilies,
@@ -1368,6 +1670,7 @@ module.exports = {
     pickCrossRoleQueue,
     notePick,
     agyPoolId,
+    agyRemainingPct,
     formatBanner,
     formatTeamBanner,
     directiveFor,
@@ -1381,6 +1684,7 @@ module.exports = {
     healBinaryCache,
     failureGroup,
     assessBudget,
+    agyPoolBudget,
     AGY_BIN,
     logDecision,
     noteOutcome,
@@ -1393,6 +1697,11 @@ module.exports = {
     agyBrainDir,
     setQuotaProvider,
     setProviderQuotaProvider,
+    hasQuotaProvider,
+    getFreshAccountQuota,
+    recordQuotaSnapshot,
+    getBurnRateStatus,
+    setTelegramNotifier,
     recordFailure,
     isInCooldown,
     clearCooldowns,

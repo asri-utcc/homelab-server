@@ -3478,9 +3478,12 @@ function loadSettingsView() {
             }
         });
 
+        initSettingsNav();
+        initCentralBrainSettingsUI(notify);
         initPrayerSettingsUI(notify);
         initFamilySettingsUI(notify);
     }
+    if (typeof window._syncCentralBrainSettingsUI === 'function') window._syncCentralBrainSettingsUI();
     if (typeof window._syncPrayerSettingsUI === 'function') window._syncPrayerSettingsUI();
     if (typeof window._syncFamilySettingsUI === 'function') window._syncFamilySettingsUI();
 
@@ -4365,4 +4368,298 @@ function initFamilySettingsUI(notify) {
             btnAppsSave.disabled = false;
         }
     });
+}
+
+// ── Settings Grouped Navigation & Central Brain Controller ───────────────────
+function initSettingsNav() {
+    if (window._settingsNavInit) return;
+    window._settingsNavInit = true;
+    const nav = document.getElementById('settings-nav');
+    const panels = document.getElementById('settings-panels');
+    const btnShowAll = document.getElementById('btn-settings-show-all');
+    if (!nav || !panels) return;
+
+    const STORAGE_KEY = 'lab_settings_group';
+    const SHOW_ALL_KEY = 'lab_settings_show_all';
+    const items = [...nav.querySelectorAll('.settings-nav__item')];
+    const groups = [...panels.querySelectorAll('.settings-group')];
+
+    const activateGroup = (id) => {
+        if (!groups.some((g) => g.dataset.settingsGroup === id)) id = 'brain';
+        localStorage.setItem(STORAGE_KEY, id);
+        items.forEach((btn) => btn.classList.toggle('is-active', btn.dataset.settingsTab === id));
+        groups.forEach((grp) => grp.classList.toggle('is-active', grp.dataset.settingsGroup === id));
+    };
+
+    const setShowAll = (on) => {
+        panels.classList.toggle('is-show-all', on);
+        if (btnShowAll) {
+            btnShowAll.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btnShowAll.textContent = on ? '🗂️ ดูทีละหมวด' : '📋 แสดงทุกหมวด';
+        }
+        localStorage.setItem(SHOW_ALL_KEY, on ? '1' : '0');
+    };
+
+    items.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (panels.classList.contains('is-show-all')) setShowAll(false);
+            activateGroup(btn.dataset.settingsTab);
+        });
+    });
+
+    btnShowAll?.addEventListener('click', () => {
+        setShowAll(!panels.classList.contains('is-show-all'));
+    });
+
+    const saved = localStorage.getItem(STORAGE_KEY) || 'brain';
+    activateGroup(saved);
+    if (localStorage.getItem(SHOW_ALL_KEY) === '1') setShowAll(true);
+}
+
+function initCentralBrainSettingsUI(notify) {
+    if (window._brainSetInit) return;
+    window._brainSetInit = true;
+
+    const elCtEnabled = document.getElementById('brain-ct-enabled');
+    const elCtMinRange = document.getElementById('brain-ct-min-range');
+    const elCtMinNum = document.getElementById('brain-ct-min-num');
+    const elCtMaxWorkers = document.getElementById('brain-ct-max-workers');
+    const elCtWorkerModel = document.getElementById('brain-ct-worker-model');
+    const elCtAllowNeon = document.getElementById('brain-ct-allow-neon');
+    const elCtMaxRework = document.getElementById('brain-ct-max-rework');
+    const elContMax = document.getElementById('brain-cont-max');
+    const elGeminiWeekly = document.getElementById('brain-gemini-weekly');
+    const elGeminiSoftgate = document.getElementById('brain-gemini-softgate');
+    const elMinWorkerQuota = document.getElementById('brain-min-worker-quota');
+    const el5hConserve = document.getElementById('brain-5h-conserve');
+    const el5hCritical = document.getElementById('brain-5h-critical');
+    const elBurnEnabled = document.getElementById('brain-burn-enabled');
+    const elBurnDrop = document.getElementById('brain-burn-drop');
+    const elBurnWindow = document.getElementById('brain-burn-window');
+    const elScaleHigh = document.getElementById('brain-scale-high');
+    const elScaleTeam = document.getElementById('brain-scale-team');
+    const elTierBar = document.getElementById('brain-tier-bar');
+    const elStatusBadge = document.getElementById('brain-status-badge');
+    const elNavBadge = document.getElementById('nav-brain-badge');
+    const elDirtyHint = document.getElementById('brain-dirty-hint');
+    const btnSave = document.getElementById('btn-brain-save');
+    const btnReset = document.getElementById('btn-brain-reset');
+    if (!elCtEnabled || !elCtMinRange || !elCtMinNum) return;
+
+    const PRESETS = {
+        economy: {
+            crossTeamEnabled: true, crossTeamMinComplexity: 90, crossTeamMaxWorkers: 2,
+            crossTeamWorkerDefaultModel: 'flash', crossTeamAllowNeonWorkers: false, crossTeamMaxReworkRounds: 1,
+            crossTeamMinWorkerQuotaPct: 25, geminiUseWeeklyLimit: true, geminiWeeklySoftGate: true,
+            fiveHourConservePct: 20, fiveHourCriticalPct: 10, economyMode: 'economy',
+            continuationMaxComplexity: 65, burnAlertEnabled: true, burnAlertDropPct: 25, burnAlertWindowMin: 60
+        },
+        balanced: {
+            crossTeamEnabled: true, crossTeamMinComplexity: 85, crossTeamMaxWorkers: 3,
+            crossTeamWorkerDefaultModel: 'hydrogen', crossTeamAllowNeonWorkers: false, crossTeamMaxReworkRounds: 1,
+            crossTeamMinWorkerQuotaPct: 20, geminiUseWeeklyLimit: true, geminiWeeklySoftGate: true,
+            fiveHourConservePct: 15, fiveHourCriticalPct: 8, economyMode: 'balanced',
+            continuationMaxComplexity: 74, burnAlertEnabled: true, burnAlertDropPct: 30, burnAlertWindowMin: 60
+        },
+        performance: {
+            crossTeamEnabled: true, crossTeamMinComplexity: 70, crossTeamMaxWorkers: 4,
+            crossTeamWorkerDefaultModel: 'neon', crossTeamAllowNeonWorkers: true, crossTeamMaxReworkRounds: 1,
+            crossTeamMinWorkerQuotaPct: 10, geminiUseWeeklyLimit: true, geminiWeeklySoftGate: false,
+            fiveHourConservePct: 12, fiveHourCriticalPct: 5, economyMode: 'performance',
+            continuationMaxComplexity: 85, burnAlertEnabled: true, burnAlertDropPct: 40, burnAlertWindowMin: 60
+        }
+    };
+
+    const ECON_LABELS = { economy: 'ประหยัด', balanced: 'สมดุล', performance: 'เน้นแรง' };
+    let serverSnapshot = null;
+
+    const clampNum = (v, lo, hi, fb) => {
+        const n = Math.round(Number(v));
+        return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fb;
+    };
+
+    const getEconVal = () => {
+        const r = document.querySelector('input[name="brain-economy"]:checked');
+        return r ? r.value : 'balanced';
+    };
+    const setEconVal = (v) => {
+        document.querySelectorAll('input[name="brain-economy"]').forEach((r) => { r.checked = r.value === v; });
+    };
+
+    const readForm = () => {
+        const conserve = clampNum(el5hConserve?.value, 5, 40, 15);
+        const maxCrit = Math.min(25, Math.max(2, conserve - 2));
+        return {
+            crossTeamEnabled: !!elCtEnabled.checked,
+            crossTeamMinComplexity: clampNum(elCtMinNum.value, 40, 100, 85),
+            crossTeamMaxWorkers: clampNum(elCtMaxWorkers?.value, 1, 6, 3),
+            crossTeamWorkerDefaultModel: elCtWorkerModel?.value || 'hydrogen',
+            crossTeamAllowNeonWorkers: !!elCtAllowNeon?.checked,
+            crossTeamMaxReworkRounds: clampNum(elCtMaxRework?.value, 0, 2, 1),
+            crossTeamMinWorkerQuotaPct: clampNum(elMinWorkerQuota?.value, 5, 60, 20),
+            geminiUseWeeklyLimit: !!elGeminiWeekly?.checked,
+            geminiWeeklySoftGate: !!elGeminiSoftgate?.checked,
+            fiveHourConservePct: conserve,
+            fiveHourCriticalPct: clampNum(el5hCritical?.value, 2, maxCrit, Math.min(8, maxCrit)),
+            economyMode: getEconVal(),
+            continuationMaxComplexity: clampNum(elContMax?.value, 40, 100, 74),
+            burnAlertEnabled: !!elBurnEnabled?.checked,
+            burnAlertDropPct: clampNum(elBurnDrop?.value, 10, 80, 30),
+            burnAlertWindowMin: clampNum(elBurnWindow?.value, 15, 240, 60)
+        };
+    };
+
+    const updateVisuals = () => {
+        const cfg = readForm();
+        const cutoff = cfg.crossTeamMinComplexity;
+        if (elScaleHigh) {
+            elScaleHigh.textContent = cutoff <= 60 ? '60 (ข้ามไปทีม)' : `60–${cutoff - 1} สูง (ตัวเดียว)`;
+        }
+        if (elScaleTeam) {
+            elScaleTeam.textContent = cfg.crossTeamEnabled ? `≥${cutoff} ทีมข้ามค่าย` : 'ปิดทีมอัตโนมัติ';
+        }
+        if (elTierBar) {
+            const highW = Math.max(5, cutoff - 60);
+            const teamW = Math.max(8, 101 - cutoff);
+            elTierBar.style.gridTemplateColumns = `35fr 25fr ${highW}fr ${teamW}fr`;
+        }
+        const badgeTxt = cfg.crossTeamEnabled
+            ? `≥${cutoff} · W${cfg.crossTeamMaxWorkers} · ${ECON_LABELS[cfg.economyMode] || cfg.economyMode}`
+            : `ปิดทีม · ${ECON_LABELS[cfg.economyMode] || cfg.economyMode}`;
+        if (elStatusBadge) elStatusBadge.textContent = badgeTxt;
+        if (elNavBadge) elNavBadge.textContent = cfg.crossTeamEnabled ? `≥${cutoff}` : 'ตัวเดียว';
+
+        document.querySelectorAll('[data-brain-preset]').forEach((btn) => {
+            const p = PRESETS[btn.dataset.brainPreset];
+            if (!p) return;
+            const match = p.crossTeamMinComplexity === cfg.crossTeamMinComplexity
+                && p.crossTeamMaxWorkers === cfg.crossTeamMaxWorkers
+                && p.economyMode === cfg.economyMode
+                && p.crossTeamAllowNeonWorkers === cfg.crossTeamAllowNeonWorkers;
+            btn.classList.toggle('is-active', match);
+        });
+
+        if (elDirtyHint && serverSnapshot) {
+            const dirty = JSON.stringify(cfg) !== JSON.stringify(serverSnapshot);
+            elDirtyHint.textContent = dirty ? '● มีค่าที่ยังไม่บันทึก — กดปุ่ม "บันทึกตั้งค่าสมองกลาง"' : '✅ ซิงก์ตรงกับเซิร์ฟเวอร์แล้ว';
+            elDirtyHint.classList.toggle('is-dirty', dirty);
+        }
+    };
+
+    const writeForm = (cfg) => {
+        if (!cfg) return;
+        elCtEnabled.checked = cfg.crossTeamEnabled !== false;
+        elCtMinRange.value = String(cfg.crossTeamMinComplexity ?? 85);
+        elCtMinNum.value = String(cfg.crossTeamMinComplexity ?? 85);
+        if (elCtMaxWorkers) elCtMaxWorkers.value = String(cfg.crossTeamMaxWorkers ?? 3);
+        if (elCtWorkerModel) elCtWorkerModel.value = cfg.crossTeamWorkerDefaultModel || 'hydrogen';
+        if (elCtAllowNeon) elCtAllowNeon.checked = Boolean(cfg.crossTeamAllowNeonWorkers);
+        if (elCtMaxRework) elCtMaxRework.value = String(cfg.crossTeamMaxReworkRounds ?? 1);
+        if (elContMax) elContMax.value = String(cfg.continuationMaxComplexity ?? 74);
+        if (elGeminiWeekly) elGeminiWeekly.checked = cfg.geminiUseWeeklyLimit !== false;
+        if (elGeminiSoftgate) elGeminiSoftgate.checked = cfg.geminiWeeklySoftGate !== false;
+        if (elMinWorkerQuota) elMinWorkerQuota.value = String(cfg.crossTeamMinWorkerQuotaPct ?? 20);
+        if (el5hConserve) el5hConserve.value = String(cfg.fiveHourConservePct ?? 15);
+        if (el5hCritical) el5hCritical.value = String(cfg.fiveHourCriticalPct ?? 8);
+        setEconVal(cfg.economyMode || 'balanced');
+        if (elBurnEnabled) elBurnEnabled.checked = cfg.burnAlertEnabled !== false;
+        if (elBurnDrop) elBurnDrop.value = String(cfg.burnAlertDropPct ?? 30);
+        if (elBurnWindow) elBurnWindow.value = String(cfg.burnAlertWindowMin ?? 60);
+        updateVisuals();
+    };
+
+    const loadBrainConfig = async () => {
+        try {
+            const res = await fetch('/api/ai-router/config');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const d = await res.json();
+            if (d && d.ok && d.config) {
+                writeForm(d.config);
+                serverSnapshot = readForm();
+                updateVisuals();
+            }
+        } catch (_) {
+            if (elDirtyHint) elDirtyHint.textContent = '⚠️ ยังโหลดค่าจากเซิร์ฟเวอร์ไม่ได้ (ใช้ค่าเริ่มต้นบนหน้าจอ)';
+        }
+    };
+
+    window._syncCentralBrainSettingsUI = loadBrainConfig;
+
+    elCtMinRange.addEventListener('input', () => {
+        elCtMinNum.value = elCtMinRange.value;
+        updateVisuals();
+    });
+    elCtMinNum.addEventListener('input', () => {
+        const n = clampNum(elCtMinNum.value, 40, 100, 85);
+        elCtMinRange.value = String(n);
+        updateVisuals();
+    });
+
+    [elCtEnabled, elCtMaxWorkers, elCtWorkerModel, elCtAllowNeon, elCtMaxRework, elContMax,
+        elGeminiWeekly, elGeminiSoftgate, elMinWorkerQuota, el5hConserve, el5hCritical,
+        elBurnEnabled, elBurnDrop, elBurnWindow].forEach((el) => {
+        if (!el) return;
+        el.addEventListener('change', updateVisuals);
+        el.addEventListener('input', updateVisuals);
+    });
+    document.querySelectorAll('input[name="brain-economy"]').forEach((r) => {
+        r.addEventListener('change', updateVisuals);
+    });
+
+    document.querySelectorAll('[data-brain-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const preset = PRESETS[btn.dataset.brainPreset];
+            if (!preset) return;
+            writeForm(preset);
+            notify(`⚡ เลือกโปรไฟล์ "${btn.querySelector('strong')?.textContent || btn.dataset.brainPreset}" แล้ว — กดบันทึกเพื่อใช้งาน`);
+        });
+    });
+
+    btnSave?.addEventListener('click', async () => {
+        const payload = readForm();
+        writeForm(payload);
+        btnSave.disabled = true;
+        try {
+            const res = await fetch('/api/ai-router/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const d = await res.json();
+            if (!res.ok || !d || !d.ok) {
+                notify('❌ ' + ((d && d.error) || 'บันทึกตั้งค่าสมองกลางไม่สำเร็จ'));
+                return;
+            }
+            writeForm(d.config);
+            serverSnapshot = readForm();
+            updateVisuals();
+            notify(`✅ บันทึกสมองกลางแล้ว (ทีมข้ามค่าย ≥${d.config.crossTeamMinComplexity} · Worker ${d.config.crossTeamMaxWorkers} ตัว)`);
+        } catch (e) {
+            notify('❌ บันทึกตั้งค่าสมองกลางไม่สำเร็จ: ' + e.message);
+        } finally {
+            btnSave.disabled = false;
+        }
+    });
+
+    btnReset?.addEventListener('click', async () => {
+        btnReset.disabled = true;
+        try {
+            const res = await fetch('/api/ai-router/config/reset', { method: 'POST' });
+            const d = await res.json();
+            if (!res.ok || !d || !d.ok) {
+                notify('❌ ' + ((d && d.error) || 'คืนค่าเริ่มต้นไม่สำเร็จ'));
+                return;
+            }
+            writeForm(d.config);
+            serverSnapshot = readForm();
+            updateVisuals();
+            notify('↺ คืนค่าตั้งต้นสมองกลางเรียบร้อย (เกณฑ์ทีมข้ามค่าย ≥85)');
+        } catch (e) {
+            notify('❌ คืนค่าเริ่มต้นไม่สำเร็จ: ' + e.message);
+        } finally {
+            btnReset.disabled = false;
+        }
+    });
+
+    loadBrainConfig();
 }

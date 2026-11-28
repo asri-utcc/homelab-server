@@ -2699,6 +2699,30 @@ const server = http.createServer(async (req, res) => {
                 routes: aiRouter.ROUTES
             });
         }
+        if (req.method === 'GET' && p === '/api/ai-router/config') {
+            return sendJson(res, 200, {
+                ok: true,
+                config: aiRouter.getConfig(),
+                defaults: aiRouter.DEFAULT_CONFIG,
+                burnStatus: aiRouter.getBurnRateStatus()
+            });
+        }
+        if (req.method === 'POST' && p === '/api/ai-router/config') {
+            if (!(await requireAdminSession(req, res))) return;
+            let body;
+            try {
+                body = await readJsonBody(req, 32 * 1024);
+            } catch (_) {
+                return sendJson(res, 400, { ok: false, error: 'ข้อมูล JSON ไม่ถูกต้อง' });
+            }
+            const config = aiRouter.updateConfig(body || {});
+            return sendJson(res, 200, { ok: true, config });
+        }
+        if (req.method === 'POST' && p === '/api/ai-router/config/reset') {
+            if (!(await requireAdminSession(req, res))) return;
+            const config = aiRouter.resetConfig();
+            return sendJson(res, 200, { ok: true, config });
+        }
         // ── 🧭 Model Registry & Watchdog ─────────────────────────────
         if (p === '/api/model-registry' && req.method === 'GET') {
             try {

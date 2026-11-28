@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>⚙️ System & AI Settings — Homelab</title>
+<title>⚙️ System &amp; AI Settings — Homelab</title>
 <style>
   :root {
     --bg: #040d14;
@@ -28,7 +28,7 @@
     min-height: 100vh;
     padding: 20px;
   }
-  .wrap { max-width: 980px; margin: 0 auto; }
+  .wrap { max-width: 1040px; margin: 0 auto; }
   .topbar {
     display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; gap: 12px;
@@ -36,10 +36,10 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
   }
   .topbar h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 10px; color: var(--cyan); }
-  .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn {
     font-family: var(--sans); font-size: 13px; font-weight: 600;
     padding: 7px 13px; border-radius: 7px;
@@ -52,7 +52,29 @@
   .btn:hover { border-color: var(--cyan); background: rgba(0, 229, 255, 0.14); }
   .btn--primary { background: rgba(0, 229, 255, 0.18); border-color: var(--cyan); color: #fff; }
   .btn--green { background: rgba(52, 211, 153, 0.16); border-color: var(--green); color: var(--green); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .tabs {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .tab-btn {
+    font-family: var(--sans); font-size: 13px; font-weight: 700;
+    padding: 9px 14px; border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--panel); color: var(--ink-muted);
+    cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover { color: var(--ink); border-color: var(--cyan); }
+  .tab-btn.is-active {
+    background: rgba(0, 229, 255, 0.16);
+    border-color: var(--cyan);
+    color: #fff;
+  }
+  .tab-panel { display: none; flex-direction: column; gap: 16px; }
+  .tab-panel.is-active { display: flex; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -61,11 +83,12 @@
   }
   .card h2 {
     margin: 0 0 14px 0; font-size: 15px; color: var(--cyan);
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
     border-bottom: 1px solid rgba(0, 229, 255, 0.12); padding-bottom: 10px;
   }
   .field { margin-bottom: 13px; }
   .field label { display: block; font-size: 12.5px; color: var(--ink-muted); margin-bottom: 5px; font-weight: 600; }
+  .hint { display: block; font-size: 11px; color: var(--ink-muted); margin-top: 4px; line-height: 1.4; }
   .input, select, textarea {
     width: 100%; padding: 9px 11px; border-radius: 8px;
     border: 1px solid rgba(0, 229, 255, 0.25);
@@ -73,7 +96,7 @@
     font-family: var(--sans); font-size: 13.5px; outline: none;
   }
   .input:focus, select:focus, textarea:focus { border-color: var(--cyan); }
-  textarea { font-family: var(--mono); font-size: 12.5px; min-height: 155px; resize: vertical; line-height: 1.5; }
+  textarea { font-family: var(--mono); font-size: 12.5px; min-height: 190px; resize: vertical; line-height: 1.5; }
   .toggle-row {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 10px 12px; border-radius: 8px;
@@ -100,6 +123,29 @@
   }
   .badge--ok { border-color: rgba(52,211,153,0.45); background: rgba(52,211,153,0.12); color: var(--green); }
   .badge--warn { border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.12); color: var(--amber); }
+  .presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .preset-btn {
+    padding: 10px 12px; border-radius: 9px; border: 1px solid var(--border);
+    background: rgba(3, 12, 20, 0.65); color: var(--ink); text-align: left;
+    cursor: pointer; font-family: inherit;
+  }
+  .preset-btn:hover { border-color: var(--cyan); }
+  .preset-btn.is-active { border-color: var(--cyan); background: rgba(0, 229, 255, 0.14); }
+  .preset-btn strong { display: block; font-size: 13px; }
+  .preset-btn small { display: block; font-size: 11px; color: var(--ink-muted); margin-top: 3px; }
+  .slider-box {
+    padding: 12px 14px; border-radius: 9px; border: 1px solid rgba(0,229,255,0.16);
+    background: rgba(3, 12, 20, 0.6); margin-bottom: 12px;
+  }
+  .scale-bar { display: grid; grid-template-columns: 35fr 25fr 25fr 15fr; gap: 4px; margin-top: 8px; font-size: 10.5px; }
+  .scale-seg { padding: 4px 6px; border-radius: 5px; text-align: center; border: 1px solid rgba(0,229,255,0.16); color: var(--ink-muted); }
+  .scale-seg--team { border-color: rgba(251,191,36,0.55); background: rgba(251,191,36,0.12); color: var(--amber); font-weight: 700; }
+  .action-bar {
+    position: sticky; bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    padding: 12px 16px; border-radius: 10px;
+    background: rgba(8, 26, 40, 0.96); border: 1px solid var(--cyan);
+  }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .toast {
     position: fixed; bottom: 22px; right: 22px; z-index: 999;
@@ -109,27 +155,194 @@
     display: none;
   }
   .toast.is-open { display: block; }
+  @media (max-width: 720px) {
+    .presets, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .scale-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="topbar">
-    <h1>⚙️ ตั้งค่าระบบทั่วไป (System &amp; AI Settings)</h1>
+    <h1>⚙️ ตั้งค่าระบบทั้งหมด (System &amp; AI Settings)</h1>
     <div class="topbar-actions">
+      <span id="auth-badge" class="badge badge--warn">CHECKING...</span>
       <a href="/gemini.html" class="btn btn--primary">🤖 กลับหน้า AI Chat</a>
-      <a href="/" class="btn">🛡️ Dashboard หลัก</a>
-      <a href="/cron.html" class="btn">⏰ Cron</a>
+      <a href="/#settings" class="btn">🛡️ Dashboard หลัก</a>
       <a href="/quota.html" class="btn">📊 โควตา</a>
     </div>
   </header>
 
-  <div class="grid">
-    <!-- AI & Workspace -->
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab-btn is-active" data-tab="brain">🧠 สมองกลาง AI &amp; โควตา <span class="badge badge--ok" id="tab-brain-badge">≥85</span></button>
+    <button type="button" class="tab-btn" data-tab="ai">🤖 โมเดล &amp; ความจำ AI</button>
+    <button type="button" class="tab-btn" data-tab="voice">🎙️ เสียง &amp; หน้าจอ</button>
+    <button type="button" class="tab-btn" data-tab="tools">📬 แจ้งเตือน &amp; เครื่องมือ</button>
+  </nav>
+
+  <!-- Tab 1: Central Brain -->
+  <div class="tab-panel is-active" data-panel="brain">
     <section class="card">
       <h2>
-        <span>🤖 AI &amp; Workspace</span>
-        <span id="auth-badge" class="badge badge--warn">CHECKING...</span>
+        <span>⚡ โปรไฟล์สมองกลาง (Quick Presets)</span>
+        <span id="brain-status-badge" class="badge badge--ok">≥85 · W3 · สมดุล</span>
       </h2>
+      <div class="presets">
+        <button type="button" class="preset-btn" data-brain-preset="economy">
+          <strong>🍃 ประหยัดสุด</strong>
+          <small>ทีม ≥90 · Worker 2 ตัว (Flash) · คุมโควตาเข้ม</small>
+        </button>
+        <button type="button" class="preset-btn" data-brain-preset="balanced">
+          <strong>⚖️ สมดุล (แนะนำ)</strong>
+          <small>ทีม ≥85 · Worker 3 ตัว (Hydrogen) · นับ Weekly</small>
+        </button>
+        <button type="button" class="preset-btn" data-brain-preset="performance">
+          <strong>🚀 เน้นความแรง</strong>
+          <small>ทีม ≥70 · Worker 4 ตัว (Neon) · ไม่บล็อก Weekly</small>
+        </button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span>🤝 ส่วนที่ 1: ควบคุมทีม AI ข้ามค่าย (Cross-Team Orchestrator)</span></h2>
+      <div class="toggle-row">
+        <div>
+          <div class="title">เปิดใช้ทีมข้ามค่ายอัตโนมัติ (Architect → Workers → Reviewer)</div>
+          <div class="sub">ปิดไว้หากต้องการให้ AI ทำงานตัวเดียวเสมอ (ยกเว้นสั่ง #ทีมข้ามค่าย เอง)</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="brain-ct-enabled" checked><span class="slider"></span></label>
+      </div>
+
+      <div class="slider-box">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+          <div>
+            <div style="font-size:13.5px;font-weight:700;">เกณฑ์ความยากขั้นต่ำในการเปิดทีมข้ามค่าย</div>
+            <div class="sub" style="font-size:11.5px;color:var(--ink-muted);">เปิดโหมดทีมอัตโนมัติเฉพาะงานความยาก ≥ ค่านี้ (แนะนำ 85)</div>
+          </div>
+          <div class="row">
+            <span>≥</span>
+            <input type="number" id="brain-ct-min-num" class="input" style="width:76px;text-align:center;font-family:var(--mono);font-weight:700;" min="40" max="100" value="85" autocomplete="off" data-lpignore="true" />
+            <span>/ 100</span>
+          </div>
+        </div>
+        <input type="range" id="brain-ct-min-range" min="40" max="100" step="1" value="85" style="width:100%;" />
+        <div class="scale-bar" id="brain-tier-bar">
+          <span class="scale-seg">0–34 ต่ำ</span>
+          <span class="scale-seg">35–59 กลาง</span>
+          <span class="scale-seg" id="brain-scale-high">60–84 สูง (ตัวเดียว)</span>
+          <span class="scale-seg scale-seg--team" id="brain-scale-team">≥85 ทีมข้ามค่าย</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="brain-ct-max-workers">จำนวน Worker สูงสุดต่องาน (ตัว)</label>
+          <input type="number" id="brain-ct-max-workers" class="input" min="1" max="6" value="3" autocomplete="off" data-lpignore="true" />
+          <span class="hint">งานระดับ XHigh จะขยายเพิ่มได้ +1 ตัว (ไม่เกิน 6)</span>
+        </div>
+        <div class="field">
+          <label for="brain-ct-worker-model">โมเดลเริ่มต้นของ Worker</label>
+          <select id="brain-ct-worker-model">
+            <option value="hydrogen">⚡ Hydrogen (คุ้มค่า/แนะนำ)</option>
+            <option value="flash">🍃 Flash 3.8 (ประหยัดสุด)</option>
+            <option value="argon">🟣 Argon (โควตาแยก)</option>
+            <option value="neon">💎 Neon (ฉลาดสุด/กินโควตา 2×)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="brain-ct-max-rework">รอบแก้ไขสูงสุดหลัง Reviewer ตรวจ</label>
+          <select id="brain-ct-max-rework">
+            <option value="0">0 รอบ (ไม่แก้ซ้ำ)</option>
+            <option value="1">1 รอบ (มาตรฐาน)</option>
+            <option value="2">2 รอบ (เข้มงวด)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="brain-cont-max">เพดานความยากของคำสั่งต่อเนื่อง</label>
+          <input type="number" id="brain-cont-max" class="input" min="40" max="100" value="74" autocomplete="off" data-lpignore="true" />
+          <span class="hint">กันคำสั่งสั้นอย่าง "ทำต่อเลย" ไม่ให้สืบทอดคะแนนไปเปิดทีมซ้ำ</span>
+        </div>
+      </div>
+
+      <div class="toggle-row" style="margin-bottom:0;">
+        <div>
+          <div class="title">อนุญาตให้ Worker ทั่วไปใช้โมเดล Neon</div>
+          <div class="sub">ถ้าปิด: สงวน Neon ไว้เฉพาะ Architect / Reviewer และงานระดับ #สูงมาก</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="brain-ct-allow-neon"><span class="slider"></span></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span>📊 ส่วนที่ 2: โควตา, โหมดประหยัด &amp; การแจ้งเตือน Telegram</span></h2>
+      <div class="field">
+        <label for="brain-economy">ระดับความประหยัดในการเลือกโมเดล (Economy Profile)</label>
+        <select id="brain-economy">
+          <option value="economy">🍃 ประหยัดเข้ม (เน้น Flash / Hydrogen)</option>
+          <option value="balanced">⚖️ สมดุล (แนะนำ — ใช้ของแพงเฉพาะงานยากจริง)</option>
+          <option value="performance">🚀 เน้นความฉลาด (พร้อมใช้ Neon เร็วขึ้น)</option>
+        </select>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="title">นับ Weekly Limit ของ Gemini ร่วมกับรอบ 5 ชม.</div>
+          <div class="sub">ดึงโควตารายสัปดาห์จาก agy /usage มาคำนวณงบไม่ให้หมดกลางสัปดาห์</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="brain-gemini-weekly" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="title">งดทีมข้ามค่ายอัตโนมัติเมื่อ Gemini Weekly ต่ำกว่าแผน</div>
+          <div class="sub">ถ้าโควตารายสัปดาห์ของทุกบัญชีเหลือต่ำกว่าเวลาที่เหลือ ระบบจะรันตัวเดียวแทน</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="brain-gemini-softgate" checked><span class="slider"></span></label>
+      </div>
+      <div class="grid-3">
+        <div class="field">
+          <label for="brain-min-worker-quota">โควตาขั้นต่ำก่อนปล่อย Worker (%)</label>
+          <input type="number" id="brain-min-worker-quota" class="input" min="5" max="60" value="20" autocomplete="off" data-lpignore="true" />
+        </div>
+        <div class="field">
+          <label for="brain-5h-conserve">เกณฑ์ถนอมรอบ 5 ชม. (%)</label>
+          <input type="number" id="brain-5h-conserve" class="input" min="5" max="40" value="15" autocomplete="off" data-lpignore="true" />
+        </div>
+        <div class="field">
+          <label for="brain-5h-critical">เกณฑ์วิกฤติรอบ 5 ชม. (%)</label>
+          <input type="number" id="brain-5h-critical" class="input" min="2" max="25" value="8" autocomplete="off" data-lpignore="true" />
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="title">แจ้งเตือน Telegram เมื่อโควตาบัญชีลดเร็วผิดปกติ</div>
+          <div class="sub">แจ้งเตือนอัตโนมัติเมื่อบัญชีใดลดลงเร็วกว่าเกณฑ์ที่ตั้งไว้</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="brain-burn-enabled" checked><span class="slider"></span></label>
+      </div>
+      <div class="grid-2">
+        <div class="field" style="margin-bottom:0;">
+          <label for="brain-burn-drop">แจ้งเตือนเมื่อลดลงเกิน (%)</label>
+          <input type="number" id="brain-burn-drop" class="input" min="10" max="80" value="30" autocomplete="off" data-lpignore="true" />
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="brain-burn-window">ภายในช่วงเวลา (นาที)</label>
+          <input type="number" id="brain-burn-window" class="input" min="15" max="240" step="5" value="60" autocomplete="off" data-lpignore="true" />
+        </div>
+      </div>
+    </section>
+
+    <div class="action-bar">
+      <span id="brain-dirty-hint" style="font-size:12.5px;color:var(--ink-muted);">✅ ซิงก์ตรงกับเซิร์ฟเวอร์แล้ว</span>
+      <div class="row">
+        <button type="button" id="btn-brain-reset" class="btn">↺ คืนค่าเริ่มต้น</button>
+        <button type="button" id="btn-brain-save" class="btn btn--primary">💾 บันทึกตั้งค่าสมองกลาง</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2: AI Models & Memory -->
+  <div class="tab-panel" data-panel="ai">
+    <section class="card">
+      <h2><span>🤖 AI &amp; Workspace</span></h2>
       <div class="field">
         <label for="set-model">โมเดล AI เริ่มต้น (Default Model)</label>
         <select id="set-model">
@@ -148,16 +361,26 @@
           <option value="/home/dev/projects">/home/dev/projects</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field" style="margin-bottom:0;">
         <label for="set-apikey">Gemini API Key (เว้นว่างหากใช้บัญชี Google Antigravity)</label>
         <div class="row">
-          <input type="password" id="set-apikey" class="input" style="flex:1" placeholder="AIzaSy... (ไม่บังคับ)" />
+          <input type="password" id="set-apikey" class="input" style="flex:1" placeholder="AIzaSy... (ไม่บังคับ)" autocomplete="off" data-lpignore="true" />
           <button type="button" id="btn-save-apikey" class="btn btn--primary">🔑 บันทึก Key</button>
         </div>
       </div>
     </section>
 
-    <!-- Voice & Audio -->
+    <section class="card">
+      <h2>
+        <span>🧠 ความจำระยะยาวของ AI (MEMORY.md)</span>
+        <button type="button" id="btn-save-memory" class="btn btn--primary">💾 บันทึกความจำ</button>
+      </h2>
+      <textarea id="set-memory" placeholder="กำลังโหลดความจำระยะยาว..."></textarea>
+    </section>
+  </div>
+
+  <!-- Tab 3: Voice & Audio -->
+  <div class="tab-panel" data-panel="voice">
     <section class="card">
       <h2><span>🎙️ เสียงพูด &amp; การแสดงผล (Voice &amp; UI)</span></h2>
       <div class="field">
@@ -199,13 +422,13 @@
         </div>
         <label class="switch"><input type="checkbox" id="chk-sound-fx"><span class="slider"></span></label>
       </div>
-      <div style="margin-bottom:12px;">
-        <div class="title" style="font-size:13.5px;font-weight:600;margin-bottom:6px;">🧠 เสียงตอน AI กำลังคิด</div>
-        <div style="display:flex;gap:8px;">
+      <div class="field">
+        <label for="set-think-sound">🧠 เสียงตอน AI กำลังคิด</label>
+        <div class="row">
           <select id="set-think-sound" style="flex:1;"></select>
           <button type="button" id="btn-test-think" class="btn">▶ ทดลองฟัง</button>
         </div>
-        <div class="sub" id="think-sound-desc" style="margin-top:4px;"></div>
+        <span class="hint" id="think-sound-desc"></span>
       </div>
       <div class="toggle-row" style="margin-bottom:0">
         <div>
@@ -217,25 +440,18 @@
     </section>
   </div>
 
-  <!-- Long-Term Memory -->
-  <section class="card" style="margin-bottom: 16px;">
-    <h2>
-      <span>🧠 ความจำระยะยาวของ AI (MEMORY.md)</span>
-      <button type="button" id="btn-save-memory" class="btn btn--primary">💾 บันทึกความจำ</button>
-    </h2>
-    <textarea id="set-memory" placeholder="กำลังโหลดความจำระยะยาว..."></textarea>
-  </section>
-
-  <!-- Telegram & Tools -->
-  <section class="card">
-    <h2><span>📬 การแจ้งเตือน Telegram &amp; เครื่องมือระบบ</span></h2>
-    <div class="row">
-      <button type="button" id="btn-test-telegram" class="btn btn--green">✈️ ทดสอบส่งข้อความเข้า Telegram</button>
-      <a href="/cron.html" class="btn">⏰ จัดการ Cron อัตโนมัติ</a>
-      <a href="/quota.html" class="btn">📊 ดูโควตา AI</a>
-      <a href="/#ports" class="btn">🛡️ พอร์ต, ไฟร์วอลล์ &amp; WireGuard</a>
-    </div>
-  </section>
+  <!-- Tab 4: Telegram & Tools -->
+  <div class="tab-panel" data-panel="tools">
+    <section class="card">
+      <h2><span>📬 การแจ้งเตือน Telegram &amp; เครื่องมือระบบ</span></h2>
+      <div class="row">
+        <button type="button" id="btn-test-telegram" class="btn btn--green">✈️ ทดสอบส่งข้อความเข้า Telegram</button>
+        <a href="/cron.html" class="btn">⏰ จัดการ Cron อัตโนมัติ</a>
+        <a href="/quota.html" class="btn">📊 ดูโควตา AI</a>
+        <a href="/#ports" class="btn">🛡️ พอร์ต, ไฟร์วอลล์ &amp; WireGuard</a>
+      </div>
+    </section>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -251,6 +467,171 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toastEl.classList.remove('is-open'), 2600);
   }
+
+  // Group tabs
+  const tabBtns = [...document.querySelectorAll('.tab-btn')];
+  const tabPanels = [...document.querySelectorAll('.tab-panel')];
+  const switchTab = (name) => {
+    tabBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.tab === name));
+    tabPanels.forEach((p) => p.classList.toggle('is-active', p.dataset.panel === name));
+    localStorage.setItem('standalone_settings_tab', name);
+  };
+  tabBtns.forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  const savedTab = localStorage.getItem('standalone_settings_tab');
+  if (savedTab && tabBtns.some((b) => b.dataset.tab === savedTab)) switchTab(savedTab);
+
+  // Central Brain controller
+  (function initBrain() {
+    const elCtEnabled = document.getElementById('brain-ct-enabled');
+    const elCtMinRange = document.getElementById('brain-ct-min-range');
+    const elCtMinNum = document.getElementById('brain-ct-min-num');
+    const elCtMaxWorkers = document.getElementById('brain-ct-max-workers');
+    const elCtWorkerModel = document.getElementById('brain-ct-worker-model');
+    const elCtAllowNeon = document.getElementById('brain-ct-allow-neon');
+    const elCtMaxRework = document.getElementById('brain-ct-max-rework');
+    const elContMax = document.getElementById('brain-cont-max');
+    const elEconomy = document.getElementById('brain-economy');
+    const elGeminiWeekly = document.getElementById('brain-gemini-weekly');
+    const elGeminiSoftgate = document.getElementById('brain-gemini-softgate');
+    const elMinWorkerQuota = document.getElementById('brain-min-worker-quota');
+    const el5hConserve = document.getElementById('brain-5h-conserve');
+    const el5hCritical = document.getElementById('brain-5h-critical');
+    const elBurnEnabled = document.getElementById('brain-burn-enabled');
+    const elBurnDrop = document.getElementById('brain-burn-drop');
+    const elBurnWindow = document.getElementById('brain-burn-window');
+    const elScaleHigh = document.getElementById('brain-scale-high');
+    const elScaleTeam = document.getElementById('brain-scale-team');
+    const elTierBar = document.getElementById('brain-tier-bar');
+    const elStatusBadge = document.getElementById('brain-status-badge');
+    const elTabBadge = document.getElementById('tab-brain-badge');
+    const elDirtyHint = document.getElementById('brain-dirty-hint');
+    const btnSave = document.getElementById('btn-brain-save');
+    const btnReset = document.getElementById('btn-brain-reset');
+    if (!elCtEnabled) return;
+
+    const PRESETS = {
+      economy: { crossTeamEnabled: true, crossTeamMinComplexity: 90, crossTeamMaxWorkers: 2, crossTeamWorkerDefaultModel: 'flash', crossTeamAllowNeonWorkers: false, crossTeamMaxReworkRounds: 1, crossTeamMinWorkerQuotaPct: 25, geminiUseWeeklyLimit: true, geminiWeeklySoftGate: true, fiveHourConservePct: 20, fiveHourCriticalPct: 10, economyMode: 'economy', continuationMaxComplexity: 65, burnAlertEnabled: true, burnAlertDropPct: 25, burnAlertWindowMin: 60 },
+      balanced: { crossTeamEnabled: true, crossTeamMinComplexity: 85, crossTeamMaxWorkers: 3, crossTeamWorkerDefaultModel: 'hydrogen', crossTeamAllowNeonWorkers: false, crossTeamMaxReworkRounds: 1, crossTeamMinWorkerQuotaPct: 20, geminiUseWeeklyLimit: true, geminiWeeklySoftGate: true, fiveHourConservePct: 15, fiveHourCriticalPct: 8, economyMode: 'balanced', continuationMaxComplexity: 74, burnAlertEnabled: true, burnAlertDropPct: 30, burnAlertWindowMin: 60 },
+      performance: { crossTeamEnabled: true, crossTeamMinComplexity: 70, crossTeamMaxWorkers: 4, crossTeamWorkerDefaultModel: 'neon', crossTeamAllowNeonWorkers: true, crossTeamMaxReworkRounds: 1, crossTeamMinWorkerQuotaPct: 10, geminiUseWeeklyLimit: true, geminiWeeklySoftGate: false, fiveHourConservePct: 12, fiveHourCriticalPct: 5, economyMode: 'performance', continuationMaxComplexity: 85, burnAlertEnabled: true, burnAlertDropPct: 40, burnAlertWindowMin: 60 }
+    };
+    const ECON_LABELS = { economy: 'ประหยัด', balanced: 'สมดุล', performance: 'เน้นแรง' };
+    let serverSnapshot = null;
+    const clamp = (v, lo, hi, fb) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fb; };
+
+    const readForm = () => {
+      const conserve = clamp(el5hConserve.value, 5, 40, 15);
+      const maxCrit = Math.min(25, Math.max(2, conserve - 2));
+      return {
+        crossTeamEnabled: !!elCtEnabled.checked,
+        crossTeamMinComplexity: clamp(elCtMinNum.value, 40, 100, 85),
+        crossTeamMaxWorkers: clamp(elCtMaxWorkers.value, 1, 6, 3),
+        crossTeamWorkerDefaultModel: elCtWorkerModel.value || 'hydrogen',
+        crossTeamAllowNeonWorkers: !!elCtAllowNeon.checked,
+        crossTeamMaxReworkRounds: clamp(elCtMaxRework.value, 0, 2, 1),
+        crossTeamMinWorkerQuotaPct: clamp(elMinWorkerQuota.value, 5, 60, 20),
+        geminiUseWeeklyLimit: !!elGeminiWeekly.checked,
+        geminiWeeklySoftGate: !!elGeminiSoftgate.checked,
+        fiveHourConservePct: conserve,
+        fiveHourCriticalPct: clamp(el5hCritical.value, 2, maxCrit, Math.min(8, maxCrit)),
+        economyMode: elEconomy.value || 'balanced',
+        continuationMaxComplexity: clamp(elContMax.value, 40, 100, 74),
+        burnAlertEnabled: !!elBurnEnabled.checked,
+        burnAlertDropPct: clamp(elBurnDrop.value, 10, 80, 30),
+        burnAlertWindowMin: clamp(elBurnWindow.value, 15, 240, 60)
+      };
+    };
+
+    const updateVisuals = () => {
+      const cfg = readForm();
+      const cutoff = cfg.crossTeamMinComplexity;
+      elScaleHigh.textContent = cutoff <= 60 ? '60 (ข้ามไปทีม)' : `60–${cutoff - 1} สูง (ตัวเดียว)`;
+      elScaleTeam.textContent = cfg.crossTeamEnabled ? `≥${cutoff} ทีมข้ามค่าย` : 'ปิดทีมอัตโนมัติ';
+      elTierBar.style.gridTemplateColumns = `35fr 25fr ${Math.max(5, cutoff - 60)}fr ${Math.max(8, 101 - cutoff)}fr`;
+      elStatusBadge.textContent = cfg.crossTeamEnabled ? `≥${cutoff} · W${cfg.crossTeamMaxWorkers} · ${ECON_LABELS[cfg.economyMode] || cfg.economyMode}` : 'ปิดทีมอัตโนมัติ';
+      elTabBadge.textContent = cfg.crossTeamEnabled ? `≥${cutoff}` : 'ตัวเดียว';
+      document.querySelectorAll('[data-brain-preset]').forEach((btn) => {
+        const p = PRESETS[btn.dataset.brainPreset];
+        btn.classList.toggle('is-active', p && p.crossTeamMinComplexity === cfg.crossTeamMinComplexity && p.crossTeamMaxWorkers === cfg.crossTeamMaxWorkers && p.economyMode === cfg.economyMode);
+      });
+      if (serverSnapshot) {
+        const dirty = JSON.stringify(cfg) !== JSON.stringify(serverSnapshot);
+        elDirtyHint.textContent = dirty ? '● มีค่าที่ยังไม่บันทึก — กดปุ่มบันทึกด้านขวา' : '✅ ซิงก์ตรงกับเซิร์ฟเวอร์แล้ว';
+        elDirtyHint.style.color = dirty ? 'var(--amber)' : 'var(--green)';
+      }
+    };
+
+    const writeForm = (cfg) => {
+      elCtEnabled.checked = cfg.crossTeamEnabled !== false;
+      elCtMinRange.value = String(cfg.crossTeamMinComplexity ?? 85);
+      elCtMinNum.value = String(cfg.crossTeamMinComplexity ?? 85);
+      elCtMaxWorkers.value = String(cfg.crossTeamMaxWorkers ?? 3);
+      elCtWorkerModel.value = cfg.crossTeamWorkerDefaultModel || 'hydrogen';
+      elCtAllowNeon.checked = Boolean(cfg.crossTeamAllowNeonWorkers);
+      elCtMaxRework.value = String(cfg.crossTeamMaxReworkRounds ?? 1);
+      elContMax.value = String(cfg.continuationMaxComplexity ?? 74);
+      elEconomy.value = cfg.economyMode || 'balanced';
+      elGeminiWeekly.checked = cfg.geminiUseWeeklyLimit !== false;
+      elGeminiSoftgate.checked = cfg.geminiWeeklySoftGate !== false;
+      elMinWorkerQuota.value = String(cfg.crossTeamMinWorkerQuotaPct ?? 20);
+      el5hConserve.value = String(cfg.fiveHourConservePct ?? 15);
+      el5hCritical.value = String(cfg.fiveHourCriticalPct ?? 8);
+      elBurnEnabled.checked = cfg.burnAlertEnabled !== false;
+      elBurnDrop.value = String(cfg.burnAlertDropPct ?? 30);
+      elBurnWindow.value = String(cfg.burnAlertWindowMin ?? 60);
+      updateVisuals();
+    };
+
+    fetch('/api/ai-router/config').then((r) => r.json()).then((d) => {
+      if (d && d.ok && d.config) {
+        writeForm(d.config);
+        serverSnapshot = readForm();
+        updateVisuals();
+      }
+    }).catch(() => {});
+
+    elCtMinRange.addEventListener('input', () => { elCtMinNum.value = elCtMinRange.value; updateVisuals(); });
+    elCtMinNum.addEventListener('input', () => { elCtMinRange.value = String(clamp(elCtMinNum.value, 40, 100, 85)); updateVisuals(); });
+    [elCtEnabled, elCtMaxWorkers, elCtWorkerModel, elCtAllowNeon, elCtMaxRework, elContMax, elEconomy, elGeminiWeekly, elGeminiSoftgate, elMinWorkerQuota, el5hConserve, el5hCritical, elBurnEnabled, elBurnDrop, elBurnWindow].forEach((el) => {
+      el.addEventListener('change', updateVisuals);
+      el.addEventListener('input', updateVisuals);
+    });
+    document.querySelectorAll('[data-brain-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const p = PRESETS[btn.dataset.brainPreset];
+        if (p) { writeForm(p); showToast('⚡ เลือกโปรไฟล์แล้ว — กดบันทึกเพื่อใช้งาน'); }
+      });
+    });
+    btnSave.addEventListener('click', async () => {
+      const payload = readForm();
+      writeForm(payload);
+      btnSave.disabled = true;
+      try {
+        const res = await fetch('/api/ai-router/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const d = await res.json();
+        if (res.ok && d && d.ok) {
+          writeForm(d.config);
+          serverSnapshot = readForm();
+          updateVisuals();
+          showToast('✅ บันทึกตั้งค่าสมองกลางเรียบร้อย');
+        } else showToast('❌ ' + ((d && d.error) || 'บันทึกไม่สำเร็จ'));
+      } catch (e) { showToast('❌ ' + e.message); }
+      finally { btnSave.disabled = false; }
+    });
+    btnReset.addEventListener('click', async () => {
+      btnReset.disabled = true;
+      try {
+        const res = await fetch('/api/ai-router/config/reset', { method: 'POST' });
+        const d = await res.json();
+        if (res.ok && d && d.ok) {
+          writeForm(d.config);
+          serverSnapshot = readForm();
+          updateVisuals();
+          showToast('↺ คืนค่าตั้งต้นสมองกลางเรียบร้อย (≥85)');
+        } else showToast('❌ คืนค่าไม่สำเร็จ');
+      } catch (e) { showToast('❌ ' + e.message); }
+      finally { btnReset.disabled = false; }
+    });
+  })();
 
   // AI thinking sound picker (shared themes from /ai-think-sounds.js)
   (function initThinkSound() {
@@ -298,8 +679,7 @@
   const chkHud = document.getElementById('chk-hud-visible');
   const txtMemory = document.getElementById('set-memory');
 
-function populateDefaultModels(d) {
-    // เติมรายชื่อโมเดลทั้งหมดจริงจาก server (Auto + Gemini + Claude + DeepSeek ...)
+  function populateDefaultModels(d) {
     if (Array.isArray(d.models) && d.models.length) {
       selModel.innerHTML = '';
       d.models.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; selModel.appendChild(o); });
@@ -314,7 +694,6 @@ function populateDefaultModels(d) {
       .then(r => r.json()).then(r => (r && r.ok ? ok : fail)()).catch(fail);
   }
 
-  // Load localStorage preferences
   selModel.value = localStorage.getItem('core_default_model') || 'auto';
   selStt.value = localStorage.getItem('stt_engine') || 'whisper';
   if (selVoiceStyle) selVoiceStyle.value = localStorage.getItem('core_tts_style') || 'natural';
@@ -327,28 +706,12 @@ function populateDefaultModels(d) {
       () => showToast('✅ บันทึกโมเดลเริ่มต้นแล้ว (ใช้กับแชทใหม่ทุกห้อง)'),
       () => showToast('⚠️ บันทึกลงเครื่องแล้ว แต่ซิงก์ขึ้น server ไม่สำเร็จ'));
   });
-  selCwd.addEventListener('change', () => {
-    localStorage.setItem('core_default_cwd', selCwd.value);
-    showToast('✅ บันทึกโฟลเดอร์ทำงานแล้ว');
-  });
-  selStt.addEventListener('change', () => {
-    localStorage.setItem('stt_engine', selStt.value);
-    showToast('✅ บันทึกโหมดแปลงเสียงแล้ว');
-  });
-  chkAutoTts.addEventListener('change', () => {
-    localStorage.setItem('core_auto_tts', chkAutoTts.checked ? '1' : '0');
-    showToast(chkAutoTts.checked ? '🗣️ เปิดอ่านออกเสียงอัตโนมัติ' : '🔇 ปิดอ่านออกเสียงอัตโนมัติ');
-  });
-  chkSoundFx.addEventListener('change', () => {
-    localStorage.setItem('gemini_sound_enabled', chkSoundFx.checked ? '1' : '0');
-    showToast(chkSoundFx.checked ? '🔊 เปิดเสียงเอฟเฟกต์แล้ว' : '🔇 ปิดเสียงเอฟเฟกต์แล้ว');
-  });
-  chkHud.addEventListener('change', () => {
-    localStorage.setItem('core_hud_hidden', chkHud.checked ? '0' : '1');
-    showToast(chkHud.checked ? '👁️ แสดงลูกแก้ว 3D HUD' : '🙈 ซ่อนลูกแก้ว 3D HUD');
-  });
+  selCwd.addEventListener('change', () => { localStorage.setItem('core_default_cwd', selCwd.value); showToast('✅ บันทึกโฟลเดอร์ทำงานแล้ว'); });
+  selStt.addEventListener('change', () => { localStorage.setItem('stt_engine', selStt.value); showToast('✅ บันทึกโหมดแปลงเสียงแล้ว'); });
+  chkAutoTts.addEventListener('change', () => { localStorage.setItem('core_auto_tts', chkAutoTts.checked ? '1' : '0'); showToast(chkAutoTts.checked ? '🗣️ เปิดอ่านออกเสียงอัตโนมัติ' : '🔇 ปิดอ่านออกเสียงอัตโนมัติ'); });
+  chkSoundFx.addEventListener('change', () => { localStorage.setItem('gemini_sound_enabled', chkSoundFx.checked ? '1' : '0'); showToast(chkSoundFx.checked ? '🔊 เปิดเสียงเอฟเฟกต์แล้ว' : '🔇 ปิดเสียงเอฟเฟกต์แล้ว'); });
+  chkHud.addEventListener('change', () => { localStorage.setItem('core_hud_hidden', chkHud.checked ? '0' : '1'); showToast(chkHud.checked ? '👁️ แสดงลูกแก้ว 3D HUD' : '🙈 ซ่อนลูกแก้ว 3D HUD'); });
 
-  // Load Gemini status & dirs
   fetch('/api/gemini/status').then(r => r.json()).then(d => {
     populateDefaultModels(d);
     if (d.hasAuth || d.hasKey) {
@@ -365,18 +728,13 @@ function populateDefaultModels(d) {
     }
   }).catch(() => {});
 
-  // Save API Key
   document.getElementById('btn-save-apikey').addEventListener('click', async () => {
     const key = inpApiKey.value.trim();
-    const res = await fetch('/api/gemini/config', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: key })
-    });
+    const res = await fetch('/api/gemini/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiKey: key }) });
     const d = await res.json();
     showToast(d.ok ? '🔑 บันทึก API Key เรียบร้อย' : '❌ บันทึกไม่สำเร็จ');
   });
 
-  // Load Voices
   let savedVoice = localStorage.getItem('core_tts_voice') || 'vachana:th_f_1';
   fetch('/api/tts/voices').then(r => r.json()).then(d => {
     if (d && d.ok && Array.isArray(d.voices)) {
@@ -389,16 +747,9 @@ function populateDefaultModels(d) {
       if ([...selVoice.options].some(o => o.value === savedVoice)) selVoice.value = savedVoice;
     }
   }).catch(() => {});
-  selVoice.addEventListener('change', () => {
-    localStorage.setItem('core_tts_voice', selVoice.value);
-    showToast('✅ บันทึกเสียงพูด AI แล้ว');
-  });
-  selVoiceStyle?.addEventListener('change', () => {
-    localStorage.setItem('core_tts_style', selVoiceStyle.value);
-    showToast('✅ บันทึกสไตล์น้ำเสียงแล้ว');
-  });
+  selVoice.addEventListener('change', () => { localStorage.setItem('core_tts_voice', selVoice.value); showToast('✅ บันทึกเสียงพูด AI แล้ว'); });
+  selVoiceStyle?.addEventListener('change', () => { localStorage.setItem('core_tts_style', selVoiceStyle.value); showToast('✅ บันทึกสไตล์น้ำเสียงแล้ว'); });
 
-  // Test Voice
   let testAudio = null;
   document.getElementById('btn-test-voice').addEventListener('click', async () => {
     if (testAudio) { try { testAudio.pause(); } catch (_) {} }
@@ -406,44 +757,29 @@ function populateDefaultModels(d) {
     try {
       const res = await fetch('/api/tts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: 'สวัสดีค่ะ! ระบบเสียงธรรมชาติพร้อมใช้งานแล้วนะคะ ✨ วันนี้อยากให้ช่วยดูแลเรื่องอะไรดีคะ?',
-          voice: selVoice.value,
-          style: selVoiceStyle ? selVoiceStyle.value : (localStorage.getItem('core_tts_style') || 'natural')
-        })
+        body: JSON.stringify({ text: 'สวัสดีค่ะ! ระบบเสียงธรรมชาติพร้อมใช้งานแล้วนะคะ ✨ วันนี้อยากให้ช่วยดูแลเรื่องอะไรดีคะ?', voice: selVoice.value, style: selVoiceStyle ? selVoiceStyle.value : (localStorage.getItem('core_tts_style') || 'natural') })
       });
       if (!res.ok) throw new Error('TTS failed');
       const blob = await res.blob();
       testAudio = new Audio(URL.createObjectURL(blob));
       await testAudio.play();
-    } catch (e) {
-      showToast('❌ ทดสอบเสียงไม่สำเร็จ: ' + e.message);
-    }
+    } catch (e) { showToast('❌ ทดสอบเสียงไม่สำเร็จ: ' + e.message); }
   });
 
-  // Load & Save Memory
-  fetch('/api/gemini/memory').then(r => r.json()).then(d => {
-    txtMemory.value = d.memory || '';
-  }).catch(() => {});
+  fetch('/api/gemini/memory').then(r => r.json()).then(d => { txtMemory.value = d.memory || ''; }).catch(() => {});
   document.getElementById('btn-save-memory').addEventListener('click', async () => {
-    const res = await fetch('/api/gemini/memory', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memory: txtMemory.value })
-    });
+    const res = await fetch('/api/gemini/memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memory: txtMemory.value }) });
     const d = await res.json();
     showToast(d.ok ? '🧠 บันทึกความจำระยะยาวเรียบร้อย' : '❌ บันทึกไม่สำเร็จ');
   });
 
-  // Test Telegram
   document.getElementById('btn-test-telegram').addEventListener('click', async () => {
     showToast('✈️ กำลังส่งข้อความทดสอบเข้า Telegram...');
     try {
       const res = await fetch('/api/settings/telegram-test', { method: 'POST' });
       const d = await res.json();
       showToast(d.ok ? '✅ ส่งข้อความเข้า Telegram สำเร็จ!' : '❌ ' + (d.error || 'ส่งไม่สำเร็จ'));
-    } catch (e) {
-      showToast('❌ ' + e.message);
-    }
+    } catch (e) { showToast('❌ ' + e.message); }
   });
 })();
 </script>

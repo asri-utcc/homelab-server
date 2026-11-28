@@ -3325,21 +3325,24 @@ async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
             }
         }
 
-        // กฎของผู้ใช้ (2026-11-27): pool Gemini (Hydrogen/Flash/Pro/Neon) นับเฉพาะลิมิต 5 ชม.
-        // ไม่นับ weekly (ถือว่าไม่จำกัดจนกว่าจะ error จริง) → ตัด weekly ออกที่ต้นทาง ทุกตัวที่ใช้ต่อจะไม่เห็นมัน
-        for (const pool of pools) {
-            if (pool.id !== 'gemini') continue;
-            delete pool.weekly;
-            if (pool.fiveHour) {
-                pool.remainingPct = pool.fiveHour.remainingPct;
-                pool.usedPct = pool.fiveHour.usedPct;
-                pool.resetTime = pool.fiveHour.resetTime;
-            } else if (basePoolPct.gemini) {
-                Object.assign(pool, basePoolPct.gemini);
+        const useGeminiWeekly = typeof aiRouter.getConfig === 'function'
+            ? aiRouter.getConfig().geminiUseWeeklyLimit !== false
+            : true;
+        if (!useGeminiWeekly) {
+            for (const pool of pools) {
+                if (pool.id !== 'gemini') continue;
+                delete pool.weekly;
+                if (pool.fiveHour) {
+                    pool.remainingPct = pool.fiveHour.remainingPct;
+                    pool.usedPct = pool.fiveHour.usedPct;
+                    pool.resetTime = pool.fiveHour.resetTime;
+                } else if (basePoolPct.gemini) {
+                    Object.assign(pool, basePoolPct.gemini);
+                }
             }
         }
 
-        return {
+        const quotaResult = {
             ok: true,
             account: account.id,
             accountLabel: account.label,
@@ -3355,6 +3358,10 @@ async function getQuotaSummary({ accountId = 'g1', force = false } = {}) {
             summaryGroups: summaryData?.groups || [],
             models: models.sort((a, b) => a.id.localeCompare(b.id))
         };
+        if (typeof aiRouter.recordQuotaSnapshot === 'function') {
+            aiRouter.recordQuotaSnapshot(account.id, quotaResult);
+        }
+        return quotaResult;
     } catch (err) {
         const prov = await provPromise.catch(() => ({ deepseek: null, claudeWeb: null }));
         const errMsg = String(err && err.message ? err.message : err);

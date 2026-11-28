@@ -846,7 +846,7 @@
           : (is5hWindow ? sharedWeeklyReset : p.resetTime);
         const rackUsedPct = p.weekly ? p.weekly.usedPct : p.usedPct;
         const pace = calculateWeeklyPace(rackUsedPct, weeklyResetForRack);
-        const fiveHourOnly = p.id === 'gemini'; // กฎผู้ใช้: pool Gemini นับเฉพาะ 5 ชม. ไม่แสดง weekly rack/pace
+        const fiveHourOnly = p.id === 'gemini' && !p.weekly; // แสดง weekly rack/pace เมื่อเปิดใช้นับ weekly ของ Gemini
         const badgeText = isExhausted ? '⚡ หมดโควตา (0%)' : (fiveHourOnly ? '5 ชม.' : pace.badgeLabel);
         const badgeCls = isExhausted ? 'pace-crit' : pace.badgeCls;
         const rackHtml = fiveHourOnly ? '' : build7SegmentRackHtml(rackUsedPct, pace.currentDayIndex);

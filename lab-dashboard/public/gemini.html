@@ -10311,6 +10311,24 @@ body::before {
       startListening();
     }
   });
+  // Enter when focus is on the mic button / body (not a text field): send instead of re-toggling the mic
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing) return;
+    const ae = document.activeElement;
+    const onMic = !!(btnMic && ae === btnMic);
+    const onBody = !ae || ae === document.body;
+    if (!onMic && !onBody) return;
+    if (document.querySelector('.modal-overlay.is-open')) return;
+    e.preventDefault();
+    if (isVoiceListening) {
+      autoSendAfterVoice = true;
+      stopListening(false);
+    } else if (isTranscribing) {
+      autoSendAfterVoice = true;
+    } else if (promptInput.value.trim() || pendingAttachments.length > 0) {
+      sendPrompt();
+    }
+  }, true);
   window.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'start_voice_new_chat') {
       document.getElementById('btn-new-chat')?.click();

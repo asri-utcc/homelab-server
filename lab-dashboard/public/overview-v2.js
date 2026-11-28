@@ -2209,20 +2209,28 @@
                     <div class="ov3-qpool-card__title" data-family="claude" title="Claude.ai (${esc(planUpper)}) · ${esc(cw.orgName || 'OAuth')}">${esc(tag)}Claude ${esc(planUpper)} · 5h + Wk</div>
                     <span class="ov3-badge" data-tone="${badgeTone}" title="${esc(badgeTitle)}">${esc(badgeText)}</span>
                 </div>
-                <div class="ov3-qpool-card__metric-row">
-                    <div class="ov3-qpool-card__pct" data-tone="${wkTone}">${wkRem}%<span>คงเหลือ</span></div>
-                    <span class="ov3-qmeta-row">ใช้ ${wkUsed}% · Weekly</span>
+                <div class="ov3-qsub-block">
+                    <div class="ov3-qsub-row">
+                        <span class="ov3-qsub-row__lbl">5h Limit · ใช้ ${fhUsed}%</span>
+                        <span class="ov3-qsub-row__val" data-tone="${fhTone}">${fhRem}%</span>
+                    </div>
+                    <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${fhTone}" style="width:${fhRem}%"></span></div>
+                    <div class="ov3-qmeta-row">
+                        <span>รีเซ็ต 5 ชม.</span>
+                        <span data-quota-reset="${esc(fh.resetTime || '')}">${esc(fmtQuotaCountdown(fh.resetTime))}</span>
+                    </div>
                 </div>
-                <div class="ov3-qbar"><span class="ov3-qbar__fill" data-tone="${wkTone}" style="width:${wkRem}%"></span></div>
-                <div class="ov3-qmeta-row">
-                    <span>วัน D${wkPace.currentDayIndex}/7</span>
-                    <span data-quota-reset="${esc(wk.resetTime || '')}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>
+                <div class="ov3-qsub-block">
+                    <div class="ov3-qsub-row">
+                        <span class="ov3-qsub-row__lbl">Weekly · ใช้ ${wkUsed}% (D${wkPace.currentDayIndex}/7)</span>
+                        <span class="ov3-qsub-row__val" data-tone="${wkTone}">${wkRem}%</span>
+                    </div>
+                    <div class="ov3-qmeta-row">
+                        <span>รีเซ็ตสัปดาห์</span>
+                        <span data-quota-reset="${esc(wk.resetTime || '')}">${esc(fmtQuotaCountdown(wk.resetTime))}</span>
+                    </div>
+                    ${wkRack}
                 </div>
-                <div class="ov3-qmeta-row ov3-qmeta-row--split">
-                    <span>5h: <strong class="ov3-qval" data-tone="${fhTone}">${fhRem}%</strong> · <span data-quota-reset="${esc(fh.resetTime || '')}">${esc(fmtQuotaCountdown(fh.resetTime))}</span></span>
-                    <span>Wk: <strong class="ov3-qval" data-tone="${wkTone}">${wkRem}%</strong></span>
-                </div>
-                ${wkRack}
                 <div class="ov3-qpace" data-level="${wkPace.level}" title="${esc(wkPace.summaryText)}">${esc(wkPace.summaryText)}</div>
                 ${isExhausted ? `
                     <div class="ov3-qcountdown-box">

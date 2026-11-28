@@ -263,6 +263,11 @@ PYEOF
     exec "$VENV_PY" "$BASE/scripts/send_telegram_video.py" "$@"
     ;;
 
+  send-youtube)
+    # uploads to the YouTube channel via /home/dev/.local/bin/yt-upload (PRIVATE unless --privacy is given)
+    exec /home/dev/.local/bin/yt-upload upload "$@"
+    ;;
+
   styles)
     python3 - "$@" << 'PYEOF'
 import argparse, json
@@ -324,6 +329,8 @@ Commands:
                                            Generate QA Storyboard PNG + Animated GIF preview
   loudness <file.mp4>                      Measure integrated LUFS and true peak via ffmpeg ebur128
   send-telegram <video.mp4> "<caption>"    Send finished MP4 directly to Telegram
+  send-youtube <video.mp4> --title "T" [--description D] [--tags a,b] [--privacy private|unlisted|public] [--synthetic]
+                                           Upload to YouTube channel ย่อโลกมายำ (default: private)
   clean [--days 7]                         Clean old files in /home/dev/.gemini/outputs/videos
 USAGE
     ;;

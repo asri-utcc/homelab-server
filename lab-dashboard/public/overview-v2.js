@@ -2532,7 +2532,17 @@
         if (ui.quotaTab === 'all') {
             const flatCards = [];
             accounts.forEach((a, idx) => {
-                flatCards.push(buildGooglePoolCards(a, { accountTag: shortAccountTag(a, idx) }));
+                const tag = shortAccountTag(a, idx);
+                const nPools = Math.max(1, (a.data && Array.isArray(a.data.pools)) ? a.data.pools.length : 1);
+                const email = (a.data && a.data.email) || a.email || '';
+                flatCards.push(`
+                    <section class="ov3-qacct-group" data-acct="${idx % 2}" style="--qacct-span:${nPools}">
+                        <div class="ov3-qacct-group__head">
+                            <span class="ov3-qacct-group__name">${esc(tag)} · ${esc(a.label || 'Google')}</span>
+                            ${email ? `<span class="ov3-qacct-group__sub">${esc(email)}</span>` : ''}
+                        </div>
+                        <div class="ov3-qacct-group__cards" style="--qacct-cols:${nPools}">${buildGooglePoolCards(a, { accountTag: tag })}</div>
+                    </section>`);
             });
             flatCards.push(buildClaudeUnifiedCard(cw, { accountTag: '' }));
             flatCards.push(buildCreditsCards(ds, gc, { compact: true }));

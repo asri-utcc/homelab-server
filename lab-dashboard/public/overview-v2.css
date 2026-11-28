@@ -4086,3 +4086,43 @@
     }
 
 }
+
+/* Per-account group frame (All tab): wraps each Google account's Gemini + Claude/GPT cards */
+.ov3-qacct-group {
+    --qacct-color: 56, 189, 248;
+    grid-column: span var(--qacct-span, 2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 9px 9px;
+    border-radius: 14px;
+    border: 2px solid rgba(var(--qacct-color), 0.55);
+    background: rgba(var(--qacct-color), 0.06);
+    box-shadow: 0 0 0 1px rgba(var(--qacct-color), 0.12) inset;
+    min-width: 0;
+}
+.ov3-qacct-group[data-acct="1"] { --qacct-color: 250, 204, 21; }
+.ov3-qacct-group__head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgb(var(--qacct-color));
+}
+.ov3-qacct-group__sub {
+    font-family: var(--ov-mono);
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--ov-ink-3);
+}
+.ov3-qacct-group__cards {
+    display: grid;
+    grid-template-columns: repeat(var(--qacct-cols, 2), minmax(0, 1fr));
+    gap: 9px;
+}
+@media (max-width: 760px) {
+    .ov3-qacct-group { grid-column: auto; }
+    .ov3-qacct-group__cards { grid-template-columns: minmax(0, 1fr); }
+}

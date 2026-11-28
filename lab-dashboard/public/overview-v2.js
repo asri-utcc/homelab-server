@@ -3415,6 +3415,9 @@
                     theme: getCurrentTheme(),
                     demoMode: ui.poDemoMode,
                     onSelect: (meta) => {
+                        if (meta && meta.type === 'agent' && meta.agentId && ui.poPanels) {
+                            ui.poPanels.select(meta.agentId);
+                        }
                         if (meta && meta.dept) {
                             const deptMap = { ops: 'hub', cron: 'video' };
                             ui.poSelectedDept = deptMap[meta.dept] || meta.dept;
@@ -3422,6 +3425,9 @@
                         }
                     },
                 });
+                if (window.PixelOfficePanels) {
+                    ui.poPanels = window.PixelOfficePanels.attach(hostEl.parentElement, ui.poCtrl, { hostEl });
+                }
                 syncPixelOffice();
                 syncWorkshopActive();
             } catch (_) {
@@ -3464,6 +3470,7 @@
         const wsInsp = $('ov3-ws-inspector');
 
         if (poHost) poHost.hidden = (next !== 'pixel');
+        document.querySelectorAll('.po-pn, .po-tgl').forEach((el) => { el.hidden = (next !== 'pixel'); });
         if (poLegend) poLegend.hidden = (next !== 'pixel');
         if (poTip && next !== 'pixel') poTip.hidden = true;
         if (wsHost) wsHost.hidden = (next !== '3d');

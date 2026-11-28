@@ -3006,6 +3006,20 @@
         applyLiveMapping(lastPayload);
         return computeSummary();
       },
+      getAgents: function () {
+        return agents.map(function (a) {
+          var rm = roomById[a.currentRoomId];
+          return {
+            id: a.id, name: a.name, role: a.role, deptId: a.deptId,
+            state: a.state, subState: a.subState, working: Boolean(a.assignedWork),
+            workDetail: a.workDetail || '', bubble: a.bubble || '',
+            activityLabel: a.activity ? a.activity.label : '',
+            roomId: a.currentRoomId, roomLabel: rm ? rm.label : '',
+            handoffLabel: a.handoffLabel || '', handoffTo: a.handoffTargetAgentId || '',
+            shirt: (a.look && a.look.shirt) || '#8b6ae6'
+          };
+        });
+      },
       getState: function () {
         var sum = computeSummary();
         sum.focusedDept = cam.focusedDept;

@@ -113,6 +113,13 @@ function encodeImageToDataUrl(imgPath) {
 
 function buildUserMessageContent(text, imagePaths, allowVision, onWarn) {
     if (!imagePaths || imagePaths.length === 0) return text;
+    const isImg = (p) => Boolean(MIME_BY_EXT[path.extname(p).toLowerCase()]);
+    const filePaths = imagePaths.filter((p) => !isImg(p));
+    if (filePaths.length > 0) {
+        text = `[ผู้ใช้งานแนบไฟล์มาด้วย กรุณาเปิดอ่านไฟล์ต่อไปนี้:\n${filePaths.map((p) => `- ${p}`).join('\n')}\n]\n\n${text}`;
+        imagePaths = imagePaths.filter(isImg);
+        if (imagePaths.length === 0) return text;
+    }
     if (!allowVision) {
         if (onWarn) {
             onWarn('⚠️ โมเดลนี้รองรับเฉพาะข้อความ (ไม่รองรับรูปภาพ) — ระบบข้ามไฟล์รูปภาพให้แล้ว หากต้องการวิเคราะห์รูปแนะนำให้เลือก DeepSeek V4.1 Flash (Vision)\n');

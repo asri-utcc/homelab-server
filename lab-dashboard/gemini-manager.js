@@ -121,9 +121,44 @@ async function saveUploadedImage(dataUrl, originalName = 'image.png') {
     };
 }
 
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+// Accepts any file (json, txt, pdf, zip, ...). Images keep the img_ naming; others keep a sanitized original name.
+async function saveUploadedFile(dataUrl, originalName = 'file.bin') {
+    const match = String(dataUrl || '').match(/^data:[^;,]*(?:;[^;,]*)*;base64,([A-Za-z0-9+/=\s]*)$/i);
+    if (!match) {
+        throw new Error('รูปแบบไฟล์ที่อัปโหลดไม่ถูกต้อง');
+    }
+    const buffer = Buffer.from(match[1].replace(/\s+/g, ''), 'base64');
+    if (buffer.length === 0) throw new Error('ไฟล์ว่างเปล่า');
+    if (buffer.length > MAX_UPLOAD_BYTES) {
+        throw new Error('ขนาดไฟล์ต้องไม่เกิน 25 MB');
+    }
+    const base = path.basename(String(originalName || 'file.bin'));
+    const parsed = path.parse(base);
+    let ext = parsed.ext.replace(/^\./, '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'bin';
+    const isImage = IMAGE_EXTS.has(ext);
+    const stem = parsed.name.replace(/[^\p{L}\p{M}\p{N}._-]+/gu, '_').replace(/^\.+/, '').slice(0, 60) || 'file';
+    await fsp.mkdir(UPLOADS_DIR, { recursive: true });
+    const uid = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const filename = isImage ? `img_${uid}.${ext === 'jpeg' ? 'jpg' : ext}` : `file_${uid}_${stem}.${ext}`;
+    const filePath = path.join(UPLOADS_DIR, filename);
+    await fsp.writeFile(filePath, buffer);
+    return {
+        ok: true,
+        filename,
+        originalName: base,
+        isImage,
+        size: buffer.length,
+        path: filePath,
+        url: `/api/gemini/uploads/${encodeURIComponent(filename)}`
+    };
+}
+
 async function enqueueTask({ sessionId = null, prompt, images = [], mode = 'exec', cwd = PROJECTS_BASE, model = null }) {
     const cleanImages = Array.isArray(images) ? images : [];
-    const cleanPrompt = (prompt || '').trim() || (cleanImages.length > 0 ? 'ช่วยดูและวิเคราะห์รูปภาพที่แนบมานี้หน่อย' : '');
+    const cleanPrompt = (prompt || '').trim() || (cleanImages.length > 0 ? 'ช่วยดูและวิเคราะห์ไฟล์ที่แนบมานี้หน่อย' : '');
     if (!cleanPrompt) throw new Error('ข้อความคำสั่งว่างเปล่า ไม่สามารถเพิ่มเข้าคิวได้');
 
     const sid = resolveSessionId(sessionId);
@@ -1750,9 +1785,14 @@ function executePrompt({ sessionId = null, jobId = null, prompt, images = [], mo
     // bvHint and routerDirective go to the CLI/agent only — history keeps the user's own prompt
     const bvHint = buildBrowserVisionHint(sid, browserVision);
     const directedPrompt = [bvHint, routerDirective, prompt].filter(Boolean).join('\n\n');
-    const cliPrompt = imagePaths.length > 0
-        ? `[ผู้ใช้งานแนบรูปภาพมาด้วย กรุณาอ่าน/ดูไฟล์รูปภาพต่อไปนี้ก่อนตอบคำถาม:\n${imagePaths.map((p) => `- ${p}`).join('\n')}\n]\n\n${directedPrompt}`
-        : directedPrompt;
+    const isImgPath = (p) => IMAGE_EXTS.has(path.extname(p).slice(1).toLowerCase());
+    const attachImgs = imagePaths.filter(isImgPath);
+    const attachFiles = imagePaths.filter((p) => !isImgPath(p));
+    const attachNotice = [
+        attachImgs.length > 0 ? `[ผู้ใช้งานแนบรูปภาพมาด้วย กรุณาอ่าน/ดูไฟล์รูปภาพต่อไปนี้ก่อนตอบคำถาม:\n${attachImgs.map((p) => `- ${p}`).join('\n')}\n]` : '',
+        attachFiles.length > 0 ? `[ผู้ใช้งานแนบไฟล์มาด้วย กรุณาเปิดอ่านไฟล์ต่อไปนี้ก่อนตอบคำถาม:\n${attachFiles.map((p) => `- ${p}`).join('\n')}\n]` : ''
+    ].filter(Boolean).join('\n\n');
+    const cliPrompt = attachNotice ? `${attachNotice}\n\n${directedPrompt}` : directedPrompt;
 
     // Sanitize cwd
     let safeCwd = PROJECTS_BASE;
@@ -4590,6 +4630,7 @@ module.exports = {
     processNextInQueue,
     UPLOADS_DIR,
     saveUploadedImage,
+    saveUploadedFile,
     getQuotaSummary,
     getGeminiCredit,
     setClaudeSessionKey,

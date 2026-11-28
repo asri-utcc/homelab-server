@@ -1997,6 +1997,10 @@ body::before {
   color: var(--cyan);
   padding: 4px 8px;
 }
+.attach-thumb--file { width: auto; min-width: 58px; max-width: 150px; background: rgba(0,229,255,0.08); }
+.attach-file-chip { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 4px 8px; gap: 2px; color: var(--cyan); font-family: var(--mono); font-size: 10px; }
+.attach-file-chip__name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg__file-link { display: inline-block; padding: 6px 10px; border: 1px solid rgba(0,229,163,0.45); border-radius: 4px; color: inherit; font-family: var(--mono); font-size: 12px; text-decoration: none; background: rgba(0,229,163,0.08); }
 .msg__images {
   display: flex;
   flex-wrap: wrap;
@@ -4231,7 +4235,7 @@ body::before {
         </div>
 
         <div id="attach-preview-bar" class="attach-preview-bar" style="display:none;"></div>
-        <input type="file" id="image-file-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none;" />
+        <input type="file" id="image-file-input" multiple style="display:none;" />
 
         <div id="voice-active-indicator" style="display:none; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; color:#ff5f56; background:rgba(255,59,48,0.12); border:1px solid rgba(255,59,48,0.3); padding:5px 12px;">
           <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ff3b30; box-shadow:0 0 8px #ff3b30;"></span>
@@ -8680,10 +8684,19 @@ body::before {
         const url = typeof img === 'string' ? img : (img && img.url);
         if (!url) return;
         const a = document.createElement('a');
-        a.className = 'msg__img-link';
         a.href = url;
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
+        const imgName = (img && img.originalName) || '';
+        const looksImage = (img && img.isImage === false) ? false : /\/img_[^/]+\.(png|jpe?g|webp|gif)$/i.test(url) || /\.(png|jpe?g|webp|gif)$/i.test(imgName);
+        if (!looksImage) {
+          a.className = 'msg__file-link';
+          a.download = imgName || '';
+          a.textContent = '📄 ' + (imgName || decodeURIComponent(url.split('/').pop()));
+          imgWrap.appendChild(a);
+          return;
+        }
+        a.className = 'msg__img-link';
         const imageEl = document.createElement('img');
         imageEl.src = url;
         imageEl.alt = (img && img.originalName) || 'attached image';
@@ -9369,7 +9382,12 @@ body::before {
     pendingAttachments.forEach((img, idx) => {
       const box = document.createElement('div');
       box.className = 'attach-thumb';
-      box.innerHTML = `<img src="${img.url}" alt="attachment" /><button type="button" class="attach-thumb__rm" title="ลบรูปนี้">✕</button>`;
+      const isImg = img.isImage !== false;
+      if (!isImg) box.classList.add('attach-thumb--file');
+      box.innerHTML = (isImg
+        ? `<img src="${img.url}" alt="attachment" />`
+        : `<div class="attach-file-chip" title="${escapeHtml(img.originalName || '')}"><span>📄</span><span class="attach-file-chip__name">${escapeHtml(img.originalName || 'file')}</span></div>`)
+        + `<button type="button" class="attach-thumb__rm" title="ลบไฟล์นี้">✕</button>`;
       box.querySelector('.attach-thumb__rm').addEventListener('click', () => {
         pendingAttachments.splice(idx, 1);
         renderAttachPreviews();
@@ -9380,13 +9398,13 @@ body::before {
     if (uploadingCount > 0) {
       const sp = document.createElement('div');
       sp.className = 'attach-uploading';
-      sp.textContent = `⏳ กำลังอัปโหลดรูปภาพ (${uploadingCount})...`;
+      sp.textContent = `⏳ กำลังอัปโหลดไฟล์ (${uploadingCount})...`;
       attachPreviewBar.appendChild(sp);
     }
   }
 
   async function uploadImageFiles(fileList) {
-    const files = Array.from(fileList || []).filter((f) => f && f.type && f.type.startsWith('image/'));
+    const files = Array.from(fileList || []).filter((f) => f && f.size > 0);
     if (files.length === 0) return;
 
     for (const file of files) {
@@ -9402,16 +9420,16 @@ body::before {
         const res = await fetch('/api/gemini/upload-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataUrl, filename: file.name || 'image.png' })
+          body: JSON.stringify({ dataUrl, filename: file.name || 'file.bin' })
         });
         const data = await res.json();
         if (res.ok && data.ok) {
-          pendingAttachments.push({ url: data.url, path: data.path, originalName: data.originalName });
+          pendingAttachments.push({ url: data.url, path: data.path, originalName: data.originalName, isImage: data.isImage });
         } else {
-          alert('อัปโหลดรูปไม่สำเร็จ: ' + (data.error || 'Unknown error'));
+          alert('อัปโหลดไฟล์ไม่สำเร็จ: ' + (data.error || 'Unknown error'));
         }
       } catch (err) {
-        alert('เกิดข้อผิดพลาดในการอัปโหลดรูป: ' + err.message);
+        alert('เกิดข้อผิดพลาดในการอัปโหลดไฟล์: ' + err.message);
       } finally {
         uploadingCount--;
         renderAttachPreviews();
@@ -9435,7 +9453,7 @@ body::before {
       if (!items) return;
       const imgFiles = [];
       for (const item of items) {
-        if (item.type && item.type.startsWith('image/')) {
+        if (item.kind === 'file') {
           const f = item.getAsFile();
           if (f) imgFiles.push(f);
         }
@@ -9470,7 +9488,7 @@ body::before {
     }
 
     if (uploadingCount > 0) {
-      alert('กรุณารอให้อัปโหลดรูปภาพเสร็จก่อนส่งคำสั่งครับ');
+      alert('กรุณารอให้อัปโหลดไฟล์เสร็จก่อนส่งคำสั่งครับ');
       return;
     }
 

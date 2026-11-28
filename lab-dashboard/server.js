@@ -3050,16 +3050,16 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (req.method === 'POST' && p === '/api/gemini/upload-image') {
-            const body = await readJsonBody(req, 12 * 1024 * 1024);
+            const body = await readJsonBody(req, 36 * 1024 * 1024);
             try {
-                const result = await geminiManager.saveUploadedImage(body.dataUrl, body.filename);
+                const result = await geminiManager.saveUploadedFile(body.dataUrl, body.filename);
                 return sendJson(res, 200, result);
             } catch (err) {
                 return sendJson(res, 400, { error: err.message });
             }
         }
         if (req.method === 'GET' && p.startsWith('/api/gemini/uploads/')) {
-            const fname = path.basename(p.slice('/api/gemini/uploads/'.length));
+            const fname = path.basename(decodeURIComponent(p.slice('/api/gemini/uploads/'.length)));
             const filePath = path.join(geminiManager.UPLOADS_DIR, fname);
             try {
                 const data = await fsp.readFile(filePath);
@@ -3068,11 +3068,17 @@ const server = http.createServer(async (req, res) => {
                     : (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg'
                     : ext === '.webp' ? 'image/webp'
                     : ext === '.gif' ? 'image/gif' : 'application/octet-stream';
-                res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' });
+                const isImg = mime !== 'application/octet-stream';
+                res.writeHead(200, {
+                    'Content-Type': mime,
+                    'Cache-Control': 'public, max-age=86400',
+                    'X-Content-Type-Options': 'nosniff',
+                    ...(isImg ? {} : { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fname)}` })
+                });
                 res.end(data);
                 return;
             } catch (_) {
-                return sendJson(res, 404, { error: 'Image not found' });
+                return sendJson(res, 404, { error: 'File not found' });
             }
         }
 

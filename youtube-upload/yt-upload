@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/dev/.local/share/lab-social/venv/bin/python /home/dev/projects/homelab-server/youtube-upload/yt_upload.py "$@"

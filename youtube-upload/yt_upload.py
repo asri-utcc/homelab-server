@@ -10,7 +10,9 @@ Secrets live outside the repo: ~/.config/lab-social/{youtube_client_secret,youtu
 import argparse, json, os, sys
 from pathlib import Path
 
-CFG = Path.home() / ".config" / "lab-social"
+_home_cfg = Path.home() / ".config" / "lab-social"
+_dev_cfg = Path("/home/dev/.config/lab-social")
+CFG = Path(os.environ["LAB_SOCIAL_CFG"]) if os.environ.get("LAB_SOCIAL_CFG") else (_home_cfg if _home_cfg.exists() else _dev_cfg)
 SECRET = CFG / "youtube_client_secret.json"
 TOKEN = CFG / "youtube_token.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload",

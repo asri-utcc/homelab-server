@@ -436,6 +436,7 @@ def format_success_html(
     topic: str,
     info: dict[str, Any],
     credit: dict[str, Any],
+    yt_info: dict[str, Any] | None = None,
 ) -> str:
     thai_date = format_thai_date(target_date)
     iso_date = target_date.isoformat()
@@ -502,6 +503,19 @@ def format_success_html(
             f"⚠️ <i>หมายเหตุ: ส่งไฟล์คลิปอัตโนมัติไม่สำเร็จ ({html.escape(str(info['telegramError']))}) สามารถดู/โหลดจากลิงก์ด้านบนได้</i>"
         )
 
+    if yt_info:
+        yt_url = str(yt_info.get("url") or "").strip()
+        yt_privacy = str(yt_info.get("privacy") or "public").strip()
+        yt_err = str(yt_info.get("error") or "").strip()
+        if yt_url:
+            lines.append(
+                f'📺 <b>YouTube ({html.escape(yt_privacy)}):</b> <a href="{html.escape(yt_url, quote=True)}">{html.escape(yt_url)}</a>'
+            )
+        elif yt_err:
+            lines.append(
+                f"⚠️ <i>อัปโหลด YouTube ไม่สำเร็จ: {html.escape(yt_err[:300])}</i>"
+            )
+
     return "\n".join(lines)
 
 
@@ -531,6 +545,135 @@ def format_error_html(
         escaped_log = html.escape(snippet)
         msg += f"\n\n<b>Log ล่าสุด ({len(log_tail)} บรรทัด):</b>\n<pre>{escaped_log}</pre>"
     return msg
+
+
+def build_youtube_metadata(
+    target_date: date,
+    job_dir: Path,
+    job_data: dict[str, Any],
+) -> tuple[str, str, str]:
+    thai_date = format_thai_date(target_date)
+    title = f"สรุป 6 ข่าวเด็ดประจำวันที่ {thai_date} | ย่อโลกมายำ"[:100]
+    tags = "ข่าวเช้า,สรุปข่าว,ข่าววันนี้,ข่าวไทย,ข่าวต่างประเทศ,ข่าวเด่น,ย่อโลกมายำ"
+
+    headlines: list[str] = []
+    script_data = read_json_safe(job_dir / "script.json") or {}
+    scenes = script_data.get("scenes") if isinstance(script_data.get("scenes"), list) else []
+    # Pair every 2 news scenes (skipping opening & closing scenes)
+    news_scenes = scenes[1:-1] if len(scenes) >= 4 else scenes
+    for idx in range(0, len(news_scenes), 2):
+        sc = news_scenes[idx]
+        if isinstance(sc, dict):
+            heading = str(sc.get("title") or sc.get("heading") or "").strip()
+            if heading:
+                headlines.append(f"{len(headlines) + 1}. {heading}")
+
+    desc_lines = [f"สรุปข่าวเด่นประจำวันที่ {thai_date} (ในประเทศและต่างประเทศ)"]
+    if headlines:
+        desc_lines.append("")
+        desc_lines.extend(headlines)
+    desc_lines.append("")
+    desc_lines.append("รายการสรุปข่าวเช้าประจำวัน ช่อง ย่อโลกมายำ (@yaolokmayam)")
+    return title, "\n".join(desc_lines), tags
+
+
+def upload_to_youtube(
+    *,
+    video_path: str,
+    target_date: date,
+    job_dir: Path,
+    job_data: dict[str, Any],
+    env: dict[str, str],
+    privacy: str = "public",
+) -> dict[str, Any]:
+    outputs = job_data.get("outputs") if isinstance(job_data.get("outputs"), dict) else {}
+    existing_url = str(outputs.get("youtubeUrl") or "").strip()
+    if existing_url:
+        return {
+            "ok": True,
+            "id": str(outputs.get("youtubeId") or "").strip(),
+            "url": existing_url,
+            "privacy": str(outputs.get("youtubePrivacy") or privacy).strip(),
+            "cached": True,
+        }
+
+    title, desc, tags = build_youtube_metadata(target_date, job_dir, job_data)
+    cmd = [
+        MOTION_STUDIO_BIN,
+        "send-youtube",
+        video_path,
+        "--title",
+        title,
+        "--description",
+        desc,
+        "--tags",
+        tags,
+        "--category",
+        "25",
+        "--privacy",
+        privacy,
+        "--synthetic",
+    ]
+    append_log_line(job_dir, f"Uploading to YouTube (privacy={privacy}): {title}")
+    try:
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            env=env,
+            check=False,
+        )
+    except Exception as exc:
+        err = f"send-youtube exception: {exc}"
+        append_log_line(job_dir, f"WARN: {err}")
+        return {"ok": False, "error": err}
+
+    parsed: dict[str, Any] | None = None
+    for line in reversed((res.stdout or "").strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict) and obj.get("url"):
+                    parsed = obj
+                    break
+            except json.JSONDecodeError:
+                pass
+
+    job_path = job_dir / "job.json"
+    latest_job = read_json_safe(job_path) or dict(job_data)
+    out_obj = latest_job.setdefault("outputs", {})
+    if not isinstance(out_obj, dict):
+        out_obj = {}
+        latest_job["outputs"] = out_obj
+
+    if res.returncode == 0 and parsed:
+        yt_id = str(parsed.get("id") or "").strip()
+        yt_url = str(parsed.get("url") or "").strip()
+        yt_priv = str(parsed.get("privacy") or privacy).strip()
+        out_obj["youtubeId"] = yt_id
+        out_obj["youtubeUrl"] = yt_url
+        out_obj["youtubePrivacy"] = yt_priv
+        out_obj.pop("youtubeError", None)
+        latest_job["updatedAt"] = now_utc_iso()
+        try:
+            atomic_write_json(job_path, latest_job)
+        except Exception:
+            pass
+        append_log_line(job_dir, f"YouTube upload OK: {yt_url} ({yt_priv})")
+        return {"ok": True, "id": yt_id, "url": yt_url, "privacy": yt_priv}
+
+    err_msg = (res.stderr or res.stdout or f"send-youtube exited {res.returncode}").strip()
+    err_short = err_msg.splitlines()[-1][:300] if err_msg else f"exit {res.returncode}"
+    out_obj["youtubeError"] = err_short
+    latest_job["updatedAt"] = now_utc_iso()
+    try:
+        atomic_write_json(job_path, latest_job)
+    except Exception:
+        pass
+    append_log_line(job_dir, f"WARN: YouTube upload failed: {err_short}")
+    return {"ok": False, "error": err_short}
 
 
 def send_telegram_html(html_message: str, env: dict[str, str]) -> tuple[bool, str]:
@@ -601,6 +744,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="ปิดการส่งคลิปและข้อความสรุปไปยัง Telegram",
     )
+    parser.add_argument(
+        "--no-youtube",
+        action="store_true",
+        help="ปิดการอัปโหลดคลิปขึ้น YouTube อัตโนมัติ",
+    )
+    parser.add_argument(
+        "--youtube-privacy",
+        choices=["private", "unlisted", "public"],
+        default="public",
+        help="ระดับความเป็นส่วนตัวบน YouTube (ค่าเริ่มต้น: public)",
+    )
     return parser.parse_args(argv)
 
 
@@ -660,6 +814,37 @@ def main(argv: list[str] | None = None) -> int:
             )
             # We hold the run lock, so any non-done status (failed/aborted/stuck) is a dead run -> retry
             if existing_job is not None and existing_status == "done":
+                existing_info = extract_latest_output(existing_job)
+                existing_outputs = existing_job.get("outputs") if isinstance(existing_job.get("outputs"), dict) else {}
+                existing_video = existing_info.get("videoPath") or ""
+                if (
+                    not args.no_youtube
+                    and not args.dry_run
+                    and not str(existing_outputs.get("youtubeUrl") or "").strip()
+                    and existing_video
+                    and Path(existing_video).exists()
+                ):
+                    yt_info = upload_to_youtube(
+                        video_path=existing_video,
+                        target_date=target_date,
+                        job_dir=job_dir,
+                        job_data=existing_job,
+                        env=env,
+                        privacy=args.youtube_privacy,
+                    )
+                    print(f"[youtube] {yt_info}")
+                    if send_telegram and yt_info.get("url"):
+                        credit = read_credit_info(env)
+                        html_summary = format_success_html(
+                            target_date=target_date,
+                            job_id=job_id,
+                            topic=topic,
+                            info=existing_info,
+                            credit=credit,
+                            yt_info=yt_info,
+                        )
+                        send_telegram_html(html_summary, env)
+                    return 0
                 print(
                     f"[skip] งาน {job_id} มีอยู่แล้ว (status={existing_status or 'unknown'}) ที่ {job_dir}"
                 )
@@ -808,16 +993,32 @@ def main(argv: list[str] | None = None) -> int:
                 send_telegram_html(html_err, env)
             return 1
 
+        yt_info: dict[str, Any] | None = None
+        if not args.no_youtube:
+            yt_info = upload_to_youtube(
+                video_path=video_path,
+                target_date=target_date,
+                job_dir=job_dir,
+                job_data=job_data,
+                env=env,
+                privacy=args.youtube_privacy,
+            )
+            if yt_info.get("ok"):
+                print(f"[youtube] อัปโหลดสำเร็จ: {yt_info.get('url')} ({yt_info.get('privacy')})")
+            else:
+                print(f"[warn] อัปโหลด YouTube ไม่สำเร็จ: {yt_info.get('error')}", file=sys.stderr)
+
         credit = read_credit_info(env)
         append_log_line(
             job_dir,
             f"Completed: video={video_path} dur={info.get('durationSec')}s "
-            f"costThb={info.get('clipTotalThb')} remainingThb={credit.get('remainingThb')}",
+            f"costThb={info.get('clipTotalThb')} remainingThb={credit.get('remainingThb')} "
+            f"youtubeUrl={(yt_info or {}).get('url', '')}",
         )
         print(
             f"[done] สร้างคลิปสำเร็จ: {video_path} "
             f"(watch={info.get('watchUrl')}, costThb={info.get('clipTotalThb')}, "
-            f"remainingThb={credit.get('remainingThb')})"
+            f"remainingThb={credit.get('remainingThb')}, youtube={(yt_info or {}).get('url', '-')})"
         )
 
         if send_telegram:
@@ -827,6 +1028,7 @@ def main(argv: list[str] | None = None) -> int:
                 topic=topic,
                 info=info,
                 credit=credit,
+                yt_info=yt_info,
             )
             tg_ok, tg_out = send_telegram_html(html_summary, env)
             if not tg_ok:

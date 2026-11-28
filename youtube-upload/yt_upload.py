@@ -25,7 +25,12 @@ def creds(interactive=False):
     if c and c.valid:
         return c
     if c and c.refresh_token:
-        c.refresh(Request())
+        from google.auth.exceptions import RefreshError
+        try:
+            c.refresh(Request())
+        except RefreshError:
+            # app still in "Testing" => refresh tokens die after 7 days
+            sys.exit("token expired or revoked: run `yt-upload auth` again")
     elif interactive:
         from google_auth_oauthlib.flow import InstalledAppFlow
         flow = InstalledAppFlow.from_client_secrets_file(str(SECRET), SCOPES)
